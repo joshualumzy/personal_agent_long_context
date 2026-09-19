@@ -371,7 +371,9 @@ export class LettaMemoryProvider implements MemoryProvider {
 
     const pendingReads = new Map<string, string>();
     const sources = new Map<string, SourceReference>();
-    let answer = "";
+    // Assistant messages arrive as token deltas, and a turn may narrate before
+    // it calls a tool, so keep only the deltas that follow the last tool call.
+    let finalTurn = "";
     let resultText: string | undefined;
     let runRef: string | undefined;
     let completed = false;
@@ -387,13 +389,16 @@ export class LettaMemoryProvider implements MemoryProvider {
       for await (const message of session.stream()) {
         if ("runId" in message && message.runId) runRef ??= message.runId;
 
-        if (message.type === "tool_call" && message.toolName === "Read") {
-          const relativePath = pathWithinMemory(
-            message.toolInput.file_path,
-            memoryDirectory,
-          );
-          if (relativePath && shouldExposeMemoryFile(relativePath)) {
-            pendingReads.set(message.toolCallId, relativePath);
+        if (message.type === "tool_call") {
+          finalTurn = "";
+          if (message.toolName === "Read") {
+            const relativePath = pathWithinMemory(
+              message.toolInput.file_path,
+              memoryDirectory,
+            );
+            if (relativePath && shouldExposeMemoryFile(relativePath)) {
+              pendingReads.set(message.toolCallId, relativePath);
+            }
           }
         }
 
@@ -410,8 +415,8 @@ export class LettaMemoryProvider implements MemoryProvider {
           }
         }
 
-        if (message.type === "assistant" && message.content.trim().length > 0) {
-          answer = message.content.trim();
+        if (message.type === "assistant") {
+          finalTurn += message.content;
         }
 
         if (message.type === "error") {
@@ -440,7 +445,7 @@ export class LettaMemoryProvider implements MemoryProvider {
       throw new Error("Letta could not answer from Memory: the run ended unexpectedly.");
     }
 
-    const finalAnswer = answer.length > 0 ? answer : (resultText ?? "");
+    const finalAnswer = resultText && resultText.length > 0 ? resultText : finalTurn.trim();
     if (finalAnswer.length === 0) {
       throw new Error("Letta could not answer from Memory: no answer text was produced.");
     }

@@ -256,8 +256,14 @@ test("answers from the user's own agent and reports the Memory files it read", a
       };
       yield {
         type: "assistant",
-        content: "Let me read your Memory files first.",
-        uuid: "message-0",
+        content: "Let me read your ",
+        uuid: "message-0a",
+        runId: "run-7",
+      };
+      yield {
+        type: "assistant",
+        content: "Memory files first.",
+        uuid: "message-0b",
         runId: "run-7",
       };
       yield {
@@ -274,13 +280,15 @@ test("answers from the user's own agent and reports the Memory files it read", a
         isError: false,
         uuid: "message-2b",
       };
+      for (const delta of ["You plan", " the week on", " Sunday evening."]) {
+        yield { type: "assistant", content: delta, uuid: "message-3", runId: "run-7" };
+      }
       yield {
-        type: "assistant",
-        content: "You plan the week on Sunday evening.",
-        uuid: "message-3",
-        runId: "run-7",
+        type: "result",
+        success: true,
+        runIds: ["run-7"],
+        result: "\n\nYou plan the week on Sunday evening.",
       };
-      yield { type: "result", success: true, runIds: ["run-7"] };
     },
     close() {},
   };
@@ -390,4 +398,62 @@ test("fails loudly when the answering run does not complete", async () => {
     }),
     /Letta could not answer/,
   );
+});
+
+test("drops narration and reassembles token deltas when the run reports no result text", async () => {
+  const fakeSession = {
+    async getDeviceStatus() {
+      return { memoryDirectory: "/srv/letta/memory" };
+    },
+    async send() {},
+    async *stream() {
+      for (const delta of ["Let me check", " your Memory."]) {
+        yield { type: "assistant", content: delta, uuid: "narration" };
+      }
+      yield {
+        type: "tool_call",
+        toolCallId: "read-1",
+        toolName: "Read",
+        toolInput: { file_path: "/srv/letta/memory/personal-context/note.md" },
+        uuid: "message-1",
+      };
+      yield {
+        type: "tool_result",
+        toolCallId: "read-1",
+        content: "1\tsource_id: voice-note-009",
+        isError: false,
+        uuid: "message-2",
+      };
+      for (const delta of ["You plan", " the week on", " Sunday evening."]) {
+        yield { type: "assistant", content: delta, uuid: "message-3" };
+      }
+      yield { type: "result", success: true };
+    },
+    close() {},
+  };
+  const fakeClient = {
+    agents: {
+      async list() {
+        return [{ id: "agent-1" }];
+      },
+    },
+    resumeSession() {
+      return fakeSession;
+    },
+    async close() {},
+  };
+  const provider = new LettaMemoryProvider({ url: "http://127.0.0.1:4500" });
+  Object.defineProperty(provider, "client", { value: fakeClient });
+
+  const result = await provider.ask({
+    userId: "demo-user",
+    question: "When do I plan my week?",
+    correlationId: "corr-test-005",
+    receivedAt: "2026-09-19T08:05:00.000Z",
+  });
+
+  assert.equal(result.answer, "You plan the week on Sunday evening.");
+  assert.deepEqual(result.sources, [
+    { sourceId: "voice-note-009", label: "personal-context/note.md" },
+  ]);
 });
