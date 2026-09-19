@@ -28,7 +28,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     logger: options.logger ?? false,
     bodyLimit: 128 * 1024,
   });
-  const application = new PersonalContextApplication(options.memory, options);
+  const application = new PersonalContextApplication(options.memory, {
+    ...options,
+    onFailure:
+      options.onFailure ??
+      ((failure) => app.log.error(failure, "Memory provider failure")),
+  });
 
   app.get("/health", async () => ({ status: "ok" }));
 
@@ -53,7 +58,15 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       try {
         const result = await application.inspect(request.params.userId);
         return reply.code(result.statusCode).send(result.body);
-      } catch {
+      } catch (error) {
+        app.log.error(
+          {
+            operation: "inspect",
+            userId: request.params.userId,
+            reason: error instanceof Error ? error.message : "Unknown failure.",
+          },
+          "Memory provider failure",
+        );
         return reply.code(503).send({
           code: "memory_service_unavailable",
           message: "The Memory service is unavailable.",

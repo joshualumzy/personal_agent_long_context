@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { DeterministicMemoryProvider } from "../src/adapters/deterministic-memory.js";
+import type { ApplicationFailure } from "../src/application.js";
 import { CONSENT_POLICY_VERSION } from "../src/domain.js";
 import { buildApp } from "../src/http-app.js";
 
@@ -19,12 +20,15 @@ function validSubmission(overrides: Record<string, unknown> = {}) {
 }
 
 function testApp(memory = new DeterministicMemoryProvider()) {
+  const failures: ApplicationFailure[] = [];
   return {
     memory,
+    failures,
     app: buildApp({
       memory,
       clock: () => fixedReceipt,
       correlationId: () => "corr-test-001",
+      onFailure: (failure) => failures.push(failure),
     }),
   };
 }
@@ -153,6 +157,62 @@ describe("Transcript submission application interface", () => {
     assert.equal(response.statusCode, 503);
     assert.equal(response.json().code, "memory_service_unavailable");
     assert.equal(response.body.includes("sk-live-never-expose"), false);
+    await app.close();
+  });
+});
+
+describe("Failure reporting", () => {
+  test("records the failure reason for the server log without returning it", async () => {
+    for (const operation of ["submit", "ask"] as const) {
+      const memory = new DeterministicMemoryProvider();
+      const failing = async () => {
+        throw new Error("letta app server token sk-live-never-expose");
+      };
+      if (operation === "submit") memory.ingest = failing;
+      else memory.ask = failing;
+
+      const { app, failures } = testApp(memory);
+      const response = await app.inject({
+        method: "POST",
+        url: operation === "submit" ? "/api/v1/transcripts" : "/api/v1/questions",
+        payload:
+          operation === "submit"
+            ? validSubmission()
+            : { userId: "demo-user", question: "When do I plan my week?" },
+      });
+
+      assert.equal(response.statusCode, 503);
+      assert.equal(response.body.includes("sk-live-never-expose"), false);
+      assert.deepEqual(failures, [
+        {
+          operation,
+          correlationId: "corr-test-001",
+          userId: "demo-user",
+          reason: "letta app server token sk-live-never-expose",
+        },
+      ]);
+      await app.close();
+    }
+  });
+
+  test("keeps Transcript and question text out of the failure record", async () => {
+    const memory = new DeterministicMemoryProvider();
+    memory.ingest = async () => {
+      throw new Error("provider unavailable");
+    };
+    const { app, failures } = testApp(memory);
+
+    await app.inject({
+      method: "POST",
+      url: "/api/v1/transcripts",
+      payload: validSubmission({ transcript: "A private detail about Sunday." }),
+    });
+
+    assert.equal(failures.length, 1);
+    assert.equal(
+      JSON.stringify(failures[0]).includes("A private detail about Sunday."),
+      false,
+    );
     await app.close();
   });
 });

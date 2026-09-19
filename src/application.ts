@@ -17,9 +17,23 @@ const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const identifierRule =
   "must be 1\u2013128 characters using letters, numbers, dot, underscore, colon, or hyphen.";
 
+/**
+ * A failure record for the server-side log. It carries identifiers only:
+ * `docs/research/pii-privacy-policy.md` requires operational logs to stay
+ * content-free, so no Transcript text, question text, or Memory content
+ * belongs in this shape.
+ */
+export interface ApplicationFailure {
+  operation: "submit" | "ask";
+  correlationId: string;
+  userId: string | null;
+  reason: string;
+}
+
 export interface ApplicationOptions {
   clock?: () => Date;
   correlationId?: () => string;
+  onFailure?: (failure: ApplicationFailure) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -142,9 +156,14 @@ function parseQuestion(
   return { question: { userId: input.userId.trim(), question } };
 }
 
+function failureReason(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown failure.";
+}
+
 export class PersonalContextApplication {
   private readonly clock: () => Date;
   private readonly correlationId: () => string;
+  private readonly onFailure: (failure: ApplicationFailure) => void;
 
   constructor(
     private readonly memory: MemoryProvider,
@@ -152,6 +171,7 @@ export class PersonalContextApplication {
   ) {
     this.clock = options.clock ?? (() => new Date());
     this.correlationId = options.correlationId ?? randomUUID;
+    this.onFailure = options.onFailure ?? (() => {});
   }
 
   async submit(input: unknown): Promise<ApplicationResponse<SubmissionResult>> {
@@ -188,7 +208,13 @@ export class PersonalContextApplication {
 
     try {
       await this.memory.ingest(accepted);
-    } catch {
+    } catch (error) {
+      this.onFailure({
+        operation: "submit",
+        correlationId,
+        userId: accepted.userId,
+        reason: failureReason(error),
+      });
       return {
         statusCode: 503,
         body: {
@@ -229,7 +255,13 @@ export class PersonalContextApplication {
         statusCode: 200,
         body: { status: "answered", correlationId, receivedAt, ...answer },
       };
-    } catch {
+    } catch (error) {
+      this.onFailure({
+        operation: "ask",
+        correlationId,
+        userId: parsed.question.userId,
+        reason: failureReason(error),
+      });
       return {
         statusCode: 503,
         body: {
