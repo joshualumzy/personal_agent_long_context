@@ -1,0 +1,31 @@
+{
+  "name": "personal-context-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts",
+    "test:smoke": "RUN_REAL_LETTA=1 node --import tsx --test test/letta.smoke.test.ts",
+    "letta:server": "letta server --backend local --listen ws://127.0.0.1:4500"
+  },
+  "dependencies": {
+    "@letta-ai/letta-agent-sdk": "0.8.12",
+    "fastify": "5.12.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.18.6",
+    "tsx": "4.20.6",
+    "typescript": "5.9.2"
+  },
+  "allowScripts": {
+    "@letta-ai/letta-code@0.32.13": true,
+    "node-pty@1.1.0": true,
+    "esbuild@0.25.12": true
+  }
+}

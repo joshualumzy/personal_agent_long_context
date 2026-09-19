@@ -1,0 +1,29 @@
+# Dependencies and generated output
+node_modules/
+coverage/
+dist/
+*.tsbuildinfo
+*.log
+
+# Local environment and credential files
+.env
+.env.*
+!.env.example
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+credentials.json
+credentials.*.json
+secrets.json
+secrets.*.json
+
+# Local Letta agents, provider configuration, transcripts, and Memory
+.letta/
+
+# Operating-system and editor files
+.DS_Store
+.idea/
+*.swp
+*.swo

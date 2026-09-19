@@ -1,0 +1,74 @@
+# Personal Context Agent
+
+This repository contains the first end-to-end MVP slice: a browser submits a dated, consent-attested Transcript to a thin server-side adapter, the adapter sends accepted content to a user-scoped local Letta agent, and the browser inspects the Memory Letta exposes.
+
+The Consent Attestation is an uploader statement, not technical or legal verification. Use synthetic, staged-consent, or first-party Transcripts only. Do not submit credentials, authentication secrets, payment or bank details, private keys, or government identifiers.
+
+## Requirements
+
+- Node.js 22.19 or newer
+- A model provider configured for Letta Code
+- For the real integration path, the pinned Letta Agent SDK `0.8.12` and its pinned Letta Code runtime `0.32.13` (installed by `npm install`)
+
+## Install and run
+
+```bash
+npm install
+cp .env.example .env
+npm run letta:server
+```
+
+In a second terminal, start the application. It loads `.env` when present:
+
+```bash
+npm run dev
+```
+
+Open [http://127.0.0.1:3000](http://127.0.0.1:3000). The application server can start before Letta, but Transcript submission is rejected until the App Server and its model provider are available.
+
+For frontend-only work without a model, run `MEMORY_ADAPTER=deterministic npm run dev`. This mode is deliberately in-memory and is not evidence of real Letta persistence.
+
+## Application interface
+
+- `POST /api/v1/transcripts` accepts `userId`, `sourceId`, `recordedAt`, `transcript`, `attestation`, and `policyVersion`.
+- `GET /api/v1/users/:userId/memory` returns the Memory Letta currently exposes for that user.
+- `GET /api/v1/policy` returns the current policy version and the only two valid attestation values.
+- `GET /health` reports application-server availability.
+
+Example request:
+
+```bash
+curl --fail-with-body http://127.0.0.1:3000/api/v1/transcripts \
+  -H 'content-type: application/json' \
+  --data '{
+    "userId": "demo-user",
+    "sourceId": "voice-note-001",
+    "recordedAt": "2026-09-19T08:00:00+08:00",
+    "transcript": "I decided to plan the week on Sunday evening.",
+    "attestation": "uploader_only_identifiable_speaker",
+    "policyVersion": "consent-v1"
+  }'
+```
+
+Every result includes a correlation identifier. The adapter records `receivedAt` independently of `recordedAt`. Rejections never echo the submitted Transcript or provider error details.
+
+## Verification
+
+The default test suite calls the same HTTP interface as the browser with a deterministic Memory provider:
+
+```bash
+npm test
+npm run typecheck
+```
+
+With the local Letta App Server running and a model provider configured, run the opt-in smoke test:
+
+```bash
+RUN_REAL_LETTA=1 npm run test:smoke
+```
+
+The smoke test verifies connection, user-agent reuse, two ingestions, persistence, and Memory inspection. It intentionally does not make probabilistic model text an assertion.
+
+## Security boundary
+
+The browser receives only the application API and static assets. `LETTA_APP_SERVER_TOKEN`, model-provider credentials, agent administration, and provider errors stay server-side. The Prohibited Data check is a narrow MVP guard, not comprehensive classification or a production privacy claim.
