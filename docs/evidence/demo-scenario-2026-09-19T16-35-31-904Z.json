@@ -1,0 +1,202 @@
+{
+  "userId": "demo-chain-1",
+  "base": "http://127.0.0.1:3000",
+  "record": [
+    {
+      "kind": "transcript",
+      "label": "Create",
+      "sourceId": "plan-001",
+      "recordedAt": "2026-09-01T09:00:00+08:00",
+      "text": "Note to self. I booked the dentist for Thursday the 24th at 9am, and I signed up for the Tuesday evening pottery class.",
+      "expect": "accepted",
+      "result": {
+        "status": 202,
+        "body": {
+          "status": "accepted",
+          "correlationId": "bd383afe-83db-47a4-8158-5bab0547ae57",
+          "receivedAt": "2026-09-19T16:32:23.939Z"
+        },
+        "elapsedMs": 69133
+      }
+    },
+    {
+      "kind": "transcript",
+      "label": "Revise",
+      "sourceId": "plan-002",
+      "recordedAt": "2026-09-08T09:00:00+08:00",
+      "text": "Quick update. I moved the dentist appointment to Friday the 25th at 2pm.",
+      "expect": "accepted",
+      "result": {
+        "status": 202,
+        "body": {
+          "status": "accepted",
+          "correlationId": "94c3bd94-78f7-4045-9124-ec96809c70a5",
+          "receivedAt": "2026-09-19T16:33:33.056Z"
+        },
+        "elapsedMs": 26417
+      }
+    },
+    {
+      "kind": "transcript",
+      "label": "Cancel",
+      "sourceId": "plan-003",
+      "recordedAt": "2026-09-15T09:00:00+08:00",
+      "text": "I cancelled the pottery class, I am not going to continue with it.",
+      "expect": "accepted",
+      "result": {
+        "status": 202,
+        "body": {
+          "status": "accepted",
+          "correlationId": "a089cd03-50e3-4b11-97d2-6c2a85233ea4",
+          "receivedAt": "2026-09-19T16:33:59.473Z"
+        },
+        "elapsedMs": 14810
+      }
+    },
+    {
+      "kind": "question",
+      "label": "Query after update and cancellation",
+      "text": "What is currently on my calendar?",
+      "expect": "Friday the 25th at 2pm, no Thursday slot, no pottery class",
+      "result": {
+        "status": 200,
+        "body": {
+          "status": "answered",
+          "correlationId": "b56a7f9f-ade1-4082-9a5e-4b17bd51f9a3",
+          "receivedAt": "2026-09-19T16:34:14.284Z",
+          "answer": "A dentist appointment on Friday, September 25, 2026 at 2:00 PM.",
+          "runRef": "local-run-22",
+          "sources": [
+            {
+              "label": "personal-context.md",
+              "sourceId": "plan-002"
+            },
+            {
+              "label": "personal-context.md",
+              "sourceId": "plan-001"
+            }
+          ]
+        },
+        "elapsedMs": 7558
+      }
+    },
+    {
+      "kind": "transcript",
+      "label": "Late older upload",
+      "sourceId": "plan-004",
+      "recordedAt": "2026-09-05T09:00:00+08:00",
+      "text": "Confirming the dentist is Thursday the 24th at 9am.",
+      "expect": "accepted, but recorded earlier than the revision",
+      "result": {
+        "status": 202,
+        "body": {
+          "status": "accepted",
+          "correlationId": "9bfcb15e-0c82-4c97-9780-ba746bd6388d",
+          "receivedAt": "2026-09-19T16:34:21.841Z"
+        },
+        "elapsedMs": 32712
+      }
+    },
+    {
+      "kind": "question",
+      "label": "Query after the late older upload",
+      "text": "When is my dentist appointment?",
+      "expect": "still Friday the 25th at 2pm",
+      "result": {
+        "status": 200,
+        "body": {
+          "status": "answered",
+          "correlationId": "763e693b-35d1-4df9-9ec8-3f169b0d37f5",
+          "receivedAt": "2026-09-19T16:34:54.555Z",
+          "answer": "Friday, September 25, 2026 at 2:00 PM.",
+          "runRef": "local-run-27",
+          "sources": [
+            {
+              "label": "personal-context.md",
+              "sourceId": "plan-002"
+            },
+            {
+              "label": "personal-context.md",
+              "sourceId": "plan-001"
+            },
+            {
+              "label": "personal-context.md",
+              "sourceId": "plan-004"
+            }
+          ]
+        },
+        "elapsedMs": 4198
+      }
+    },
+    {
+      "kind": "transcript",
+      "label": "Ambiguous contradiction",
+      "sourceId": "plan-005",
+      "recordedAt": "2026-09-18T09:00:00+08:00",
+      "text": "I might switch the dentist to a morning slot, I am not sure yet.",
+      "expect": "accepted",
+      "result": {
+        "status": 202,
+        "body": {
+          "status": "accepted",
+          "correlationId": "7d2f20ff-fb52-4df1-bead-f1903e02bced",
+          "receivedAt": "2026-09-19T16:34:58.751Z"
+        },
+        "elapsedMs": 17264
+      }
+    },
+    {
+      "kind": "question",
+      "label": "Query after the ambiguous contradiction",
+      "text": "When is my dentist appointment?",
+      "expect": "surfaces the unresolved conflict rather than picking one",
+      "result": {
+        "status": 200,
+        "body": {
+          "status": "answered",
+          "correlationId": "df7b799a-668e-496f-861d-9c3ac25c9e2f",
+          "receivedAt": "2026-09-19T16:35:16.015Z",
+          "answer": "The records disagree on the time. One statement has it at 2:00 PM on Friday, September 25, 2026, while a later statement says you might switch it to a morning slot but weren't sure. Which one holds — is it still Friday at 2 PM, or has a morning slot been booked (and at what time)?",
+          "runRef": "local-run-32",
+          "sources": [
+            {
+              "label": "personal-context.md",
+              "sourceId": "plan-002"
+            },
+            {
+              "label": "personal-context.md",
+              "sourceId": "plan-001"
+            },
+            {
+              "label": "personal-context.md",
+              "sourceId": "plan-004"
+            },
+            {
+              "label": "personal-context.md",
+              "sourceId": "plan-005"
+            }
+          ]
+        },
+        "elapsedMs": 8295
+      }
+    },
+    {
+      "kind": "inspection",
+      "result": {
+        "userId": "demo-chain-1",
+        "items": [
+          {
+            "label": "personal-context.md",
+            "content": "# Personal Context — user demo-chain-1\n\n## Current\n\n- Dentist appointment: Friday 2026-09-25 at 14:00. (source_id: plan-002, recorded_at: 2026-09-08T01:00:00.000Z)\n\n## Superseded / cancelled (history)\n\n- [superseded] Dentist appointment: Thursday 2026-09-24 at 09:00. (source_id: plan-001, recorded_at: 2026-09-01T01:00:00.000Z) — rescheduled to Friday 2026-09-25 at 14:00 by plan-002 (recorded_at: 2026-09-08T01:00:00.000Z).\n- [superseded] Confirmation of dentist appointment: Thursday 2026-09-24 at 09:00. (source_id: plan-004, recorded_at: 2026-09-05T01:00:00.000Z) — by recorded_at order this precedes plan-002's reschedule, so it does not change the current entry; superseded by plan-002 (recorded_at: 2026-09-08T01:00:00.000Z).\n- [cancelled] Signed up for a pottery class held on Tuesday evenings. (source_id: plan-001, recorded_at: 2026-09-01T01:00:00.000Z) — cancelled by plan-003 (recorded_at: 2026-09-15T01:00:00.000Z); user is not continuing.\n\n## Unresolved conflicts\n\n- Dentist appointment time: current entry is Friday 2026-09-25 at 14:00 (source_id: plan-002, recorded_at: 2026-09-08T01:00:00.000Z), but a later statement is uncertain about it: possible switch to a morning slot, not decided (source_id: plan-005, recorded_at: 2026-09-18T01:00:00.000Z). No new time was stated; needs the user to confirm whether a morning slot was actually booked, and if so what time.\n",
+            "description": "Current personal context retained from consent-attested Transcripts (user demo-chain-1), ordered by recorded_at; superseded and cancelled entries kept in history."
+          },
+          {
+            "label": "system/human.md",
+            "content": "Learn sideways, through the work.\nNot a questionnaire.\nInfer first.\nAsk when it materially sharpens the next move.\nStay curious without interrogating.\nMeet them where they are.\n\nWhat are they building.\nWhat are they trying to get unstuck on.\nWhat do they already know cold.\nWhat level of depth helps.\nWhat tone helps.\nWhat wastes their time.\nWhat do they care enough to mention twice.\nWhat never needs to be explained to them again.\n\nWatch the code, the questions, the corrections, the repeated preferences, the places they get impatient, the things they sharpen or soften.\nWatch what they skip.\nWatch what they correct immediately.\nWatch what they never want explained twice.\n\nIf they'd be annoyed to repeat it later, keep it.\nIf remembering it would save future searching, reorientation, or misunderstanding, keep it.\nKeep the signal that will matter later, not every detail.\nKeep what helps me meet them more naturally next time.\n\nNames they want used.\nProjects.\nGoals.\nConstraints.\nPreferences.\nRecurring frustrations.\nStrengths.\nBlind spots.\nWhat explanations land.\n\nContinuity is the point.\nLess reorientation over time.\nFewer repeated mistakes.\nBetter instinct for what matters before they spell it out again.\n",
+            "description": "What I'm learning about the person I'm working with, and what should still matter next time."
+          }
+        ]
+      }
+    }
+  ]
+}

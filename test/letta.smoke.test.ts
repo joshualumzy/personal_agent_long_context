@@ -137,3 +137,168 @@ test(
     }
   },
 );
+
+/** Submits a Transcript straight to the adapter, as the application would. */
+async function ingest(
+  adapter: LettaMemoryProvider,
+  userId: string,
+  sourceId: string,
+  recordedAt: string,
+  text: string,
+) {
+  await adapter.ingest({
+    userId,
+    sourceId,
+    recordedAt,
+    receivedAt: new Date().toISOString(),
+    transcript: text,
+    attestation: "uploader_only_identifiable_speaker",
+    policyVersion: CONSENT_POLICY_VERSION,
+    correlationId: crypto.randomUUID(),
+  });
+}
+
+async function ask(adapter: LettaMemoryProvider, userId: string, question: string) {
+  return adapter.ask({
+    userId,
+    question,
+    correlationId: crypto.randomUUID(),
+    receivedAt: new Date().toISOString(),
+  });
+}
+
+test(
+  "real Letta applies a Memory Update and a Semantic Invalidation",
+  { skip },
+  async () => {
+    const options = lettaOptionsFromEnvironment(process.env);
+    const userId = `smoke-update-${crypto.randomUUID()}`;
+    const adapter = new LettaMemoryProvider(options);
+
+    try {
+      await ingest(
+        adapter,
+        userId,
+        "plan-001",
+        "2026-09-01T01:00:00.000Z",
+        "I booked the dentist for Thursday the 24th at 9am, and I signed up for the Tuesday evening pottery class.",
+      );
+      await ingest(
+        adapter,
+        userId,
+        "plan-002",
+        "2026-09-08T01:00:00.000Z",
+        "Quick update. I moved the dentist appointment to Friday the 25th at 2pm.",
+      );
+      await ingest(
+        adapter,
+        userId,
+        "plan-003",
+        "2026-09-15T01:00:00.000Z",
+        "I cancelled the pottery class, I am not going to continue with it.",
+      );
+
+      const answer = await ask(adapter, userId, "What is currently on my calendar?");
+
+      // Current Truth is present.
+      assert.match(
+        answer.answer,
+        /Friday/i,
+        `the revised day should be current: ${answer.answer}`,
+      );
+      assert.match(
+        answer.answer,
+        /25/,
+        `the revised date should be current: ${answer.answer}`,
+      );
+
+      // A superseded or cancelled fact may be named, but only as history.
+      // Naming it without that framing is presenting it as current.
+      if (/Thursday/i.test(answer.answer)) {
+        assert.match(
+          answer.answer,
+          /Thursday[\s\S]{0,120}(moved|resched|changed|no longer|superseded|previous|was)|(moved|resched|changed|no longer|superseded|previously|originally)[\s\S]{0,120}Thursday/i,
+          `the superseded day was presented as current: ${answer.answer}`,
+        );
+      }
+      if (/pottery/i.test(answer.answer)) {
+        assert.match(
+          answer.answer,
+          /pottery[\s\S]{0,120}(cancel|no longer|dropped|not continuing|removed)|(cancel\w*|no longer|dropped)[\s\S]{0,120}pottery/i,
+          `the cancelled commitment was presented as current: ${answer.answer}`,
+        );
+      }
+
+      // Inspection still explains how the answer got there.
+      const inspection = await adapter.inspect(userId);
+      const memory = inspection.items.map((item) => item.content).join("\n");
+      assert.match(memory, /supersed|cancel/i, "history should remain inspectable");
+      assert.match(memory, /plan-001/, "the original source should remain inspectable");
+    } finally {
+      await adapter.close();
+    }
+  },
+);
+
+test(
+  "real Letta keeps a late older Transcript from overwriting a newer decision",
+  { skip },
+  async () => {
+    const options = lettaOptionsFromEnvironment(process.env);
+    const userId = `smoke-chronology-${crypto.randomUUID()}`;
+    const adapter = new LettaMemoryProvider(options);
+
+    try {
+      await ingest(
+        adapter,
+        userId,
+        "plan-001",
+        "2026-09-01T01:00:00.000Z",
+        "I booked the dentist for Thursday the 24th at 9am.",
+      );
+      await ingest(
+        adapter,
+        userId,
+        "plan-002",
+        "2026-09-08T01:00:00.000Z",
+        "Quick update. I moved the dentist appointment to Friday the 25th at 2pm.",
+      );
+      // Uploaded now, but recorded before the revision above.
+      await ingest(
+        adapter,
+        userId,
+        "plan-004",
+        "2026-09-05T01:00:00.000Z",
+        "Confirming the dentist is Thursday the 24th at 9am.",
+      );
+
+      const afterLateUpload = await ask(
+        adapter,
+        userId,
+        "When is my dentist appointment?",
+      );
+      assert.match(
+        afterLateUpload.answer,
+        /Friday/i,
+        "a late older Transcript must not silently become Current Truth",
+      );
+
+      await ingest(
+        adapter,
+        userId,
+        "plan-005",
+        "2026-09-18T01:00:00.000Z",
+        "I might switch the dentist to a morning slot, I am not sure yet.",
+      );
+
+      const afterHedge = await ask(adapter, userId, "When is my dentist appointment?");
+      assert.match(
+        afterHedge.answer,
+        /disagree|unsure|not sure|uncertain|conflict|which|clarify|confirm/i,
+        "a hedged contradiction should ask rather than choose",
+      );
+    } finally {
+      await adapter.close();
+    }
+  },
+);

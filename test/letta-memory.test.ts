@@ -58,6 +58,16 @@ test("auto-approves ingestion tools only inside the agent Memory directory", asy
     canUseTool("Write", { file_path: "/tmp/outside-memory.md" }).behavior,
     "deny",
   );
+
+  // Discovery tools resolve to the Memory directory on their own. Denying a
+  // path-less call makes the agent retry it forever instead of ingesting.
+  assert.equal(canUseTool("Glob", { pattern: "**/*.md" }).behavior, "allow");
+  assert.equal(canUseTool("LS", {}).behavior, "allow");
+  assert.equal(canUseTool("Grep", { pattern: "dentist" }).behavior, "allow");
+
+  // A write still needs an explicit path inside the Memory directory.
+  assert.equal(canUseTool("Write", {}).behavior, "deny");
+  assert.equal(canUseTool("Bash", { command: "ls" }).behavior, "deny");
 });
 
 test("does not hide non-missing inspection errors whose path contains enoent", async () => {
