@@ -79,6 +79,10 @@ export interface RejectedSubmissionResult {
     | "prohibited_data"
     | "memory_service_unavailable";
   message: string;
+  /** Present for `prohibited_data`. Names the category, never the value. */
+  category?: string;
+  /** Present for `prohibited_data`. The detection rule that matched. */
+  rule?: string;
 }
 
 export interface AnsweredQuestionResult extends MemoryAnswer {

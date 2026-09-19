@@ -186,8 +186,8 @@ export class PersonalContextApplication {
       };
     }
 
-    const prohibitedCategory = detectProhibitedData(parsed.submission.transcript);
-    if (prohibitedCategory) {
+    const prohibited = detectProhibitedData(parsed.submission.transcript);
+    if (prohibited) {
       return {
         statusCode: 422,
         body: {
@@ -195,7 +195,9 @@ export class PersonalContextApplication {
           correlationId,
           receivedAt,
           code: "prohibited_data",
-          message: `This Transcript appears to contain a ${prohibitedCategory}. Remove it before submitting.`,
+          category: prohibited.category,
+          rule: prohibited.rule,
+          message: `This Transcript appears to contain a ${prohibited.category}. Remove it before submitting. Your text is still in the form.`,
         },
       };
     }

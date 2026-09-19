@@ -1,6 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
+import Fastify, {
+  type FastifyInstance,
+  type FastifyReply,
+  type FastifyServerOptions,
+} from "fastify";
 import { PersonalContextApplication, type ApplicationOptions } from "./application.js";
 import {
   CONSENT_ATTESTATIONS,
@@ -10,7 +14,8 @@ import {
 
 export interface BuildAppOptions extends ApplicationOptions {
   memory: MemoryProvider;
-  logger?: boolean;
+  /** Fastify logger configuration. Tests pass a stream to capture output. */
+  logger?: FastifyServerOptions["logger"];
 }
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
