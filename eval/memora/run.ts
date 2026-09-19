@@ -144,14 +144,68 @@ const output = {
 const outputPath = `docs/evaluation/memora-run-${config.runId}.json`;
 await mkdir("docs/evaluation", { recursive: true });
 
+/**
+ * Resume support. Ingestion is the expensive half of a run and its effect
+ * lives in Letta, not here: the agent for a user identifier keeps the Memory
+ * it already built. So a run that is interrupted, by a crash or by someone
+ * restarting the application, can be started again with the same
+ * MEMORA_RUN_ID and will skip the Transcripts and questions it already
+ * recorded rather than paying for them twice.
+ */
+const priorTimelines = new Map<string, TimelineRun>();
+try {
+  const prior = JSON.parse(await readFile(outputPath, "utf8")) as {
+    dataset?: { commit?: string; split?: string };
+    timelines?: TimelineRun[];
+  };
+  const sameDataset =
+    prior.dataset?.commit === config.commit && prior.dataset?.split === config.split;
+  if (sameDataset) {
+    for (const timeline of prior.timelines ?? []) {
+      priorTimelines.set(timeline.persona, timeline);
+    }
+    if (priorTimelines.size > 0) {
+      console.log(
+        `Resuming run ${config.runId}: ${[...priorTimelines.values()]
+          .map(
+            (timeline) =>
+              `${timeline.persona} ${timeline.transcripts.length} ingested, ${timeline.questions.length} answered`,
+          )
+          .join("; ")}`,
+      );
+    }
+  } else if (prior.timelines?.length) {
+    throw new Error(
+      `${outputPath} was produced from a different dataset. Use a new MEMORA_RUN_ID.`,
+    );
+  }
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+}
+
 async function checkpoint() {
   await writeFile(outputPath, `${JSON.stringify(output, null, 2)}\n`);
 }
 
 for (const persona of config.personas) {
   const userId = `memora-${config.split}-${persona}-${config.runId}`;
-  const timeline: TimelineRun = { persona, userId, transcripts: [], questions: [] };
+  const resumed = priorTimelines.get(persona);
+  const timeline: TimelineRun = resumed ?? {
+    persona,
+    userId,
+    transcripts: [],
+    questions: [],
+  };
   output.timelines.push(timeline);
+
+  const ingestedSources = new Set(
+    timeline.transcripts
+      .filter((transcript) => transcript.status === 202)
+      .map((transcript) => transcript.sourceId),
+  );
+  const answeredQuestions = new Set(
+    timeline.questions.map((question) => question.questionId),
+  );
 
   const chunks = await loadTimeline(config.dataDir, config.split, persona);
   const selected: SelectedQuestion[] = selectMutationHeavy(
@@ -165,6 +219,10 @@ for (const persona of config.personas) {
   );
 
   for (const [index, chunk] of chunks.entries()) {
+    if (ingestedSources.has(chunk.sourceId)) {
+      console.log(`  ingest ${index + 1}/${chunks.length} ${chunk.sourceId} -> already recorded`);
+      continue;
+    }
     const result = await post("/api/v1/transcripts", {
       userId,
       sourceId: chunk.sourceId,
@@ -194,6 +252,10 @@ for (const persona of config.personas) {
   }
 
   for (const candidate of selected) {
+    if (answeredQuestions.has(candidate.question.question_id)) {
+      console.log(`  ${candidate.question.question_id}: already recorded`);
+      continue;
+    }
     const asked = await post("/api/v1/questions", {
       userId,
       question: candidate.question.question,

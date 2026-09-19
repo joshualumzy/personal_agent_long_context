@@ -197,7 +197,7 @@ export class PersonalContextApplication {
           code: "prohibited_data",
           category: prohibited.category,
           rule: prohibited.rule,
-          message: `This Transcript appears to contain a ${prohibited.category}. Remove it before submitting. Your text is still in the form.`,
+          message: `This Transcript appears to contain ${/^[aeiou]/i.test(prohibited.category) ? "an" : "a"} ${prohibited.category}. Remove it before submitting. Your text is still in the form.`,
         },
       };
     }

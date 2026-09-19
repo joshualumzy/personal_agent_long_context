@@ -1,6 +1,6 @@
 {
   "runId": "weekly-2026-09-20",
-  "startedAt": "2026-09-19T16:58:01.443Z",
+  "startedAt": "2026-09-19T17:06:48.682Z",
   "dataset": {
     "repository": "geniesinc/Memora",
     "commit": "a6493188efc836d6511ed5e4163fe3ba87da30ff",
@@ -63,6 +63,21 @@
           "status": 202,
           "correlationId": "2ac372d3-3196-4947-ac89-92d4c429c9d1",
           "latencyMs": 131200
+        },
+        {
+          "sourceId": "weekly-software_engineer-2025-06-01-part3",
+          "recordedAt": "2025-06-01T12:00:00.000Z",
+          "chars": 9965,
+          "sessionIds": [
+            21,
+            22,
+            23,
+            24,
+            25
+          ],
+          "status": 202,
+          "correlationId": "cf584f8c-44dc-4b45-b718-a2507d9ed720",
+          "latencyMs": 70675
         }
       ],
       "questions": []
