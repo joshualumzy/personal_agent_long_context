@@ -11,7 +11,7 @@
     "start": "tsx src/server.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts",
-    "test:smoke": "RUN_REAL_LETTA=1 node --import tsx --test test/letta.smoke.test.ts",
+    "test:smoke": "RUN_REAL_LETTA=1 node --env-file=.env --import tsx --test test/letta.smoke.test.ts",
     "letta:server": "letta server --backend local --listen ws://127.0.0.1:4500"
   },
   "dependencies": {

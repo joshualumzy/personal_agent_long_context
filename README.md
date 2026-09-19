@@ -67,7 +67,7 @@ With the local Letta App Server running and a model provider configured, run the
 RUN_REAL_LETTA=1 npm run test:smoke
 ```
 
-The smoke test verifies connection, user-agent reuse, two ingestions, persistence, and Memory inspection. It intentionally does not make probabilistic model text an assertion.
+The smoke test verifies connection, user-agent reuse, two ingestions, persistence, and Memory inspection. It asserts that the unique source identifiers from both submitted Transcripts remain exposed after reconnecting. The adapter allows up to 180 seconds for each App Server request by default; set `LETTA_APP_SERVER_TIMEOUT_MS` in `.env` if a slower provider needs a different limit.
 
 ## Security boundary
 

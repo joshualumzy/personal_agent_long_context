@@ -3,6 +3,7 @@ import { DeterministicMemoryProvider } from "./adapters/deterministic-memory.js"
 import { LettaMemoryProvider } from "./adapters/letta-memory.js";
 import type { MemoryProvider } from "./domain.js";
 import { buildApp } from "./http-app.js";
+import { lettaOptionsFromEnvironment } from "./letta-config.js";
 
 try {
   loadEnvFile();
@@ -17,13 +18,7 @@ function memoryProviderFromEnvironment(): MemoryProvider {
     return new DeterministicMemoryProvider();
   }
 
-  return new LettaMemoryProvider({
-    url: process.env.LETTA_APP_SERVER_URL ?? "http://127.0.0.1:4500",
-    ...(process.env.LETTA_APP_SERVER_TOKEN
-      ? { authToken: process.env.LETTA_APP_SERVER_TOKEN }
-      : {}),
-    ...(process.env.LETTA_MODEL ? { model: process.env.LETTA_MODEL } : {}),
-  });
+  return new LettaMemoryProvider(lettaOptionsFromEnvironment(process.env));
 }
 
 const app = buildApp({ memory: memoryProviderFromEnvironment(), logger: true });

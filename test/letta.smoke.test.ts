@@ -5,6 +5,7 @@ import {
   CONSENT_POLICY_VERSION,
   type AcceptedTranscript,
 } from "../src/domain.js";
+import { lettaOptionsFromEnvironment } from "../src/letta-config.js";
 
 const enabled = process.env.RUN_REAL_LETTA === "1";
 
@@ -12,14 +13,11 @@ test(
   "real Letta App Server connects, reuses the user agent, persists, and exposes Memory",
   { skip: enabled ? false : "Set RUN_REAL_LETTA=1 to run the local App Server smoke test." },
   async () => {
-    const options = {
-      url: process.env.LETTA_APP_SERVER_URL ?? "http://127.0.0.1:4500",
-      ...(process.env.LETTA_APP_SERVER_TOKEN
-        ? { authToken: process.env.LETTA_APP_SERVER_TOKEN }
-        : {}),
-      ...(process.env.LETTA_MODEL ? { model: process.env.LETTA_MODEL } : {}),
-    };
-    const userId = `smoke-${Date.now()}`;
+    const options = lettaOptionsFromEnvironment(process.env);
+    const runId = crypto.randomUUID();
+    const userId = `smoke-${runId}`;
+    const firstSourceId = `smoke-${runId}-001`;
+    const secondSourceId = `smoke-${runId}-002`;
 
     const transcript = (sourceId: string, text: string): AcceptedTranscript => ({
       userId,
@@ -36,7 +34,7 @@ test(
     let first: Awaited<ReturnType<LettaMemoryProvider["ingest"]>>;
     try {
       first = await firstAdapter.ingest(
-        transcript("smoke-001", "For this smoke test, my preferred tea is jasmine."),
+        transcript(firstSourceId, "For this smoke test, my preferred tea is jasmine."),
       );
     } finally {
       await firstAdapter.close();
@@ -45,7 +43,7 @@ test(
     const resumedAdapter = new LettaMemoryProvider(options);
     try {
       const second = await resumedAdapter.ingest(
-        transcript("smoke-002", "Keep the jasmine tea preference as current context."),
+        transcript(secondSourceId, "Keep the jasmine tea preference as current context."),
       );
       assert.equal(
         second.agentRef,
@@ -54,7 +52,15 @@ test(
       );
 
       const inspection = await resumedAdapter.inspect(userId);
-      assert.ok(inspection.items.length > 0, "Letta should expose retained Memory");
+      const exposedMemory = inspection.items.map((item) => item.content).join("\n");
+      assert.ok(
+        exposedMemory.includes(firstSourceId),
+        "Letta should expose the first persisted Transcript source",
+      );
+      assert.ok(
+        exposedMemory.includes(secondSourceId),
+        "Letta should expose the second persisted Transcript source",
+      );
     } finally {
       await resumedAdapter.close();
     }
