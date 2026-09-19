@@ -162,7 +162,7 @@ const lines: string[] = [
   "",
   `- Ingestion: ${ingestLatencies.length} Transcripts, median ${seconds(percentile(ingestLatencies, 0.5))}s, p90 ${seconds(percentile(ingestLatencies, 0.9))}s, for ${(totalChars.reduce((sum, value) => sum + value, 0) / 1000).toFixed(0)}k characters of conversation.`,
   `- Questions: median ${seconds(percentile(askLatencies, 0.5))}s, p90 ${seconds(percentile(askLatencies, 0.9))}s.`,
-  `- Wall clock for the whole run: ${run.finishedAt ? `${((Date.parse(run.finishedAt) - Date.parse(run.startedAt)) / 60000).toFixed(0)} minutes` : "incomplete"}.`,
+  `- Wall clock for the whole run: ${run.finishedAt ? `${((Date.parse(run.finishedAt) - Date.parse(run.startedAt)) / 60000).toFixed(0)} minutes` : "incomplete"}${run.configuration.parallelTimelines ? ", with the timelines ingesting concurrently against their own agents" : ""}.`,
   "- Money cost: none. Inference ran on the NUS School of Computing SoCLaaS gateway, which is free for SoC users and rate limited rather than billed.",
   "- The practical constraint is wall clock, not money. Ingestion dominates it, because every Transcript is an agent turn that reads and rewrites Memory.",
   "",

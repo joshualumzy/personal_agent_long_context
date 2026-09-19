@@ -193,6 +193,11 @@ The Memora evaluation has its own guide in
 [`docs/evaluation/README.md`](docs/evaluation/README.md), and its result is in
 [`docs/evaluation/memora-report.md`](docs/evaluation/memora-report.md).
 
+The gate has been run: 20 mutation-heavy questions across two isolated
+timelines, MPA 89.2, FAA 80.8, FAMA 82.8. Native Letta Memory is adequate for
+the MVP, so there is no application-owned memory store and this repository
+does not need one.
+
 ## Security boundary
 
 The browser receives only the application API and static assets.

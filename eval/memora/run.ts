@@ -11,6 +11,7 @@
  * Configuration comes from the environment; see docs/evaluation/README.md.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { request } from "node:http";
 import { CONSENT_POLICY_VERSION } from "../../src/domain.js";
 import {
   answerPrompt,
@@ -62,15 +63,54 @@ async function packageVersion(name: string): Promise<string> {
   return manifest.version;
 }
 
-async function post(path: string, body: unknown) {
+/**
+ * Ingestion can take longer than the runtime's default header timeout, and
+ * a harness that gives up on a turn the server is still working on throws
+ * away the most expensive thing it has. node:http waits as long as the
+ * server takes.
+ */
+function post(
+  path: string,
+  body: unknown,
+): Promise<{ status: number; body: Record<string, unknown>; elapsedMs: number }> {
   const started = Date.now();
-  const response = await fetch(`${config.appBaseUrl}${path}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
+  const payload = JSON.stringify(body);
+  const url = new URL(`${config.appBaseUrl}${path}`);
+
+  return new Promise((resolve, reject) => {
+    const call = request(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: url.pathname,
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "content-length": Buffer.byteLength(payload),
+        },
+      },
+      (response) => {
+        let text = "";
+        response.setEncoding("utf8");
+        response.on("data", (chunk) => {
+          text += chunk;
+        });
+        response.on("end", () => {
+          try {
+            resolve({
+              status: response.statusCode ?? 0,
+              body: JSON.parse(text) as Record<string, unknown>,
+              elapsedMs: Date.now() - started,
+            });
+          } catch (error) {
+            reject(error);
+          }
+        });
+      },
+    );
+    call.on("error", reject);
+    call.end(payload);
   });
-  const parsed = (await response.json()) as Record<string, unknown>;
-  return { status: response.status, body: parsed, elapsedMs: Date.now() - started };
 }
 
 interface QuestionRun {
@@ -112,7 +152,7 @@ const output = {
     lettaAgentSdk: await packageVersion("@letta-ai/letta-agent-sdk"),
     lettaCode: await packageVersion("@letta-ai/letta-code"),
     appBaseUrl: config.appBaseUrl,
-    transcriptGrouping: "one Transcript per persona day, split at 40,000 characters",
+    transcriptGrouping: `one Transcript per persona day, split at ${process.env.MEMORA_CHUNK_CHARS ?? 20_000} characters`,
   },
   prompts: {
     ingest: ingestPrompt({
