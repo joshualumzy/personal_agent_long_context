@@ -33,9 +33,32 @@ export interface MemoryInspection {
   items: MemoryItem[];
 }
 
+export interface QuestionSubmission {
+  userId: string;
+  question: string;
+}
+
+export interface AcceptedQuestion extends QuestionSubmission {
+  correlationId: string;
+  receivedAt: string;
+}
+
+export interface SourceReference {
+  sourceId: string;
+  label: string;
+}
+
+export interface MemoryAnswer {
+  answer: string;
+  sources: SourceReference[];
+  /** Present when the Memory provider exposes a run to inspect. */
+  runRef?: string;
+}
+
 export interface MemoryProvider {
   ingest(transcript: AcceptedTranscript): Promise<{ agentRef: string }>;
   inspect(userId: string): Promise<MemoryInspection>;
+  ask(question: AcceptedQuestion): Promise<MemoryAnswer>;
   close?(): Promise<void>;
 }
 
@@ -57,6 +80,22 @@ export interface RejectedSubmissionResult {
     | "memory_service_unavailable";
   message: string;
 }
+
+export interface AnsweredQuestionResult extends MemoryAnswer {
+  status: "answered";
+  correlationId: string;
+  receivedAt: string;
+}
+
+export interface RejectedQuestionResult {
+  status: "rejected";
+  correlationId: string;
+  receivedAt: string;
+  code: "invalid_request" | "memory_service_unavailable";
+  message: string;
+}
+
+export type QuestionResult = AnsweredQuestionResult | RejectedQuestionResult;
 
 export type SubmissionResult =
   | AcceptedSubmissionResult

@@ -6,6 +6,10 @@ const result = document.querySelector("#submission-result");
 const memoryList = document.querySelector("#memory-list");
 const refreshButton = document.querySelector("#refresh-memory");
 const userIdInput = document.querySelector("#user-id");
+const questionForm = document.querySelector("#question-form");
+const askButton = document.querySelector("#ask-button");
+const answerResult = document.querySelector("#answer-result");
+const answerPanel = document.querySelector("#answer");
 
 const attestationInputs = [...document.querySelectorAll('input[name="attestation"]')];
 attestationInputs.forEach((input) => {
@@ -14,9 +18,41 @@ attestationInputs.forEach((input) => {
   });
 });
 
+function showStatus(element, kind, message, correlationId) {
+  element.className = `result ${kind}`;
+  element.textContent = correlationId ? `${message} Reference: ${correlationId}` : message;
+}
+
 function showResult(kind, message, correlationId) {
-  result.className = `result ${kind}`;
-  result.textContent = correlationId ? `${message} Reference: ${correlationId}` : message;
+  showStatus(result, kind, message, correlationId);
+}
+
+function showAnswerStatus(kind, message, correlationId) {
+  showStatus(answerResult, kind, message, correlationId);
+}
+
+function renderAnswer(body) {
+  answerPanel.replaceChildren();
+
+  const text = document.createElement("p");
+  text.className = "answer-text";
+  text.textContent = body.answer;
+
+  const trace = document.createElement("p");
+  trace.className = "answer-trace";
+  trace.textContent = body.runRef
+    ? `Correlation ${body.correlationId} · Run ${body.runRef}`
+    : `Correlation ${body.correlationId} · No run to inspect`;
+
+  const sources = document.createElement("p");
+  sources.className = "answer-sources";
+  sources.textContent = body.sources.length
+    ? `Supporting Transcript sources: ${body.sources
+        .map((source) => source.sourceId)
+        .join(", ")}`
+    : "Letta did not report supporting Transcript sources for this answer.";
+
+  answerPanel.append(text, trace, sources);
 }
 
 function renderMemory(inspection) {
@@ -102,6 +138,43 @@ form.addEventListener("submit", async (event) => {
     showResult("error", "The server could not be reached. Your Transcript remains in the form.");
   } finally {
     submitButton.disabled = !attestationInputs.some((choice) => choice.checked);
+  }
+});
+
+questionForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!questionForm.reportValidity()) return;
+
+  const payload = {
+    userId: userIdInput.value.trim(),
+    question: String(new FormData(questionForm).get("question")),
+  };
+
+  askButton.disabled = true;
+  answerPanel.replaceChildren();
+  showAnswerStatus("pending", "Asking your agent…");
+  try {
+    const response = await fetch("/api/v1/questions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const body = await response.json();
+    if (!response.ok) {
+      showAnswerStatus(
+        "error",
+        body.message ?? "The question could not be answered.",
+        body.correlationId,
+      );
+      return;
+    }
+
+    showAnswerStatus("success", "Answered from retained Memory.", body.correlationId);
+    renderAnswer(body);
+  } catch {
+    showAnswerStatus("error", "The server could not be reached. Your question was not sent.");
+  } finally {
+    askButton.disabled = false;
   }
 });
 

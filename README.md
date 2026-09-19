@@ -1,6 +1,6 @@
 # Personal Context Agent
 
-This repository contains the first end-to-end MVP slice: a browser submits a dated, consent-attested Transcript to a thin server-side adapter, the adapter sends accepted content to a user-scoped local Letta agent, and the browser inspects the Memory Letta exposes.
+This repository contains the first end-to-end MVP slice: a browser submits a dated, consent-attested Transcript to a thin server-side adapter, the adapter sends accepted content to a user-scoped local Letta agent, and the browser asks questions about, and inspects, the Memory Letta exposes.
 
 The Consent Attestation is an uploader statement, not technical or legal verification. Use synthetic, staged-consent, or first-party Transcripts only. Do not submit credentials, authentication secrets, payment or bank details, private keys, or government identifiers.
 
@@ -31,6 +31,7 @@ For frontend-only work without a model, run `MEMORY_ADAPTER=deterministic npm ru
 ## Application interface
 
 - `POST /api/v1/transcripts` accepts `userId`, `sourceId`, `recordedAt`, `transcript`, `attestation`, and `policyVersion`.
+- `POST /api/v1/questions` accepts `userId` and `question`, and answers from the Memory that user's agent retained.
 - `GET /api/v1/users/:userId/memory` returns the Memory Letta currently exposes for that user.
 - `GET /api/v1/policy` returns the current policy version and the only two valid attestation values.
 - `GET /health` reports application-server availability.
@@ -50,6 +51,16 @@ curl --fail-with-body http://127.0.0.1:3000/api/v1/transcripts \
   }'
 ```
 
+Asking a question:
+
+```bash
+curl --fail-with-body http://127.0.0.1:3000/api/v1/questions \
+  -H 'content-type: application/json' \
+  --data '{ "userId": "demo-user", "question": "When do I plan my week?" }'
+```
+
+An answered question returns the agent's `answer`, the `sources` it read while answering, and a `runRef` when a run exists to inspect. A source is reported only for a Memory file that records the `source_id` of the Transcript it came from, so the list holds Transcript source references rather than Memory file names. A user with no retained Memory is answered plainly, with no sources and no run reference, rather than with an error. Questions are routed to the same user-scoped agent that ingested that user's Transcripts, so one user never receives another user's Memory.
+
 Every result includes a correlation identifier. The adapter records `receivedAt` independently of `recordedAt`. Rejections never echo the submitted Transcript or provider error details.
 
 ## Verification
@@ -67,7 +78,7 @@ With the local Letta App Server running and a model provider configured, run the
 RUN_REAL_LETTA=1 npm run test:smoke
 ```
 
-The smoke test verifies connection, user-agent reuse, two ingestions, persistence, and Memory inspection. It asserts that the unique source identifiers from both submitted Transcripts remain exposed after reconnecting. The adapter allows up to 180 seconds for each App Server request by default; set `LETTA_APP_SERVER_TIMEOUT_MS` in `.env` if a slower provider needs a different limit.
+The first smoke test verifies connection, user-agent reuse, two ingestions, persistence, and Memory inspection. It asserts that the unique source identifiers from both submitted Transcripts remain exposed after reconnecting. The second ingests one Transcript, then answers a later question through a fresh adapter, and asserts that a different user receives none of that Memory. The adapter allows up to 180 seconds for each App Server request by default; set `LETTA_APP_SERVER_TIMEOUT_MS` in `.env` if a slower provider needs a different limit.
 
 ## Security boundary
 

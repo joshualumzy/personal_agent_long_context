@@ -6,12 +6,16 @@ import {
   type ApplicationResponse,
   type MemoryInspection,
   type MemoryProvider,
+  type QuestionResult,
+  type QuestionSubmission,
   type SubmissionResult,
   type TranscriptSubmission,
 } from "./domain.js";
 import { detectProhibitedData } from "./prohibited-data.js";
 
 const identifierPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+const identifierRule =
+  "must be 1\u2013128 characters using letters, numbers, dot, underscore, colon, or hyphen.";
 
 export interface ApplicationOptions {
   clock?: () => Date;
@@ -106,6 +110,38 @@ function parseSubmission(
   };
 }
 
+function parseQuestion(
+  input: unknown,
+): { question: QuestionSubmission } | { code: "invalid_request"; message: string } {
+  if (!isRecord(input)) {
+    return { code: "invalid_request", message: "A JSON request body is required." };
+  }
+
+  if (
+    typeof input.userId !== "string" ||
+    !identifierPattern.test(input.userId.trim())
+  ) {
+    return {
+      code: "invalid_request",
+      message: `User identifier ${identifierRule}`,
+    };
+  }
+
+  if (typeof input.question !== "string" || input.question.trim().length === 0) {
+    return { code: "invalid_request", message: "A question is required." };
+  }
+
+  const question = input.question.trim();
+  if (question.length > 2_000) {
+    return {
+      code: "invalid_request",
+      message: "A question must be 2,000 characters or fewer.",
+    };
+  }
+
+  return { question: { userId: input.userId.trim(), question } };
+}
+
 export class PersonalContextApplication {
   private readonly clock: () => Date;
   private readonly correlationId: () => string;
@@ -169,6 +205,42 @@ export class PersonalContextApplication {
       statusCode: 202,
       body: { status: "accepted", correlationId, receivedAt },
     };
+  }
+
+  async ask(input: unknown): Promise<ApplicationResponse<QuestionResult>> {
+    const correlationId = this.correlationId();
+    const receivedAt = this.clock().toISOString();
+    const parsed = parseQuestion(input);
+
+    if ("code" in parsed) {
+      return {
+        statusCode: 400,
+        body: { status: "rejected", correlationId, receivedAt, ...parsed },
+      };
+    }
+
+    try {
+      const answer = await this.memory.ask({
+        ...parsed.question,
+        correlationId,
+        receivedAt,
+      });
+      return {
+        statusCode: 200,
+        body: { status: "answered", correlationId, receivedAt, ...answer },
+      };
+    } catch {
+      return {
+        statusCode: 503,
+        body: {
+          status: "rejected",
+          correlationId,
+          receivedAt,
+          code: "memory_service_unavailable",
+          message: "The Memory service could not answer right now. Try again shortly.",
+        },
+      };
+    }
   }
 
   async inspect(userId: string): Promise<ApplicationResponse<MemoryInspection>> {

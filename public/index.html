@@ -106,9 +106,42 @@
         </form>
       </section>
 
-      <section class="panel" aria-labelledby="memory-heading">
+      <section class="panel" aria-labelledby="question-heading">
         <div class="section-heading">
           <span>02</span>
+          <div>
+            <h2 id="question-heading">Ask about retained Memory</h2>
+            <p>
+              Your question goes to the same server-side adapter, which routes it to your
+              user-scoped Letta agent. The answer uses the Memory that agent retained.
+            </p>
+          </div>
+        </div>
+
+        <form id="question-form" novalidate>
+          <label>
+            Question
+            <textarea
+              id="question"
+              name="question"
+              rows="3"
+              maxlength="2000"
+              placeholder="When do I plan my week?"
+              required
+            ></textarea>
+          </label>
+          <div class="form-footer">
+            <p>Answers are grounded in retained Memory, not in this page.</p>
+            <button id="ask-button" type="submit">Ask</button>
+          </div>
+          <output id="answer-result" class="result" aria-live="polite"></output>
+          <div id="answer" class="answer" aria-live="polite"></div>
+        </form>
+      </section>
+
+      <section class="panel" aria-labelledby="memory-heading">
+        <div class="section-heading">
+          <span>03</span>
           <div>
             <h2 id="memory-heading">Inspect retained Memory</h2>
             <p>Review the Memory Letta currently exposes for this user.</p>

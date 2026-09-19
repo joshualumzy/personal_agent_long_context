@@ -221,3 +221,173 @@ test("inspects MemFS files when the App Server agent response has no blocks", as
     ["Read", "LS", "Glob", "Grep"],
   );
 });
+
+test("answers from the user's own agent and reports the Memory files it read", async () => {
+  const sessionOptions: unknown[] = [];
+  const sent: { prompt: string; options?: Record<string, unknown> }[] = [];
+  const fakeSession = {
+    async getDeviceStatus() {
+      return { memoryDirectory: "/srv/letta/memory" };
+    },
+    async send(prompt: string, options?: Record<string, unknown>) {
+      sent.push({ prompt, ...(options ? { options } : {}) });
+    },
+    async *stream() {
+      yield {
+        type: "tool_call",
+        toolCallId: "read-1",
+        toolName: "Read",
+        toolInput: {
+          file_path: "/srv/letta/memory/personal-context/voice-note-001.md",
+        },
+        uuid: "message-1",
+      };
+      yield {
+        type: "tool_result",
+        toolCallId: "read-1",
+        content: [
+          "1\tsource_id: voice-note-001",
+          "2\t- Plans the week on Sunday evening.",
+          "3\tsource_id: voice-note-002",
+          "4\t- Confirmed on Sunday evening again.",
+        ].join("\n"),
+        isError: false,
+        uuid: "message-2",
+      };
+      yield {
+        type: "assistant",
+        content: "Let me read your Memory files first.",
+        uuid: "message-0",
+        runId: "run-7",
+      };
+      yield {
+        type: "tool_call",
+        toolCallId: "read-2",
+        toolName: "Read",
+        toolInput: { file_path: "/srv/letta/memory/system/human.md" },
+        uuid: "message-2a",
+      };
+      yield {
+        type: "tool_result",
+        toolCallId: "read-2",
+        content: "1\tPrefers a quiet week.",
+        isError: false,
+        uuid: "message-2b",
+      };
+      yield {
+        type: "assistant",
+        content: "You plan the week on Sunday evening.",
+        uuid: "message-3",
+        runId: "run-7",
+      };
+      yield { type: "result", success: true, runIds: ["run-7"] };
+    },
+    close() {},
+  };
+  const fakeClient = {
+    agents: {
+      async list() {
+        return [{ id: "agent-1" }];
+      },
+    },
+    resumeSession(_agentId: string, options: unknown) {
+      sessionOptions.push(options);
+      return fakeSession;
+    },
+    async close() {},
+  };
+  const provider = new LettaMemoryProvider({ url: "http://127.0.0.1:4500" });
+  Object.defineProperty(provider, "client", { value: fakeClient });
+
+  const result = await provider.ask({
+    userId: "demo-user",
+    question: "When do I plan my week?",
+    correlationId: "corr-test-002",
+    receivedAt: "2026-09-19T08:02:00.000Z",
+  });
+
+  assert.deepEqual(result, {
+    answer: "You plan the week on Sunday evening.",
+    runRef: "run-7",
+    sources: [
+      { sourceId: "voice-note-001", label: "personal-context/voice-note-001.md" },
+      { sourceId: "voice-note-002", label: "personal-context/voice-note-001.md" },
+    ],
+  });
+  assert.deepEqual(
+    (sessionOptions[0] as { allowedTools: string[] }).allowedTools,
+    ["Read", "LS", "Glob", "Grep"],
+  );
+  assert.equal(sent.length, 1);
+  assert.match(sent[0]!.prompt, /When do I plan my week\?/);
+});
+
+test("answers without sources when the user has no agent yet", async () => {
+  let sessionsOpened = 0;
+  const fakeClient = {
+    agents: {
+      async list() {
+        return [];
+      },
+    },
+    resumeSession() {
+      sessionsOpened += 1;
+      throw new Error("no session should be opened for an unknown user");
+    },
+    async close() {},
+  };
+  const provider = new LettaMemoryProvider({ url: "http://127.0.0.1:4500" });
+  Object.defineProperty(provider, "client", { value: fakeClient });
+
+  const result = await provider.ask({
+    userId: "unknown-user",
+    question: "When do I plan my week?",
+    correlationId: "corr-test-003",
+    receivedAt: "2026-09-19T08:03:00.000Z",
+  });
+
+  assert.equal(sessionsOpened, 0);
+  assert.deepEqual(result.sources, []);
+  assert.equal(result.runRef, undefined);
+  assert.match(result.answer, /no Memory/i);
+});
+
+test("fails loudly when the answering run does not complete", async () => {
+  const fakeSession = {
+    async getDeviceStatus() {
+      return { memoryDirectory: "/srv/letta/memory" };
+    },
+    async send() {},
+    async *stream() {
+      yield {
+        type: "error",
+        message: "model provider rejected the request",
+        stopReason: "llm_api_error",
+      };
+    },
+    close() {},
+  };
+  const fakeClient = {
+    agents: {
+      async list() {
+        return [{ id: "agent-1" }];
+      },
+    },
+    resumeSession() {
+      return fakeSession;
+    },
+    async close() {},
+  };
+  const provider = new LettaMemoryProvider({ url: "http://127.0.0.1:4500" });
+  Object.defineProperty(provider, "client", { value: fakeClient });
+
+  await assert.rejects(
+    provider.ask({
+      userId: "demo-user",
+      question: "When do I plan my week?",
+      correlationId: "corr-test-004",
+      receivedAt: "2026-09-19T08:04:00.000Z",
+    }),
+    /Letta could not answer/,
+  );
+});

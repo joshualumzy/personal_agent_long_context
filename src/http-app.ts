@@ -42,6 +42,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     return reply.code(result.statusCode).send(result.body);
   });
 
+  app.post("/api/v1/questions", async (request, reply) => {
+    const result = await application.ask(request.body);
+    return reply.code(result.statusCode).send(result.body);
+  });
+
   app.get<{ Params: { userId: string } }>(
     "/api/v1/users/:userId/memory",
     async (request, reply) => {

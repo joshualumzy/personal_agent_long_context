@@ -58,6 +58,11 @@ button.secondary { color: var(--accent-dark); background: #dcebe6; margin-bottom
 .result.success { color: var(--success); background: #e4f2eb; }
 .result.error { color: var(--danger); background: #f8e9e7; }
 
+.answer:empty { display: none; }
+.answer { border: 1px solid var(--line); border-radius: 12px; padding: 18px; background: white; }
+.answer-text { margin: 0; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.answer-trace, .answer-sources { color: var(--muted); margin: 12px 0 0; font-size: .88rem; overflow-wrap: anywhere; }
+
 .memory-list { display: grid; gap: 14px; }
 .memory-list article { border: 1px solid var(--line); border-radius: 12px; padding: 18px; background: white; }
 .memory-list h3 { margin: 0 0 10px; color: var(--accent-dark); font-size: 1rem; }
