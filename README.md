@@ -189,8 +189,26 @@ Four scenarios run against real Letta: connection and agent reuse across
 adapters, answering from persistent Memory, an update-and-cancellation chain,
 and a late older upload followed by a hedged contradiction.
 
-The Memora evaluation has its own guide in
-[`docs/evaluation/README.md`](docs/evaluation/README.md), and its result is in
+The Memora evaluation runs against the same interface, with the App Server and
+the application already running. It needs a checkout of the benchmark, pinned
+to the revision the report names, and grader credentials in `.env`:
+
+```bash
+git clone https://github.com/geniesinc/Memora.git
+cd Memora && git checkout a6493188efc836d6511ed5e4163fe3ba87da30ff && cd -
+
+npm run letta:server                      # terminal 1
+npm run dev                               # terminal 2
+MEMORA_DATA_DIR=/path/to/Memora/data \
+  npm run eval:memora                     # terminal 3
+npm run eval:memora:report
+```
+
+The run checkpoints after every ingestion and every question, and resuming is
+the same command with the same `MEMORA_RUN_ID`. Expect roughly an hour per
+persona timeline: every Transcript is an agent turn that reads and rewrites
+Memory. The full guide, including every setting, is in
+[`docs/evaluation/README.md`](docs/evaluation/README.md), and the result is in
 [`docs/evaluation/memora-report.md`](docs/evaluation/memora-report.md).
 
 The gate has been run: 20 mutation-heavy questions across two isolated
