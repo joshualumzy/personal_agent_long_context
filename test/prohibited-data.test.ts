@@ -61,6 +61,18 @@ const blocked = [
     transcript: "Transfer to bank account number: 1234567890 on Friday.",
   },
   {
+    label: "an IBAN",
+    category: "payment or bank detail",
+    value: "GB33BUKB20201555555555",
+    transcript: "Landlord sent IBAN: GB33BUKB20201555555555 for the deposit.",
+  },
+  {
+    label: "a SWIFT code",
+    category: "payment or bank detail",
+    value: "DBSSSGSG",
+    transcript: "Use swift code DBSSSGSG when you send the transfer.",
+  },
+  {
     label: "a private key",
     category: "private key",
     value: "MIIEpAIBAAKCAQEA",
@@ -137,6 +149,11 @@ describe("Prohibited Data gate", () => {
       "Flight SQ0322 lands at 0710 and my manager Priya wants the notes first.",
       "Order 4111111111111112 was delivered to the office on Tuesday.",
       "I moved my weekly planning to Sunday evening and switched to oat flat white.",
+      // Found by scanning the Memora weekly corpus: the bank rules used to
+      // read the Swift language and the adjective as a SWIFT/BIC code.
+      "Swift, a language used for Apple's ecosystem, shares some concepts with Kotlin.",
+      "The committee reached a swift resolution to the imbalance.",
+      "My passport expired last winter and the renewal took six weeks.",
     ];
 
     for (const [index, transcript] of accepted.entries()) {

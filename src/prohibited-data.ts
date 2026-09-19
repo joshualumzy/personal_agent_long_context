@@ -141,10 +141,25 @@ const rules: Rule[] = [
     pattern: /\b(?:cvv|cvc|cid|card security code)\b[ \t]*(?:is|=|:)?[ \t]*(\d{3,4})\b/i,
   },
   {
-    id: "bank-account",
+    id: "bank-account-number",
     category: "payment or bank detail",
+    // An explicit separator and a digit-led value are both required. Without
+    // them, ordinary prose about accounts reads as an account number.
     pattern:
-      /\b(?:bank account|account number|acct(?: no)?|sort code|routing number|iban|swift(?: code)?|bic)\b[ \t]*(?:is|was|=|:)?[ \t]*([A-Z0-9][A-Z0-9 -]{6,33})\b/i,
+      /\b(?:bank account(?: number)?|account number|acct(?: no| number)?|sort code|routing number)\b[ \t]*(?:is|was|=|:|#)[ \t]*(\d[\d -]{5,33})\b/i,
+  },
+  {
+    id: "iban",
+    category: "payment or bank detail",
+    pattern: /\biban\b\W{0,3}([A-Z]{2}\d{2}[ ]?(?:[A-Z0-9]{2,4}[ ]?){3,8})\b/i,
+  },
+  {
+    id: "swift-bic",
+    category: "payment or bank detail",
+    // The BIC shape itself carries the signal. Matching the bare word "swift"
+    // flags the programming language and the adjective.
+    pattern: /\b(?:swift(?:[ _-]?(?:code|bic))?|bic)\b\W{0,3}\b([A-Za-z0-9]{8,11})\b/i,
+    confirm: (captured) => /^[A-Z]{6}[A-Z0-9]{2}(?:[A-Z0-9]{3})?$/.test(captured),
   },
   {
     id: "us-social-security-number",
@@ -160,8 +175,11 @@ const rules: Rule[] = [
   {
     id: "labelled-government-identifier",
     category: "government identifier",
+    // An explicit separator plus a value that actually looks like an
+    // identifier. "My passport expired" is not a passport number.
     pattern:
-      /\b(?:passport(?: number| no)?|nric|fin number|national id(?:entity)?(?: number)?|driver'?s licence(?: number)?|driver'?s license(?: number)?|tax file number|social security number)\b[ \t]*(?:is|was|=|:)?[ \t]*([A-Z0-9-]{6,})\b/i,
+      /\b(?:passport(?: number| no)?|nric|fin number|national id(?:entity)?(?: number)?|driver'?s licence(?: number)?|driver'?s license(?: number)?|tax file number|social security number)\b[ \t]*(?:is|was|=|:|#)[ \t]*([A-Z0-9][A-Z0-9-]{5,})\b/i,
+    confirm: (captured) => (captured.match(/\d/g) ?? []).length >= 2,
   },
 ];
 

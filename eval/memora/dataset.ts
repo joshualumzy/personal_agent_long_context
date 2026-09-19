@@ -46,8 +46,12 @@ interface SessionFile {
   conversation: { turn: number; speaker: string; message: string }[];
 }
 
-/** Product limit in src/application.ts is 50,000 characters. */
-const chunkCharBudget = 40_000;
+/**
+ * Product limit in src/application.ts is 50,000 characters. The smaller
+ * default keeps each ingestion turn inside the App Server timeout: a
+ * 48,000-character Transcript exceeded 180 seconds and was rejected.
+ */
+const chunkCharBudget = Number(process.env.MEMORA_CHUNK_CHARS ?? 20_000);
 
 export async function loadQuestions(
   dataDir: string,
