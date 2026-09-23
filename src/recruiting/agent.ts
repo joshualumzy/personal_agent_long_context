@@ -428,6 +428,8 @@ export async function draftMessage(
       "Never read their CV back to them, never list several of their achievements, never restate the hiring criteria.",
       "Banned: \"I'm writing\", \"writing because\", \"stood out\",\"impressed\", \"caught my eye\", \"relevant\", \"combination\", \"background matches\", \"I'd love to\", \"reach out\", \"opportunity\", \"passionate\", \"exciting\", \"I hope this finds you well\", em dashes, emojis, exclamation marks.",
       "Say what the company does in at most one short clause, using only the pitch given. If there is no pitch, do not invent one.",
+      "If the pitch names a backer or funding, mention it in a few words (for example \"backed by MiraclePlus\"): it answers the reader's first question, whether this is real.",
+      "The link between their work and the product must be specific: name what in the product needs it (for example voice, sensors, on-device models), not \"that work is what we need\".",
       "End with one easy question they can answer in a line, such as whether they are open to a quick call. Sign with the founder's first name only.",
       "Use only facts from the input. Do not mention scoring, tiers, or other candidates.",
       context.channel === "linkedin"
