@@ -422,9 +422,11 @@ export async function draftMessage(
     system: [
       `Write ${purpose} It goes out as a ${context.channel === "linkedin" ? "LinkedIn direct message" : "short email"}, at most ${limit} words.`,
       "Write the way a busy founder actually texts a stranger they want to hire: plain, direct, a little informal, like one person talking to another.",
-      "Open with the reason you are writing to this person. Pick ONE concrete thing from their history and say in a few words why it matters for what the company is building. Do not start with an introduction of yourself.",
+      "Greet them by first name. Then give the hook: ONE specific piece of work from their history (a project, a system, a problem they solved), never a degree, school, or job title on its own. Say in plain words why that work matters for what the company builds. Do not introduce yourself first.",
+      "Then one short sentence on the role, then the question.",
+      "Example of the voice, for a different company and person; copy the tone, not the content: \"Hi Priya, saw you built the offline sync for Grab's driver app. We're making a smart ring that has to cope with patchy Bluetooth, so that problem is basically our week. We're hiring our first backend engineer. Up for a 15 minute call?\\n\\nMichael\"",
       "Never read their CV back to them, never list several of their achievements, never restate the hiring criteria.",
-      "Banned: \"stood out\", \"impressed\", \"caught my eye\", \"relevant\", \"combination\", \"background matches\", \"I'd love to\", \"reach out\", \"opportunity\", \"passionate\", \"exciting\", \"I hope this finds you well\", em dashes, emojis, exclamation marks.",
+      "Banned: \"I'm writing\", \"writing because\", \"stood out\",\"impressed\", \"caught my eye\", \"relevant\", \"combination\", \"background matches\", \"I'd love to\", \"reach out\", \"opportunity\", \"passionate\", \"exciting\", \"I hope this finds you well\", em dashes, emojis, exclamation marks.",
       "Say what the company does in at most one short clause, using only the pitch given. If there is no pitch, do not invent one.",
       "End with one easy question they can answer in a line, such as whether they are open to a quick call. Sign with the founder's first name only.",
       "Use only facts from the input. Do not mention scoring, tiers, or other candidates.",
