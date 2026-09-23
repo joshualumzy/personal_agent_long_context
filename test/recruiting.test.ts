@@ -108,6 +108,8 @@ function fakeModel(): JsonModel & { calls: string[] } {
             return { intent: "criteria", operations: [{ op: "add", text: "women only", kind: "must" }] } as T;
           }
           return { intent: "unknown" } as T;
+        case "role title":
+          return { title: data.currentTitle } as T;
         case "reply reading":
           return {
             candidateId: data.knownCandidateId,

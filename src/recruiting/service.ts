@@ -10,6 +10,7 @@ import {
   planExpansion,
   privateRemarksIn,
   readReply,
+  retitle,
   writeQuery,
 } from "./agent.js";
 import { findContact, type ContactFinder } from "./contacts.js";
@@ -467,7 +468,10 @@ export class RecruitingService {
       return summary;
     });
     this.settle();
-    if (result.length) this.refreshPoolInBackground();
+    if (result.length) {
+      await this.retitleRole();
+      this.refreshPoolInBackground();
+    }
     return {
       intent: "criteria",
       message: result.length ? `Updated: ${result.join("; ")}.` : "Nothing changed.",
@@ -507,6 +511,22 @@ export class RecruitingService {
       }
     }
     return summary;
+  }
+
+  /** Keeps the role's name in step with its criteria; drafts use it. */
+  private async retitleRole(): Promise<void> {
+    const state = await this.current();
+    if (!state.role) return;
+    try {
+      const title = await retitle(this.deps.model, state.role.title, this.active(state));
+      if (title !== state.role.title) {
+        await this.mutate((latest) => {
+          if (latest.role) latest.role.title = title;
+        });
+      }
+    } catch (error) {
+      this.fail("Renaming the role", error);
+    }
   }
 
   /** After criteria change, look for a few more people who fit the new picture. */
@@ -634,6 +654,7 @@ export class RecruitingService {
       }
     });
     this.settle();
+    await this.retitleRole();
     const approved = expansion as { query: string } | null;
     if (approved) {
       this.background("Expanding the pool", async () => {

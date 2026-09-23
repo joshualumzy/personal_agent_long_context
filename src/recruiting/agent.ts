@@ -122,6 +122,25 @@ export async function writeQuery(
   return query;
 }
 
+/** A role title that matches the criteria as they stand now. */
+export async function retitle(
+  model: JsonModel,
+  currentTitle: string,
+  criteria: readonly Criterion[],
+): Promise<string> {
+  const reply = await model.json<unknown>({
+    task: "role title",
+    fast: true,
+    system: [
+      "Name the role these hiring criteria describe, in at most 8 words, in the language of the criteria.",
+      "Keep the current title if it still fits; change it only when the criteria no longer match it.",
+      'Reply as {"title": string}.',
+    ].join("\n"),
+    input: { currentTitle, criteria: criteriaForModel(criteria) },
+  });
+  return (isRecord(reply) && text(reply.title)) || currentTitle;
+}
+
 export async function judge(
   model: JsonModel,
   profile: CandidateProfile,
