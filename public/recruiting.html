@@ -9,85 +9,86 @@
 </head>
 <body>
   <header class="top">
-    <div>
-      <p class="eyebrow">Personal Context Agent · Hiring</p>
+    <div class="title-block">
       <h1 id="role-title">Who do you need?</h1>
       <p id="status-line" class="status-line"></p>
     </div>
     <div class="top-actions" id="top-actions" hidden>
       <span id="clock" class="clock"></span>
-      <button type="button" class="ghost" id="fast-forward" title="Simulate a week passing">+1 week</button>
-      <a class="ghost" id="gmail" href="/api/recruiting/gmail/connect">Connect Gmail</a>
-      <button type="button" class="ghost danger-text" id="reset">Start over</button>
+      <button type="button" class="quiet" id="fast-forward" title="Simulate a week passing">Skip a week</button>
+      <a class="quiet" id="gmail" href="/api/recruiting/gmail/connect">Connect Gmail</a>
+      <button type="button" class="quiet warn" id="reset">Start over</button>
     </div>
   </header>
 
   <p id="error" class="banner error" role="alert" hidden></p>
 
-  <!-- Stage 1: state the need -->
+  <!-- Step 1: describe the role -->
   <section id="intake" class="intake" hidden>
     <form id="intake-form">
-      <label for="requirement" class="visually-hidden">Describe the role</label>
-      <textarea id="requirement" rows="5" placeholder="Say it the way you would to a friend. For example: I need a founding backend engineer in Singapore, strong in TypeScript and Node, has shipped product at a startup. Rust would be a bonus."></textarea>
+      <label for="requirement" class="prompt">Describe the person the way you would to a friend.</label>
+      <textarea id="requirement" rows="5" placeholder="I need a founding backend engineer in Singapore, strong in TypeScript and Node, who has shipped product at a startup. Rust would be a bonus."></textarea>
       <div class="intake-row">
         <label class="file-button">
           <input type="file" id="jd-file" accept=".txt,.md,.pdf,.docx">
-          <span>Or upload a job description</span>
+          <span>Upload a job description instead</span>
         </label>
         <button type="submit" class="primary">Draft criteria</button>
       </div>
     </form>
   </section>
 
-  <!-- Stage 2: confirm criteria once -->
+  <!-- Step 2: confirm criteria once -->
   <section id="review" class="review" hidden>
-    <p class="lede">Here is how I would judge people. Change anything, then confirm.</p>
+    <p class="prompt">Here is how I would judge people. Change anything, then confirm.</p>
     <ul id="draft-criteria" class="draft-criteria"></ul>
-    <button type="button" class="link" id="add-criterion">+ Add a criterion</button>
-    <div id="refused" class="banner warn" hidden></div>
+    <button type="button" class="link" id="add-criterion">Add a criterion</button>
+    <div id="refused" class="banner note" hidden></div>
     <div class="review-actions">
       <button type="button" class="primary" id="confirm">Confirm and search</button>
     </div>
   </section>
 
-  <!-- Stage 3: the orbit -->
+  <!-- Step 3: the orbit -->
   <main id="board" class="board" hidden>
     <section class="orbit-wrap" aria-label="Candidate orbit">
       <svg id="orbit" viewBox="-500 -500 1000 1000" role="img" aria-labelledby="orbit-title">
-        <title id="orbit-title">Candidates arranged by match: strongest at the centre</title>
+        <title id="orbit-title">Candidates arranged by match, strongest at the centre</title>
       </svg>
-      <ol class="legend" aria-label="Rings">
-        <li><i class="swatch s100"></i>Centre: meets everything</li>
-        <li><i class="swatch s75"></i>Middle: every must, some nice missing</li>
-        <li><i class="swatch s50"></i>Outer: one must missing</li>
-      </ol>
-      <p id="sample-note" class="sample-note" hidden>Sample profiles: fictional people, shown because no Exa key is set.</p>
+      <ul class="legend" aria-label="What the rings mean">
+        <li><i class="swatch s100"></i>Centre meets everything</li>
+        <li><i class="swatch s75"></i>Middle misses a nice-to-have</li>
+        <li><i class="swatch s50"></i>Outer misses one must</li>
+      </ul>
+      <p id="sample-note" class="sample-note" hidden>These are fictional sample profiles, shown because no Exa key is set.</p>
     </section>
 
-    <aside class="side">
-      <div id="proposals"></div>
+    <aside class="rail">
+      <div id="proposals" class="proposals"></div>
 
       <section class="criteria-panel">
         <h2>Looking for</h2>
         <ul id="criteria" class="chips"></ul>
       </section>
 
-      <section id="detail" class="detail" hidden></section>
-
-      <form id="say-form" class="composer">
-        <label for="say" class="visually-hidden">Tell the agent</label>
-        <textarea id="say" rows="1" placeholder="Tell the agent anything, or paste a LinkedIn link"></textarea>
-        <button type="submit" class="send" aria-label="Send">
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
-      </form>
-      <div class="hints" aria-label="Examples">
-        <button type="button" class="hint">Remote is fine after all</button>
-        <button type="button" class="hint">Pass on this one, too corporate</button>
-        <button type="button" class="hint">Why do we need this criterion?</button>
+      <div class="rail-foot">
+        <p id="agent-reply" class="agent-reply" aria-live="polite"></p>
+        <form id="say-form" class="composer">
+          <label for="say" class="visually-hidden">Tell the agent</label>
+          <textarea id="say" rows="1" placeholder="Tell the agent anything, or paste a LinkedIn link"></textarea>
+          <button type="submit" class="send" aria-label="Send">
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </form>
+        <div class="hints" aria-label="Examples">
+          <button type="button" class="hint">Remote is fine after all</button>
+          <button type="button" class="hint">Pass on this one, too corporate</button>
+          <button type="button" class="hint">Why do we need this criterion?</button>
+        </div>
       </div>
-      <p id="agent-reply" class="agent-reply" aria-live="polite"></p>
     </aside>
   </main>
+
+  <aside id="drawer" class="drawer" aria-label="Candidate details" hidden></aside>
 </body>
 </html>

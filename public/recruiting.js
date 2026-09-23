@@ -148,21 +148,19 @@ function renderStatus() {
   const line = $("#status-line");
   line.replaceChildren();
   if (state.busy) line.append(h("span", { class: "busy-dot", "aria-hidden": "true" }));
-  line.append(
-    `${pool.length} in the pool · ${strong} strong ${strong === 1 ? "match" : "matches"}` +
-      (talking ? ` · talking to ${talking}` : "") +
-      (state.busy ? " · thinking" : ""),
-  );
+  const parts = [`${pool.length} people in view`, `${strong} strong ${strong === 1 ? "match" : "matches"}`];
+  if (talking) parts.push(`talking to ${talking}`);
+  line.append(parts.join(", ") + (state.busy ? ". Thinking…" : "."));
 }
 
 function renderTop() {
   const day = state.clockOffsetDays;
-  $("#clock").textContent = day ? `Day +${day}` : "Today";
+  $("#clock").textContent = day ? `${day} days later` : "Today";
   const gmail = $("#gmail");
   const status = state.integrations?.gmail;
   gmail.hidden = status === null || status === undefined;
   gmail.textContent = status ? "Gmail connected" : "Connect Gmail";
-  gmail.classList.toggle("connected", Boolean(status));
+  gmail.classList.toggle("on", Boolean(status));
   if (status) gmail.removeAttribute("href");
   else gmail.setAttribute("href", "/api/recruiting/gmail/connect");
   $("#sample-note").hidden = state.integrations?.source !== "sample";
@@ -230,13 +228,27 @@ function showRefused(refused) {
 // ------------------------------------------------------------------- orbit
 
 function drawRings(root) {
+  const defs = svg("defs");
+  const glow = svg("radialGradient", { id: "core-glow" });
+  glow.append(
+    svg("stop", { offset: "0%", "stop-color": "#f2c66d", "stop-opacity": "0.14" }),
+    svg("stop", { offset: "100%", "stop-color": "#f2c66d", "stop-opacity": "0.02" }),
+  );
+  const star = svg("filter", { id: "star-glow", x: "-80%", y: "-80%", width: "260%", height: "260%" });
+  star.append(
+    svg("feGaussianBlur", { stdDeviation: "6", result: "blur" }),
+    Object.assign(svg("feMerge"), {}),
+  );
+  const merge = star.querySelector("feMerge");
+  merge.append(svg("feMergeNode", { in: "blur" }), svg("feMergeNode", { in: "SourceGraphic" }));
+  defs.append(glow, star);
+
   const rings = svg("g", { class: "rings" });
   for (const [tier, band] of Object.entries(BANDS)) {
     rings.append(svg("circle", { class: `ring r${tier}`, r: band.outer + 10 }));
   }
-  const ripple = svg("circle", { class: "ripple", r: BANDS[50].outer + 30, id: "ripple" });
-  rings.append(ripple);
-  root.append(rings, svg("g", { id: "nodes" }));
+  rings.append(svg("circle", { class: "ripple", r: BANDS[50].outer + 30, id: "ripple" }));
+  root.append(defs, rings, svg("g", { id: "nodes" }));
 }
 
 function layout(pool) {
@@ -261,11 +273,12 @@ function layout(pool) {
 
 function renderOrbit() {
   const root = $("#orbit");
-  const crowdedCentre = inPool().filter((candidate) => candidate.tier === 100).length > 4;
   if (!root.querySelector(".rings")) drawRings(root);
   const layer = $("#nodes");
   const pool = inPool();
+  const crowdedCentre = pool.filter((candidate) => candidate.tier === 100).length > 4;
   const positions = layout(pool);
+  $("#board").classList.toggle("focused", Boolean(selectedId));
 
   if (state.rounds.length > lastRoundCount && lastRoundCount > 0) {
     const ripple = $("#ripple");
@@ -289,6 +302,7 @@ function renderOrbit() {
     if (!node) {
       node = svg("g", { class: "node entering", tabindex: 0, role: "button" });
       node.append(
+        svg("circle", { class: "select-ring" }),
         svg("circle", { class: "halo" }),
         svg("circle", { class: "stage-ring" }),
         svg("circle", { class: "dot" }),
@@ -322,16 +336,17 @@ function renderOrbit() {
       node.classList.contains("entering") ? "entering" : "",
     ].filter(Boolean).join(" "));
     node.querySelector(".dot").setAttribute("r", size);
-    node.querySelector(".halo").setAttribute("r", size + 7);
-    node.querySelector(".stage-ring").setAttribute("r", size + 12);
+    node.querySelector(".halo").setAttribute("r", size + 6);
+    node.querySelector(".stage-ring").setAttribute("r", size + 11);
+    node.querySelector(".select-ring").setAttribute("r", size + 17);
     const label = node.querySelector(".initials");
     label.textContent = size >= 17 ? initials(candidate.profile.name) : "";
-    label.style.fontSize = size >= 26 ? "17px" : "12px";
+    label.style.fontSize = size >= 26 ? "16px" : "11px";
     const name = node.querySelector(".name");
     name.textContent = candidate.profile.name;
-    name.setAttribute("y", size + 22);
-    node.querySelector("title").textContent = `${candidate.profile.name}: ${candidate.profile.headline}`;
-    node.setAttribute("aria-label", `${candidate.profile.name}, ${candidate.tier}% ring`);
+    name.setAttribute("y", size + 24);
+    node.querySelector("title").textContent = `${candidate.profile.name}, ${candidate.profile.headline}`;
+    node.setAttribute("aria-label", `${candidate.profile.name}, ${candidate.tier}% match`);
     requestAnimationFrame(() => {
       node.style.transform = `translate(${position.x}px, ${position.y}px)`;
     });
@@ -341,23 +356,24 @@ function renderOrbit() {
 // --------------------------------------------------------------- proposals
 
 function renderProposals() {
-  const container = $("#proposals");
-  container.replaceChildren(
+  $("#proposals").replaceChildren(
     ...state.proposals.map((proposal) => {
       const isCriterion = proposal.type === "criterion";
+      const decide = (accept) => (event) =>
+        call(`/api/recruiting/proposals/${proposal.id}`, { accept }, event.currentTarget);
       return h(
         "article",
-        { class: "card proposal" },
-        h("p", { class: "kicker" }, isCriterion ? "I noticed a pattern" : `Hiring has stalled · ${proposal.stepName}`),
+        { class: "proposal" },
+        h("h3", {}, isCriterion ? "I noticed a pattern in your passes" : `Hiring has stalled. ${proposal.stepName}?`),
         h("p", {}, proposal.rationale),
         isCriterion
-          ? h("p", {}, "Add ", h("strong", {}, proposal.kind), ": ", h("strong", {}, `"${proposal.text}"`), "?")
-          : h("p", {}, "New search: ", h("em", {}, proposal.query)),
+          ? h("p", { class: "change" }, `Add as ${proposal.kind === "must" ? "a must" : "a nice-to-have"}: ${proposal.text}`)
+          : h("p", { class: "change" }, `Next search: ${proposal.query}`),
         h(
           "div",
           { class: "actions" },
-          h("button", { type: "button", class: "primary", onclick: (event) => call(`/api/recruiting/proposals/${proposal.id}`, { accept: true }, event.currentTarget) }, isCriterion ? "Add it" : "Widen the search"),
-          h("button", { type: "button", class: "ghost", onclick: (event) => call(`/api/recruiting/proposals/${proposal.id}`, { accept: false }, event.currentTarget) }, "Not now"),
+          h("button", { type: "button", class: "primary", onclick: decide(true) }, isCriterion ? "Add criterion" : "Widen the search"),
+          h("button", { type: "button", class: "quiet", onclick: decide(false) }, "Not now"),
         ),
       );
     }),
@@ -378,10 +394,14 @@ function renderCriteria() {
   );
 }
 
-// ------------------------------------------------------------------ detail
+// ------------------------------------------------------------------ drawer
+
+let activeTab = "fit";
 
 function select(id) {
-  selectedId = selectedId === id ? null : id;
+  const next = selectedId === id ? null : id;
+  if (next !== selectedId) activeTab = "fit";
+  selectedId = next;
   detailSignature = "";
   renderOrbit();
   renderDetail();
@@ -389,6 +409,7 @@ function select(id) {
 
 function signature(candidate) {
   return JSON.stringify([
+    activeTab,
     candidate.id,
     candidate.stage,
     candidate.tier,
@@ -401,89 +422,182 @@ function signature(candidate) {
   ]);
 }
 
+const STAGE_LABEL = {
+  discovered: "Found",
+  scored: "Not contacted yet",
+  drafted: "Draft ready",
+  contacted: "Waiting for a reply",
+  replied: "Replied",
+  scheduling: "Setting a time",
+  closed: "Closed",
+};
+
 function renderDetail() {
-  const panel = $("#detail");
+  const drawer = $("#drawer");
   const candidate = state.candidates.find((entry) => entry.id === selectedId);
   if (!candidate) {
-    panel.hidden = true;
+    drawer.hidden = true;
     detailSignature = "";
     return;
   }
   const next = signature(candidate);
-  // Keep the founder's unsent edits: only rebuild when the candidate changed.
+  // Keep the founder's unsent edits: only rebuild when something changed.
   if (next === detailSignature) return;
   detailSignature = next;
-  panel.hidden = false;
+  drawer.hidden = false;
 
   const { profile } = candidate;
-  const verdictMark = { yes: "✓", no: "✗", unclear: "?" };
-  const reasonInput = h("input", { type: "text", placeholder: "Why? (optional, stays private)" });
+  const matched = candidate.tier === 100 || candidate.tier === 75 || candidate.tier === 50;
+  const hasOutreach = Boolean(candidate.draft) || candidate.messages.length > 0;
+  const reasonInput = h("input", { type: "text", placeholder: "Why? Optional, stays private" });
+  const decision = (value) => (event) =>
+    call(`/api/recruiting/candidates/${candidate.id}/feedback`, { decision: value, reason: reasonInput.value }, event.currentTarget);
 
-  panel.replaceChildren(
+  const tab = (key, label, dot = false) =>
+    h(
+      "button",
+      {
+        type: "button",
+        class: "tab",
+        role: "tab",
+        "aria-selected": String(activeTab === key),
+        onclick: () => {
+          activeTab = key;
+          detailSignature = "";
+          renderDetail();
+        },
+      },
+      label,
+      dot ? h("span", { class: "dot", "aria-label": "has activity" }) : null,
+    );
+
+  const body = { fit: fitPanel, career: careerPanel, outreach: outreachPanel }[activeTab](candidate);
+
+  drawer.replaceChildren(
     h(
       "div",
-      { class: "detail-head" },
+      { class: "drawer-head" },
       h(
         "div",
-        {},
-        h("h3", {}, profile.name),
-        h("p", { class: "meta" }, profile.headline, profile.location ? ` · ${profile.location}` : ""),
+        { class: "drawer-title" },
+        h("div", {}, h("h3", {}, profile.name), h("p", { class: "meta" }, [profile.headline, profile.location].filter(Boolean).join(", "))),
+        h("button", { type: "button", class: "close", "aria-label": "Close", onclick: () => select(candidate.id) }, "×"),
       ),
-      h("button", { type: "button", class: "close", "aria-label": "Close", onclick: () => select(candidate.id) }, "×"),
-    ),
-    h(
-      "div",
-      { class: "badges" },
-      candidate.tier !== "pending" && candidate.tier !== "out" ? h("span", { class: "badge" }, `${candidate.tier}% match`) : null,
-      h("span", { class: "badge" }, candidate.stage),
-      candidate.kept ? h("span", { class: "badge gold" }, "kept") : null,
-      candidate.origin === "referral" ? h("span", { class: "badge gold" }, "added by you") : null,
-      candidate.origin !== "referral" && candidate.poolRound > 1 ? h("span", { class: "badge gold" }, `wider search ${candidate.poolRound - 1}`) : null,
-    ),
-    h(
-      "ul",
-      { class: "verdicts" },
-      state.criteria.map((criterion, index) => {
-        const verdict = candidate.verdicts[index];
-        return h(
-          "li",
-          {},
-          h("span", { class: `mark ${verdict?.satisfied ?? "unclear"}` }, verdict ? verdictMark[verdict.satisfied] : candidate.stage === "closed" ? "·" : "…"),
-          h("span", {}, criterion.text, h("small", {}, verdict ? verdict.reasoning : candidate.stage === "closed" ? "Added after this person was closed." : "Judging…")),
-        );
-      }),
-    ),
-    candidate.stage === "closed"
-      ? null
-      : h(
-          "div",
-          { class: "row" },
-          reasonInput,
-          h("button", { type: "button", class: "ghost", onclick: (event) => call(`/api/recruiting/candidates/${candidate.id}/feedback`, { decision: "keep", reason: reasonInput.value }, event.currentTarget) }, "Keep"),
-          h("button", { type: "button", class: "ghost danger-text", onclick: (event) => call(`/api/recruiting/candidates/${candidate.id}/feedback`, { decision: "pass", reason: reasonInput.value }, event.currentTarget) }, "Pass"),
-        ),
-    outreachSection(candidate),
-    h(
-      "details",
-      { class: "more" },
-      h("summary", {}, "Full profile"),
       h(
         "div",
-        { class: "history" },
-        profile.workHistory.map((entry) => h("p", {}, `${entry.title} · ${entry.company}${entry.from ? ` · ${entry.from} to ${entry.to ?? "now"}` : ""}`)),
-        profile.educationHistory.map((entry) => h("p", {}, `${entry.degree} · ${entry.institution}`)),
-        profile.summary ? h("p", {}, profile.summary) : null,
-        /^https:\/\//.test(profile.profileUrl) ? h("p", {}, h("a", { href: profile.profileUrl, target: "_blank", rel: "noopener noreferrer" }, "Open public profile")) : null,
+        { class: "facts" },
+        matched ? h("span", { class: `fact match${candidate.tier}` }, `${candidate.tier}% match`) : null,
+        h("span", { class: "fact" }, candidate.stage === "closed" ? `Closed: ${candidate.closedReason}` : STAGE_LABEL[candidate.stage]),
+        candidate.kept ? h("span", { class: "fact match100" }, "Kept") : null,
+        candidate.origin === "referral" ? h("span", { class: "fact" }, "Added by you") : null,
+        candidate.origin !== "referral" && candidate.poolRound > 1 ? h("span", { class: "fact" }, "From a wider search") : null,
+      ),
+      candidate.stage === "closed"
+        ? null
+        : h(
+            "div",
+            { class: "decide" },
+            reasonInput,
+            h("button", { type: "button", class: "quiet", onclick: decision("keep") }, "Keep"),
+            h("button", { type: "button", class: "quiet warn", onclick: decision("pass") }, "Pass"),
+          ),
+      h(
+        "nav",
+        { class: "tabs", role: "tablist" },
+        tab("fit", "Why they fit"),
+        tab("career", "Career"),
+        tab("outreach", "Outreach", hasOutreach),
       ),
     ),
+    h("div", { class: "drawer-body", role: "tabpanel" }, body),
   );
 }
 
-function outreachSection(candidate) {
+function fitPanel(candidate) {
+  const mark = { yes: "✓", no: "✗", unclear: "?" };
+  return h(
+    "ul",
+    { class: "verdicts" },
+    state.criteria.map((criterion, index) => {
+      const verdict = candidate.verdicts[index];
+      const closed = !verdict && candidate.stage === "closed";
+      return h(
+        "li",
+        {},
+        h("span", { class: `mark ${verdict?.satisfied ?? (closed ? "closed" : "unclear")}` }, verdict ? mark[verdict.satisfied] : closed ? "·" : "…"),
+        h(
+          "span",
+          {},
+          h("span", { class: "criterion" }, criterion.text, h("small", {}, criterion.kind === "must" ? "must" : "nice to have")),
+          h("span", { class: "reason" }, verdict ? verdict.reasoning : closed ? "Added after this person was closed." : "Judging…"),
+        ),
+      );
+    }),
+  );
+}
+
+function aboutText(summary) {
+  // Profile text arrives as Markdown; show its About section as plain prose.
+  const about = summary.split(/\n## /).find((part) => part.startsWith("About"));
+  const text = (about ? about.replace(/^About\s*/, "") : "").replace(/[#*_`>]/g, "").trim();
+  return text.length > 700 ? `${text.slice(0, 700)}…` : text;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function monthYear(value) {
+  const match = /^(\d{4})-(\d{2})/.exec(value ?? "");
+  return match ? `${MONTHS[Number(match[2]) - 1] ?? ""} ${match[1]}`.trim() : value ?? "";
+}
+
+function span(from, to) {
+  if (!from) return "";
+  return `${monthYear(from)} to ${to ? monthYear(to) : "now"}`;
+}
+
+function careerPanel(candidate) {
+  const { profile } = candidate;
+  const about = aboutText(profile.summary);
+  return h(
+    "div",
+    {},
+    about ? h("p", { class: "about" }, about) : null,
+    profile.workHistory.length ? h("h4", { class: "section-title" }, "Work") : null,
+    profile.workHistory.length
+      ? h(
+          "ol",
+          { class: "timeline" },
+          profile.workHistory.map((entry) =>
+            h(
+              "li",
+              { class: entry.from && !entry.to ? "current" : "" },
+              h("span", { class: "role" }, entry.title || "Role not listed"),
+              h("span", { class: "where" }, [entry.company, span(entry.from, entry.to)].filter(Boolean).join(", ")),
+            ),
+          ),
+        )
+      : null,
+    profile.educationHistory.length ? h("h4", { class: "section-title" }, "Education") : null,
+    profile.educationHistory.length
+      ? h(
+          "ol",
+          { class: "timeline" },
+          profile.educationHistory.map((entry) =>
+            h("li", {}, h("span", { class: "role" }, entry.degree || "Degree not listed"), h("span", { class: "where" }, [entry.institution, span(entry.from, entry.to)].filter(Boolean).join(", "))),
+          ),
+        )
+      : null,
+    /^https:\/\//.test(profile.profileUrl)
+      ? h("a", { class: "external", href: profile.profileUrl, target: "_blank", rel: "noopener noreferrer" }, "Open their public profile")
+      : null,
+  );
+}
+
+function outreachPanel(candidate) {
+  const parts = [];
   if (candidate.stage === "closed") {
-    return h("p", { class: "meta" }, `Closed: ${candidate.closedReason}.`);
+    parts.push(h("p", { class: "empty-note" }, `Closed: ${candidate.closedReason}.`));
   }
-  const parts = [h("p", { class: "section-title" }, "Outreach")];
 
   if (candidate.messages.length) {
     parts.push(
@@ -494,7 +608,7 @@ function outreachSection(candidate) {
           h(
             "div",
             { class: `bubble ${message.direction}` },
-            h("small", {}, `${message.direction === "outbound" ? "You" : candidate.profile.name} · ${message.channel} · ${message.at.slice(0, 10)}`),
+            h("small", {}, `${message.direction === "outbound" ? "You" : candidate.profile.name}, ${message.channel}, ${message.at.slice(0, 10)}`),
             message.text,
           ),
         ),
@@ -504,7 +618,7 @@ function outreachSection(candidate) {
 
   if (candidate.draft) {
     const draft = candidate.draft;
-    const email = h("input", { type: "email", value: candidate.contact?.email ?? "", placeholder: "Email address" });
+    const email = h("input", { type: "email", value: candidate.contact?.email ?? "", placeholder: "Email address", "aria-label": "To" });
     const subject = h("input", { type: "text", value: draft.subject, "aria-label": "Subject" });
     const body = h("textarea", { "aria-label": "Message" }, draft.body);
     const save = () =>
@@ -515,36 +629,37 @@ function outreachSection(candidate) {
       });
     const status = candidate.contact
       ? h(
-          "span",
+          "p",
           { class: `email-status ${candidate.contact.status}` },
           candidate.contact.status === "unverified"
-            ? `Guessed address, not verified. Check it before sending.`
-            : `Found by ${candidate.contact.provider}${candidate.contact.status === "verified" ? ", verified" : ""}.`,
+            ? "This address is a guess. Check it before sending."
+            : `Found by ${candidate.contact.provider}${candidate.contact.status === "verified" ? " and verified" : ""}.`,
         )
-      : h("span", { class: "email-status unverified" }, "No email found. Add one, or send it on LinkedIn yourself.");
+      : h("p", { class: "email-status unverified" }, "No email found. Add one, or send it on LinkedIn yourself.");
     parts.push(
       h(
         "div",
         { class: "draft-box" },
-        h("p", { class: "section-title" }, { intro: "Draft", follow_up: "Follow-up draft", scheduling: "Scheduling draft" }[draft.kind]),
+        h("h4", { class: "section-title" }, { intro: "First message", follow_up: "Follow-up", scheduling: "Setting a time" }[draft.kind]),
         email,
         status,
         subject,
         body,
-        draft.warnings.map((warning) => h("p", { class: "banner warn" }, warning)),
+        draft.warnings.map((warning) => h("p", { class: "banner note" }, warning)),
         h(
           "div",
-          { class: "row" },
-          h("button", { type: "button", class: "ghost", onclick: save }, "Save edits"),
+          { class: "row sticky-actions" },
           state.integrations?.gmail
             ? h("button", { type: "button", class: "primary", onclick: async (event) => { await save(); await call(`/api/recruiting/candidates/${candidate.id}/send`, {}, event.currentTarget); } }, "Send from Gmail")
             : null,
-          h("button", { type: "button", class: "ghost", onclick: async (event) => { await save(); await call(`/api/recruiting/candidates/${candidate.id}/send`, { manual: true }, event.currentTarget); } }, "I sent it myself"),
+          h("button", { type: "button", class: "quiet", onclick: async (event) => { await save(); await call(`/api/recruiting/candidates/${candidate.id}/send`, { manual: true }, event.currentTarget); } }, "I sent it myself"),
+          h("button", { type: "button", class: "quiet", onclick: save }, "Save edits"),
         ),
       ),
     );
   } else if (["discovered", "scored"].includes(candidate.stage)) {
     parts.push(
+      h("p", { class: "empty-note" }, "Nothing sent yet. I will look up an email and write a first message for you to check."),
       h("button", { type: "button", class: "primary", onclick: async (event) => {
         const button = event.currentTarget;
         button.textContent = "Finding email and drafting…";
@@ -555,20 +670,21 @@ function outreachSection(candidate) {
   }
 
   if (["contacted", "replied", "scheduling"].includes(candidate.stage)) {
-    const reply = h("textarea", { rows: 2, placeholder: "Paste or dictate their reply" });
+    const reply = h("textarea", { rows: 3, placeholder: "Paste or dictate their reply" });
     parts.push(
       h(
         "div",
         { class: "draft-box" },
+        h("h4", { class: "section-title" }, "Their reply"),
         reply,
         h(
           "div",
           { class: "row" },
-          h("button", { type: "button", class: "ghost", onclick: async (event) => {
+          h("button", { type: "button", class: "quiet", onclick: async (event) => {
             const result = await call(`/api/recruiting/candidates/${candidate.id}/reply`, { text: reply.value }, event.currentTarget);
             if (result) $("#agent-reply").textContent = result.message;
           } }, "Add reply"),
-          h("button", { type: "button", class: "ghost", onclick: (event) => call(`/api/recruiting/candidates/${candidate.id}/close`, { reason: "hired" }, event.currentTarget) }, "Hired"),
+          h("button", { type: "button", class: "quiet", onclick: (event) => call(`/api/recruiting/candidates/${candidate.id}/close`, { reason: "hired" }, event.currentTarget) }, "Mark as hired"),
         ),
       ),
     );
@@ -692,6 +808,10 @@ document.addEventListener("DOMContentLoaded", () => {
     nodes.clear();
     lastRoundCount = 0;
     await call("/api/recruiting/reset", {}, event.currentTarget);
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && selectedId) select(selectedId);
   });
 
   refresh().then(schedulePoll);
