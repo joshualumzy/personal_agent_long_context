@@ -19,6 +19,14 @@ function field(body: unknown, key: string): string {
 
 /** Plain text from a requirement file. PDF and docx are parsed server side. */
 export async function textFromFile(filename: string, content: Buffer): Promise<string> {
+  // PDF fonts often map CJK characters to look-alike radical code points
+  // (U+2F2F for 工). Fold only those back, so full-width punctuation survives.
+  return (await rawTextFromFile(filename, content)).replace(/[\u2E80-\u2EFF\u2F00-\u2FDF]/g, (character) =>
+    character.normalize("NFKC"),
+  );
+}
+
+async function rawTextFromFile(filename: string, content: Buffer): Promise<string> {
   const extension = filename.toLowerCase().split(".").at(-1);
   if (extension === "txt" || extension === "md") return content.toString("utf8");
   if (extension === "pdf") {

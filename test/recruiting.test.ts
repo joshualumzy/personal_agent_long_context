@@ -435,3 +435,18 @@ describe("adding people by link", () => {
     assert.equal(added.tier, 100);
   });
 });
+
+describe("job description files", () => {
+  const expected = ["招聘：AI 工程师", "语音识别", "嵌入式项目", "（on-device ML）"];
+
+  for (const file of ["jd-zh.pdf", "jd-zh.docx"]) {
+    test(`reads Chinese text from ${file}`, async () => {
+      const { readFile } = await import("node:fs/promises");
+      const { textFromFile } = await import("../src/recruiting/routes.js");
+      const text = await textFromFile(file, await readFile(new URL(`./fixtures/${file}`, import.meta.url)));
+      for (const phrase of expected) assert.ok(text.includes(phrase), `${file} is missing "${phrase}"`);
+      // No Kangxi radical look-alikes left behind by PDF fonts.
+      assert.equal(/[⼀-⿟]/.test(text), false);
+    });
+  }
+});
