@@ -263,4 +263,47 @@ Memora gate exist so the agent can be checked rather than trusted.
 
 ## Recruiting direction (S3)
 
-A hiring agent for small-company founders, built on the same Memory. Design, setup, and verification notes: [docs/s3-recruiting.md](docs/s3-recruiting.md). Page: `/recruiting`.
+A hiring agent for small-company founders, built on the same Memory. Page: `/recruiting`. Full design record and verification notes: [docs/s3-recruiting.md](docs/s3-recruiting.md).
+
+### Problem
+
+A founder hiring for a small company has no recruiter. They know roughly who they want, but turning that into a search, judging dozens of profiles, writing to people, and chasing replies is days of work they do not have. Their picture of the right person also shifts as they see candidates, and nothing remembers why.
+
+### User
+
+One founder, hiring for one open role at a time.
+
+### What it does
+
+1. **State the need.** Type it, dictate it, upload a job description (txt, md, pdf, docx), or paste LinkedIn links of people already in mind. The agent turns the need into 3 to 6 criteria, each a must or a nice-to-have, and the founder confirms them once. Criteria that select on age, sex, race, religion, family status, disability, or nationality are refused, and the founder is told why.
+2. **Find people.** Exa people search returns about 20 public professional profiles. The model judges every criterion for every person as yes, no, or unclear, with a one-line reason from the profile.
+3. **See the pool at a glance.** Candidates sit on an orbit: meets everything at the centre, misses a nice-to-have in the middle ring, misses one must in the outer ring. Clicking a person opens a drawer with why they fit, their career, and outreach.
+4. **Give feedback in plain words.** "Remote is fine after all", "pass on Ben, too corporate", "why do we need this?". Criteria changes rescore the pool at once and the role is renamed to match.
+5. **Learn preferences.** When two passes share a reason, the agent proposes a new criterion. It applies only if the founder accepts.
+6. **Widen the search when hiring stalls.** After a quiet week the agent proposes the next step: widen location, drop background filters, then demote one must. Each step needs the founder's approval.
+7. **Reach out.** For a chosen person the agent looks up a work email (Hunter, then Prospeo) and drafts a short message in the founder's voice. It never guesses an address. The founder edits and sends from their own Gmail, or sends on LinkedIn by hand.
+8. **Follow up.** Replies arrive from Gmail, from the LinkedIn inbox, or by paste. The agent moves the candidate on and drafts a scheduling reply. No reply after five days: a follow-up draft. Seven more: marked cold.
+9. **Remember why.** Every criteria change, preference, and expansion goes to Letta Memory, so "why is Singapore no longer required?" gets the founder's own reason back.
+
+### Guardrails
+
+- Nothing is sent without the founder pressing send. The LinkedIn reader only reads inbox previews; it clicks nothing.
+- LinkedIn conversations that do not name anyone the founder contacted never reach the model.
+- The founder's private reasons for passing never appear in a draft; a draft that repeats one cannot be sent.
+- Only public professional fields are kept. Closed candidates are erased after 30 days. No email is ever guessed.
+
+### Services
+
+| Service | Used for | Without it |
+|---|---|---|
+| SoC LaaS (`qwen3.8:27b`) | every model call | required |
+| Exa | people search and profile lookup | 40 fictional sample profiles |
+| Hunter, Prospeo | finding a work email | no email; send on LinkedIn |
+| Gmail API | sending and reading replies | mark messages as sent by hand |
+| Letta | hiring intent Memory | events kept in process only |
+
+Set the keys in `.env` (see `.env.example`), then `npm run letta:server` and `npm run dev`, and open `http://127.0.0.1:3000/recruiting`.
+
+### Not in scope
+
+Several open roles at once, calendar booking, sending on LinkedIn, speech-to-text inside the app, multiple users.
