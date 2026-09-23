@@ -59,17 +59,24 @@ export function profileFromExaResult(result: unknown): CandidateProfile | null {
   const url = str(result.url);
   const current = workHistory.find((entry) => !entry.to) ?? workHistory[0];
 
+  // Exa's profile text opens with "# Name" and then the person's own headline.
+  const textHeadline = str(result.text)
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line && !line.startsWith("#"));
+
   return {
     id: stableId(url, name),
     name,
     headline:
       title.split(/\s[-|–]\s/).slice(1).join(" · ") ||
+      (textHeadline && textHeadline.length <= 160 ? textHeadline : "") ||
       (current ? `${current.title} at ${current.company}` : ""),
     location: str(properties.location),
     profileUrl: url,
     workHistory,
     educationHistory,
-    summary: str(result.text).slice(0, 2000),
+    summary: str(result.text).slice(0, 5000),
   };
 }
 
@@ -90,7 +97,7 @@ export class ExaPeopleSource implements CandidateSource {
         category: "people",
         type: "auto",
         numResults: Math.min(Math.max(limit, 1), 100),
-        contents: { text: { maxCharacters: 2000 } },
+        contents: { text: { maxCharacters: 5000 } },
       }),
       signal: AbortSignal.timeout(60_000),
     });

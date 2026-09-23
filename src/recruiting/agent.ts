@@ -45,7 +45,7 @@ function profileForModel(profile: CandidateProfile) {
     education: profile.educationHistory.map(
       (entry) => `${entry.degree}, ${entry.institution}`,
     ),
-    summary: profile.summary.slice(0, 1200),
+    summary: profile.summary.slice(0, 4000),
   };
 }
 
