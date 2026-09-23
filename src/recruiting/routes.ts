@@ -171,12 +171,14 @@ export function registerRecruitingRoutes(
       if (!isRecord(body) || !Array.isArray(body.threads)) {
         throw new RecruitingError("invalid_request", "\"threads\" is required.");
       }
+      const texts = body.threads
+        .filter(isRecord)
+        .map((thread) => (typeof thread.text === "string" ? thread.text.trim().slice(0, 4000) : ""))
+        .filter(Boolean);
+      const relevant = await service.relevantConversations(texts);
       const results = [];
-      for (const thread of body.threads.filter(isRecord)) {
-        if (typeof thread.text !== "string" || !thread.text.trim()) continue;
-        results.push(await service.reply(thread.text.slice(0, 4000), null, "linkedin"));
-      }
-      return { results };
+      for (const text of relevant) results.push(await service.reply(text, null, "linkedin"));
+      return { read: texts.length, ignored: texts.length - relevant.length, results };
     }),
   );
 

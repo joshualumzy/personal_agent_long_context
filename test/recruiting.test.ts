@@ -397,3 +397,16 @@ async function waitFor(condition: () => Promise<boolean>, timeoutMs = 2000) {
   }
   throw new Error("Condition not met in time.");
 }
+
+describe("linkedin inbox", () => {
+  test("ignores conversations that mention nobody the founder contacted", async () => {
+    const { service } = await confirmed();
+    await service.prepareOutreach("a");
+    await service.send("a", true);
+    const kept = await service.relevantConversations([
+      "Person a: Thanks for reaching out, happy to chat.",
+      "Mum: dinner on Sunday?",
+    ]);
+    assert.deepEqual(kept, ["Person a: Thanks for reaching out, happy to chat."]);
+  });
+});

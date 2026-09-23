@@ -2,8 +2,9 @@
  * Reads the founder's recent LinkedIn conversations and hands any new text to
  * the recruiting agent, which decides which candidate each one is from.
  *
- * Read only: this script opens threads and copies their text. It never types
- * into the message box, never clicks send, and never visits a profile.
+ * Read only: it loads the inbox and copies the preview of each conversation
+ * (who, and their latest message). It clicks nothing, so it cannot send a
+ * message or even mark one as read, and it never visits a profile.
  * LinkedIn's terms forbid automated access, so it runs rarely, on demand, in
  * the founder's own logged-in browser profile, and pasting a reply into the
  * app remains the supported path.
@@ -55,29 +56,20 @@ try {
   } else if (login) {
     console.log("Already logged in.");
   } else {
-    await page.waitForSelector('a[href*="/messaging/thread/"]', { timeout: 30_000 });
-    const links = await page.$$eval('a[href*="/messaging/thread/"]', (anchors) => [
-      ...new Set(anchors.map((anchor) => (anchor as HTMLAnchorElement).href.split("?")[0]!)),
-    ]);
+    const items = page.locator(".msg-conversation-listitem");
+    await items.first().waitFor({ timeout: 30_000 });
+    const previews = (await items.allInnerTexts()).slice(0, THREADS);
 
     const seen = await loadSeen();
     const fresh: { text: string }[] = [];
-    for (const link of links.slice(0, THREADS)) {
-      await page.goto(link, { waitUntil: "domcontentloaded" });
-      // Take the whole conversation pane as text rather than parsing each
-      // message, so a markup change does not break the reader; the model reads it.
-      const text = await page
-        .locator(".msg-s-message-list, [class*='message-list'], main")
-        .first()
-        .innerText({ timeout: 15_000 })
-        .catch(() => "");
-      const trimmed = text.replace(/\n{3,}/g, "\n\n").trim().slice(-4000);
-      if (!trimmed) continue;
-      const id = fingerprint(trimmed);
+    for (const preview of previews) {
+      const text = preview.replace(/\n{2,}/g, "\n").trim();
+      // A preview whose latest line is the founder's own message holds no reply.
+      if (!text || /(^|\n)You:/.test(text)) continue;
+      const id = fingerprint(text);
       if (seen.has(id)) continue;
       seen.add(id);
-      fresh.push({ text: trimmed });
-      await page.waitForTimeout(1500 + Math.random() * 1500);
+      fresh.push({ text });
     }
 
     if (fresh.length === 0) {
@@ -88,8 +80,14 @@ try {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ threads: fresh }),
       });
-      const body = (await response.json()) as { result?: { results?: { message: string }[] }; message?: string };
+      const body = (await response.json()) as {
+        result?: { ignored?: number; results?: { message: string }[] };
+        message?: string;
+      };
       if (!response.ok) throw new Error(body.message ?? `HTTP ${response.status}`);
+      console.log(
+        `Read ${fresh.length} conversations; ${body.result?.ignored ?? 0} did not mention anyone you contacted and were ignored.`,
+      );
       for (const result of body.result?.results ?? []) console.log(`- ${result.message}`);
       await writeFile(SEEN_PATH, JSON.stringify([...seen]));
     }

@@ -769,6 +769,22 @@ export class RecruitingService {
     };
   }
 
+  /**
+   * Keeps only conversations that name someone the founder has written to.
+   * A LinkedIn inbox holds private conversations that have nothing to do with
+   * hiring; those never reach the model.
+   */
+  async relevantConversations(texts: string[]): Promise<string[]> {
+    const state = await this.current();
+    const names = Object.values(state.candidates)
+      .filter((candidate) => candidate.messages.some((message) => message.direction === "outbound"))
+      .map((candidate) => candidate.profile.name.toLowerCase());
+    return texts.filter((text) => {
+      const lower = text.toLowerCase();
+      return names.some((name) => lower.includes(name) || lower.includes(name.split(/\s+/)[0]! + " "));
+    });
+  }
+
   /** Reads new replies in every Gmail thread the founder started from here. */
   async syncGmail(): Promise<number> {
     if (!this.deps.gmail || !(await this.deps.gmail.connected())) return 0;
