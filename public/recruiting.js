@@ -619,7 +619,7 @@ function outreachPanel(candidate) {
   if (candidate.draft) {
     const draft = candidate.draft;
     const email = h("input", { type: "email", value: candidate.contact?.email ?? "", placeholder: "Email address", "aria-label": "To" });
-    const subject = h("input", { type: "text", value: draft.subject, "aria-label": "Subject" });
+    const subject = h("input", { type: "text", value: draft.subject, "aria-label": "Subject", placeholder: "Subject (emails only)" });
     const body = h("textarea", { "aria-label": "Message" }, draft.body);
     const save = () =>
       call(`/api/recruiting/candidates/${candidate.id}/draft`, {

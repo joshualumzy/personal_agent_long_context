@@ -403,39 +403,47 @@ export async function draftMessage(
   context: {
     role: string;
     company?: string;
+    companyPitch?: string;
     founderName?: string;
+    channel: "email" | "linkedin";
     profile: CandidateProfile;
     matched: string[];
     messages: Message[];
   },
 ): Promise<{ subject: string; body: string }> {
+  const limit = context.channel === "linkedin" ? 60 : 90;
   const purpose = {
-    intro:
-      "a first outreach email inviting them to a short chat about the role. Mention one or two specific things from their public profile that match. Under 120 words.",
-    follow_up:
-      "a brief, polite follow-up to an earlier email that got no answer. Under 60 words. Make it easy to say no.",
-    scheduling:
-      "a reply that thanks them and proposes three 30-minute slots over the next week in Singapore time, or asks for their availability if they already gave times. Under 90 words.",
+    intro: `a first cold message about the ${context.role} role.`,
+    follow_up: "a one or two line nudge on the earlier message that got no answer. Make it easy to say no.",
+    scheduling: "a reply that thanks them briefly and offers two or three 30-minute slots next week, Singapore time, or asks when suits them if they already gave times.",
   }[draftKind];
   const reply = await model.json<unknown>({
     task: "outreach draft",
     system: [
-      `Write ${purpose}`,
-      "Write as the founder, plain and warm, no hype, no emojis, no em dashes. Use only the facts given. Do not mention scoring, tiers, or other candidates.",
-      "Sign with the founder's name; if it is null, sign as [Your name] and name the company as [Company] when it is null.",
-      'Reply as {"subject": string, "body": string}.',
+      `Write ${purpose} It goes out as a ${context.channel === "linkedin" ? "LinkedIn direct message" : "short email"}, at most ${limit} words.`,
+      "Write the way a busy founder actually texts a stranger they want to hire: plain, direct, a little informal, like one person talking to another.",
+      "Open with the reason you are writing to this person. Pick ONE concrete thing from their history and say in a few words why it matters for what the company is building. Do not start with an introduction of yourself.",
+      "Never read their CV back to them, never list several of their achievements, never restate the hiring criteria.",
+      "Banned: \"stood out\", \"impressed\", \"caught my eye\", \"relevant\", \"combination\", \"background matches\", \"I'd love to\", \"reach out\", \"opportunity\", \"passionate\", \"exciting\", \"I hope this finds you well\", em dashes, emojis, exclamation marks.",
+      "Say what the company does in at most one short clause, using only the pitch given. If there is no pitch, do not invent one.",
+      "End with one easy question they can answer in a line, such as whether they are open to a quick call. Sign with the founder's first name only.",
+      "Use only facts from the input. Do not mention scoring, tiers, or other candidates.",
+      context.channel === "linkedin"
+        ? 'Reply as {"subject": "", "body": string}.'
+        : 'Reply as {"subject": string, "body": string}. The subject is at most 6 plain words, not a headline.',
     ].join("\n"),
     input: {
       role: context.role,
       company: context.company ?? null,
+      companyPitch: context.companyPitch ?? null,
       founderName: context.founderName ?? null,
       candidate: profileForModel(context.profile),
-      matchedCriteria: context.matched,
+      whyTheyFit: context.matched,
       conversation: context.messages.slice(-6),
     },
   });
   if (!isRecord(reply) || !text(reply.body)) throw new Error("The model returned no draft.");
-  return { subject: text(reply.subject, `About the ${context.role} role`), body: text(reply.body) };
+  return { subject: text(reply.subject), body: text(reply.body) };
 }
 
 export interface ReplyReading {

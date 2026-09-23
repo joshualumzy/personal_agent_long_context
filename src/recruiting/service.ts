@@ -50,6 +50,8 @@ export interface RecruitingSettings {
   judgeConcurrency: number;
   founderName?: string;
   companyName?: string;
+  /** One sentence on what the company builds; gives outreach something real to say. */
+  companyPitch?: string;
 }
 
 export const DEFAULT_SETTINGS: RecruitingSettings = {
@@ -692,7 +694,9 @@ export class RecruitingService {
       .map((criterion) => criterion.text);
     const { subject, body } = await draftMessage(this.deps.model, kind, {
       role: state.role?.title ?? "the role",
+      channel: candidate.contact ? "email" : "linkedin",
       ...(this.settings.companyName ? { company: this.settings.companyName } : {}),
+      ...(this.settings.companyPitch ? { companyPitch: this.settings.companyPitch } : {}),
       ...(this.settings.founderName ? { founderName: this.settings.founderName } : {}),
       profile: candidate.profile,
       matched,
@@ -720,7 +724,7 @@ export class RecruitingService {
     const contact =
       candidate.contact ??
       (await findContact(this.deps.contactFinders, candidate.profile));
-    const draft = await this.makeDraft(state, candidate, "intro");
+    const draft = await this.makeDraft(state, contact ? { ...candidate, contact } : candidate, "intro");
     await this.mutate((latest) => {
       const target = this.candidate(latest, candidateId);
       if (contact) target.contact = contact;

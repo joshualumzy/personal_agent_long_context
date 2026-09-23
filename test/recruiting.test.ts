@@ -98,7 +98,7 @@ function fakeModel(): JsonModel & { calls: string[] } {
         case "pool expansion":
           return { query: "typescript engineer remote", operations: [], rationale: "Accept remote." } as T;
         case "outreach draft":
-          return { subject: `Hello ${data.candidate.name}`, body: `Your work on ${data.matchedCriteria.join(", ")} stood out.` } as T;
+          return { subject: `Hello ${data.candidate.name}`, body: `Your work on ${data.whyTheyFit.join(", ")} stood out.` } as T;
         case "instruction interpretation":
           if (String(data.said).includes("Rust is required")) {
             const rust = data.criteria.find((criterion: { text: string }) => criterion.text === "rust");

@@ -83,6 +83,7 @@ export function recruitingFromEnvironment(
         : {}),
       ...(environment.FOUNDER_NAME ? { founderName: environment.FOUNDER_NAME } : {}),
       ...(environment.COMPANY_NAME ? { companyName: environment.COMPANY_NAME } : {}),
+      ...(environment.COMPANY_PITCH ? { companyPitch: environment.COMPANY_PITCH } : {}),
     },
   });
 
