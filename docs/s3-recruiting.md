@@ -22,7 +22,7 @@ A small-company founder states a hiring need by voice, typing, or file; the agen
 | Feedback | Three kinds: a verdict on one person (keep or pass, optionally with a reason), a change to criteria, and a retraction of something said before. A criteria change rescores the existing pool first and searches again in the background. |
 | Implicit preferences | Each keep or pass is recorded with a reason (stated or inferred). When passes (or keeps) sharing one inferred reason reach the threshold (2 for the demo, configurable), the agent proposes a new criterion. It never takes effect without the founder's confirmation. |
 | Candidate stages | discovered → scored → drafted → contacted → replied → scheduling → closed. |
-| Contact details | Hunter (50 free credits a month) first, Prospeo next, then an LLM pattern guess marked `unverified`. Only for people the founder chooses to contact. |
+| Contact details | Hunter first, Prospeo next (it looks people up by LinkedIn link). If neither finds an address, none is shown: a guessed address could reach a stranger. The founder can type one in. Only for people the founder chooses to contact. |
 | Sending | The draft is shown and edited in our frontend. The founder presses send; the server sends from the founder's own Gmail through the Gmail API. Nothing is ever sent without that press. |
 | Replies | Gmail replies are read through the Gmail API. LinkedIn replies are read by a Playwright script using the founder's own logged-in browser profile. It loads the inbox and copies each conversation's preview without clicking anything, so it cannot send or mark messages read; only conversations naming someone the founder contacted reach the model. Pasting or dictating a reply is always available as the fallback. The LLM matches a reply to a candidate and proposes the next stage and draft. |
 | Scheduling | Draft a message proposing a few time slots. Calendar integration is deferred. |
@@ -70,7 +70,7 @@ Only `SOCLAAS_BASE_URL` and `SOCLAAS_API_KEY` are required. Each other key in `.
 | Key | Without it |
 |---|---|
 | `EXA_API_KEY` | 40 invented sample profiles (`src/recruiting/sample-candidates.json`), labelled as such in the UI |
-| `HUNTER_API_KEY`, `PROSPEO_API_KEY` | the model guesses an address, shown as unverified |
+| `HUNTER_API_KEY`, `PROSPEO_API_KEY` | no email is found; the founder types one in or sends on LinkedIn |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | no Gmail button; the founder sends by hand and presses "I sent it myself" |
 | Letta not running | `MEMORY_ADAPTER=deterministic` keeps hiring events in process only |
 
@@ -100,5 +100,5 @@ With `qwen3.8:27b` on SoC LaaS, the sample source, and a local Letta App Server:
 - A Chinese requirement with "最好 30 岁以下" became four criteria; the age wish was refused and reported.
 - Confirming found 20 people; all 20 were scored in 19 seconds (judging runs without the thinking phase: about 2 s a call instead of 8).
 - Passing two candidates who "only execute other people's designs" produced a proposed must criterion about owning a shipped product. Accepting it moved three candidates from the middle ring to the outer one and one out of the pool.
-- Outreach found no provider key, so it guessed an address and marked it unverified. Seven simulated days produced a follow-up draft and a "Widen location" proposal; accepting it made location a nice-to-have and added a second round of 20 people.
+- Outreach drafted a first message (at the time an address was guessed; guessing has since been removed). Seven simulated days produced a follow-up draft and a "Widen location" proposal; accepting it made location a nice-to-have and added a second round of 20 people.
 - After "remote is fine, we open remote next month", asking "why is Singapore no longer required?" was answered from Letta Memory with that reason.

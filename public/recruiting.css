@@ -235,7 +235,7 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(2rem,
 .draft-box textarea { min-height: 200px; font-size: .92rem; }
 .draft-box input { padding: 9px 12px; }
 .email-status { font-size: .82rem; color: var(--muted); margin-top: -4px; }
-.email-status.unverified { color: var(--ochre); }
+.email-status.missing { color: var(--ochre); }
 .sticky-actions {
   position: sticky; bottom: -28px; margin: 0 -24px -28px; padding: 14px 24px 20px;
   background: linear-gradient(to bottom, rgb(255 253 248 / 0), var(--sky-raised) 30%);

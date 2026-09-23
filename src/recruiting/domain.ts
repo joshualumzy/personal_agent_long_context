@@ -68,12 +68,13 @@ export interface CandidateProfile {
   summary: string;
 }
 
-export type EmailStatus = "verified" | "found" | "unverified";
+export type EmailStatus = "verified" | "found";
 
 export interface ContactDetails {
   email: string;
   status: EmailStatus;
-  provider: "hunter" | "prospeo" | "guess";
+  /** "founder" when the founder typed the address in. */
+  provider: "hunter" | "prospeo" | "founder";
 }
 
 export interface Draft {

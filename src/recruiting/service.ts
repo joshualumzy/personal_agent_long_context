@@ -4,7 +4,6 @@ import {
   EXPANSION_LADDER,
   extractBrief,
   findPattern,
-  guessEmail,
   inferReason,
   interpret,
   judge,
@@ -13,7 +12,7 @@ import {
   readReply,
   writeQuery,
 } from "./agent.js";
-import { currentCompany, findContact, type ContactFinder } from "./contacts.js";
+import { findContact, type ContactFinder } from "./contacts.js";
 import {
   emptyState,
   RecruitingError,
@@ -101,7 +100,14 @@ export class RecruitingService {
   }
 
   private async current(): Promise<RecruitingState> {
-    this.state ??= await this.deps.store.load();
+    if (!this.state) {
+      const loaded = await this.deps.store.load();
+      // Earlier versions guessed addresses. A guess could reach a stranger, so drop it.
+      for (const candidate of Object.values(loaded.candidates)) {
+        if ((candidate.contact?.provider as string | undefined) === "guess") delete candidate.contact;
+      }
+      this.state = loaded;
+    }
     return this.state;
   }
 
@@ -692,9 +698,7 @@ export class RecruitingService {
     }
     const contact =
       candidate.contact ??
-      (await findContact(this.deps.contactFinders, candidate.profile, () =>
-        guessEmail(this.deps.model, candidate.profile.name, currentCompany(candidate.profile)),
-      ));
+      (await findContact(this.deps.contactFinders, candidate.profile));
     const draft = await this.makeDraft(state, candidate, "intro");
     await this.mutate((latest) => {
       const target = this.candidate(latest, candidateId);
@@ -714,7 +718,7 @@ export class RecruitingService {
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(edit.email)) {
           throw new RecruitingError("invalid_request", "That is not an email address.");
         }
-        candidate.contact = { email: edit.email, status: "verified", provider: candidate.contact?.provider ?? "guess" };
+        candidate.contact = { email: edit.email, status: "verified", provider: "founder" };
       }
       candidate.draft.warnings = privateRemarksIn(
         `${candidate.draft.subject}\n${candidate.draft.body}`,

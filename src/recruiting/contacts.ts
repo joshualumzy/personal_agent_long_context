@@ -96,10 +96,13 @@ export class ProspeoFinder implements ContactFinder {
   }
 }
 
+/**
+ * Asks each provider in turn. When none finds an address the answer is null:
+ * a guessed address could reach a stranger, so nothing is ever made up.
+ */
 export async function findContact(
   finders: readonly ContactFinder[],
   profile: CandidateProfile,
-  guess: () => Promise<{ email: string } | null>,
 ): Promise<ContactDetails | null> {
   for (const finder of finders) {
     try {
@@ -109,8 +112,6 @@ export async function findContact(
       // A provider outage should fall through to the next one, not end the search.
     }
   }
-  const guessed = await guess();
-  return guessed ? { email: guessed.email, status: "unverified", provider: "guess" } : null;
+  return null;
 }
 
-export { currentCompany };

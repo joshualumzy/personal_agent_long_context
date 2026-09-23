@@ -627,15 +627,20 @@ function outreachPanel(candidate) {
         body: body.value,
         ...(email.value && email.value !== candidate.contact?.email ? { email: email.value } : {}),
       });
+    const source = {
+      hunter: "Found by Hunter",
+      prospeo: "Found by Prospeo",
+      founder: "Entered by you",
+    }[candidate.contact?.provider];
     const status = candidate.contact
       ? h(
           "p",
-          { class: `email-status ${candidate.contact.status}` },
-          candidate.contact.status === "unverified"
-            ? "This address is a guess. Check it before sending."
-            : `Found by ${candidate.contact.provider}${candidate.contact.status === "verified" ? " and verified" : ""}.`,
+          { class: "email-status" },
+          candidate.contact.provider === "founder" || candidate.contact.status === "verified"
+            ? `${source}${candidate.contact.provider === "founder" ? "" : " and verified"}.`
+            : `${source}, not verified.`,
         )
-      : h("p", { class: "email-status unverified" }, "No email found. Add one, or send it on LinkedIn yourself.");
+      : h("p", { class: "email-status missing" }, "No email found. Type one in if you know it, or send the message on LinkedIn yourself.");
     parts.push(
       h(
         "div",
@@ -650,7 +655,7 @@ function outreachPanel(candidate) {
           "div",
           { class: "row sticky-actions" },
           state.integrations?.gmail
-            ? h("button", { type: "button", class: "primary", onclick: async (event) => { await save(); await call(`/api/recruiting/candidates/${candidate.id}/send`, {}, event.currentTarget); } }, "Send from Gmail")
+            ? h("button", { type: "button", class: "primary", disabled: !candidate.contact && !email.value ? true : undefined, title: candidate.contact ? undefined : "Add an email address first", onclick: async (event) => { await save(); await call(`/api/recruiting/candidates/${candidate.id}/send`, {}, event.currentTarget); } }, "Send from Gmail")
             : null,
           h("button", { type: "button", class: "quiet", onclick: async (event) => { await save(); await call(`/api/recruiting/candidates/${candidate.id}/send`, { manual: true }, event.currentTarget); } }, "I sent it myself"),
           h("button", { type: "button", class: "quiet", onclick: save }, "Save edits"),
@@ -659,7 +664,7 @@ function outreachPanel(candidate) {
     );
   } else if (["discovered", "scored"].includes(candidate.stage)) {
     parts.push(
-      h("p", { class: "empty-note" }, "Nothing sent yet. I will look up an email and write a first message for you to check."),
+      h("p", { class: "empty-note" }, "Nothing sent yet. I will look up an email with Hunter and Prospeo and write a first message for you to check. I never guess an address."),
       h("button", { type: "button", class: "primary", onclick: async (event) => {
         const button = event.currentTarget;
         button.textContent = "Finding email and drafting…";

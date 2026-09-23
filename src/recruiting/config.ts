@@ -22,7 +22,7 @@ function positiveInteger(environment: Environment, key: string): number | undefi
 /**
  * Builds the recruiting service. Every outside service is optional except the
  * model: without EXA_API_KEY it serves invented sample profiles, without
- * Hunter or Prospeo keys it only guesses emails, and without Google OAuth
+ * Hunter or Prospeo keys it finds no emails, and without Google OAuth
  * credentials sending is by hand.
  */
 export function recruitingFromEnvironment(

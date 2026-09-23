@@ -419,24 +419,6 @@ export async function draftMessage(
   return { subject: text(reply.subject, `About the ${context.role} role`), body: text(reply.body) };
 }
 
-export async function guessEmail(
-  model: JsonModel,
-  name: string,
-  company: string,
-): Promise<{ email: string } | null> {
-  const reply = await model.json<unknown>({
-    task: "email guess",
-    fast: true,
-    system: [
-      "Guess the most likely work email address for this person at this company, using the company's usual domain and the most common pattern (first@domain or first.last@domain).",
-      'Reply as {"email": string}, or {"email": ""} if you do not know the company domain.',
-    ].join("\n"),
-    input: { name, company },
-  });
-  const email = isRecord(reply) ? text(reply.email).toLowerCase() : "";
-  return /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/.test(email) ? { email } : null;
-}
-
 export interface ReplyReading {
   candidateId: string | null;
   interested: boolean | null;

@@ -99,8 +99,6 @@ function fakeModel(): JsonModel & { calls: string[] } {
           return { query: "typescript engineer remote", operations: [], rationale: "Accept remote." } as T;
         case "outreach draft":
           return { subject: `Hello ${data.candidate.name}`, body: `Your work on ${data.matchedCriteria.join(", ")} stood out.` } as T;
-        case "email guess":
-          return { email: "person@example.com" } as T;
         case "instruction interpretation":
           if (String(data.said).includes("Rust is required")) {
             const rust = data.criteria.find((criterion: { text: string }) => criterion.text === "rust");
@@ -262,7 +260,8 @@ describe("recruiting flow", () => {
     await service.prepareOutreach("a");
     let a = (await service.snapshot()).candidates.find((c) => c.id === "a")!;
     assert.equal(a.stage, "drafted");
-    assert.deepEqual(a.contact, { email: "person@example.com", status: "unverified", provider: "guess" });
+    // No provider is configured, and nothing is guessed.
+    assert.equal(a.contact, null);
     assert.deepEqual(a.draft?.warnings, []);
 
     await service.editDraft("a", { body: "I love the Rust matching engine work you did." });
@@ -305,7 +304,7 @@ describe("recruiting flow", () => {
     assert.equal((await service.snapshot()).candidates.some((c) => c.id === "e"), false);
   });
 
-  test("contact finders are tried in order before guessing", async () => {
+  test("contact finders are tried in order, and nothing is guessed when all miss", async () => {
     const tried: string[] = [];
     const finder = (provider: "hunter" | "prospeo", email: string | null): ContactFinder => ({
       provider,
@@ -322,6 +321,13 @@ describe("recruiting flow", () => {
     assert.deepEqual(tried, ["hunter", "prospeo"]);
     const a = (await service.snapshot()).candidates.find((c) => c.id === "a")!;
     assert.equal(a.contact?.provider, "prospeo");
+
+    const { service: bare } = setup({ finders: [finder("hunter", null)] });
+    await bare.start("We need a founding backend engineer in Singapore who knows TypeScript.");
+    await bare.confirm();
+    await bare.settle();
+    await bare.prepareOutreach("a");
+    assert.equal((await bare.snapshot()).candidates.find((c) => c.id === "a")!.contact, null);
   });
 });
 
