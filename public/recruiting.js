@@ -231,8 +231,8 @@ function drawRings(root) {
   const defs = svg("defs");
   const glow = svg("radialGradient", { id: "core-glow" });
   glow.append(
-    svg("stop", { offset: "0%", "stop-color": "#f2c66d", "stop-opacity": "0.14" }),
-    svg("stop", { offset: "100%", "stop-color": "#f2c66d", "stop-opacity": "0.02" }),
+    svg("stop", { offset: "0%", "stop-color": "#1f6d5f", "stop-opacity": "0.06" }),
+    svg("stop", { offset: "100%", "stop-color": "#1f6d5f", "stop-opacity": "0.02" }),
   );
   const star = svg("filter", { id: "star-glow", x: "-80%", y: "-80%", width: "260%", height: "260%" });
   star.append(
