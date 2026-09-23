@@ -95,6 +95,8 @@ export interface Message {
 export interface Candidate {
   profile: CandidateProfile;
   poolRound: number;
+  /** "referral" when the founder added this person by link rather than search. */
+  origin?: "search" | "referral";
   discoveredAt: string;
   stage: Stage;
   closedReason?: ClosedReason;

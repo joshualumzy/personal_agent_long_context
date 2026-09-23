@@ -101,6 +101,16 @@ export function registerRecruitingRoutes(
   app.post("/api/recruiting/confirm", handle(async () => service.confirm()));
 
   app.post(
+    "/api/recruiting/candidates/import",
+    handle(async (body) => {
+      if (!isRecord(body) || !Array.isArray(body.urls)) {
+        throw new RecruitingError("invalid_request", "\"urls\" is required.");
+      }
+      return service.importProfiles(body.urls.filter((url): url is string => typeof url === "string"));
+    }),
+  );
+
+  app.post(
     "/api/recruiting/candidates/:id/feedback",
     handle(async (body, params) => {
       const decision = field(body, "decision");

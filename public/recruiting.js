@@ -125,6 +125,7 @@ function render(next) {
 
   if (role && !role.confirmed) renderReview();
   if (role?.confirmed) {
+    $("#say").dispatchEvent(new Event("input"));
     renderStatus();
     renderOrbit();
     renderProposals();
@@ -260,6 +261,7 @@ function layout(pool) {
 
 function renderOrbit() {
   const root = $("#orbit");
+  const crowdedCentre = inPool().filter((candidate) => candidate.tier === 100).length > 4;
   if (!root.querySelector(".rings")) drawRings(root);
   const layer = $("#nodes");
   const pool = inPool();
@@ -314,6 +316,7 @@ function renderOrbit() {
       `t${candidate.tier}`,
       candidate.stage,
       candidate.kept ? "kept" : "",
+      crowdedCentre ? "" : "labelled",
       candidate.settled ? "" : "provisional",
       candidate.id === selectedId ? "selected" : "",
       node.classList.contains("entering") ? "entering" : "",
@@ -434,7 +437,8 @@ function renderDetail() {
       candidate.tier !== "pending" && candidate.tier !== "out" ? h("span", { class: "badge" }, `${candidate.tier}% match`) : null,
       h("span", { class: "badge" }, candidate.stage),
       candidate.kept ? h("span", { class: "badge gold" }, "kept") : null,
-      candidate.poolRound > 1 ? h("span", { class: "badge gold" }, `wider search ${candidate.poolRound - 1}`) : null,
+      candidate.origin === "referral" ? h("span", { class: "badge gold" }, "added by you") : null,
+      candidate.origin !== "referral" && candidate.poolRound > 1 ? h("span", { class: "badge gold" }, `wider search ${candidate.poolRound - 1}`) : null,
     ),
     h(
       "ul",
@@ -620,15 +624,30 @@ document.addEventListener("DOMContentLoaded", () => {
     schedulePoll();
   });
 
+  const say = $("#say");
+  const sendButton = $("#say-form .send");
+  const fit = () => {
+    say.style.height = "auto";
+    // A hidden textarea measures 0; leave it to CSS until it is on screen.
+    if (say.scrollHeight > 0) say.style.height = `${Math.min(say.scrollHeight, 180)}px`;
+    sendButton.disabled = !say.value.trim();
+  };
+  say.addEventListener("input", fit);
+  fit();
+
   $("#say-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    const input = $("#say");
-    const text = input.value.trim();
+    const text = say.value.trim();
     if (!text) return;
     $("#agent-reply").textContent = "…";
-    const result = await call("/api/recruiting/say", { text }, event.submitter);
+    // Pasted LinkedIn profile links add those people; anything else goes to the agent.
+    const links = text.match(/https:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\/in\/[^\s,]+/gi);
+    const result = links
+      ? await call("/api/recruiting/candidates/import", { urls: links }, sendButton)
+      : await call("/api/recruiting/say", { text }, sendButton);
     if (result) {
-      input.value = "";
+      say.value = "";
+      fit();
       $("#agent-reply").textContent = [
         result.message,
         ...(result.refused ?? []).map((entry) => `Left out "${entry.text}": criteria may not select on ${entry.characteristic}.`),
@@ -639,9 +658,20 @@ document.addEventListener("DOMContentLoaded", () => {
     schedulePoll();
   });
 
-  $("#say").addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) $("#say-form").requestSubmit();
+  say.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+      event.preventDefault();
+      $("#say-form").requestSubmit();
+    }
   });
+
+  for (const hint of document.querySelectorAll(".hint")) {
+    hint.addEventListener("click", () => {
+      say.value = hint.textContent;
+      fit();
+      say.focus();
+    });
+  }
 
   $("#fast-forward").addEventListener("click", async (event) => {
     await call("/api/recruiting/fast-forward", { days: 7 }, event.currentTarget);

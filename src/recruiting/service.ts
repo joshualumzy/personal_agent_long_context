@@ -274,6 +274,52 @@ export class RecruitingService {
     return added;
   }
 
+  /** Adds people the founder already has in mind, by public LinkedIn link. */
+  async importProfiles(urls: string[]): Promise<SayResult> {
+    const state = await this.current();
+    this.requireRole(state);
+    const clean = [...new Set(urls.map((url) => url.trim()).filter(Boolean))];
+    if (clean.length === 0 || clean.length > 10) {
+      throw new RecruitingError("invalid_request", "Paste between 1 and 10 LinkedIn profile links.");
+    }
+    const invalid = clean.find((url) => !/^https:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\/in\/[^/?#\s]+\/?$/i.test(url));
+    if (invalid) {
+      throw new RecruitingError("invalid_request", `Not a LinkedIn profile link: ${invalid}`);
+    }
+    if (!this.deps.source.fetchProfiles) {
+      throw new RecruitingError("not_supported", "Adding people by link needs an Exa key.", 409);
+    }
+    const profiles = await this.deps.source.fetchProfiles(clean);
+    const added = await this.mutate((latest) => {
+      const at = this.now(latest).toISOString();
+      const names: string[] = [];
+      for (const profile of profiles) {
+        if (latest.candidates[profile.id]) continue;
+        latest.candidates[profile.id] = {
+          profile,
+          poolRound: Math.max(latest.rounds.length, 1),
+          origin: "referral",
+          discoveredAt: at,
+          stage: "discovered",
+          kept: false,
+          verdicts: {},
+          messages: [],
+          followUps: 0,
+        };
+        names.push(profile.name);
+      }
+      return names;
+    });
+    this.settle();
+    const missing = clean.length - profiles.length;
+    return {
+      intent: "import",
+      message:
+        (added.length ? `Added ${added.join(", ")}. Scoring now.` : "They are already in the pool.") +
+        (missing > 0 ? ` ${missing} link(s) could not be read.` : ""),
+    };
+  }
+
   // --------------------------------------------------------------- scoring
 
   /**
@@ -922,6 +968,7 @@ export class RecruitingService {
         closedReason: candidate.closedReason ?? null,
         kept: candidate.kept,
         poolRound: candidate.poolRound,
+        origin: candidate.origin ?? "search",
         verdicts: criteria.map((criterion) => candidate.verdicts[criterion.id] ?? null),
         contact: candidate.contact ?? null,
         draft: candidate.draft ?? null,

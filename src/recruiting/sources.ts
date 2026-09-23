@@ -5,6 +5,8 @@ import type { CandidateProfile, EducationEntry, WorkEntry } from "./domain.js";
 export interface CandidateSource {
   readonly name: string;
   search(query: string, limit: number): Promise<CandidateProfile[]>;
+  /** Loads specific public profiles, for people the founder already has in mind. */
+  fetchProfiles?(urls: string[]): Promise<CandidateProfile[]>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -103,6 +105,22 @@ export class ExaPeopleSource implements CandidateSource {
     });
     if (!response.ok) {
       throw new Error(`Exa search failed with HTTP ${response.status}.`);
+    }
+    const body = (await response.json()) as { results?: unknown[] };
+    return (body.results ?? [])
+      .map(profileFromExaResult)
+      .filter((profile): profile is CandidateProfile => profile !== null);
+  }
+
+  async fetchProfiles(urls: string[]): Promise<CandidateProfile[]> {
+    const response = await this.fetchImpl("https://api.exa.ai/contents", {
+      method: "POST",
+      headers: { "x-api-key": this.apiKey, "content-type": "application/json" },
+      body: JSON.stringify({ urls, text: { maxCharacters: 5000 } }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!response.ok) {
+      throw new Error(`Exa could not load those profiles (HTTP ${response.status}).`);
     }
     const body = (await response.json()) as { results?: unknown[] };
     return (body.results ?? [])

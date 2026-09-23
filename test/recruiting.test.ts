@@ -410,3 +410,20 @@ describe("linkedin inbox", () => {
     assert.deepEqual(kept, ["Person a: Thanks for reaching out, happy to chat."]);
   });
 });
+
+describe("adding people by link", () => {
+  test("loads profiles, marks them as referrals, and scores them", async () => {
+    const context = setup();
+    const referral = profile("r", "typescript startup rust");
+    Object.assign(context.source, { fetchProfiles: async () => [referral] });
+    await context.service.start("We need a founding backend engineer in Singapore who knows TypeScript.");
+    await context.service.confirm();
+    await assert.rejects(context.service.importProfiles(["https://example.com/x"]), /Not a LinkedIn profile link/);
+    const result = await context.service.importProfiles(["https://www.linkedin.com/in/someone/"]);
+    assert.match(result.message, /Added Person r/);
+    await context.service.settle();
+    const added = (await context.service.snapshot()).candidates.find((c) => c.id === "r")!;
+    assert.equal(added.origin, "referral");
+    assert.equal(added.tier, 100);
+  });
+});

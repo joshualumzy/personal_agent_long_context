@@ -74,11 +74,18 @@
 
       <section id="detail" class="detail" hidden></section>
 
-      <form id="say-form" class="say">
+      <form id="say-form" class="composer">
         <label for="say" class="visually-hidden">Tell the agent</label>
-        <textarea id="say" rows="2" placeholder="Tell me anything: &quot;remote is fine after all&quot;, &quot;pass on Ben, too corporate&quot;, &quot;Aria replied, free Tuesday&quot;, or ask why a criterion exists."></textarea>
-        <button type="submit" class="primary">Send</button>
+        <textarea id="say" rows="1" placeholder="Tell the agent anything, or paste a LinkedIn link"></textarea>
+        <button type="submit" class="send" aria-label="Send">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
       </form>
+      <div class="hints" aria-label="Examples">
+        <button type="button" class="hint">Remote is fine after all</button>
+        <button type="button" class="hint">Pass on this one, too corporate</button>
+        <button type="button" class="hint">Why do we need this criterion?</button>
+      </div>
       <p id="agent-reply" class="agent-reply" aria-live="polite"></p>
     </aside>
   </main>

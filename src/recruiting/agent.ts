@@ -135,6 +135,7 @@ export async function judge(
       "Judge one candidate's public professional profile against each hiring criterion.",
       "For each criterion answer yes (the profile shows it), no (the profile shows it is not met), or unclear (the profile does not say).",
       "Do not guess beyond the profile. Absence of evidence is unclear, not no, unless the history clearly rules it out.",
+      "For numeric thresholds, work the numbers out before answering. \"X years or more\", \"at least X years\" and \"X年以上\" all include exactly X; 7 years 10 months meets a 7-year threshold.",
       "Give a reason of at most 20 words that cites the profile.",
       'Reply as {"verdicts": [{"criterionId": string, "satisfied": "yes"|"no"|"unclear", "reasoning": string}]} with one entry per criterion.',
     ].join("\n"),
