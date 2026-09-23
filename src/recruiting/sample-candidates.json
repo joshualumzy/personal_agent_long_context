@@ -1,0 +1,1082 @@
+[
+ {
+  "id": "07370f458ec1ee61",
+  "name": "Aria Tan",
+  "headline": "Senior Backend Engineer, TypeScript and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/07370f458ec1ee61",
+  "workHistory": [
+   {
+    "title": "Senior Backend Engineer",
+    "company": "Nimbus Freight",
+    "from": "2022-09"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Saltbox AI",
+    "from": "2019-04",
+    "to": "2022-03"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Comp. Computer Science",
+    "institution": "National University of Singapore"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Backend engineer at Nimbus Freight (Series B, 80 people). TypeScript on Node.js with PostgreSQL. Proposed and led the booking engine from idea to launch; now the main revenue feature."
+ },
+ {
+  "id": "356b51edaa25bbba",
+  "name": "Ben Ong",
+  "headline": "Senior Backend Engineer, TypeScript and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/356b51edaa25bbba",
+  "workHistory": [
+   {
+    "title": "Senior Backend Engineer",
+    "company": "Nimbus Freight",
+    "from": "2022-09"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Parcelly",
+    "from": "2019-01",
+    "to": "2022-07"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Comp. Computer Science",
+    "institution": "Tsinghua University"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Backend engineer at Nimbus Freight (Series A, 35 people). TypeScript on Node.js with PostgreSQL. Contributed bug fixes and endpoints to the checkout product; product decisions made by the product manager."
+ },
+ {
+  "id": "eca9905f09c3b00c",
+  "name": "Chen Wei Novak",
+  "headline": "Senior Backend Engineer, TypeScript and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/eca9905f09c3b00c",
+  "workHistory": [
+   {
+    "title": "Senior Backend Engineer",
+    "company": "Lumen Pay",
+    "from": "2022-01"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Saltbox AI",
+    "from": "2019-04",
+    "to": "2022-04"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Sc. Information Systems",
+    "institution": "Singapore Management University"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Backend engineer at Lumen Pay (Series B, 80 people). TypeScript on Node.js with PostgreSQL. Owned the checkout product end to end: scoped it with the founders, designed the API, shipped it, and ran it in production."
+ },
+ {
+  "id": "b2f89cf31dc91414",
+  "name": "Dana Lim",
+  "headline": "Senior Backend Engineer, TypeScript and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/b2f89cf31dc91414",
+  "workHistory": [
+   {
+    "title": "Senior Backend Engineer",
+    "company": "Nimbus Freight",
+    "from": "2022-05"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Orbit Ledger",
+    "from": "2019-08",
+    "to": "2022-01"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Sc. Information Systems",
+    "institution": "Delft University of Technology"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Backend engineer at Nimbus Freight (Series B, 80 people). TypeScript on Node.js with PostgreSQL. Implemented tickets on the the claims portal squad following the tech lead's design."
+ },
+ {
+  "id": "3db47bf8397e896a",
+  "name": "Eli Goh",
+  "headline": "Senior Backend Engineer, TypeScript and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/3db47bf8397e896a",
+  "workHistory": [
+   {
+    "title": "Senior Backend Engineer",
+    "company": "Parcelly",
+    "from": "2022-05"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Quanta Health",
+    "from": "2019-06",
+    "to": "2022-04"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "National University of Singapore"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Backend engineer at Parcelly (Series B, 80 people). TypeScript on Node.js with PostgreSQL. Proposed and led the claims portal from idea to launch; now the main revenue feature."
+ },
+ {
+  "id": "b04c728ea5db3b29",
+  "name": "Farah Haddad",
+  "headline": "Senior Backend Engineer, TypeScript and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/b04c728ea5db3b29",
+  "workHistory": [
+   {
+    "title": "Senior Backend Engineer",
+    "company": "Fernweh Travel",
+    "from": "2022-05"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Kelp Robotics",
+    "from": "2019-07",
+    "to": "2022-02"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "Nanyang Technological University"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Backend engineer at Fernweh Travel (seed-stage, 12 people). TypeScript on Node.js with PostgreSQL. Contributed bug fixes and endpoints to the checkout product; product decisions made by the product manager."
+ },
+ {
+  "id": "c3a928a3bea4518e",
+  "name": "Gabriel Ng",
+  "headline": "Senior Backend Engineer, TypeScript and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/c3a928a3bea4518e",
+  "workHistory": [
+   {
+    "title": "Senior Backend Engineer",
+    "company": "Orbit Ledger",
+    "from": "2022-07"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Lumen Pay",
+    "from": "2019-07",
+    "to": "2022-02"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Comp. Computer Science",
+    "institution": "University of Waterloo"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Backend engineer at Orbit Ledger (Series B, 80 people). TypeScript on Node.js with PostgreSQL. Took the booking engine from a blank repo to 50k users as the only backend engineer."
+ },
+ {
+  "id": "43a8d2c01ee772f0",
+  "name": "Hana Lee",
+  "headline": "Senior Backend Engineer, TypeScript and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/43a8d2c01ee772f0",
+  "workHistory": [
+   {
+    "title": "Senior Backend Engineer",
+    "company": "Parcelly",
+    "from": "2022-06"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Brightcart",
+    "from": "2019-01",
+    "to": "2022-07"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Comp. Computer Science",
+    "institution": "Delft University of Technology"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Backend engineer at Parcelly (seed-stage, 12 people). TypeScript on Node.js with PostgreSQL. Implemented tickets on the the payouts service squad following the tech lead's design."
+ },
+ {
+  "id": "0b6030f21dd239ca",
+  "name": "Ivan Ito",
+  "headline": "Senior Backend Engineer, TypeScript and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/0b6030f21dd239ca",
+  "workHistory": [
+   {
+    "title": "Senior Backend Engineer",
+    "company": "Kelp Robotics",
+    "from": "2022-08"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Lumen Pay",
+    "from": "2019-03",
+    "to": "2022-09"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Comp. Computer Science",
+    "institution": "Delft University of Technology"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Backend engineer at Kelp Robotics (seed-stage, 12 people). TypeScript on Node.js with PostgreSQL. Proposed and led the booking engine from idea to launch; now the main revenue feature."
+ },
+ {
+  "id": "daa75e57c61b43a9",
+  "name": "Jia Hui Koh",
+  "headline": "Senior Backend Engineer, TypeScript and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/daa75e57c61b43a9",
+  "workHistory": [
+   {
+    "title": "Senior Backend Engineer",
+    "company": "Tidewater Labs",
+    "from": "2022-07"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Quanta Health",
+    "from": "2019-07",
+    "to": "2022-04"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "M.Sc. Computer Science",
+    "institution": "National University of Singapore"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Backend engineer at Tidewater Labs (seed-stage, 12 people). TypeScript on Node.js with PostgreSQL. Migrated services to the new platform as specified by the architecture team; worked on the checkout product."
+ },
+ {
+  "id": "15a935afd9533f0d",
+  "name": "Kiran Chua",
+  "headline": "Senior Backend Engineer, TypeScript and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/15a935afd9533f0d",
+  "workHistory": [
+   {
+    "title": "Senior Backend Engineer",
+    "company": "Orbit Ledger",
+    "from": "2022-02"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Tidewater Labs",
+    "from": "2019-01",
+    "to": "2022-03"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "M.Sc. Computer Science",
+    "institution": "National University of Singapore"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Backend engineer at Orbit Ledger (seed-stage, 12 people). TypeScript on Node.js with PostgreSQL. Proposed and led the fleet tracking API from idea to launch; now the main revenue feature."
+ },
+ {
+  "id": "b7feb756aa9096f5",
+  "name": "Lena Kumar",
+  "headline": "Senior Backend Engineer, TypeScript and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/b7feb756aa9096f5",
+  "workHistory": [
+   {
+    "title": "Senior Backend Engineer",
+    "company": "Fernweh Travel",
+    "from": "2022-02"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Brightcart",
+    "from": "2019-02",
+    "to": "2022-02"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Comp. Computer Science",
+    "institution": "National University of Singapore"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Backend engineer at Fernweh Travel (seed-stage, 12 people). TypeScript on Node.js with PostgreSQL. Contributed bug fixes and endpoints to the booking engine; product decisions made by the product manager."
+ },
+ {
+  "id": "fec4d37910a5f59d",
+  "name": "Marcus Wong",
+  "headline": "Founding Engineer, Rust and TypeScript",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/fec4d37910a5f59d",
+  "workHistory": [
+   {
+    "title": "Founding Engineer",
+    "company": "Fernweh Travel",
+    "from": "2021-08"
+   },
+   {
+    "title": "Backend Engineer",
+    "company": "Brightcart",
+    "from": "2018-03",
+    "to": "2021-08"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Sc. Information Systems",
+    "institution": "Nanyang Technological University"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Founding engineer at Fernweh Travel (Series B, 80 people). Wrote the matching engine in Rust and the public API in TypeScript on Node.js. Owned the fleet tracking API end to end: scoped it with the founders, designed the API, shipped it, and ran it in production."
+ },
+ {
+  "id": "04b6672dc8293e1d",
+  "name": "Nadia Teo",
+  "headline": "Founding Engineer, Rust and TypeScript",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/04b6672dc8293e1d",
+  "workHistory": [
+   {
+    "title": "Founding Engineer",
+    "company": "Tidewater Labs",
+    "from": "2021-04"
+   },
+   {
+    "title": "Backend Engineer",
+    "company": "Parcelly",
+    "from": "2018-04",
+    "to": "2021-03"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Comp. Computer Science",
+    "institution": "Delft University of Technology"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Founding engineer at Tidewater Labs (Series B, 80 people). Wrote the matching engine in Rust and the public API in TypeScript on Node.js. Took the fleet tracking API from a blank repo to 50k users as the only backend engineer."
+ },
+ {
+  "id": "ff53813432a65e71",
+  "name": "Omar Fischer",
+  "headline": "Founding Engineer, Rust and TypeScript",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/ff53813432a65e71",
+  "workHistory": [
+   {
+    "title": "Founding Engineer",
+    "company": "Quanta Health",
+    "from": "2021-01"
+   },
+   {
+    "title": "Backend Engineer",
+    "company": "Nimbus Freight",
+    "from": "2018-02",
+    "to": "2021-02"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "M.Sc. Computer Science",
+    "institution": "Nanyang Technological University"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Founding engineer at Quanta Health (seed-stage, 12 people). Wrote the matching engine in Rust and the public API in TypeScript on Node.js. Took the booking engine from a blank repo to 50k users as the only backend engineer."
+ },
+ {
+  "id": "e60f539a9d79b8f9",
+  "name": "Priya Rahman",
+  "headline": "Founding Engineer, Rust and TypeScript",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/e60f539a9d79b8f9",
+  "workHistory": [
+   {
+    "title": "Founding Engineer",
+    "company": "Quanta Health",
+    "from": "2021-08"
+   },
+   {
+    "title": "Backend Engineer",
+    "company": "Parcelly",
+    "from": "2018-05",
+    "to": "2021-09"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "Nanyang Technological University"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Founding engineer at Quanta Health (seed-stage, 12 people). Wrote the matching engine in Rust and the public API in TypeScript on Node.js. Took the fleet tracking API from a blank repo to 50k users as the only backend engineer."
+ },
+ {
+  "id": "f779b42fd7c61619",
+  "name": "Quinn Park",
+  "headline": "Software Engineer at Globex Systems, Java and Spring",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/f779b42fd7c61619",
+  "workHistory": [
+   {
+    "title": "Software Engineer III",
+    "company": "Globex Systems",
+    "from": "2018-04"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Megacorp Cloud",
+    "from": "2015-02",
+    "to": "2018-05"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Sc. Information Systems",
+    "institution": "University of Melbourne"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Maintains internal billing services in Java and Spring Boot at Globex Systems, a 40,000-person company. Some TypeScript for internal dashboards."
+ },
+ {
+  "id": "6f3aebfdd0e56a43",
+  "name": "Rui Moreau",
+  "headline": "Software Engineer at Initech Asia, Java and Spring",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/6f3aebfdd0e56a43",
+  "workHistory": [
+   {
+    "title": "Software Engineer III",
+    "company": "Initech Asia",
+    "from": "2018-06"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Hooli Search",
+    "from": "2015-03",
+    "to": "2018-02"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "M.Sc. Computer Science",
+    "institution": "Nanyang Technological University"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Maintains internal billing services in Java and Spring Boot at Initech Asia, a 40,000-person company. Some TypeScript for internal dashboards."
+ },
+ {
+  "id": "9bd1c5b3085b6174",
+  "name": "Sofia Singh",
+  "headline": "Software Engineer at Megacorp Cloud, Java and Spring",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/9bd1c5b3085b6174",
+  "workHistory": [
+   {
+    "title": "Software Engineer III",
+    "company": "Megacorp Cloud",
+    "from": "2018-01"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Umbrella Bank",
+    "from": "2015-06",
+    "to": "2018-05"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "National University of Singapore"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Maintains internal billing services in Java and Spring Boot at Megacorp Cloud, a 40,000-person company. Some TypeScript for internal dashboards."
+ },
+ {
+  "id": "e2935ea1e1d93a15",
+  "name": "Tomas Silva",
+  "headline": "Software Engineer at Initech Asia, Java and Spring",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/e2935ea1e1d93a15",
+  "workHistory": [
+   {
+    "title": "Software Engineer III",
+    "company": "Initech Asia",
+    "from": "2018-06"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Globex Systems",
+    "from": "2015-02",
+    "to": "2018-02"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Sc. Information Systems",
+    "institution": "Tsinghua University"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Maintains internal billing services in Java and Spring Boot at Initech Asia, a 40,000-person company. Some TypeScript for internal dashboards."
+ },
+ {
+  "id": "5863bad8b2e08d61",
+  "name": "Uma Tan",
+  "headline": "Software Engineer at Initech Asia, Java and Spring",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/5863bad8b2e08d61",
+  "workHistory": [
+   {
+    "title": "Software Engineer III",
+    "company": "Initech Asia",
+    "from": "2018-02"
+   },
+   {
+    "title": "Software Engineer",
+    "company": "Umbrella Bank",
+    "from": "2015-02",
+    "to": "2018-07"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "University of Waterloo"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Maintains internal billing services in Java and Spring Boot at Initech Asia, a 40,000-person company. Some TypeScript for internal dashboards."
+ },
+ {
+  "id": "b2804bc81a61568b",
+  "name": "Victor Ong",
+  "headline": "Technology Consultant at Crestline Advisory",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/b2804bc81a61568b",
+  "workHistory": [
+   {
+    "title": "Technology Consultant",
+    "company": "Crestline Advisory",
+    "from": "2019-01"
+   },
+   {
+    "title": "Business Analyst",
+    "company": "Crestline Advisory",
+    "from": "2016-02",
+    "to": "2019-02"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "Delft University of Technology"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Advises banks on digital transformation roadmaps. Wrote TypeScript and Node.js prototypes for client proofs of concept; has not owned a production system after handover."
+ },
+ {
+  "id": "defe381ef8bc25a0",
+  "name": "Wen Novak",
+  "headline": "Technology Consultant at Meridian Partners",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/defe381ef8bc25a0",
+  "workHistory": [
+   {
+    "title": "Technology Consultant",
+    "company": "Meridian Partners",
+    "from": "2019-07"
+   },
+   {
+    "title": "Business Analyst",
+    "company": "Crestline Advisory",
+    "from": "2016-08",
+    "to": "2019-08"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Sc. Information Systems",
+    "institution": "University of Waterloo"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Advises banks on digital transformation roadmaps. Wrote TypeScript and Node.js prototypes for client proofs of concept; has not owned a production system after handover."
+ },
+ {
+  "id": "67dd5f04e2b060f9",
+  "name": "Xavier Lim",
+  "headline": "Technology Consultant at Crestline Advisory",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/67dd5f04e2b060f9",
+  "workHistory": [
+   {
+    "title": "Technology Consultant",
+    "company": "Crestline Advisory",
+    "from": "2019-02"
+   },
+   {
+    "title": "Business Analyst",
+    "company": "Meridian Partners",
+    "from": "2016-01",
+    "to": "2019-04"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "University of Melbourne"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Advises banks on digital transformation roadmaps. Wrote TypeScript and Node.js prototypes for client proofs of concept; has not owned a production system after handover."
+ },
+ {
+  "id": "2386312210674791",
+  "name": "Yuki Goh",
+  "headline": "Technology Consultant at Meridian Partners",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/2386312210674791",
+  "workHistory": [
+   {
+    "title": "Technology Consultant",
+    "company": "Meridian Partners",
+    "from": "2019-05"
+   },
+   {
+    "title": "Business Analyst",
+    "company": "Aldridge Consulting",
+    "from": "2016-04",
+    "to": "2019-09"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Comp. Computer Science",
+    "institution": "University of Waterloo"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Advises banks on digital transformation roadmaps. Wrote TypeScript and Node.js prototypes for client proofs of concept; has not owned a production system after handover."
+ },
+ {
+  "id": "9b428c14cf2f8f51",
+  "name": "Zara Haddad",
+  "headline": "Junior Developer, React and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/9b428c14cf2f8f51",
+  "workHistory": [
+   {
+    "title": "Junior Developer",
+    "company": "Nimbus Freight",
+    "from": "2025-06"
+   },
+   {
+    "title": "Software Engineer Intern",
+    "company": "Brightcart",
+    "from": "2024-07",
+    "to": "2025-05"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Comp. Computer Science",
+    "institution": "Delft University of Technology"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Graduated 2025. Built a React front end and small Node.js endpoints during an internship."
+ },
+ {
+  "id": "936d81a1312a0a68",
+  "name": "Aiden Ng",
+  "headline": "Junior Developer, React and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/936d81a1312a0a68",
+  "workHistory": [
+   {
+    "title": "Junior Developer",
+    "company": "Orbit Ledger",
+    "from": "2025-04"
+   },
+   {
+    "title": "Software Engineer Intern",
+    "company": "Quanta Health",
+    "from": "2024-06",
+    "to": "2025-04"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Comp. Computer Science",
+    "institution": "Nanyang Technological University"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Graduated 2025. Built a React front end and small Node.js endpoints during an internship."
+ },
+ {
+  "id": "5eb5c15adf50daef",
+  "name": "Bea Lee",
+  "headline": "Junior Developer, React and Node.js",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/5eb5c15adf50daef",
+  "workHistory": [
+   {
+    "title": "Junior Developer",
+    "company": "Brightcart",
+    "from": "2025-02"
+   },
+   {
+    "title": "Software Engineer Intern",
+    "company": "Nimbus Freight",
+    "from": "2024-05",
+    "to": "2025-03"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "University of Melbourne"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Graduated 2025. Built a React front end and small Node.js endpoints during an internship."
+ },
+ {
+  "id": "0485266c2145c80c",
+  "name": "Caleb Ito",
+  "headline": "Staff Backend Engineer, TypeScript and Node.js",
+  "location": "Kuala Lumpur, Malaysia",
+  "profileUrl": "https://example.com/sample-profiles/0485266c2145c80c",
+  "workHistory": [
+   {
+    "title": "Staff Backend Engineer",
+    "company": "Nimbus Freight",
+    "from": "2020-07"
+   },
+   {
+    "title": "Senior Engineer",
+    "company": "Parcelly",
+    "from": "2016-09",
+    "to": "2020-08"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Sc. Information Systems",
+    "institution": "Singapore Management University"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Staff engineer at Nimbus Freight (Series B, 80 people). TypeScript and Node.js backends; Rust for the pricing service. Proposed and led the booking engine from idea to launch; now the main revenue feature."
+ },
+ {
+  "id": "f6a6a66846347b4b",
+  "name": "Devi Koh",
+  "headline": "Staff Backend Engineer, TypeScript and Node.js",
+  "location": "Jakarta, Indonesia",
+  "profileUrl": "https://example.com/sample-profiles/f6a6a66846347b4b",
+  "workHistory": [
+   {
+    "title": "Staff Backend Engineer",
+    "company": "Kelp Robotics",
+    "from": "2020-01"
+   },
+   {
+    "title": "Senior Engineer",
+    "company": "Lumen Pay",
+    "from": "2016-05",
+    "to": "2020-06"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "Delft University of Technology"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Staff engineer at Kelp Robotics (Series A, 35 people). TypeScript and Node.js backends; Took the fleet tracking API from a blank repo to 50k users as the only backend engineer."
+ },
+ {
+  "id": "a14b1624cdf3aa11",
+  "name": "Ethan Chua",
+  "headline": "Staff Backend Engineer, TypeScript and Node.js",
+  "location": "Ho Chi Minh City, Vietnam",
+  "profileUrl": "https://example.com/sample-profiles/a14b1624cdf3aa11",
+  "workHistory": [
+   {
+    "title": "Staff Backend Engineer",
+    "company": "Tidewater Labs",
+    "from": "2020-01"
+   },
+   {
+    "title": "Senior Engineer",
+    "company": "Quanta Health",
+    "from": "2016-05",
+    "to": "2020-04"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "University of Melbourne"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Staff engineer at Tidewater Labs (seed-stage, 12 people). TypeScript and Node.js backends; Owned the merchant onboarding flow end to end: scoped it with the founders, designed the API, shipped it, and ran it in production."
+ },
+ {
+  "id": "15146bc2d6524bc0",
+  "name": "Fiona Kumar",
+  "headline": "Staff Backend Engineer, TypeScript and Node.js",
+  "location": "Bangalore, India",
+  "profileUrl": "https://example.com/sample-profiles/15146bc2d6524bc0",
+  "workHistory": [
+   {
+    "title": "Staff Backend Engineer",
+    "company": "Kelp Robotics",
+    "from": "2020-04"
+   },
+   {
+    "title": "Senior Engineer",
+    "company": "Saltbox AI",
+    "from": "2016-04",
+    "to": "2020-08"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "University of Waterloo"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Staff engineer at Kelp Robotics (Series A, 35 people). TypeScript and Node.js backends; Rust for the pricing service. Implemented tickets on the the checkout product squad following the tech lead's design."
+ },
+ {
+  "id": "d8507244e1f75dc5",
+  "name": "Hugo Wong",
+  "headline": "Staff Backend Engineer, TypeScript and Node.js",
+  "location": "Manila, Philippines",
+  "profileUrl": "https://example.com/sample-profiles/d8507244e1f75dc5",
+  "workHistory": [
+   {
+    "title": "Staff Backend Engineer",
+    "company": "Nimbus Freight",
+    "from": "2020-04"
+   },
+   {
+    "title": "Senior Engineer",
+    "company": "Saltbox AI",
+    "from": "2016-05",
+    "to": "2020-06"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Comp. Computer Science",
+    "institution": "University of Melbourne"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Staff engineer at Nimbus Freight (Series B, 80 people). TypeScript and Node.js backends; Took the merchant onboarding flow from a blank repo to 50k users as the only backend engineer."
+ },
+ {
+  "id": "2a0751e9a4cd23bb",
+  "name": "Isla Teo",
+  "headline": "Staff Backend Engineer, TypeScript and Node.js",
+  "location": "Sydney, Australia",
+  "profileUrl": "https://example.com/sample-profiles/2a0751e9a4cd23bb",
+  "workHistory": [
+   {
+    "title": "Staff Backend Engineer",
+    "company": "Orbit Ledger",
+    "from": "2020-07"
+   },
+   {
+    "title": "Senior Engineer",
+    "company": "Kelp Robotics",
+    "from": "2016-03",
+    "to": "2020-08"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "University of Melbourne"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Staff engineer at Orbit Ledger (Series A, 35 people). TypeScript and Node.js backends; Implemented tickets on the the claims portal squad following the tech lead's design."
+ },
+ {
+  "id": "6eab4d6ba4019b8a",
+  "name": "Jun Fischer",
+  "headline": "Staff Backend Engineer, TypeScript and Node.js",
+  "location": "Kuala Lumpur, Malaysia",
+  "profileUrl": "https://example.com/sample-profiles/6eab4d6ba4019b8a",
+  "workHistory": [
+   {
+    "title": "Staff Backend Engineer",
+    "company": "Saltbox AI",
+    "from": "2020-06"
+   },
+   {
+    "title": "Senior Engineer",
+    "company": "Fernweh Travel",
+    "from": "2016-04",
+    "to": "2020-02"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "Nanyang Technological University"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Staff engineer at Saltbox AI (Series B, 80 people). TypeScript and Node.js backends; Rust for the pricing service. Took the booking engine from a blank repo to 50k users as the only backend engineer."
+ },
+ {
+  "id": "d57768f5cd68891f",
+  "name": "Kai Rahman",
+  "headline": "Staff Backend Engineer, TypeScript and Node.js",
+  "location": "Jakarta, Indonesia",
+  "profileUrl": "https://example.com/sample-profiles/d57768f5cd68891f",
+  "workHistory": [
+   {
+    "title": "Staff Backend Engineer",
+    "company": "Orbit Ledger",
+    "from": "2020-09"
+   },
+   {
+    "title": "Senior Engineer",
+    "company": "Quanta Health",
+    "from": "2016-06",
+    "to": "2020-05"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "M.Sc. Computer Science",
+    "institution": "Tsinghua University"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Staff engineer at Orbit Ledger (Series B, 80 people). TypeScript and Node.js backends; Owned the payouts service end to end: scoped it with the founders, designed the API, shipped it, and ran it in production."
+ },
+ {
+  "id": "1de3443a2b286968",
+  "name": "Leo Park",
+  "headline": "Data Engineer, Python and Spark",
+  "location": "Kuala Lumpur, Malaysia",
+  "profileUrl": "https://example.com/sample-profiles/1de3443a2b286968",
+  "workHistory": [
+   {
+    "title": "Data Engineer",
+    "company": "Kelp Robotics",
+    "from": "2021-05"
+   },
+   {
+    "title": "Analytics Engineer",
+    "company": "Lumen Pay",
+    "from": "2019-08",
+    "to": "2021-01"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "University of Melbourne"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Builds data pipelines in Python and Spark at Kelp Robotics (seed-stage, 12 people). Some Node.js for internal APIs."
+ },
+ {
+  "id": "56cea39447e76d35",
+  "name": "Mei Moreau",
+  "headline": "Data Engineer, Python and Spark",
+  "location": "Singapore",
+  "profileUrl": "https://example.com/sample-profiles/56cea39447e76d35",
+  "workHistory": [
+   {
+    "title": "Data Engineer",
+    "company": "Lumen Pay",
+    "from": "2021-08"
+   },
+   {
+    "title": "Analytics Engineer",
+    "company": "Tidewater Labs",
+    "from": "2019-03",
+    "to": "2021-09"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Sc. Information Systems",
+    "institution": "University of Melbourne"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Builds data pipelines in Python and Spark at Lumen Pay (Series B, 80 people). Some Node.js for internal APIs."
+ },
+ {
+  "id": "02cfc218dc54ac07",
+  "name": "Noah Singh",
+  "headline": "Data Engineer, Python and Spark",
+  "location": "Ho Chi Minh City, Vietnam",
+  "profileUrl": "https://example.com/sample-profiles/02cfc218dc54ac07",
+  "workHistory": [
+   {
+    "title": "Data Engineer",
+    "company": "Fernweh Travel",
+    "from": "2021-09"
+   },
+   {
+    "title": "Analytics Engineer",
+    "company": "Kelp Robotics",
+    "from": "2019-03",
+    "to": "2021-09"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "M.Sc. Computer Science",
+    "institution": "Singapore Management University"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Builds data pipelines in Python and Spark at Fernweh Travel (Series B, 80 people). Some Node.js for internal APIs."
+ },
+ {
+  "id": "64b81d39f8713a89",
+  "name": "Olive Silva",
+  "headline": "Data Engineer, Python and Spark",
+  "location": "Bangalore, India",
+  "profileUrl": "https://example.com/sample-profiles/64b81d39f8713a89",
+  "workHistory": [
+   {
+    "title": "Data Engineer",
+    "company": "Quanta Health",
+    "from": "2021-08"
+   },
+   {
+    "title": "Analytics Engineer",
+    "company": "Orbit Ledger",
+    "from": "2019-04",
+    "to": "2021-07"
+   }
+  ],
+  "educationHistory": [
+   {
+    "degree": "B.Eng. Computer Engineering",
+    "institution": "Tsinghua University"
+   }
+  ],
+  "summary": "[Sample profile, fictional person] Builds data pipelines in Python and Spark at Quanta Health (Series B, 80 people). Some Node.js for internal APIs."
+ }
+]

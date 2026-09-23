@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hiring Orbit</title>
+  <link rel="stylesheet" href="/recruiting.css">
+  <script src="/recruiting.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div>
+      <p class="eyebrow">Personal Context Agent · Hiring</p>
+      <h1 id="role-title">Who do you need?</h1>
+      <p id="status-line" class="status-line"></p>
+    </div>
+    <div class="top-actions" id="top-actions" hidden>
+      <span id="clock" class="clock"></span>
+      <button type="button" class="ghost" id="fast-forward" title="Simulate a week passing">+1 week</button>
+      <a class="ghost" id="gmail" href="/api/recruiting/gmail/connect">Connect Gmail</a>
+      <button type="button" class="ghost danger-text" id="reset">Start over</button>
+    </div>
+  </header>
+
+  <p id="error" class="banner error" role="alert" hidden></p>
+
+  <!-- Stage 1: state the need -->
+  <section id="intake" class="intake" hidden>
+    <form id="intake-form">
+      <label for="requirement" class="visually-hidden">Describe the role</label>
+      <textarea id="requirement" rows="5" placeholder="Say it the way you would to a friend. For example: I need a founding backend engineer in Singapore, strong in TypeScript and Node, has shipped product at a startup. Rust would be a bonus."></textarea>
+      <div class="intake-row">
+        <label class="file-button">
+          <input type="file" id="jd-file" accept=".txt,.md,.pdf,.docx">
+          <span>Or upload a job description</span>
+        </label>
+        <button type="submit" class="primary">Draft criteria</button>
+      </div>
+    </form>
+  </section>
+
+  <!-- Stage 2: confirm criteria once -->
+  <section id="review" class="review" hidden>
+    <p class="lede">Here is how I would judge people. Change anything, then confirm.</p>
+    <ul id="draft-criteria" class="draft-criteria"></ul>
+    <button type="button" class="link" id="add-criterion">+ Add a criterion</button>
+    <div id="refused" class="banner warn" hidden></div>
+    <div class="review-actions">
+      <button type="button" class="primary" id="confirm">Confirm and search</button>
+    </div>
+  </section>
+
+  <!-- Stage 3: the orbit -->
+  <main id="board" class="board" hidden>
+    <section class="orbit-wrap" aria-label="Candidate orbit">
+      <svg id="orbit" viewBox="-500 -500 1000 1000" role="img" aria-labelledby="orbit-title">
+        <title id="orbit-title">Candidates arranged by match: strongest at the centre</title>
+      </svg>
+      <ol class="legend" aria-label="Rings">
+        <li><i class="swatch s100"></i>Centre: meets everything</li>
+        <li><i class="swatch s75"></i>Middle: every must, some nice missing</li>
+        <li><i class="swatch s50"></i>Outer: one must missing</li>
+      </ol>
+      <p id="sample-note" class="sample-note" hidden>Sample profiles: fictional people, shown because no Exa key is set.</p>
+    </section>
+
+    <aside class="side">
+      <div id="proposals"></div>
+
+      <section class="criteria-panel">
+        <h2>Looking for</h2>
+        <ul id="criteria" class="chips"></ul>
+      </section>
+
+      <section id="detail" class="detail" hidden></section>
+
+      <form id="say-form" class="say">
+        <label for="say" class="visually-hidden">Tell the agent</label>
+        <textarea id="say" rows="2" placeholder="Tell me anything: &quot;remote is fine after all&quot;, &quot;pass on Ben, too corporate&quot;, &quot;Aria replied, free Tuesday&quot;, or ask why a criterion exists."></textarea>
+        <button type="submit" class="primary">Send</button>
+      </form>
+      <p id="agent-reply" class="agent-reply" aria-live="polite"></p>
+    </aside>
+  </main>
+</body>
+</html>

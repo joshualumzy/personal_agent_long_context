@@ -11,11 +11,16 @@ import {
   CONSENT_POLICY_VERSION,
   type MemoryProvider,
 } from "./domain.js";
+import type { GmailClient } from "./recruiting/gmail.js";
+import { registerRecruitingRoutes } from "./recruiting/routes.js";
+import type { RecruitingService } from "./recruiting/service.js";
 
 export interface BuildAppOptions extends ApplicationOptions {
   memory: MemoryProvider;
   /** Fastify logger configuration. Tests pass a stream to capture output. */
   logger?: FastifyServerOptions["logger"];
+  /** The recruiting direction (S3). Omitted, its routes are not registered. */
+  recruiting?: { service: RecruitingService; gmail: GmailClient | null };
 }
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
@@ -90,6 +95,13 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.get("/", serve("index.html", "text/html; charset=utf-8"));
   app.get("/app.js", serve("app.js", "text/javascript; charset=utf-8"));
   app.get("/styles.css", serve("styles.css", "text/css; charset=utf-8"));
+
+  if (options.recruiting) {
+    registerRecruitingRoutes(app, options.recruiting.service, options.recruiting.gmail);
+    app.get("/recruiting", serve("recruiting.html", "text/html; charset=utf-8"));
+    app.get("/recruiting.js", serve("recruiting.js", "text/javascript; charset=utf-8"));
+    app.get("/recruiting.css", serve("recruiting.css", "text/css; charset=utf-8"));
+  }
 
   app.addHook("onClose", async () => {
     await options.memory.close?.();

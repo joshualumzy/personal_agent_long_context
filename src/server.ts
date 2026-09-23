@@ -4,6 +4,7 @@ import { LettaMemoryProvider } from "./adapters/letta-memory.js";
 import type { MemoryProvider } from "./domain.js";
 import { buildApp } from "./http-app.js";
 import { lettaOptionsFromEnvironment } from "./letta-config.js";
+import { recruitingFromEnvironment } from "./recruiting/config.js";
 
 try {
   loadEnvFile();
@@ -21,7 +22,21 @@ function memoryProviderFromEnvironment(): MemoryProvider {
   return new LettaMemoryProvider(lettaOptionsFromEnvironment(process.env));
 }
 
-const app = buildApp({ memory: memoryProviderFromEnvironment(), logger: true });
+const memory = memoryProviderFromEnvironment();
+let logRecruitingFailure: (context: string, error: unknown) => void = () => {};
+const recruiting = recruitingFromEnvironment(process.env, memory, (context, error) =>
+  logRecruitingFailure(context, error),
+);
+const app = buildApp({
+  memory,
+  logger: true,
+  ...(recruiting ? { recruiting } : {}),
+});
+logRecruitingFailure = (context, error) =>
+  app.log.error(
+    { context, reason: error instanceof Error ? error.message : String(error) },
+    "Recruiting failure",
+  );
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const host = process.env.HOST ?? "127.0.0.1";
 

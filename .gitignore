@@ -27,3 +27,6 @@ secrets.*.json
 .idea/
 *.swp
 *.swo
+
+# Recruiting (S3): candidate records, Gmail token, LinkedIn browser profile
+data/

@@ -260,3 +260,7 @@ maker needs a companion agent whose Memory is explicit and inspectable,
 whose safety boundaries are visible, and whose behavior is measurable. The
 Memory panel, the correlation identifiers, the Prohibited Data gate, and the
 Memora gate exist so the agent can be checked rather than trusted.
+
+## Recruiting direction (S3)
+
+A hiring agent for small-company founders, built on the same Memory. Design, setup, and verification notes: [docs/s3-recruiting.md](docs/s3-recruiting.md). Page: `/recruiting`.
