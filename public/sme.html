@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Ask evidence-backed questions across synthetic SME company records." />
+    <title>SME Context Agent</title>
+    <link rel="stylesheet" href="/sme.css" />
+    <script src="/vendor/marked.js" defer></script>
+    <script src="/vendor/dompurify.js" defer></script>
+    <script src="/sme.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <p class="eyebrow">SME Context Agent</p>
+        <h1>Find the context behind the work.</h1>
+          <p>
+          Ask across company artifacts and your retained personal context. Inspect the company evidence behind every answer. This prototype
+          uses employee-visible synthetic records from OrgForge; evaluation oracle data is excluded.
+        </p>
+      </header>
+
+      <section class="employee-card" aria-label="Current employee">
+        <div class="avatar" aria-hidden="true">J</div>
+        <div>
+          <strong>Jax</strong>
+          <span>Backend Engineer · Engineering Backend</span>
+        </div>
+        <span class="read-only">Read-only agent</span>
+      </section>
+
+      <section class="workspace">
+        <form id="question-form" novalidate>
+          <label for="question">What do you need to understand?</label>
+          <textarea
+            id="question"
+            name="question"
+            rows="4"
+            maxlength="2000"
+            placeholder="Why did this issue become urgent, and what evidence supports that?"
+            required
+          ></textarea>
+          <div class="form-footer">
+            <p>The agent can search artifacts and follow their explicit relationships.</p>
+            <button id="ask-button" type="submit">Investigate</button>
+          </div>
+          <output id="status" aria-live="polite"></output>
+        </form>
+
+        <article id="answer" class="answer" aria-live="polite" hidden>
+          <p class="answer-label">Evidence-backed answer</p>
+          <div id="answer-text"></div>
+          <p id="trace" class="trace"></p>
+        </article>
+
+        <section id="sources-section" class="sources" hidden aria-labelledby="sources-heading">
+          <div class="section-heading">
+            <div>
+              <p class="answer-label">Evidence</p>
+              <h2 id="sources-heading">Sources used</h2>
+            </div>
+          </div>
+          <div id="sources-list"></div>
+        </section>
+
+        <section id="memory-section" class="sources" hidden aria-labelledby="memory-heading">
+          <p class="answer-label">Personal memory</p>
+          <h2 id="memory-heading">Context considered</h2>
+          <p id="memory-answer"></p>
+          <p id="memory-sources" class="trace"></p>
+        </section>
+      </section>
+
+      <dialog id="source-dialog">
+        <button id="close-source" class="close" type="button" aria-label="Close source">×</button>
+        <p id="source-type" class="answer-label"></p>
+        <h2 id="source-title"></h2>
+        <p id="source-meta" class="trace"></p>
+        <pre id="source-body"></pre>
+      </dialog>
+    </main>
+  </body>
+</html>

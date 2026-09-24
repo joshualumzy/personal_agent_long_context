@@ -1,87 +1,72 @@
-# Personal Context Agent MVP
+# SME Employee Context Agent MVP
 
-[English](./mvp.md) | [简体中文](./mvp.zh-CN.md)
-
-This document is the current source of truth for the course and hackathon MVP. Research notes under `docs/research/` explore broader production options; when they recommend more infrastructure than this document, this document takes precedence for the MVP.
+This document is the source of truth for the course and hackathon MVP. Earlier transcript-first code and Memora results remain in the repository as prior prototype evidence; they are not evidence for this product direction.
 
 ## Outcome
 
-Demonstrate that a personal agent can ingest deliberately submitted transcripts, retain useful context over time, apply later updates or cancellations, and answer using the user's current information without resurfacing stale information.
+Demonstrate that an SME employee can ask a question spanning fragmented company systems and receive a concise answer supported by inspectable Company Evidence, with explicit uncertainty when evidence is insufficient.
 
-The same product supports two submission narratives:
+## MVP workflow
 
-- **IT5007:** a working full-stack application with meaningful backend integration, testing, documentation, and evaluation.
-- **Show Me Your Agents:** an SME-relevant personal context workflow with explicit memory, safety boundaries, inspectability, and measurable results.
+1. Import employee-visible OrgForge Company Artifacts into PostgreSQL.
+2. Exclude the Evaluation Oracle by construction.
+3. Retrieve the demonstration user's personal context from Letta, scoped to that user.
+4. Use hybrid keyword and vector retrieval over Company Evidence, then let a live SoCLaaS model follow Related Artifacts.
+5. Return an answer whose company factual claims cite only retrieved Company Evidence.
+6. Let the employee inspect each cited Company Artifact and see the separately labelled personal-memory context used.
 
 ## Architecture
 
 ```text
-Frontend
-   |
-Thin server-side adapter
-   |
-Self-hosted Letta App Server on AWS
-   |
-Configured model provider
+Browser
+  -> Fastify application
+     -> unified agent harness
+        -> Letta user-scoped Personal Memory
+        -> live SoCLaaS tool loop
+           -> PostgreSQL hybrid keyword + vector retrieval
+           -> employee-visible OrgForge artifacts only
 ```
 
-Letta owns persistent memory in the MVP. The application does not add a separate canonical memory database, typed memory state machine, deletion ledger, or provider-neutral memory service unless evaluation demonstrates a concrete need.
+The application is a modular monolith. PostgreSQL stores Company Evidence, chunks, explicit artifact links, and employee records. SoCLaaS performs reasoning and tool selection; deterministic server code validates tools and sources during the live request without retaining agent-run history.
 
-The thin adapter is limited to responsibilities required at the application boundary:
+Letta stores Personal Memory only; it never stores the OrgForge corpus. PostgreSQL with pgvector stores Company Evidence vectors alongside full-text search. The harness keeps personal-memory context visibly separate from inspectable Company Evidence and validates that company citations were retrieved in the current run.
 
-- keep credentials and Letta administration away from the browser;
-- accept a transcript with `user_id`, `recorded_at`, and a source identifier;
-- enforce the consent attestation and basic prohibited-data gate;
-- route each request to the correct Letta agent;
-- expose transcript ingestion, querying, memory inspection, and evaluation traces.
+## Runtime data boundary
 
-Local Letta may be used during development and evaluation. AWS deployment is a delivery concern and does not change the product boundary.
+Allowed runtime inputs are declared Company Artifact types such as Slack, Jira, Confluence, email, Zoom transcripts, pull requests, alerts, invoices, CRM artifacts, surveys, and support tickets.
 
-## User flow
+The runtime database must reject:
 
-1. A demonstration user confirms the consent attestation and submits a dated transcript.
-2. The adapter rejects obvious prohibited data and sends the accepted transcript to that user's Letta agent.
-3. The user can inspect the context Letta retained and ask questions about it.
-4. A later transcript may update or cancel earlier information.
-5. The agent answers with the current information and excludes superseded information.
+- `sim_event` and `sim_config` rows;
+- `simulation_snapshot.json`;
+- `assignment_scores.parquet`;
+- `domain_registry.json`;
+- Datadog metric time series and any expected-answer files.
 
-The MVP is transcript-first. Audio upload and transcription are stretch goals after the memory workflow works end to end.
+Those sources may be read only by a separate evaluation runner that cannot be called by the agent.
 
-## Evaluation gate
+## MVP acceptance criteria
 
-Memora is the first evaluation contract for native Letta memory, not the product interface.
-
-1. Build the minimal Letta ingestion and query adapter.
-2. Run approximately 15–25 mutation-heavy Memora questions covering updates, cancellations, long histories, and stale-information exclusion.
-3. Keep benchmark operation labels, expected answers, and scoring evidence outside the agent input.
-4. Report the applicable Memora presence and forgetting scores, plus obvious latency or cost constraints.
-5. Continue with Letta-owned memory when the result is adequate for the demo. Investigate application-owned memory only when a recurring, product-relevant failure justifies it.
-
-A complete weekly persona, the full 600-question benchmark, multiple Letta memory configurations, audio evaluation, and additional baselines are optional extensions rather than MVP gates.
-
-## In scope
-
-- one demonstration user, with `user_id` present on every request;
-- deliberate upload of synthetic, staged-consent, or first-party transcripts;
-- persistent native Letta memory;
-- later updates and cancellations;
-- querying and memory inspection;
-- a consent attestation and basic prohibited-data filtering;
-- a small, declared Memora evaluation slice;
-- enough traces and screenshots to explain the system's behavior.
+- One documented command starts PostgreSQL and one applies migrations.
+- OrgForge ingestion is repeatable and reports accepted and rejected counts.
+- A database check finds zero Evaluation Oracle records.
+- The browser asks a general company question and receives a live-model response.
+- The agent can use keyword search, vector search, and explicit artifact links.
+- Re-running the embedding backfill is safe and records the configured model for each vector.
+- The unified endpoint scopes Letta context to its declared user and returns Personal Memory separately from Company Evidence.
+- Every returned citation was retrieved during that run and opens in the browser.
+- Unsupported questions produce an Insufficient Evidence response rather than invented facts.
+- Existing non-live tests and TypeScript checks continue to pass.
 
 ## Deferred
 
-- direct Recording Necklace synchronization;
-- always-on, covert, ambient, or unknown-speaker recording;
-- production multi-user authentication, administration, or sharing;
-- a custom memory database or explicit memory state machine;
-- per-memory approve, edit, and reject workflows;
-- comprehensive PII classification, sensitive-memory vaults, or verified deletion cascades;
-- production-grade privacy, backup, incident-response, and cross-border governance controls;
-- a full Memora reproduction or broad configuration sweep;
-- audio transcription and ASR evaluation unless the core transcript workflow is already complete.
+- production authentication and department-level authorization;
+- production Personal Memory correction and deletion controls;
+- Proposed Action approval and execution;
+- real Slack, Jira, or email integrations;
+- multi-agent orchestration and background autonomy;
+- production privacy, backup, and incident-response controls.
 
 ## Claim boundary
 
-The MVP may claim that it demonstrates continuity over deliberately submitted transcripts and measures whether native Letta memory handles later updates and cancellations. It must not claim production privacy compliance, secure erasure across every system, reliable processing of ambient recordings, or validation of the complete consumer product.
+The MVP may claim that it retrieves across a synthetic, employee-visible company corpus and constrains answers to inspectable evidence. It must not claim validation on real SME data, production authorization, complete prompt-injection resistance, or broad reliability until those properties are separately tested.

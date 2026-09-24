@@ -11,14 +11,24 @@ import {
   CONSENT_POLICY_VERSION,
   type MemoryProvider,
 } from "./domain.js";
+import type { CompanyKnowledge } from "./company-domain.js";
+import type { SoCLaaSCompanyAgent } from "./soclaas-company-agent.js";
 
 export interface BuildAppOptions extends ApplicationOptions {
   memory: MemoryProvider;
+  companyAgent?: SoCLaaSCompanyAgent;
+  companyKnowledge?: CompanyKnowledge;
   /** Fastify logger configuration. Tests pass a stream to capture output. */
   logger?: FastifyServerOptions["logger"];
 }
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
+const markedBrowserBundle = fileURLToPath(
+  new URL("../node_modules/marked/lib/marked.umd.js", import.meta.url),
+);
+const domPurifyBrowserBundle = fileURLToPath(
+  new URL("../node_modules/dompurify/dist/purify.min.js", import.meta.url),
+);
 
 const securityHeaders = {
   "content-security-policy":
@@ -41,6 +51,103 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   });
 
   app.get("/health", async () => ({ status: "ok" }));
+
+  app.post("/api/v1/company/questions", async (request, reply) => {
+    if (!options.companyAgent) {
+      return reply.code(503).send({ message: "The company context agent is not configured." });
+    }
+    const body = request.body;
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      Array.isArray(body) ||
+      typeof (body as Record<string, unknown>).employeeId !== "string" ||
+      typeof (body as Record<string, unknown>).question !== "string"
+    ) {
+      return reply.code(400).send({ message: "employeeId and question are required." });
+    }
+    const employeeId = (body as Record<string, string>).employeeId.trim();
+    const question = (body as Record<string, string>).question.trim();
+    if (!employeeId || !question || question.length > 2_000) {
+      return reply.code(400).send({ message: "Provide a valid employeeId and question." });
+    }
+    try {
+      return await options.companyAgent.answer({ employeeId, question });
+    } catch (error) {
+      request.log.error(
+        { employeeId, reason: error instanceof Error ? error.message : "Unknown failure." },
+        "Company context question failed",
+      );
+      return reply.code(502).send({
+        message: "The company context agent could not complete this question. Please try again.",
+      });
+    }
+  });
+
+  app.post("/api/v1/agent/questions", async (request, reply) => {
+    if (!options.companyAgent) {
+      return reply.code(503).send({ message: "The company context agent is not configured." });
+    }
+    const body = request.body;
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      Array.isArray(body) ||
+      typeof (body as Record<string, unknown>).userId !== "string" ||
+      typeof (body as Record<string, unknown>).employeeId !== "string" ||
+      typeof (body as Record<string, unknown>).question !== "string"
+    ) {
+      return reply.code(400).send({ message: "userId, employeeId, and question are required." });
+    }
+    const userId = (body as Record<string, string>).userId.trim();
+    const employeeId = (body as Record<string, string>).employeeId.trim();
+    const question = (body as Record<string, string>).question.trim();
+    if (!userId || !employeeId || !question || question.length > 2_000) {
+      return reply.code(400).send({ message: "Provide valid userId, employeeId, and question values." });
+    }
+
+    const memoryResult = await application.ask({ userId, question });
+    if (memoryResult.statusCode !== 200 || memoryResult.body.status !== "answered") {
+      return reply.code(memoryResult.statusCode).send(memoryResult.body);
+    }
+    const personalMemory = memoryResult.body;
+    try {
+      const companyAnswer = await options.companyAgent.answer({
+        employeeId,
+        question,
+        ...(personalMemory.sources.length > 0 ? { personalMemory: personalMemory.answer } : {}),
+      });
+      return {
+        ...companyAnswer,
+        personalMemory: {
+          answer: personalMemory.answer,
+          sources: personalMemory.sources,
+        },
+      };
+    } catch (error) {
+      request.log.error(
+        { employeeId, reason: error instanceof Error ? error.message : "Unknown failure." },
+        "Unified agent question failed",
+      );
+      return reply.code(502).send({
+        message: "The agent could not complete this question. Please try again.",
+      });
+    }
+  });
+
+  app.get<{ Params: { sourceId: string } }>(
+    "/api/v1/company/sources/:sourceId",
+    async (request, reply) => {
+      if (!options.companyKnowledge) {
+        return reply.code(503).send({ message: "Company knowledge is not configured." });
+      }
+      const sources = await options.companyKnowledge.sources([request.params.sourceId]);
+      const source = sources[0];
+      return source
+        ? reply.send(source)
+        : reply.code(404).send({ message: "Source not found." });
+    },
+  );
 
   app.get("/api/v1/policy", async () => ({
     policyVersion: CONSENT_POLICY_VERSION,
@@ -86,13 +193,31 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       const content = await readFile(`${publicDirectory}${filename}`);
       return reply.headers(securityHeaders).type(contentType).send(content);
     };
+  const serveFile =
+    (path: string, contentType: string) =>
+    async (_request: unknown, reply: FastifyReply) => {
+      const content = await readFile(path);
+      return reply.headers(securityHeaders).type(contentType).send(content);
+    };
 
   app.get("/", serve("index.html", "text/html; charset=utf-8"));
+  app.get("/sme", serve("sme.html", "text/html; charset=utf-8"));
+  app.get(
+    "/vendor/marked.js",
+    serveFile(markedBrowserBundle, "text/javascript; charset=utf-8"),
+  );
+  app.get(
+    "/vendor/dompurify.js",
+    serveFile(domPurifyBrowserBundle, "text/javascript; charset=utf-8"),
+  );
+  app.get("/sme.js", serve("sme.js", "text/javascript; charset=utf-8"));
+  app.get("/sme.css", serve("sme.css", "text/css; charset=utf-8"));
   app.get("/app.js", serve("app.js", "text/javascript; charset=utf-8"));
   app.get("/styles.css", serve("styles.css", "text/css; charset=utf-8"));
 
   app.addHook("onClose", async () => {
     await options.memory.close?.();
+    await options.companyKnowledge?.close?.();
   });
 
   return app;
