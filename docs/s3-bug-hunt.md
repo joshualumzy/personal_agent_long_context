@@ -210,3 +210,12 @@ Backend (`r2-backend-*.test.ts`)
 - Model output: an unrecognised kind in set_kind flipped nice to must; a
   numeric criterion id discarded the verdict. Fix: strict kinds; numeric ids
   read.
+
+Found while setting up the frontend checks (`r2-own-rate-limit.test.ts`)
+- Under several parallel sessions SoCLaaS answered HTTP 429. The recruiting
+  client retried three times with no pause, so a rate limit failed every
+  attempt, and candidates whose scoring failed stayed unscored until
+  something else triggered scoring. Fix: retries back off (doubling, jitter,
+  Retry-After honoured) and only for 429, 408, 5xx, network errors and
+  malformed replies; at most 6 model calls in flight across all roles;
+  failed scoring is retried after 30 s, up to 3 times.

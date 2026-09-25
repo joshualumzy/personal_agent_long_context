@@ -24,6 +24,17 @@ export interface OpenAiCompatibleOptions {
   model: string;
   timeoutMs?: number;
   fetch?: typeof fetch;
+  /** Model calls in flight at once, shared by every role. */
+  maxConcurrent?: number;
+  /** First pause before a retry; it doubles each time, plus jitter. */
+  retryBaseMs?: number;
+}
+
+/** A failure worth another try: rate limits, server errors, timeouts, the network. */
+class RetryableError extends Error {
+  constructor(message: string, readonly retryAfterMs?: number) {
+    super(message);
+  }
 }
 
 function extractJson(content: string): unknown {
@@ -38,18 +49,42 @@ function extractJson(content: string): unknown {
 
 export class OpenAiCompatibleModel implements JsonModel {
   private readonly fetch: typeof fetch;
+  private inFlight = 0;
+  private readonly waiting: Array<() => void> = [];
 
   constructor(private readonly options: OpenAiCompatibleOptions) {
     this.fetch = options.fetch ?? globalThis.fetch;
   }
 
+  private async slot(): Promise<() => void> {
+    const limit = this.options.maxConcurrent ?? 6;
+    if (this.inFlight >= limit) await new Promise<void>((resolve) => this.waiting.push(resolve));
+    this.inFlight += 1;
+    return () => {
+      this.inFlight -= 1;
+      this.waiting.shift()?.();
+    };
+  }
+
   async json<T>(request: JsonRequest): Promise<T> {
     let lastError: unknown;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
+    const base = this.options.retryBaseMs ?? 1000;
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      if (attempt > 0) {
+        // Back off, doubling with jitter, and honour the server's own Retry-After.
+        const backoff = base * 2 ** (attempt - 1) * (1 + Math.random() * 0.5);
+        const asked = lastError instanceof RetryableError ? lastError.retryAfterMs ?? 0 : 0;
+        await new Promise((resolve) => setTimeout(resolve, Math.min(Math.max(backoff, asked), 30_000)));
+      }
+      const release = await this.slot();
       try {
         return (await this.once(request)) as T;
       } catch (error) {
         lastError = error;
+        // A request the server refuses as malformed will not work on a retry.
+        if (!(error instanceof RetryableError)) break;
+      } finally {
+        release();
       }
     }
     throw new Error(
@@ -60,7 +95,9 @@ export class OpenAiCompatibleModel implements JsonModel {
   }
 
   private async once(request: JsonRequest): Promise<unknown> {
-    const response = await this.fetch(
+    let response: Response;
+    try {
+      response = await this.fetch(
       `${this.options.baseUrl.replace(/\/$/, "")}/chat/completions`,
       {
         method: "POST",
@@ -84,14 +121,27 @@ export class OpenAiCompatibleModel implements JsonModel {
         signal: AbortSignal.timeout(this.options.timeoutMs ?? 120_000),
       },
     );
+    } catch (error) {
+      throw new RetryableError(error instanceof Error ? error.message : String(error));
+    }
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      const status = response.status;
+      if (status === 429 || status === 408 || status >= 500) {
+        const seconds = Number(response.headers.get("retry-after"));
+        throw new RetryableError(`HTTP ${status}`, Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : undefined);
+      }
+      throw new Error(`HTTP ${status}`);
     }
     const body = (await response.json()) as {
       choices?: { message?: { content?: string | null } }[];
     };
     const content = body.choices?.[0]?.message?.content;
-    if (!content) throw new Error("The model returned an empty reply.");
-    return extractJson(content);
+    if (!content) throw new RetryableError("The model returned an empty reply.");
+    try {
+      return extractJson(content);
+    } catch (error) {
+      // Another sample usually comes back well formed.
+      throw new RetryableError(error instanceof Error ? error.message : String(error));
+    }
   }
 }

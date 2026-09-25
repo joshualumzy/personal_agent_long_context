@@ -58,6 +58,9 @@ export interface RecruitingSettings {
   companyName?: string;
   /** One sentence on what the company builds; gives outreach something real to say. */
   companyPitch?: string;
+  /** Pause before candidates whose scoring failed are tried again, and how many times. */
+  rescoreAfterMs: number;
+  rescoreAttempts: number;
 }
 
 export const DEFAULT_SETTINGS: RecruitingSettings = {
@@ -68,6 +71,8 @@ export const DEFAULT_SETTINGS: RecruitingSettings = {
   expandAfterDays: 7,
   retentionDays: 30,
   judgeConcurrency: 8,
+  rescoreAfterMs: 30_000,
+  rescoreAttempts: 3,
 };
 
 export interface RecruitingDependencies {
@@ -549,7 +554,19 @@ export class RecruitingService {
     };
 
     await Promise.all(Array.from({ length: this.settings.judgeConcurrency }, worker));
+    // People left unscored by a failure (a rate limit, an outage) are tried again after a
+    // pause, a few times, instead of waiting for the founder to happen to change something.
+    if (failed.size && !this.disposed && this.rescores < this.settings.rescoreAttempts) {
+      this.rescores += 1;
+      setTimeout(() => {
+        if (!this.disposed) this.settle();
+      }, this.settings.rescoreAfterMs).unref?.();
+    } else if (!failed.size) {
+      this.rescores = 0;
+    }
   }
+
+  private rescores = 0;
 
   // -------------------------------------------------------------- talking
 

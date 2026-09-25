@@ -13,3 +13,4 @@ bfbe439ccbee0544f53ab87d3037d8832523c2f9b66fa63522adab854d71f893  test/regressio
 8ab53c3cb4f9eb338837a96157b0287342ac2aa8c255412ab2d36f3ca0bd9edd  test/regression/r2-backend-fairness.test.ts
 9429201ad1c4f23a6ce082b6b6756e8fca20b313094d786f542b6a1ae5c49636  test/regression/r2-backend-nonbugs.test.ts
 18fc4cc70f18c70d06da4e5f879567dbb7830ae0efa2211e5b7281eadae34cb3  test/regression/r2-backend-routes.test.ts
+be04ee737193f18bb18a64e4af820cf38e0b01d9135be91732a0b38432287601  test/regression/r2-own-rate-limit.test.ts
