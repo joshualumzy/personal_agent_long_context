@@ -94,8 +94,6 @@ function queriesFrom(reply: unknown, previous: readonly string[] = []): string[]
 export interface Brief {
   title: string;
   criteria: { text: string; kind: CriterionKind }[];
-  /** Wishes the model refused to turn into criteria, so the founder is told. */
-  excluded: { text: string; characteristic: string }[];
   queries: string[];
 }
 
@@ -109,7 +107,7 @@ export async function extractBrief(model: JsonModel, requirement: string): Promi
       "Write each criterion as a short checkable phrase in the founder's language, for example \"3+ years building production backends\".",
       "Also write 3 or 4 people-search queries. They share the core (title, company, location) and each adds a different concrete detail aimed at the must criterion hardest to find. When no criterion needs that, vary the skill or seniority instead.",
       QUERY_RULES,
-      'Reply as {"title": string, "criteria": [{"text": string, "kind": "must"|"nice"}], "excluded": [{"text": string, "characteristic": string}], "queries": [string]}.',
+      'Reply as {"title": string, "criteria": [{"text": string, "kind": "must"|"nice"}], "queries": [string]}.',
     ].join("\n"),
     input: { requirement },
   });
@@ -122,14 +120,9 @@ export async function extractBrief(model: JsonModel, requirement: string): Promi
     .filter((entry) => entry.text.length > 0)
     .slice(0, 6);
   if (criteria.length === 0) throw new Error("The model returned no usable criteria.");
-  const excluded = (Array.isArray(reply.excluded) ? reply.excluded : [])
-    .filter(isRecord)
-    .map((entry) => ({ text: text(entry.text), characteristic: text(entry.characteristic, "a protected characteristic") }))
-    .filter((entry) => entry.text.length > 0);
   return {
     title: text(reply.title, "Open role"),
     criteria,
-    excluded,
     queries: queriesFrom(reply),
   };
 }

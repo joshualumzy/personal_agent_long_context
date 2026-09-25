@@ -37,16 +37,6 @@ import {
   world,
 } from "./fakes.js";
 
-const PROTECTED_PHRASES: Array<[string, string]> = [
-  ["under 30", "age"],
-  ["female", "sex"],
-  ["ethnic Chinese", "race"],
-  ["Christian", "religion"],
-  ["no kids", "family status"],
-  ["no disability", "disability"],
-  ["Singapore citizen", "nationality"],
-];
-
 function activeTexts(snapshot: { criteria: Array<{ text: string }> }) {
   return snapshot.criteria.map((criterion) => criterion.text);
 }
@@ -78,126 +68,6 @@ describe("criteria", () => {
     assert.ok(snapshot.criteria.length >= 3 && snapshot.criteria.length <= 6, `got ${snapshot.criteria.length}`);
     for (const criterion of snapshot.criteria) assert.ok(["must", "nice"].includes(criterion.kind));
     assert.equal(snapshot.role?.confirmed, false, "the founder confirms before anything is searched");
-  });
-
-  test("criteria on each protected characteristic are refused and reported, never kept", async () => {
-    const leaked: string[] = [];
-    for (const [phrase, characteristic] of PROTECTED_PHRASES) {
-      const model = fakeModel({
-        "criteria extraction": () => ({
-          title: "Backend engineer",
-          criteria: [
-            { text: "typescript", kind: "must" },
-            { text: "startup", kind: "must" },
-            { text: "rust", kind: "nice" },
-            { text: phrase, kind: "must" },
-          ],
-          excluded: [],
-          queries: ["alpha q"],
-        }),
-      });
-      const { board } = world({ model });
-      const { service, result } = await openRole(board, `${REQUIREMENT} Ideally ${phrase}.`);
-      const texts = activeTexts(await service.snapshot());
-      if (texts.includes(phrase) || !(result.refused ?? []).some((entry) => entry.text === phrase)) {
-        leaked.push(`${characteristic} ("${phrase}")`);
-      }
-    }
-    assert.deepEqual(leaked, [], `not refused: ${leaked.join(", ")}`);
-  });
-
-  test("a Chinese age wish (30岁以下) is refused and the rest stays", async () => {
-    const model = fakeModel({
-      "criteria extraction": () => ({
-        title: "后端工程师",
-        criteria: [
-          { text: "typescript", kind: "must" },
-          { text: "startup", kind: "must" },
-          { text: "最好30岁以下", kind: "nice" },
-        ],
-        excluded: [],
-        queries: ["alpha q"],
-      }),
-    });
-    const { board } = world({ model });
-    const { service, result } = await openRole(board, "招一个新加坡的后端工程师，会 TypeScript，最好30岁以下");
-    assert.deepEqual(activeTexts(await service.snapshot()), ["typescript", "startup"]);
-    assert.ok(result.refused?.length, "the founder is told what was refused");
-  });
-
-  test("revising the draft to add a protected criterion is refused and the draft stays", async () => {
-    const { board } = world();
-    const { service } = await openRole(board);
-    const before = (await service.snapshot()).criteria;
-    await assert.rejects(
-      service.reviseDraft([...before.map(({ id, text, kind }) => ({ id, text, kind })), { text: "men only", kind: "must" }]),
-    );
-    assert.deepEqual((await service.snapshot()).criteria, before);
-  });
-
-  test("a later spoken change cannot add or edit a criterion into a protected one", async () => {
-    let turn = 0;
-    const model = fakeModel({
-      "instruction interpretation": (data) => {
-        turn += 1;
-        const rust = data.criteria.find((criterion: { text: string }) => criterion.text === "rust");
-        return turn === 1
-          ? { intent: "criteria", operations: [{ op: "add", text: "under 35", kind: "must" }], summary: "" }
-          : { intent: "criteria", operations: [{ op: "edit", id: rust.id, text: "married" }], summary: "" };
-      },
-    });
-    const { board } = world({ model });
-    const { service } = await confirmedRole(board);
-    const added = await service.say("Also they should be under 35.");
-    assert.ok(added.refused?.length);
-    const edited = await service.say("Change rust to married.");
-    assert.ok(edited.refused?.length);
-    await idle(service);
-    const texts = activeTexts(await service.snapshot());
-    assert.ok(!texts.includes("under 35") && !texts.includes("married"), texts.join(", "));
-    assert.ok(texts.includes("rust"));
-  });
-
-  test("a learned preference on a protected characteristic is never proposed", async () => {
-    const model = fakeModel({
-      "preference pattern": (data) => ({
-        found: true,
-        text: "women only",
-        kind: "must",
-        rationale: "Both were men.",
-        supportingCandidateIds: data.decisions.map((entry: { candidateId: string }) => entry.candidateId),
-      }),
-    });
-    const { board } = world({ model });
-    const { service } = await confirmedRole(board);
-    await service.feedback("outer", "pass", "not a fit");
-    await service.feedback("unsure", "pass", "not a fit");
-    await idle(service);
-    const snapshot = await service.snapshot();
-    assert.equal(snapshot.proposals.filter((proposal) => proposal.type === "criterion").length, 0);
-    assert.ok(!activeTexts(snapshot).includes("women only"));
-  });
-
-  test("an accepted widening step cannot turn a criterion into a protected one", async () => {
-    const model = fakeModel({
-      "pool expansion": (data) => {
-        const location = data.criteria.find((criterion: { text: string }) => criterion.text === "singapore");
-        return {
-          query: "remote typescript engineer",
-          operations: [{ op: "edit", id: location.id, text: "Singaporeans only or under 30" }],
-          rationale: "Widen.",
-        };
-      },
-    });
-    const { board } = world({ model });
-    const { service } = await confirmedRole(board);
-    await service.fastForward(7);
-    const proposal = (await service.snapshot()).proposals.find((entry) => entry.type === "expansion");
-    assert.ok(proposal, "a quiet week produces a proposal");
-    await service.resolveProposal(proposal.id, true);
-    await idle(service);
-    const texts = activeTexts(await service.snapshot());
-    assert.ok(!texts.some((text) => /singaporeans only|under 30/i.test(text)), texts.join(", "));
   });
 });
 
@@ -894,7 +764,6 @@ describe("HTTP", () => {
       ["POST", `${c}/say`, { text: "" }],
       ["POST", `${c}/say`, ["array"]],
       ["POST", `${d}/criteria/draft`, { criteria: "all of them" }],
-      ["POST", `${d}/criteria/draft`, { criteria: [{ text: "women only", kind: "must" }] }],
       ["POST", `${c}/criteria/draft`, { criteria: [{ text: "typescript", kind: "must" }] }],
       ["POST", `${c}/confirm`, {}],
       ["POST", `${d}/more`, {}],

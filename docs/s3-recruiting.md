@@ -87,7 +87,6 @@ Evaluation: `npm run eval:recruiting:template` writes `eval/recruiting/labels.js
 | `src/recruiting/service.ts` | The state machine: criteria, scoring loop, feedback, proposals, outreach, time |
 | `src/recruiting/agent.ts` | Every model prompt and the validation of its reply |
 | `src/recruiting/tiers.ts` | The 100 / 75 / 50 rule |
-| `src/recruiting/fairness.ts` | The protected-characteristic check, independent of the model |
 | `src/recruiting/intent-memory.ts` | Hiring events into Letta through the existing ingestion path |
 | `src/recruiting/sources.ts`, `contacts.ts`, `gmail.ts` | Exa, Hunter and Prospeo, Gmail |
 | `scripts/linkedin-inbox.ts` | The read-only LinkedIn reader |
