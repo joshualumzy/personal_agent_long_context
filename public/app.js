@@ -869,6 +869,15 @@ chatForm.addEventListener("submit", async (e) => {
       finalPayload.durationMs = typeof finalPayload.durationMs === "number" ? finalPayload.durationMs : clientDurationMs;
       finalPayload.ttftMs = ttftMs;
       if (bubble) {
+        // The server's final answer can hold more than the last streamed step (text the model
+        // wrote alongside a tool call, a translation, a repaired citation): show that.
+        if (typeof finalPayload.answer === "string" && finalPayload.answer.trim() && textContainer) {
+          const rawHtml = marked.parse(normalizeModelMarkdown(finalPayload.answer), { gfm: true, breaks: false });
+          textContainer.innerHTML = linkifyCitations(DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } }));
+          textContainer.querySelectorAll(".inline-citation").forEach((btn) => {
+            btn.addEventListener("click", () => showSource(btn.getAttribute("data-source-id")));
+          });
+        }
         attachAssistantMeta(bubble, finalPayload);
       } else {
         appendAssistantMessage(finalPayload);

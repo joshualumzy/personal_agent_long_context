@@ -289,3 +289,31 @@ must-to-nice change with correct counts.
 Not changed: "50% match" wording (UI), the sample data's example.com
 profile links, import without an Exa key (expected). Reply times of 50 to
 240 s in that run were partly rate limiting caused by parallel test agents.
+
+## Off-script conversations (2026-09-26)
+
+A harness (now `eval/recruiting/chaos/`) ran the real agent and model over
+54 off-script scenarios, twice. Nothing was ever sent, no role was opened
+without a description, every panel pointed at something real, and no email
+was invented. Fixed (`r3-chaos.test.ts`):
+- One rate-limited model call failed the whole chat turn: the chat agent
+  had no retry. Now it backs off like the recruiting client.
+- Text the model wrote alongside a tool call (often the real answer, next
+  to the last panel call) was dropped, leaving a fragment. It is kept, and
+  the chat page shows the server's final answer when streaming ends.
+- Replies written twice are collapsed.
+- A recruiting answer was forced through the company-citation check when a
+  company search had run earlier in the turn, ending in "Insufficient
+  Evidence" or text about the check itself. Once a skill tool ran, the
+  answer is about that skill's state; a repair that talks about the check
+  falls back; the fallback follows the user's language.
+- Chinese questions sometimes got English answers. When that happens the
+  agent is asked once more to answer in Chinese.
+- "Undo that" after a pass was reported as undone while the person stayed
+  closed. Keeping a passed candidate now reopens them.
+- Tiers were reported as the wrong ring; find-more that found nobody was
+  described as still running. The status names rings; find-more says so.
+Not code: asking which role when two are open, and routing candidate
+questions to the recruiting skill, rely on the prompt; the eval measures
+them. Age and citizenship criteria are no longer flagged (owner's
+decision).
