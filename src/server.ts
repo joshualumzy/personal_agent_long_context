@@ -42,6 +42,24 @@ const companyAgent = new SoCLaaSCompanyAgent(companyKnowledge, {
   model: process.env.SOCLAAS_COMPANY_MODEL,
 });
 
+const gatewayUrl = (process.env.LLM_GATEWAY_URL || process.env.LM_GATEWAY_URL)?.replace(/\/$/, "");
+const gatewayApiKey = process.env.LLM_GATEWAY_API_KEY || process.env.LM_GATEWAY_API_KEY;
+const gatewayModel = process.env.LLM_MODEL ?? "global.anthropic.claude-sonnet-4-5-20250929-v1:0";
+
+const sonnetAgent =
+  gatewayUrl && gatewayApiKey
+    ? new SoCLaaSCompanyAgent(companyKnowledge, {
+        apiKey: gatewayApiKey,
+        baseUrl: `${gatewayUrl}/v1`,
+        model: gatewayModel,
+      })
+    : null;
+
+const companyAgents: Record<string, SoCLaaSCompanyAgent> = {
+  soclaas: companyAgent,
+  ...(sonnetAgent ? { sonnet: sonnetAgent } : {}),
+};
+
 const memory = memoryProviderFromEnvironment();
 let logRecruitingFailure: (context: string, error: unknown) => void = () => {};
 const recruiting = recruitingFromEnvironment(process.env, memory, (context, error) =>
@@ -50,6 +68,7 @@ const recruiting = recruitingFromEnvironment(process.env, memory, (context, erro
 const app = buildApp({
   memory,
   companyAgent,
+  companyAgents,
   companyKnowledge,
   conversationStore,
   logger: true,

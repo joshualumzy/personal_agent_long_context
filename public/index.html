@@ -78,10 +78,45 @@
                 <h1 id="current-chat-title">SME Assistant</h1>
               </div>
             </div>
-            <div class="employee-badge">
-              <button type="button" id="inspect-memory-btn" class="pill-btn" title="Inspect what Letta remembers about your working context">
-                🧠 Working Context
-              </button>
+            <div class="header-actions">
+              <!-- Model Selector (Claude / Codex style) -->
+              <div class="model-selector-container" id="model-selector-container">
+                <button type="button" id="model-selector-btn" class="model-selector-btn" aria-haspopup="listbox" aria-expanded="false" title="Switch AI model">
+                  <span class="model-dot-icon" id="model-dot-icon"></span>
+                  <span id="selected-model-name">Qwen 2.5 32B (SoCLaaS)</span>
+                  <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m6 9 6 6 6-6"/>
+                  </svg>
+                </button>
+                <div id="model-dropdown-menu" class="model-dropdown-menu" hidden>
+                  <div class="model-option active" data-model="soclaas">
+                    <div class="model-opt-main">
+                      <div class="model-opt-title">
+                        <strong>Qwen 2.5 32B</strong>
+                        <span class="opt-tag default-tag">Default</span>
+                      </div>
+                      <small class="model-opt-desc">NUS SoCLaaS cluster · High capacity</small>
+                    </div>
+                    <span class="opt-check" aria-hidden="true">✓</span>
+                  </div>
+                  <div class="model-option" data-model="sonnet">
+                    <div class="model-opt-main">
+                      <div class="model-opt-title">
+                        <strong>Claude 3.5 Sonnet</strong>
+                        <span class="opt-tag bedrock-tag">AWS Bedrock</span>
+                      </div>
+                      <small class="model-opt-desc">Fast synthesis via Bedrock gateway</small>
+                    </div>
+                    <span class="opt-check" aria-hidden="true">✓</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="employee-badge">
+                <button type="button" id="inspect-memory-btn" class="pill-btn" title="Inspect what Letta remembers about your working context">
+                  🧠 Working Context
+                </button>
+              </div>
             </div>
           </div>
         </header>

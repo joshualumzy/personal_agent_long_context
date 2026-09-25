@@ -121,6 +121,7 @@ function validateCitations(
 export interface CompanyAgentCallbacks {
   onStatus?: (status: string) => void;
   onToken?: (token: string) => void;
+  onResetTokens?: () => void;
 }
 
 async function streamChatCompletion(
@@ -198,7 +199,7 @@ export class SoCLaaSCompanyAgent {
     private readonly knowledge: CompanyKnowledge,
     private readonly options: SoCLaaSCompanyAgentOptions,
   ) {
-    if (!options.apiKey.trim()) throw new Error("SOCLAAS_API_KEY is required.");
+    if (!options.apiKey?.trim()) throw new Error("API key is required.");
     this.baseUrl = (options.baseUrl ?? "https://soclaas-api.comp.nus.edu.sg/v1").replace(/\/$/, "");
     this.model = options.model ?? "qwen3.8:27b";
     this.maxSteps = options.maxSteps ?? 4;
@@ -294,12 +295,21 @@ export class SoCLaaSCompanyAgent {
             ? { role: "assistant", content: rawContent, tool_calls: calls }
             : { role: "assistant", content: rawContent },
         );
-        if (calls.length === 0) {
+        if (calls.length > 0) {
+          if (isStreaming) {
+            callbacks?.onResetTokens?.();
+            callbacks?.onStatus?.("Investigating additional company evidence…");
+          }
+        } else {
           let answer = rawContent?.trim();
-          if (!answer) throw new Error("SoCLaaS returned an empty answer.");
+          if (!answer) throw new Error("Agent returned an empty answer.");
           const hasPersonalContext = Boolean(input.personalMemory && input.personalMemory.trim().length > 0);
           let citationCheck = validateCitations(answer, retrieved, hasPersonalContext);
           if (citationCheck.problem) {
+            if (isStreaming) {
+              callbacks?.onResetTokens?.();
+              callbacks?.onStatus?.("Refining citations…");
+            }
             messages.push({
               role: "user",
               content: [

@@ -26,6 +26,13 @@ const closeMemoryBtn = document.querySelector("#close-memory");
 const inspectMemoryBtn = document.querySelector("#inspect-memory-btn");
 const memoryItemsList = document.querySelector("#memory-items-list");
 
+// Model selector elements
+const modelSelectorBtn = document.querySelector("#model-selector-btn");
+const modelDropdownMenu = document.querySelector("#model-dropdown-menu");
+const selectedModelName = document.querySelector("#selected-model-name");
+const modelDotIcon = document.querySelector("#model-dot-icon");
+let activeModel = localStorage.getItem("sme_selected_model") || "soclaas";
+
 let activeConversationId = null;
 
 function scrollToBottom() {
@@ -191,6 +198,88 @@ try {
   }
 } catch (_) {}
 
+// Model selector controller
+function updateModelSelectorUI(modelId) {
+  activeModel = modelId;
+  try {
+    localStorage.setItem("sme_selected_model", modelId);
+  } catch (_) {}
+
+  if (selectedModelName) {
+    selectedModelName.textContent =
+      modelId === "sonnet" ? "Claude 3.5 Sonnet" : "Qwen 2.5 32B (SoCLaaS)";
+  }
+  if (modelDotIcon) {
+    modelDotIcon.className = modelId === "sonnet" ? "model-dot-icon sonnet" : "model-dot-icon";
+  }
+  if (modelDropdownMenu) {
+    modelDropdownMenu.querySelectorAll(".model-option").forEach((opt) => {
+      opt.classList.toggle("active", opt.getAttribute("data-model") === modelId);
+    });
+  }
+}
+
+async function initModels() {
+  updateModelSelectorUI(activeModel);
+  try {
+    const res = await fetch("/api/v1/models");
+    if (!res.ok) return;
+    const data = await res.json();
+    const availableIds = data.models.filter((m) => m.available).map((m) => m.id);
+    if (!availableIds.includes(activeModel)) {
+      activeModel = data.default || "soclaas";
+      updateModelSelectorUI(activeModel);
+    }
+
+    if (modelDropdownMenu) {
+      data.models.forEach((m) => {
+        const opt = modelDropdownMenu.querySelector(`[data-model="${m.id}"]`);
+        if (opt) {
+          if (!m.available) {
+            opt.style.opacity = "0.45";
+            opt.style.pointerEvents = "none";
+            opt.title = "Not configured on server";
+          } else {
+            opt.style.opacity = "";
+            opt.style.pointerEvents = "";
+            opt.title = "";
+          }
+        }
+      });
+    }
+  } catch (_) {}
+}
+
+if (modelSelectorBtn && modelDropdownMenu) {
+  modelSelectorBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const isHidden = modelDropdownMenu.hasAttribute("hidden");
+    if (isHidden) {
+      modelDropdownMenu.removeAttribute("hidden");
+      modelSelectorBtn.setAttribute("aria-expanded", "true");
+    } else {
+      modelDropdownMenu.setAttribute("hidden", "");
+      modelSelectorBtn.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  modelDropdownMenu.querySelectorAll(".model-option").forEach((opt) => {
+    opt.addEventListener("click", () => {
+      const model = opt.getAttribute("data-model");
+      if (model) updateModelSelectorUI(model);
+      modelDropdownMenu.setAttribute("hidden", "");
+      modelSelectorBtn.setAttribute("aria-expanded", "false");
+    });
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!modelSelectorBtn.contains(e.target) && !modelDropdownMenu.contains(e.target)) {
+      modelDropdownMenu.setAttribute("hidden", "");
+      modelSelectorBtn.setAttribute("aria-expanded", "false");
+    }
+  });
+}
+
 // Start New Chat
 function startNewChat() {
   activeConversationId = null;
@@ -342,6 +431,17 @@ function attachAssistantMeta(bubble, data) {
 
   const contextTags = document.createElement("div");
   contextTags.className = "context-tags";
+
+  if (data.model) {
+    const modelTag = document.createElement("span");
+    modelTag.className = `context-tag model-badge ${data.model}`;
+    modelTag.textContent = data.model === "sonnet" ? "⚡ Claude Sonnet" : "⚙️ SoCLaaS Qwen";
+    modelTag.title =
+      data.model === "sonnet"
+        ? "Answered using Claude 3.5 Sonnet on AWS Bedrock"
+        : "Answered using Qwen 2.5 32B on NUS SoCLaaS";
+    contextTags.appendChild(modelTag);
+  }
 
   const runtime = formatRuntime(data.durationMs, data.ttftMs);
   if (runtime) {
@@ -497,6 +597,7 @@ async function selectConversation(conversationId, title) {
             sources: msg.metadata?.sources,
             personalMemory: msg.metadata?.personalMemory,
             durationMs: typeof msg.metadata?.durationMs === "number" ? msg.metadata.durationMs : undefined,
+            model: msg.metadata?.model,
           });
         }
       }
@@ -553,6 +654,7 @@ chatForm.addEventListener("submit", async (e) => {
       employeeId: "jax",
       message,
       stream: true,
+      model: activeModel,
     };
     if (activeConversationId) {
       payload.conversationId = activeConversationId;
@@ -626,6 +728,16 @@ chatForm.addEventListener("submit", async (e) => {
             if (waitingStatusText && parsed?.phrase) {
               waitingStatusText.textContent = parsed.phrase;
             }
+          } else if (currentEvent === "reset_tokens") {
+            accumulatedContent = "";
+            if (assistantRow) {
+              assistantRow.remove();
+              assistantRow = null;
+              bubble = null;
+              textContainer = null;
+            }
+            ttftMs = null;
+            startWaitingAnimation();
           } else if (currentEvent === "token") {
             if (ttftMs === null) {
               ttftMs = Math.round(performance.now() - requestStartTime);
@@ -685,5 +797,6 @@ chatForm.addEventListener("submit", async (e) => {
   }
 });
 
-// Load conversations on startup
+// Load conversations and models on startup
 loadConversations();
+initModels();

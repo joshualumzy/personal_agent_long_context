@@ -57,3 +57,75 @@ test("unified route scopes Letta context to the requested user and keeps its sou
   assert.equal(asked[1]?.personalMemory, undefined);
   await app.close();
 });
+
+test("GET /api/v1/models lists configured models and POST /api/v1/agent/questions routes to requested model", async () => {
+  const memory = new DeterministicMemoryProvider();
+  let soclaasCalled = false;
+  let sonnetCalled = false;
+
+  const soclaasAgent = {
+    async answer(): Promise<CompanyAnswer> {
+      soclaasCalled = true;
+      return {
+        answer: "Answer from SoCLaaS. [source:SOC-1]",
+        sources: [{ sourceId: "SOC-1", sourceType: "slack", title: "Chat", excerpt: "Evidence" }],
+        runId: "soclaas-run",
+        toolCalls: [],
+      };
+    },
+  };
+
+  const sonnetAgent = {
+    async answer(): Promise<CompanyAnswer> {
+      sonnetCalled = true;
+      return {
+        answer: "Answer from Sonnet. [source:SON-1]",
+        sources: [{ sourceId: "SON-1", sourceType: "jira", title: "Ticket", excerpt: "Evidence" }],
+        runId: "sonnet-run",
+        toolCalls: [],
+      };
+    },
+  };
+
+  const app = buildApp({
+    memory,
+    companyAgent: soclaasAgent as never,
+    companyAgents: {
+      soclaas: soclaasAgent as never,
+      sonnet: sonnetAgent as never,
+    },
+  });
+
+  const modelsRes = await app.inject({
+    method: "GET",
+    url: "/api/v1/models",
+  });
+  assert.equal(modelsRes.statusCode, 200);
+  const modelsData = modelsRes.json();
+  assert.equal(modelsData.default, "soclaas");
+  assert.equal(modelsData.models.length, 2);
+  assert.equal(modelsData.models.find((m: any) => m.id === "sonnet")?.available, true);
+
+  // Ask with default (or omitted) model -> routes to soclaas
+  const defaultRes = await app.inject({
+    method: "POST",
+    url: "/api/v1/agent/questions",
+    payload: { userId: "jax", employeeId: "jax", question: "Hello" },
+  });
+  assert.equal(defaultRes.statusCode, 200);
+  assert.equal(soclaasCalled, true);
+  assert.equal(defaultRes.json().model, "soclaas");
+
+  // Ask with explicit sonnet model -> routes to sonnet
+  const sonnetRes = await app.inject({
+    method: "POST",
+    url: "/api/v1/agent/questions",
+    payload: { userId: "jax", employeeId: "jax", question: "Hello", model: "sonnet" },
+  });
+  assert.equal(sonnetRes.statusCode, 200);
+  assert.equal(sonnetCalled, true);
+  assert.equal(sonnetRes.json().model, "sonnet");
+  assert.match(sonnetRes.json().answer, /Answer from Sonnet/);
+
+  await app.close();
+});

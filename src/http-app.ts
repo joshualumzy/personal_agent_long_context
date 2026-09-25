@@ -23,6 +23,7 @@ import type { RecruitingService } from "./recruiting/service.js";
 export interface BuildAppOptions extends ApplicationOptions {
   memory: MemoryProvider;
   companyAgent?: SoCLaaSCompanyAgent;
+  companyAgents?: Record<string, SoCLaaSCompanyAgent>;
   companyKnowledge?: CompanyKnowledge;
   conversationStore?: ConversationStore;
   /** Fastify logger configuration. Tests pass a stream to capture output. */
@@ -60,6 +61,31 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   });
 
   app.get("/health", async () => ({ status: "ok" }));
+
+  app.get("/api/v1/models", async () => {
+    const hasSonnet = Boolean(options.companyAgents?.sonnet);
+    return {
+      models: [
+        {
+          id: "soclaas",
+          name: "Qwen 2.5 32B (SoCLaaS)",
+          shortName: "SoCLaaS Qwen",
+          provider: "NUS SoC",
+          badge: "Default",
+          available: Boolean(options.companyAgents?.soclaas || options.companyAgent),
+        },
+        {
+          id: "sonnet",
+          name: "Claude 3.5 Sonnet",
+          shortName: "Claude Sonnet",
+          provider: "AWS Bedrock",
+          badge: "Fast",
+          available: hasSonnet,
+        },
+      ],
+      default: "soclaas",
+    };
+  });
 
   app.post("/api/v1/company/questions", async (request, reply) => {
     if (!options.companyAgent) {
@@ -121,8 +147,21 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       }
     };
 
-    if (!options.companyAgent) {
-      const payload = { message: "The company context agent is not configured." };
+    const requestedModel = (
+      (request.body as Record<string, unknown> | undefined)?.model as string | undefined
+    )?.toLowerCase();
+    const activeAgent =
+      (requestedModel && options.companyAgents?.[requestedModel]) ||
+      options.companyAgents?.soclaas ||
+      options.companyAgent;
+
+    if (!activeAgent) {
+      const payload = {
+        message:
+          requestedModel === "sonnet"
+            ? "The Claude Sonnet model is not configured on this server. Check LLM_GATEWAY_URL and LLM_GATEWAY_API_KEY in .env."
+            : "The company context agent is not configured.",
+      };
       if (isStream) {
         sendEvent("error", payload);
         reply.raw.end();
@@ -197,7 +236,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
 
     try {
-      const companyAnswer = await options.companyAgent.answer(
+      const companyAnswer = await activeAgent.answer(
         {
           employeeId,
           question: message,
@@ -207,11 +246,13 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           ? {
               onStatus: (phrase) => sendEvent("status", { phrase }),
               onToken: (delta) => sendEvent("token", { delta }),
+              onResetTokens: () => sendEvent("reset_tokens", {}),
             }
           : undefined,
       );
 
       const durationMs = Date.now() - turnStartTime;
+      const modelUsed = requestedModel === "sonnet" ? "sonnet" : "soclaas";
 
       if (options.conversationStore && conversationId) {
         await options.conversationStore.appendMessage({
@@ -228,6 +269,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
             runId: companyAnswer.runId,
             toolCalls: companyAnswer.toolCalls,
             durationMs,
+            model: modelUsed,
           },
         });
       }
@@ -241,6 +283,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           memoryUpdated,
         },
         durationMs,
+        model: modelUsed,
       };
 
       if (isStream) {
