@@ -4,6 +4,7 @@ import type { CompanyKnowledge } from "../src/company-domain.js";
 import { checkAvailability, googleAvailability, sgtLabel } from "../src/meetings/availability.js";
 import type { AvailabilityChecker, BusySlot, CandidateAction, MeetingState } from "../src/meetings/domain.js";
 import { ActionDrafter } from "../src/meetings/drafter.js";
+import type { WhenReader } from "../src/meetings/when.js";
 import type { JsonModel } from "../src/recruiting/llm.js";
 
 /** Friday 2026-09-25, 10:00 in Singapore. */
@@ -85,35 +86,34 @@ describe("calendar availability", () => {
     sources: async () => [],
   };
   const model: JsonModel = {
-    json: async <T>() => ({ title: "Review", attendees: [], proposedStart: "2026-09-30T10:00:00+08:00", durationMinutes: 30, notes: "", missing: [] }) as T,
+    json: async <T>() => ({ title: "Review", attendees: [], when: "Wednesday at 10am", durationMinutes: 30, notes: "", missing: [] }) as T,
   };
   const meeting = { meetingId: "m1", title: "t", employeeId: "jax", status: "live", startedAt: NOW.toISOString(), segments: [{ index: 0, speaker: "Jax", text: "Let's review Wednesday at 10am." }], decisions: [], actions: [], trace: [] } as unknown as MeetingState;
+  const wednesdayAtTen: WhenReader = {
+    name: "fake",
+    read: async () => ({ kind: "weekday", weekday: "wed", time: "10:00", unsure: [] }),
+  };
   const candidate: CandidateAction = { kind: "calendar_draft", trigger: { segmentIndex: 0, speaker: "Jax", quote: "Let's review Wednesday at 10am." }, summary: "Review Wednesday 10am", dedupeKey: "calendar_draft:review", details: {} };
 
   test("an invite carries the availability check as notes when the calendar is connected", async () => {
-    const drafter = new ActionDrafter({ model, knowledge, availability: checker({ me: [] }), now: () => NOW });
+    const drafter = new ActionDrafter({ model, knowledge, availability: checker({ me: [] }), now: () => NOW, when: wednesdayAtTen });
     const result = await drafter.draft(candidate, meeting);
-    assert.deepEqual(result.notes, ["You: free at Wed 30 Sept, 10:00."]);
+    assert.deepEqual(result.notes, [
+      '"Wednesday at 10am": Read as Wed 30 Sept, 10:00 (the next one to come).',
+      "You: free at Wed 30 Sept, 10:00.",
+    ]);
     assert.ok(result.lookups?.some((line) => line.startsWith("Checked calendar free/busy")));
   });
 
   test("a calendar that is not connected is never read", async () => {
     const fake = checker({ me: [] }, false);
-    const result = await new ActionDrafter({ model, knowledge, availability: fake, now: () => NOW }).draft(candidate, meeting);
-    assert.equal(result.notes, undefined);
+    const result = await new ActionDrafter({ model, knowledge, availability: fake, now: () => NOW, when: wednesdayAtTen }).draft(candidate, meeting);
+    assert.ok(!result.notes?.some((note) => note.startsWith("You:")));
     assert.equal(fake.asked.length, 0);
   });
 });
 
 describe("calendar drafting guards", () => {
-  test("a start on the wrong weekday is dropped", async () => {
-    const { startMatchesNamedDay } = await import("../src/meetings/drafter.js");
-    // 2026-10-01 is a Thursday in Singapore.
-    assert.equal(startMatchesNamedDay("2026-10-01T15:00:00+08:00", "Let us review next Wednesday at 3pm."), false);
-    assert.equal(startMatchesNamedDay("2026-09-30T15:00:00+08:00", "Let us review next Wednesday at 3pm."), true);
-    assert.equal(startMatchesNamedDay("2026-09-30T15:00:00+08:00", "Let us review at 3pm."), true, "no day named, nothing to check");
-  });
-
   test("an attendee's name becomes their address when the evidence has it", async () => {
     const { resolveAttendees } = await import("../src/meetings/drafter.js");
     const evidence = [{ sourceId: "e1", sourceType: "email", title: "t", excerpt: "Mona Li Technical Account Manager, Kafka mona.li@kafka.com" }];
@@ -125,7 +125,7 @@ describe("missing-information wording", () => {
   test("the day and time are asked for once, however the model words it", async () => {
     const { ActionDrafter } = await import("../src/meetings/drafter.js");
     const model: JsonModel = {
-      json: async <T>() => ({ title: "Sync", attendees: [], proposedStart: "", durationMinutes: 30, notes: "", missing: [{ need: "specific date and time", search: "", person: "" }] }) as T,
+      json: async <T>() => ({ title: "Sync", attendees: [], when: "", durationMinutes: 30, notes: "", missing: [{ need: "specific date and time", search: "", person: "" }] }) as T,
     };
     const knowledge: CompanyKnowledge = {
       employee: async (employeeId) => ({ employeeId, displayName: "E", currentAssignments: [] }),

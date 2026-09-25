@@ -20,6 +20,7 @@ import type {
   TicketPayload,
 } from "./domain.js";
 import { checkAvailability } from "./availability.js";
+import { ModelWhenReader, resolveWhen, type WhenReader } from "./when.js";
 
 /**
  * Turns a candidate commitment into the payload an employee (or, for an
@@ -139,30 +140,8 @@ function meetingDate(meeting: MeetingState): string {
   return `${weekday} ${local.toISOString().slice(0, 10)} (Singapore)`;
 }
 
-const SGT_MS = 8 * 3_600_000;
-const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
-/** The next two weeks as "Wednesday 2026-09-30", so the model reads dates off a list instead of counting. */
-function upcomingDays(meeting: MeetingState): string[] {
-  const start = new Date(meeting.startedAt);
-  if (Number.isNaN(start.getTime())) return [];
-  return Array.from({ length: 14 }, (_, offset) => {
-    const local = new Date(start.getTime() + SGT_MS + (offset + 1) * 86_400_000);
-    return `${WEEKDAYS[local.getUTCDay()]![0]!.toUpperCase()}${WEEKDAYS[local.getUTCDay()]!.slice(1)} ${local.toISOString().slice(0, 10)}`;
-  });
-}
 
-/**
- * The weekday a proposed start falls on must be the one the meeting named:
- * a model that turns "next Wednesday" into a Thursday is caught here, and the
- * time is left for the employee instead.
- */
-export function startMatchesNamedDay(start: string, heard: string): boolean {
-  const named = WEEKDAYS.filter((day) => new RegExp(`\\b${day}\\b`, "i").test(heard));
-  if (named.length !== 1) return true;
-  const local = new Date(new Date(start).getTime() + SGT_MS);
-  return WEEKDAYS[local.getUTCDay()] === named[0];
-}
 
 /**
  * Replaces an attendee's name with their address when the evidence holds an
@@ -179,10 +158,6 @@ export function resolveAttendees(attendees: string[], evidence: Evidence[]): str
   });
 }
 
-/** Only a real date-time is kept; "next Tuesday at 10am" is left for the employee to fill in. */
-function isIsoTime(value: string): boolean {
-  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value) && !Number.isNaN(new Date(value).getTime());
-}
 
 export interface ActionDrafterDeps {
   model: JsonModel;
@@ -196,6 +171,8 @@ export interface ActionDrafterDeps {
   availability?: AvailabilityChecker | null;
   /** For tests; defaults to the real time. */
   now?: () => Date;
+  /** Reads when an invite should be; defaults to the drafting model filling the when form. */
+  when?: WhenReader;
 }
 
 export interface DraftResult {
@@ -265,7 +242,6 @@ function structuralGaps(kind: CandidateAction["kind"], payload: ActionPayload, c
       const gaps: Gap[] = invite.attendees
         .filter((attendee) => !EMAIL_SHAPE.test(attendee))
         .map((attendee) => ({ need: `Email address for ${attendee}`, search: "", person: attendee }));
-      if (!invite.proposedStart) gaps.push({ need: "Day and time for the meeting", search: "", person: "" });
       return gaps;
     }
     default:
@@ -299,7 +275,11 @@ function mergeGaps(...lists: Gap[][]): Gap[] {
 }
 
 export class ActionDrafter {
-  constructor(private readonly deps: ActionDrafterDeps) {}
+  private readonly whenReader: WhenReader;
+
+  constructor(private readonly deps: ActionDrafterDeps) {
+    this.whenReader = deps.when ?? new ModelWhenReader(deps.model);
+  }
 
   /**
    * Drafts once; when the draft lacks something (an address, a date, a
@@ -311,12 +291,12 @@ export class ActionDrafter {
   async draft(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
     const result = await this.draftWithLookups(candidate, meeting);
     if (candidate.kind !== "calendar_draft") return result;
-    const notes = await this.calendarNotes(result.payload as CalendarPayload);
-    if (notes.length === 0) return result;
+    const availability = await this.calendarNotes(result.payload as CalendarPayload);
+    if (availability.length === 0) return result;
     return {
       ...result,
-      notes,
-      lookups: [...(result.lookups ?? []), `Checked calendar free/busy: ${notes.join(" ")}`.slice(0, 300)],
+      notes: [...(result.notes ?? []), ...availability],
+      lookups: [...(result.lookups ?? []), `Checked calendar free/busy: ${availability.join(" ")}`.slice(0, 300)],
     };
   }
 
@@ -334,7 +314,9 @@ export class ActionDrafter {
   private async draftWithLookups(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
     const first = await this.draftOnce(candidate, meeting, []);
     const gaps = mergeGaps(structuralGaps(candidate.kind, first.payload, candidate), first.gaps ?? []);
-    if (gaps.length === 0) return { payload: first.payload, evidence: first.evidence, title: first.title };
+    if (gaps.length === 0) {
+      return { payload: first.payload, evidence: first.evidence, title: first.title, ...(first.notes ? { notes: first.notes } : {}) };
+    }
 
     const { found, lookups } = await this.lookUp(gaps.slice(0, MAX_GAPS_LOOKED_UP), first.evidence);
     const final = found.length > 0 ? await this.draftOnce(candidate, meeting, found) : first;
@@ -345,6 +327,7 @@ export class ActionDrafter {
       evidence: final.evidence,
       title: final.title,
       ...(remaining.length > 0 ? { missing: remaining.map((gap) => gap.need) } : {}),
+      ...(final.notes ? { notes: final.notes } : {}),
       ...(lookups.length > 0 ? { lookups } : {}),
     };
   }
@@ -528,9 +511,9 @@ export class ActionDrafter {
       system: [
         "Write a calendar invite for a meeting commitment heard in a meeting.",
         "attendees are the names or emails actually mentioned. durationMinutes defaults to 30 when the meeting did not say.",
-        "proposedStart is an ISO 8601 time with its offset (for example 2026-10-06T10:00:00+08:00), worked out from meetingDate and the meeting's own words such as \"next Tuesday at 10am\"; take the date from upcomingDays, where each date is listed with its weekday, rather than counting days. Times are Singapore time (+08:00) unless the meeting says otherwise. Leave it empty when the meeting named no day.",
+        "when is the exact words from the meeting that say when it should happen (\"next Tuesday at 10am\", \"下周三下午三点\"), copied, never turned into a date. Use an empty string when the meeting did not say.",
         "When the evidence gives an attendee's email address, list the address instead of the name.",
-        'Reply as {"title": string, "attendees": string[], "proposedStart": string, "durationMinutes": number, "notes": string}. Leave proposedStart or notes as an empty string when unknown.',
+        'Reply as {"title": string, "attendees": string[], "when": string, "durationMinutes": number, "notes": string}. Leave when or notes as an empty string when unknown.',
         MISSING_RULE,
       ].join("\n"),
       input: {
@@ -538,8 +521,6 @@ export class ActionDrafter {
         details: candidate.details,
         triggerQuote: candidate.trigger.quote,
         speaker: candidate.trigger.speaker,
-        meetingDate: meetingDate(meeting),
-        upcomingDays: upcomingDays(meeting),
         meetingExcerpt: heardUpTo(meeting, candidate),
         evidence: evidenceForModel(evidence),
       },
@@ -555,16 +536,31 @@ export class ActionDrafter {
       : [];
     const duration = Number(record.durationMinutes);
     const title = text(record.title) || candidate.summary.slice(0, 78);
-    const proposedStart = text(record.proposedStart);
-    const heard = `${candidate.trigger.quote} ${candidate.summary}`;
+    // The model only copies the words; the when reader fills a closed form
+    // and resolveWhen turns it into a date, so no model ever counts days.
+    const said = text(record.when).trim();
+    const reading = said
+      ? resolveWhen(await this.whenReader.read(said, meetingDate(meeting)), new Date(meeting.startedAt))
+      : null;
     const payload: CalendarPayload = {
       title,
       attendees: resolveAttendees(attendees, evidence),
       durationMinutes: Number.isFinite(duration) && duration > 0 ? duration : 30,
-      ...(isIsoTime(proposedStart) && startMatchesNamedDay(proposedStart, heard) ? { proposedStart } : {}),
+      ...(reading?.start ? { proposedStart: reading.start } : {}),
       ...(text(record.notes) ? { notes: text(record.notes) } : {}),
     };
-    return { payload, evidence, gaps: gapsIn(record), title: `Calendar: ${title}`.slice(0, 120) };
+    const whenGaps: Gap[] = (reading ? reading.missing : ["Day and time for the meeting"]).map((need) => ({
+      need,
+      search: "",
+      person: "",
+    }));
+    return {
+      payload,
+      evidence,
+      gaps: mergeGaps(whenGaps, gapsIn(record)),
+      ...(reading ? { notes: [`"${said}": ${reading.explanation}`] } : {}),
+      title: `Calendar: ${title}`.slice(0, 120),
+    };
   }
 
   private async draftMessage(candidate: CandidateAction, meeting: MeetingState, extra: Evidence[]): Promise<RawDraft> {
