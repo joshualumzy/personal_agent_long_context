@@ -62,6 +62,8 @@ const ACTION_KINDS: ReadonlySet<string> = new Set([
   "hiring_request",
   "ticket_draft",
   "calendar_draft",
+  "message_draft",
+  "doc_draft",
   "escalation",
   "blocked",
 ]);

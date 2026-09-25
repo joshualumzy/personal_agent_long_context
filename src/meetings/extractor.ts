@@ -27,6 +27,8 @@ const CANDIDATE_KINDS: ReadonlySet<string> = new Set([
   "hiring_request",
   "ticket_draft",
   "calendar_draft",
+  "message_draft",
+  "doc_draft",
   "escalation",
 ]);
 
@@ -92,7 +94,7 @@ export class ModelCommitmentExtractor implements CommitmentExtractor {
         "A report of work already done or in progress (\"I already opened the ticket\", \"that's moving\") is not a candidate; only new commitments are.",
         "Offering or promising a discount, credit, refund, payment, or price change is always a candidate action of kind \"escalation\", even when it is phrased as a decision.",
         "A decision is a settled statement such as \"let's go with option B\" or \"we're moving the launch to March\", not a suggestion still under discussion.",
-        'candidate kind is one of "answer_question" (a direct question about company facts or history), "email_draft", "hiring_request", "ticket_draft", "calendar_draft", or "escalation" (only when the commitment gives away or spends money, or signs or changes a contract; security or operational chores such as rotating a key are not escalations). Never propose "flag_conflict"; the system finds conflicts on its own.',
+        'candidate kind is one of "answer_question" (a direct question about company facts or history), "email_draft", "hiring_request", "ticket_draft", "calendar_draft", "message_draft" (a promise to send specific content, such as a date, number, file, or decision, to someone by a quick chat message such as WhatsApp or Teams, not email; a conditional promise ("I will ping you if it changes"), a message to someone in this meeting, or a vague follow-up ("I will clarify with Sarah", "I will check with the team") is not one), "doc_draft" (a promise to write up a new document such as notes, a spec, a proposal, or a checklist; not editing an existing one, and not a hiring need, which is "hiring_request"), or "escalation" (only when the commitment gives away or spends money, or signs or changes a contract; security or operational chores such as rotating a key are not escalations). Never propose "flag_conflict"; the system finds conflicts on its own.',
         "quote must be copied character for character from the cited segment's text. Never paraphrase, translate, or shorten it.",
         "dedupeKey names the underlying commitment so a repeated mention updates the same action instead of duplicating it. If openActions already lists the same commitment, reuse its dedupeKey exactly; two different questions or commitments never share a key. Adding a topic to a message already promised (\"I'll fold that into the same follow-up note\") is the same commitment: reuse its key. Otherwise invent a short new one shaped like \"kind:short-slug\".",
         "details holds whatever drafting will need as plain strings, for example recipient, assignee, amount, date, or the question text.",

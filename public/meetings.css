@@ -167,6 +167,9 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(1.7re
 .badge { display: inline-block; font-size: .72rem; padding: 2px 7px; border-radius: 999px; margin-left: 6px; }
 .badge.simulated { background: var(--warn-bg); color: var(--warn-text); }
 .badge.rejected { background: var(--error-bg); color: var(--error-text); }
+.handoff { font-size: .88rem; }
+.handoff a { color: var(--accent); font-weight: 600; }
+.handoff-status { display: block; font-size: .8rem; color: var(--muted); margin-top: 4px; }
 .hiring-note { font-size: .82rem; color: var(--muted); }
 .hiring-note a { color: var(--accent); }
 .evidence-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }

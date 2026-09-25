@@ -29,6 +29,8 @@ const KIND_LABELS = {
   hiring_request: "Hiring request",
   ticket_draft: "Ticket",
   calendar_draft: "Calendar invite",
+  message_draft: "Chat message",
+  doc_draft: "New document",
   escalation: "Escalation",
   blocked: "Blocked",
 };
@@ -55,6 +57,15 @@ const EDITABLE_FIELDS = {
     { key: "proposedStart", label: "Start (ISO time)", type: "text" },
     { key: "durationMinutes", label: "Duration (minutes)", type: "number" },
   ],
+  message_draft: [
+    { key: "recipient", label: "To", type: "text" },
+    { key: "address", label: "Phone or work email (optional)", type: "text" },
+    { key: "text", label: "Message", type: "textarea" },
+  ],
+  doc_draft: [
+    { key: "title", label: "Title", type: "text" },
+    { key: "body", label: "Draft (Markdown)", type: "textarea" },
+  ],
   hiring_request: [{ key: "requirement", label: "Requirement", type: "textarea" }],
 };
 
@@ -73,6 +84,14 @@ const READONLY_FIELDS = {
     ["reason", "Reason"],
   ],
   blocked: [["reason", "Reason"]],
+  message_draft: [
+    ["recipient", "To"],
+    ["text", "Message"],
+  ],
+  doc_draft: [
+    ["title", "Title"],
+    ["body", "Draft"],
+  ],
 };
 
 const state = {
@@ -87,6 +106,10 @@ const state = {
 // whenever a fresh copy of the action arrives from the server, so an edit
 // always starts from what is actually on record.
 const editDrafts = new Map();
+
+// actionId -> handoff status line, kept outside the cards because a card is
+// rebuilt whenever a fresh copy of its action arrives.
+const handoffStatus = new Map();
 
 // -------------------------------------------------------------- networking
 
@@ -390,6 +413,7 @@ function renderCard(action) {
         action.result.simulated ? h("span", { class: "badge simulated" }, "simulated") : null,
       ),
     );
+    if (action.result.handoffUrl) card.append(renderHandoff(action));
   }
   if (action.status === "rejected") {
     card.append(
@@ -412,6 +436,72 @@ function renderCard(action) {
   if (action.tier === "approval" && action.status === "proposed") card.append(renderApprovalButtons(action));
 
   return card;
+}
+
+/**
+ * The approved action opens in the employee's own, signed-in tool; their
+ * click there is what sends or saves it. A document draft goes to the
+ * clipboard first, since no editor accepts body text in a link. Calendar
+ * invites also offer an .ics file for any other calendar app.
+ */
+function renderHandoff(action) {
+  const { handoffUrl, handoffCopy } = action.result;
+  const status = h("span", { class: "handoff-status" }, handoffStatus.get(action.id) ?? "");
+  const setStatus = (message) => {
+    handoffStatus.set(action.id, message);
+    status.textContent = message;
+  };
+  const open = h(
+    "a",
+    {
+      href: handoffUrl,
+      target: "_blank",
+      rel: "noopener",
+      onclick: handoffCopy
+        ? () => {
+            // The write lands at once, but its promise can stay pending while
+            // the window is in the background, so report success up front and
+            // only correct it on failure.
+            setStatus("Draft copied. Paste it into the new document.");
+            navigator.clipboard
+              .writeText(handoffCopy)
+              .catch(() => setStatus("Could not copy; select the draft above instead."));
+          }
+        : undefined,
+    },
+    handoffCopy ? "Copy draft and open a blank document \u2197" : "Open to confirm \u2197",
+  );
+  const row = h("p", { class: "handoff" }, open);
+  if (action.kind === "calendar_draft") {
+    row.append(" \u00b7 ", h("a", { href: icsDataUrl(action.payload), download: "invite.ics" }, "Download .ics"));
+  }
+  row.append(status);
+  return row;
+}
+
+/** A minimal iCalendar file, for calendar apps with no prefilled-link support. */
+function icsDataUrl(payload) {
+  const stamp = (date) => date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
+  const escape = (value) => String(value).replace(/([\\;,])/g, "\\$1").replace(/\n/g, "\\n");
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//meeting-actions//EN",
+    "BEGIN:VEVENT",
+    `UID:${crypto.randomUUID()}`,
+    `DTSTAMP:${stamp(new Date())}`,
+    `SUMMARY:${escape(payload.title)}`,
+  ];
+  const start = payload.proposedStart ? new Date(payload.proposedStart) : null;
+  if (start && !Number.isNaN(start.getTime())) {
+    lines.push(`DTSTART:${stamp(start)}`, `DTEND:${stamp(new Date(start.getTime() + payload.durationMinutes * 60000))}`);
+  }
+  if (payload.notes) lines.push(`DESCRIPTION:${escape(payload.notes)}`);
+  for (const attendee of payload.attendees) {
+    if (attendee.includes("@")) lines.push(`ATTENDEE:mailto:${attendee}`);
+  }
+  lines.push("END:VEVENT", "END:VCALENDAR");
+  return `data:text/calendar;charset=utf-8,${encodeURIComponent(lines.join("\r\n"))}`;
 }
 
 function renderReadonlyFields(action) {

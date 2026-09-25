@@ -729,6 +729,10 @@ function payloadMatchesKind(kind: ActionKind, payload: ActionPayload): boolean {
       return isStr(record.title) && isStr(record.description);
     case "calendar_draft":
       return isStr(record.title) && isStrArray(record.attendees) && typeof record.durationMinutes === "number";
+    case "message_draft":
+      return isStr(record.recipient) && isStr(record.address) && isStr(record.text);
+    case "doc_draft":
+      return isStr(record.title) && isStr(record.body);
     case "hiring_request":
       return isStr(record.requirement) && record.requirement.length > 0;
     case "escalation":

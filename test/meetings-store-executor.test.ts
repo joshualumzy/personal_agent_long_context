@@ -174,27 +174,22 @@ describe("DispatchingExecutor", () => {
     );
   });
 
-  test("email_draft refuses when email is missing or not connected", async () => {
-    const payload: EmailPayload = { to: "founder@example.com", subject: "Hi", body: "Body" };
-
-    const noEmail = new DispatchingExecutor({});
-    await assert.rejects(
-      () => noEmail.execute(action("a1", { kind: "email_draft", payload }), meeting("m1")),
-      (error: unknown) => {
-        assert.ok(error instanceof MeetingError);
-        assert.equal(error.code, "email_not_connected");
-        assert.equal(error.statusCode, 409);
-        return true;
-      },
-    );
-
+  test("email_draft without a connected mailbox hands off to a prefilled Gmail compose", async () => {
+    const payload: EmailPayload = { to: "founder@example.com", subject: "Hi & bye", body: "Line one\nLine two" };
     const disconnected = new FakeEmail();
     disconnected.isConnected = false;
-    const executor = new DispatchingExecutor({ email: disconnected });
-    await assert.rejects(
-      () => executor.execute(action("a1", { kind: "email_draft", payload }), meeting("m1")),
-      (error: unknown) => error instanceof MeetingError && error.code === "email_not_connected",
-    );
+
+    for (const executor of [new DispatchingExecutor({}), new DispatchingExecutor({ email: disconnected })]) {
+      const result = await executor.execute(action("a1", { kind: "email_draft", payload }), meeting("m1"));
+      assert.equal(result.simulated, false);
+      assert.equal(result.summary, "Ready in Gmail: Hi & bye");
+      const url = new URL(result.handoffUrl!);
+      assert.equal(url.origin + url.pathname, "https://mail.google.com/mail/");
+      assert.equal(url.searchParams.get("to"), "founder@example.com");
+      assert.equal(url.searchParams.get("su"), "Hi & bye");
+      assert.equal(url.searchParams.get("body"), "Line one\nLine two");
+    }
+    assert.equal(disconnected.sent.length, 0);
   });
 
   test("hiring_request hands off to the recruiting agent", async () => {
@@ -229,7 +224,7 @@ describe("DispatchingExecutor", () => {
     );
   });
 
-  test("ticket_draft and calendar_draft are simulated and recorded", async () => {
+  test("ticket_draft without a ticket repo is simulated and recorded", async () => {
     const recorded: unknown[] = [];
     const executor = new DispatchingExecutor({ record: async (entry) => void recorded.push(entry) });
 
@@ -243,21 +238,58 @@ describe("DispatchingExecutor", () => {
     assert.equal(ticket.simulated, true);
     assert.equal(ticket.summary, "Recorded ticket: Fix the login bug");
     assert.match(ticket.externalRef!, /^SIM-TKT-/);
+    assert.equal(recorded.length, 1);
+    assert.equal((recorded[0] as { kind: string }).kind, "ticket_draft");
+  });
 
-    const calendarHold = await executor.execute(
-      action("a2", {
-        kind: "calendar_draft",
-        payload: { title: "Design review", attendees: ["a@example.com"], durationMinutes: 30 },
+  test("ticket_draft with a ticket repo hands off to a prefilled GitHub issue", async () => {
+    const executor = new DispatchingExecutor({ ticketRepo: "acme/firmware" });
+    const result = await executor.execute(
+      action("a1", {
+        kind: "ticket_draft",
+        payload: { title: "Crash on 2.3", description: "Reported in standup.", assignee: "Jax", due: "2026-10-01" },
       }),
       meeting("m1"),
     );
-    assert.equal(calendarHold.simulated, true);
-    assert.equal(calendarHold.summary, "Recorded calendar hold: Design review");
-    assert.match(calendarHold.externalRef!, /^SIM-CAL-/);
+    assert.equal(result.simulated, false);
+    const url = new URL(result.handoffUrl!);
+    assert.equal(url.pathname, "/acme/firmware/issues/new");
+    assert.equal(url.searchParams.get("title"), "Crash on 2.3");
+    assert.equal(url.searchParams.get("body"), "Reported in standup.\n\nAssignee: Jax\nDue: 2026-10-01");
+  });
 
-    assert.equal(recorded.length, 2);
-    assert.equal((recorded[0] as { kind: string }).kind, "ticket_draft");
-    assert.equal((recorded[1] as { kind: string }).kind, "calendar_draft");
+  test("calendar_draft hands off to a prefilled Google Calendar event", async () => {
+    const executor = new DispatchingExecutor({});
+    const result = await executor.execute(
+      action("a2", {
+        kind: "calendar_draft",
+        payload: {
+          title: "Design review",
+          attendees: ["a@example.com", "Priya"],
+          proposedStart: "2026-10-01T09:00:00Z",
+          durationMinutes: 30,
+          notes: "Follow up on approach B",
+        },
+      }),
+      meeting("m1"),
+    );
+    assert.equal(result.simulated, false);
+    assert.equal(result.summary, "Ready in Google Calendar: Design review");
+    const url = new URL(result.handoffUrl!);
+    assert.equal(url.searchParams.get("action"), "TEMPLATE");
+    assert.equal(url.searchParams.get("text"), "Design review");
+    assert.equal(url.searchParams.get("dates"), "20261001T090000Z/20261001T093000Z");
+    assert.equal(url.searchParams.get("add"), "a@example.com");
+    assert.equal(url.searchParams.get("details"), "Follow up on approach B\n\nInvite: Priya");
+  });
+
+  test("calendar_draft without a start leaves the time to the employee", async () => {
+    const executor = new DispatchingExecutor({});
+    const result = await executor.execute(
+      action("a2", { kind: "calendar_draft", payload: { title: "Sync", attendees: [], durationMinutes: 30 } }),
+      meeting("m1"),
+    );
+    assert.equal(new URL(result.handoffUrl!).searchParams.has("dates"), false);
   });
 
   test("ticket_draft works without a record() dependency", async () => {

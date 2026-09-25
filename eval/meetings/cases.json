@@ -218,6 +218,37 @@
       "expectedKind": "escalation",
       "expectedTier": "escalate",
       "note": "A money commitment in casual, hedging language; mustEscalate's 'discount' phrase must retag it to escalate regardless of the casual tone."
+    },
+    {
+      "id": "handoff-message-whatsapp",
+      "speaker": "Jax",
+      "text": "I'll WhatsApp Priya the new delivery date right after this call.",
+      "expectedKind": "message_draft",
+      "expectedTier": "approval",
+      "note": "A chat ping, not an email."
+    },
+    {
+      "id": "handoff-doc-checklist",
+      "speaker": "Deepa",
+      "text": "I'll write up a one-page launch checklist from today's discussion and share it tonight.",
+      "expectedKind": "doc_draft",
+      "expectedTier": "approval",
+      "note": "A new document promised in the meeting."
+    },
+    {
+      "id": "handoff-email-not-message",
+      "speaker": "Jax",
+      "text": "I'll email the supplier the revised battery specs this afternoon.",
+      "expectedKind": "email_draft",
+      "expectedTier": "approval",
+      "note": "Email stays email even though message_draft now exists."
+    },
+    {
+      "id": "handoff-doc-already-done",
+      "speaker": "Deepa",
+      "text": "I already shared the launch checklist doc in the channel this morning.",
+      "expectedKind": "none",
+      "note": "Work already done, so no new document."
     }
   ]
 }

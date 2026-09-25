@@ -64,6 +64,8 @@ export type ActionKind =
   | "hiring_request"
   | "ticket_draft"
   | "calendar_draft"
+  | "message_draft"
+  | "doc_draft"
   | "escalation"
   | "blocked";
 
@@ -129,6 +131,20 @@ export interface CalendarPayload {
   notes?: string;
 }
 
+export interface MessagePayload {
+  /** Who the chat message is for, as named in the meeting. */
+  recipient: string;
+  /** Phone number or email for the recipient, only when one literally appeared; otherwise empty. */
+  address: string;
+  text: string;
+}
+
+export interface DocPayload {
+  title: string;
+  /** Markdown the employee pastes into a new, blank document. */
+  body: string;
+}
+
 export interface EscalationPayload {
   subject: string;
   reason: string;
@@ -147,6 +163,8 @@ export type ActionPayload =
   | HiringPayload
   | TicketPayload
   | CalendarPayload
+  | MessagePayload
+  | DocPayload
   | EscalationPayload
   | BlockedPayload;
 
@@ -162,6 +180,10 @@ export interface ActionResult {
   /** True when the effect is only recorded here (no real Jira or calendar exists for OrgForge). */
   simulated: boolean;
   externalRef?: string;
+  /** Prefilled link that opens the action in the employee's own signed-in tool; their click performs it. */
+  handoffUrl?: string;
+  /** Text the page copies to the clipboard before opening handoffUrl, for tools that cannot be prefilled by link. */
+  handoffCopy?: string;
 }
 
 export interface ProposedAction {

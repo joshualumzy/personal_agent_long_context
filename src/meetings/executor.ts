@@ -5,14 +5,32 @@ import {
   type ActionPayload,
   type ActionResult,
   type CalendarPayload,
+  type DocPayload,
   type EmailPayload,
   type EmailSender,
   type HiringHandoff,
   type HiringPayload,
   type MeetingState,
+  type MessagePayload,
   type ProposedAction,
   type TicketPayload,
 } from "./domain.js";
+import {
+  docClipboardText,
+  githubIssueLink,
+  gmailComposeLink,
+  googleCalendarLink,
+  NEW_DOC_URL,
+  outlookCalendarLink,
+  outlookComposeLink,
+  teamsChatLink,
+  whatsappLink,
+} from "./handoff.js";
+
+/** Which office suite the employee's calendar, mail, and documents live in. */
+export type OfficeSuite = "google" | "microsoft";
+/** Where quick chat messages go. Teams needs the recipient's email; without one it falls back to WhatsApp. */
+export type ChatApp = "whatsapp" | "teams";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -33,6 +51,12 @@ export interface DispatchingExecutorDeps {
   hiring?: HiringHandoff | null;
   /** Optional sink for simulated effects (ticket_draft, calendar_draft), for anyone who wants to list them later. */
   record?: (entry: RecordedEffect) => Promise<void>;
+  /** "owner/name" of a GitHub repo; set, ticket_draft hands off to a prefilled new-issue page instead of simulating. */
+  ticketRepo?: string;
+  /** Defaults to "google". */
+  suite?: OfficeSuite;
+  /** Defaults to "whatsapp", what most Singapore SMEs chat on. */
+  chat?: ChatApp;
 }
 
 /**
@@ -56,9 +80,24 @@ export class DispatchingExecutor implements ActionExecutor {
       case "hiring_request":
         return this.startHiring(action);
       case "ticket_draft":
-        return this.recordSimulated(action, "SIM-TKT", "Recorded ticket");
+        return this.deps.ticketRepo
+          ? this.handOff(action, githubIssueLink(this.deps.ticketRepo, action.payload as TicketPayload), "GitHub")
+          : this.recordSimulated(action, "SIM-TKT", "Recorded ticket");
       case "calendar_draft":
-        return this.recordSimulated(action, "SIM-CAL", "Recorded calendar hold");
+        return this.microsoft
+          ? this.handOff(action, outlookCalendarLink(action.payload as CalendarPayload), "Outlook")
+          : this.handOff(action, googleCalendarLink(action.payload as CalendarPayload), "Google Calendar");
+      case "message_draft":
+        return this.handOffMessage(action);
+      case "doc_draft": {
+        const payload = action.payload as DocPayload;
+        const tool = this.microsoft ? "Word" : "Google Docs";
+        return {
+          ...this.handOff(action, NEW_DOC_URL[this.microsoft ? "microsoft" : "google"], tool),
+          summary: `Ready to paste into a new ${tool} document: ${payload.title}`,
+          handoffCopy: docClipboardText(payload),
+        };
+      }
       case "answer_question":
       case "flag_conflict":
         return { summary: "Read-only; nothing to execute.", simulated: false };
@@ -82,7 +121,9 @@ export class DispatchingExecutor implements ActionExecutor {
       throw new MeetingError("invalid_email", `"${payload.to}" is not a plausible email address.`, 400);
     }
     if (!this.deps.email || !(await this.deps.email.connected())) {
-      throw new MeetingError("email_not_connected", "Connect email first, or send this by hand.", 409);
+      return this.microsoft
+        ? this.handOff(action, outlookComposeLink(payload), "Outlook")
+        : this.handOff(action, gmailComposeLink(payload), "Gmail");
     }
     const sent = await this.deps.email.send({ to: payload.to, subject: payload.subject, body: payload.body });
     return { summary: `Sent to ${payload.to}`, simulated: false, externalRef: sent.threadId };
@@ -95,6 +136,26 @@ export class DispatchingExecutor implements ActionExecutor {
     }
     const result = await this.deps.hiring.start(payload.requirement);
     return { summary: result.message, simulated: false, externalRef: "/recruiting" };
+  }
+
+  private get microsoft(): boolean {
+    return this.deps.suite === "microsoft";
+  }
+
+  private handOffMessage(action: ProposedAction): ActionResult {
+    const payload = action.payload as MessagePayload;
+    const teams = this.deps.chat === "teams" ? teamsChatLink(payload) : null;
+    const who = payload.recipient ? `message to ${payload.recipient}` : "message";
+    return teams
+      ? { ...this.handOff(action, teams, "Teams"), summary: `Ready in Teams: ${who}` }
+      : { ...this.handOff(action, whatsappLink(payload), "WhatsApp"), summary: `Ready in WhatsApp: ${who}` };
+  }
+
+  /** The effect happens when the employee opens the link and confirms in their own account. */
+  private handOff(action: ProposedAction, handoffUrl: string, tool: string): ActionResult {
+    const payload = action.payload as EmailPayload | TicketPayload | CalendarPayload | DocPayload;
+    const label = "title" in payload ? payload.title : "subject" in payload ? payload.subject : "";
+    return { summary: `Ready in ${tool}: ${label}`, simulated: false, handoffUrl };
   }
 
   private async recordSimulated(

@@ -7,10 +7,12 @@ import type {
   CandidateAction,
   ConflictPayload,
   Decision,
+  DocPayload,
   EmailPayload,
   EscalationPayload,
   HiringPayload,
   MeetingState,
+  MessagePayload,
   QuestionAnswerer,
   TicketPayload,
 } from "./domain.js";
@@ -103,6 +105,41 @@ function emailsIn(...texts: string[]): Set<string> {
   return found;
 }
 
+/** Phone numbers that actually appear, reduced to digits with any leading "+". */
+function phonesIn(...texts: string[]): Set<string> {
+  const found = new Set<string>();
+  for (const value of texts) {
+    for (const match of value.matchAll(/\+?\d[\d\s-]{6,}\d/g)) found.add(normalizePhone(match[0]));
+  }
+  return found;
+}
+
+function normalizePhone(value: string): string {
+  return value.trim().replace(/(?!^\+)[^\d]/g, "");
+}
+
+/** The meeting as heard up to and including the line that triggered the candidate, for drafts that need its facts. */
+function heardUpTo(meeting: MeetingState, candidate: CandidateAction): string[] {
+  return meeting.segments
+    .filter((segment) => segment.index <= candidate.trigger.segmentIndex)
+    .slice(-40)
+    .map((segment) => `${segment.speaker}: ${segment.text}`);
+}
+
+/** "Tuesday 2026-09-29", so "next Tuesday" can be resolved to a date. */
+function meetingDate(meeting: MeetingState): string {
+  const date = new Date(meeting.startedAt);
+  if (Number.isNaN(date.getTime())) return "";
+  const local = new Date(date.getTime() + 8 * 3_600_000);
+  const weekday = local.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" });
+  return `${weekday} ${local.toISOString().slice(0, 10)} (Singapore)`;
+}
+
+/** Only a real date-time is kept; "next Tuesday at 10am" is left for the employee to fill in. */
+function isIsoTime(value: string): boolean {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value) && !Number.isNaN(new Date(value).getTime());
+}
+
 export interface ActionDrafterDeps {
   model: JsonModel;
   knowledge: CompanyKnowledge;
@@ -128,6 +165,10 @@ export class ActionDrafter {
         return this.draftTicket(candidate, meeting);
       case "calendar_draft":
         return this.draftCalendar(candidate, meeting);
+      case "message_draft":
+        return this.draftMessage(candidate, meeting);
+      case "doc_draft":
+        return this.draftDoc(candidate, meeting);
       case "escalation":
         return this.draftEscalation(candidate, meeting);
       case "hiring_request":
@@ -253,6 +294,7 @@ export class ActionDrafter {
       system: [
         "Write a calendar invite for a meeting commitment heard in a meeting.",
         "attendees are the names or emails actually mentioned. durationMinutes defaults to 30 when the meeting did not say.",
+        "proposedStart is an ISO 8601 time with its offset (for example 2026-10-06T10:00:00+08:00), worked out from meetingDate and the meeting's own words such as \"next Tuesday at 10am\"; times are Singapore time (+08:00) unless the meeting says otherwise. Leave it empty when the meeting named no day.",
         'Reply as {"title": string, "attendees": string[], "proposedStart": string, "durationMinutes": number, "notes": string}. Leave proposedStart or notes as an empty string when unknown.',
       ].join("\n"),
       input: {
@@ -260,6 +302,7 @@ export class ActionDrafter {
         details: candidate.details,
         triggerQuote: candidate.trigger.quote,
         speaker: candidate.trigger.speaker,
+        meetingDate: meetingDate(meeting),
         evidence: evidenceForModel(evidence),
       },
     });
@@ -273,10 +316,79 @@ export class ActionDrafter {
       title,
       attendees,
       durationMinutes: Number.isFinite(duration) && duration > 0 ? duration : 30,
-      ...(text(record.proposedStart) ? { proposedStart: text(record.proposedStart) } : {}),
+      ...(isIsoTime(text(record.proposedStart)) ? { proposedStart: text(record.proposedStart) } : {}),
       ...(text(record.notes) ? { notes: text(record.notes) } : {}),
     };
     return { payload, evidence, title: `Calendar: ${title}`.slice(0, 120) };
+  }
+
+  private async draftMessage(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
+    const evidence = await gatherEvidence(this.deps.knowledge, candidate, meeting);
+    const retrievedIds = new Set(evidence.map((item) => item.sourceId));
+    const reply = await this.deps.model.json<unknown>({
+      task: "chat message draft",
+      system: [
+        "Write a short chat message (WhatsApp or Teams style, two to four sentences, no greeting line or sign-off) for the employee to review and send, for a commitment heard in a meeting.",
+        "State the actual content that was promised (the date, number, or decision itself, taken from the meeting excerpt), not just that an update is coming.",
+        "Do not add requests, tasks, or advice the meeting did not mention.",
+        "Use only facts from the commitment, the meeting excerpt, and the retrieved Company Evidence below. Cite evidence only when the message actually relies on it. Cite a fact from evidence with [source:ID], using only the IDs given; never cite an ID that is not listed.",
+        "recipient is the person or group the message is for, as named in the meeting.",
+        "address is a phone number or email for the recipient only when one literally appears in the meeting excerpt or the evidence below; otherwise an empty string. Never invent or guess one.",
+        'Reply as {"recipient": string, "address": string, "text": string}.',
+      ].join("\n"),
+      input: {
+        commitment: candidate.summary,
+        details: candidate.details,
+        triggerQuote: candidate.trigger.quote,
+        speaker: candidate.trigger.speaker,
+        meetingExcerpt: heardUpTo(meeting, candidate),
+        evidence: evidenceForModel(evidence),
+      },
+    });
+    const record = isRecord(reply) ? reply : {};
+    const sources = [...meeting.segments.map((segment) => segment.text), ...evidence.map((item) => item.excerpt)];
+    const proposed = text(record.address).trim();
+    const address = emailsIn(...sources).has(proposed.toLowerCase())
+      ? proposed.toLowerCase()
+      : proposed && phonesIn(...sources).has(normalizePhone(proposed))
+        ? normalizePhone(proposed)
+        : "";
+    const recipient = text(record.recipient);
+    const payload: MessagePayload = {
+      recipient,
+      address,
+      text: stripUnknownCitations(text(record.text) || candidate.summary, retrievedIds),
+    };
+    return { payload, evidence, title: `Message${recipient ? ` to ${recipient}` : ""}: ${candidate.summary}`.slice(0, 120) };
+  }
+
+  private async draftDoc(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
+    const evidence = await gatherEvidence(this.deps.knowledge, candidate, meeting);
+    const retrievedIds = new Set(evidence.map((item) => item.sourceId));
+    const reply = await this.deps.model.json<unknown>({
+      task: "document draft",
+      system: [
+        "Write a first draft of the new document someone promised in a meeting (notes, a spec, a proposal, a checklist), in Markdown, for the employee to review and paste into a blank document.",
+        "Use only facts from the commitment, the meeting excerpt, and the retrieved Company Evidence below. Cite every factual claim that comes from evidence with [source:ID], using only the IDs given; never cite an ID that is not listed. Mark anything the meeting left open as TODO rather than filling it in.",
+        "Keep it to what the meeting actually covered: headings and short bullets, at most about 400 words.",
+        'Reply as {"title": string, "body": string}. body is Markdown and does not repeat the title.',
+      ].join("\n"),
+      input: {
+        commitment: candidate.summary,
+        details: candidate.details,
+        triggerQuote: candidate.trigger.quote,
+        speaker: candidate.trigger.speaker,
+        meetingExcerpt: heardUpTo(meeting, candidate),
+        evidence: evidenceForModel(evidence),
+      },
+    });
+    const record = isRecord(reply) ? reply : {};
+    const title = text(record.title) || candidate.summary.slice(0, 78);
+    const payload: DocPayload = {
+      title,
+      body: stripUnknownCitations(text(record.body) || candidate.summary, retrievedIds),
+    };
+    return { payload, evidence, title: `Document: ${title}`.slice(0, 120) };
   }
 
   private async draftEscalation(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
