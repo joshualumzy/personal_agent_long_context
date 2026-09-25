@@ -1,4 +1,4 @@
-import type { CalendarPayload, DocPayload, EmailPayload, MessagePayload, TicketPayload } from "./domain.js";
+import type { CalendarPayload, DocPayload, EmailPayload, MessagePayload, SheetPayload, TicketPayload } from "./domain.js";
 
 /**
  * Prefilled links that open an approved action in the employee's own,
@@ -121,6 +121,16 @@ export const NEW_DOC_URL = {
   google: "https://docs.new",
   microsoft: "https://word.new",
 } as const;
+
+export const NEW_SHEET_URL = {
+  google: "https://sheets.new",
+  microsoft: "https://excel.new",
+} as const;
+
+/** Tab-separated rows: both Google Sheets and Excel spread a pasted TSV across cells. */
+export function sheetClipboardText(payload: SheetPayload): string {
+  return payload.rows.map((row) => row.map((cell) => cell.replace(/[\t\r\n]+/g, " ")).join("\t")).join("\n");
+}
 
 export function docClipboardText(payload: DocPayload): string {
   return `# ${payload.title}\n\n${payload.body}`;

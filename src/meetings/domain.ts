@@ -66,6 +66,7 @@ export type ActionKind =
   | "calendar_draft"
   | "message_draft"
   | "doc_draft"
+  | "sheet_draft"
   | "escalation"
   | "blocked";
 
@@ -145,6 +146,12 @@ export interface DocPayload {
   body: string;
 }
 
+export interface SheetPayload {
+  title: string;
+  /** First row is the header. Pasted into a new, blank spreadsheet as tab-separated text. */
+  rows: string[][];
+}
+
 export interface EscalationPayload {
   subject: string;
   reason: string;
@@ -165,6 +172,7 @@ export type ActionPayload =
   | CalendarPayload
   | MessagePayload
   | DocPayload
+  | SheetPayload
   | EscalationPayload
   | BlockedPayload;
 

@@ -12,6 +12,7 @@ import {
   type HiringPayload,
   type MeetingState,
   type MessagePayload,
+  type SheetPayload,
   type ProposedAction,
   type TicketPayload,
 } from "./domain.js";
@@ -21,8 +22,10 @@ import {
   gmailComposeLink,
   googleCalendarLink,
   NEW_DOC_URL,
+  NEW_SHEET_URL,
   outlookCalendarLink,
   outlookComposeLink,
+  sheetClipboardText,
   teamsChatLink,
   whatsappLink,
 } from "./handoff.js";
@@ -98,6 +101,15 @@ export class DispatchingExecutor implements ActionExecutor {
           handoffCopy: docClipboardText(payload),
         };
       }
+      case "sheet_draft": {
+        const payload = action.payload as SheetPayload;
+        const tool = this.microsoft ? "Excel" : "Google Sheets";
+        return {
+          ...this.handOff(action, NEW_SHEET_URL[this.microsoft ? "microsoft" : "google"], tool),
+          summary: `Ready to paste into a new ${tool} spreadsheet: ${payload.title}`,
+          handoffCopy: sheetClipboardText(payload),
+        };
+      }
       case "answer_question":
       case "flag_conflict":
         return { summary: "Read-only; nothing to execute.", simulated: false };
@@ -153,7 +165,7 @@ export class DispatchingExecutor implements ActionExecutor {
 
   /** The effect happens when the employee opens the link and confirms in their own account. */
   private handOff(action: ProposedAction, handoffUrl: string, tool: string): ActionResult {
-    const payload = action.payload as EmailPayload | TicketPayload | CalendarPayload | DocPayload;
+    const payload = action.payload as EmailPayload | TicketPayload | CalendarPayload | DocPayload | SheetPayload;
     const label = "title" in payload ? payload.title : "subject" in payload ? payload.subject : "";
     return { summary: `Ready in ${tool}: ${label}`, simulated: false, handoffUrl };
   }

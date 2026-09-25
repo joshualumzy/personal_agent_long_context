@@ -16,6 +16,7 @@ const APPROVAL_KINDS: ReadonlySet<ActionKind> = new Set([
   "calendar_draft",
   "message_draft",
   "doc_draft",
+  "sheet_draft",
   "hiring_request",
 ]);
 

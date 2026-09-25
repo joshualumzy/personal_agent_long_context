@@ -31,6 +31,7 @@ const KIND_LABELS = {
   calendar_draft: "Calendar invite",
   message_draft: "Chat message",
   doc_draft: "New document",
+  sheet_draft: "New spreadsheet",
   escalation: "Escalation",
   blocked: "Blocked",
 };
@@ -66,6 +67,10 @@ const EDITABLE_FIELDS = {
     { key: "title", label: "Title", type: "text" },
     { key: "body", label: "Draft (Markdown)", type: "textarea" },
   ],
+  sheet_draft: [
+    { key: "title", label: "Title", type: "text" },
+    { key: "rows", label: "Rows (one per line, cells separated by |, first line is the header)", type: "table" },
+  ],
   hiring_request: [{ key: "requirement", label: "Requirement", type: "textarea" }],
 };
 
@@ -91,6 +96,10 @@ const READONLY_FIELDS = {
   doc_draft: [
     ["title", "Title"],
     ["body", "Draft"],
+  ],
+  sheet_draft: [
+    ["title", "Title"],
+    ["rows", "Table"],
   ],
 };
 
@@ -462,14 +471,22 @@ function renderHandoff(action) {
             // The write lands at once, but its promise can stay pending while
             // the window is in the background, so report success up front and
             // only correct it on failure.
-            setStatus("Draft copied. Paste it into the new document.");
+            setStatus(
+              action.kind === "sheet_draft"
+                ? "Table copied. Click cell A1 in the new spreadsheet and paste."
+                : "Draft copied. Paste it into the new document.",
+            );
             navigator.clipboard
               .writeText(handoffCopy)
               .catch(() => setStatus("Could not copy; select the draft above instead."));
           }
         : undefined,
     },
-    handoffCopy ? "Copy draft and open a blank document \u2197" : "Open to confirm \u2197",
+    action.kind === "sheet_draft"
+      ? "Copy table and open a blank spreadsheet \u2197"
+      : handoffCopy
+        ? "Copy draft and open a blank document \u2197"
+        : "Open to confirm \u2197",
   );
   const row = h("p", { class: "handoff" }, open);
   if (action.kind === "calendar_draft") {
@@ -511,7 +528,8 @@ function renderReadonlyFields(action) {
   for (const [key, label] of spec) {
     const value = action.payload[key];
     if (value === undefined) continue;
-    wrap.append(h("div", { class: "field-row" }, h("label", {}, label), renderValue(key, String(value))));
+    const shown = key === "rows" && Array.isArray(value) ? renderTable(value) : renderValue(key, String(value));
+    wrap.append(h("div", { class: "field-row" }, h("label", {}, label), shown));
   }
   return wrap;
 }
@@ -530,6 +548,20 @@ function renderValue(key, value) {
   return h("p", { class: "value" }, value);
 }
 
+function renderTable(rows) {
+  const [header = [], ...body] = rows;
+  return h(
+    "div",
+    { class: "sheet-preview" },
+    h(
+      "table",
+      {},
+      h("thead", {}, h("tr", {}, header.map((cell) => h("th", {}, cell)))),
+      h("tbody", {}, body.map((row) => h("tr", {}, row.map((cell) => h("td", {}, cell))))),
+    ),
+  );
+}
+
 function renderEditableFields(action) {
   const spec = EDITABLE_FIELDS[action.kind];
   const draft = currentDraft(action);
@@ -539,9 +571,14 @@ function renderEditableFields(action) {
 
   for (const field of spec) {
     const rawValue = draft.values[field.key];
-    const value = field.type === "list" ? (Array.isArray(rawValue) ? rawValue.join(", ") : "") : rawValue ?? "";
+    const value =
+      field.type === "list"
+        ? Array.isArray(rawValue) ? rawValue.join(", ") : ""
+        : field.type === "table"
+          ? Array.isArray(rawValue) ? rawValue.map((row) => row.join(" | ")).join("\n") : ""
+          : rawValue ?? "";
     const control =
-      field.type === "textarea"
+      field.type === "textarea" || field.type === "table"
         ? h("textarea", { oninput: (event) => markDirty(action, field, event.target.value) })
         : h("input", {
             type: field.type === "number" ? "number" : "text",
@@ -563,6 +600,12 @@ function markDirty(action, field, rawValue) {
       .split(",")
       .map((entry) => entry.trim())
       .filter(Boolean);
+  }
+  if (field.type === "table") {
+    value = rawValue
+      .split("\n")
+      .filter((line) => line.trim())
+      .map((line) => line.split("|").map((cell) => cell.trim()));
   }
   draft.values[field.key] = value;
   draft.dirty = true;

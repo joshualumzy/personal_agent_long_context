@@ -733,6 +733,13 @@ function payloadMatchesKind(kind: ActionKind, payload: ActionPayload): boolean {
       return isStr(record.recipient) && isStr(record.address) && isStr(record.text);
     case "doc_draft":
       return isStr(record.title) && isStr(record.body);
+    case "sheet_draft":
+      return (
+        isStr(record.title) &&
+        Array.isArray(record.rows) &&
+        record.rows.length > 0 &&
+        record.rows.every((row) => isStrArray(row))
+      );
     case "hiring_request":
       return isStr(record.requirement) && record.requirement.length > 0;
     case "escalation":

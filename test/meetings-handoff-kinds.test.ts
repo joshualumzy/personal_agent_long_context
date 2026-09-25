@@ -8,6 +8,7 @@ import type {
   MeetingState,
   MessagePayload,
   ProposedAction,
+  SheetPayload,
 } from "../src/meetings/domain.js";
 import { DispatchingExecutor } from "../src/meetings/executor.js";
 import { tierFor } from "../src/meetings/policy.js";
@@ -78,6 +79,7 @@ describe("message_draft and doc_draft", () => {
   test("both need approval", () => {
     assert.equal(tierFor("message_draft", {}), "approval");
     assert.equal(tierFor("doc_draft", {}), "approval");
+    assert.equal(tierFor("sheet_draft", {}), "approval");
   });
 
   test("a phone number found in evidence is kept, digits only", async () => {
@@ -164,5 +166,26 @@ describe("message_draft and doc_draft", () => {
       meeting(""),
     );
     assert.equal(new URL(email.handoffUrl!).pathname, "/mail/deeplink/compose");
+  });
+
+  test("a spreadsheet draft keeps rows as strings and caps its size", async () => {
+    const wide = Array.from({ length: 20 }, (_, index) => `c${index}`);
+    const drafter = new ActionDrafter({
+      model: modelReplying({ title: "Supplier quotes", rows: [["Supplier", "Unit price"], ["Acme", 12], ["Beta", null], wide] }),
+      knowledge,
+    });
+    const result = await drafter.draft(candidate("sheet_draft", "I'll put the quotes in a sheet"), meeting("I'll put the quotes in a sheet"));
+    const payload = result.payload as SheetPayload;
+    assert.deepEqual(payload.rows.slice(0, 3), [["Supplier", "Unit price"], ["Acme", "12"], ["Beta", ""]]);
+    assert.equal(payload.rows[3]!.length, 12);
+  });
+
+  test("a spreadsheet opens a blank Google Sheet or Excel workbook with tab-separated rows to paste", async () => {
+    const payload = { title: "Supplier quotes", rows: [["Supplier", "Note"], ["Acme", "fast\tcheap\nreliable"]] };
+    const google = await new DispatchingExecutor({}).execute(action("sheet_draft", payload), meeting(""));
+    assert.equal(google.handoffUrl, "https://sheets.new");
+    assert.equal(google.handoffCopy, "Supplier\tNote\nAcme\tfast cheap reliable");
+    const microsoft = await new DispatchingExecutor({ suite: "microsoft" }).execute(action("sheet_draft", payload), meeting(""));
+    assert.equal(microsoft.handoffUrl, "https://excel.new");
   });
 });

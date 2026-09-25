@@ -14,6 +14,7 @@ import type {
   MeetingState,
   MessagePayload,
   QuestionAnswerer,
+  SheetPayload,
   TicketPayload,
 } from "./domain.js";
 
@@ -169,6 +170,8 @@ export class ActionDrafter {
         return this.draftMessage(candidate, meeting);
       case "doc_draft":
         return this.draftDoc(candidate, meeting);
+      case "sheet_draft":
+        return this.draftSheet(candidate, meeting);
       case "escalation":
         return this.draftEscalation(candidate, meeting);
       case "hiring_request":
@@ -389,6 +392,34 @@ export class ActionDrafter {
       body: stripUnknownCitations(text(record.body) || candidate.summary, retrievedIds),
     };
     return { payload, evidence, title: `Document: ${title}`.slice(0, 120) };
+  }
+
+  private async draftSheet(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
+    const evidence = await gatherEvidence(this.deps.knowledge, candidate, meeting);
+    const reply = await this.deps.model.json<unknown>({
+      task: "spreadsheet draft",
+      system: [
+        "Build the first version of the table someone promised in a meeting, for the employee to review and paste into a blank spreadsheet.",
+        "rows[0] is the header. Fill cells only with values from the meeting excerpt or the Company Evidence below; leave a cell empty when it is unknown rather than guessing. At most 12 columns and 50 rows.",
+        'Reply as {"title": string, "rows": string[][]}.',
+      ].join("\n"),
+      input: {
+        commitment: candidate.summary,
+        details: candidate.details,
+        triggerQuote: candidate.trigger.quote,
+        speaker: candidate.trigger.speaker,
+        meetingExcerpt: heardUpTo(meeting, candidate),
+        evidence: evidenceForModel(evidence),
+      },
+    });
+    const record = isRecord(reply) ? reply : {};
+    const rows = (Array.isArray(record.rows) ? record.rows : [])
+      .filter((row): row is unknown[] => Array.isArray(row))
+      .slice(0, 50)
+      .map((row) => row.slice(0, 12).map((cell) => (cell === null || cell === undefined ? "" : String(cell))));
+    const title = text(record.title) || candidate.summary.slice(0, 78);
+    const payload: SheetPayload = { title, rows: rows.length > 0 ? rows : [[candidate.summary]] };
+    return { payload, evidence, title: `Spreadsheet: ${title}`.slice(0, 120) };
   }
 
   private async draftEscalation(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {

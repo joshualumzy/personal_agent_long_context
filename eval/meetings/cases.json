@@ -249,6 +249,21 @@
       "text": "I already shared the launch checklist doc in the channel this morning.",
       "expectedKind": "none",
       "note": "Work already done, so no new document."
+    },
+    {
+      "id": "handoff-sheet-quotes",
+      "speaker": "Marcus",
+      "text": "I'll put the three supplier quotes side by side in a spreadsheet so we can compare unit prices.",
+      "expectedKind": "sheet_draft",
+      "expectedTier": "approval",
+      "note": "A table, not prose; mentions prices but spends nothing."
+    },
+    {
+      "id": "handoff-sheet-existing",
+      "speaker": "Marcus",
+      "text": "Let's all look at the stock count spreadsheet Priya shared yesterday.",
+      "expectedKind": "none",
+      "note": "An existing sheet, nothing new promised."
     }
   ]
 }
