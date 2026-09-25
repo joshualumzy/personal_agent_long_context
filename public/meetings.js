@@ -503,6 +503,35 @@ function renderCard(action) {
  * clipboard first, since no editor accepts body text in a link. Calendar
  * invites also offer an .ics file for any other calendar app.
  */
+/**
+ * Copies a draft as formatted HTML and as plain text together, so a paste
+ * into Google Docs or Word gives real headings and lists, and a paste into
+ * Sheets or Excel fills cells. Plain text alone left Markdown symbols in
+ * Docs. The HTML is sanitised; the draft came from a model.
+ */
+async function copyRich(text, format) {
+  const escape = (value) => value.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  let html = null;
+  if (format === "table") {
+    const rows = text.split("\n").map((line) => line.split("\t"));
+    html = `<table>${rows
+      .map((row, index) => `<tr>${row.map((cell) => (index === 0 ? `<th>${escape(cell)}</th>` : `<td>${escape(cell)}</td>`)).join("")}</tr>`)
+      .join("")}</table>`;
+  } else if (window.marked && window.DOMPurify) {
+    html = window.DOMPurify.sanitize(window.marked.parse(text));
+  }
+  if (html && window.ClipboardItem && navigator.clipboard.write) {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        "text/html": new Blob([html], { type: "text/html" }),
+        "text/plain": new Blob([text], { type: "text/plain" }),
+      }),
+    ]);
+    return;
+  }
+  await navigator.clipboard.writeText(text);
+}
+
 function renderHandoff(action) {
   const { handoffUrl, handoffCopy } = action.result;
   const status = h("span", { class: "handoff-status" }, handoffStatus.get(action.id) ?? "");
@@ -526,9 +555,9 @@ function renderHandoff(action) {
                 ? "Table copied. Click cell A1 in the new spreadsheet and paste."
                 : "Draft copied. Paste it into the new document.",
             );
-            navigator.clipboard
-              .writeText(handoffCopy)
-              .catch(() => setStatus("Could not copy; select the draft above instead."));
+            copyRich(handoffCopy, action.kind === "sheet_draft" ? "table" : "markdown").catch(() =>
+              setStatus("Could not copy; select the draft above instead."),
+            );
           }
         : undefined,
     },

@@ -109,7 +109,9 @@ export function whatsappLink(payload: MessagePayload): string {
 /** Teams needs the recipient's work email to open a chat; returns null without one. */
 export function teamsChatLink(payload: MessagePayload): string | null {
   if (!EMAIL_RE.test(payload.address)) return null;
-  return withQuery("https://teams.microsoft.com/l/chat/0/0", { users: payload.address, message: payload.text });
+  // teams.microsoft.com now redirects to teams.cloud.microsoft and drops the
+  // message on the way (seen 2026-09-26); the new host keeps it.
+  return withQuery("https://teams.cloud.microsoft/l/chat/0/0", { users: payload.address, message: payload.text });
 }
 
 /**

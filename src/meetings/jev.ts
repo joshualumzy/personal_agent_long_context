@@ -83,10 +83,21 @@ export function jevConflictChecker(
   const threshold = options.threshold ?? 0.6;
   return async (decision, priorDecisions, knowledge) => {
     const evidence = await knowledge.search(decision.text, 5).catch(() => [] as Evidence[]);
-    const priors = priorDecisions.slice(-40);
+    // The same decision heard in several meetings is one option, not many.
+    const seen = new Set<string>();
+    const priors = priorDecisions
+      .filter((prior) => {
+        const key = prior.text.trim().toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .slice(-40);
     if (priors.length === 0 && evidence.length === 0) return null;
     const criteria: Record<string, string> = {
-      none: "it contradicts none of these: it agrees with them, or is about something else",
+      // Not "agrees with them": agreeing with one earlier entry must not hide
+      // a contradiction with another.
+      none: "it contradicts not a single one of the entries below",
       ...Object.fromEntries(priors.map((prior, index) => [`d${index}`, `it contradicts the earlier decision "${clip(prior.text, 300)}"`])),
       ...Object.fromEntries(evidence.map((item, index) => [`e${index}`, `it contradicts this company record: "${clip(item.excerpt, 300)}"`])),
     };
@@ -96,7 +107,7 @@ export function jevConflictChecker(
         await askJev(
           apiKey,
           { newDecision: decision.text },
-          { contradicts: { type: "choice", instructions: "Does the new decision contradict one of the earlier decisions or company records?", criteria } },
+          { contradicts: { type: "choice", instructions: "Does the new decision contradict any one of the earlier decisions or company records? If it contradicts even one, pick that one, even if it agrees with others.", criteria } },
           options.fetchImpl ? { fetchImpl: options.fetchImpl } : {},
         )
       ).contradicts;

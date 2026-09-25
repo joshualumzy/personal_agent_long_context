@@ -69,4 +69,11 @@ describe("Jev conflict checker", () => {
     assert.equal(await jevConflictChecker("key", fallback, { fetchImpl })(decision, [], knowledge), null);
     assert.equal(bodies.length + fallback.calls, 0);
   });
+
+  test("the same earlier decision heard twice is offered once", async () => {
+    const { fetchImpl, bodies } = jevReplying("none", 0.99);
+    const twice = [...priors, { ...priors[0]!, meetingId: "m1" }];
+    await jevConflictChecker("key", recordingFallback(), { fetchImpl })(decision, twice, knowledge);
+    assert.deepEqual(Object.keys(JSON.parse(bodies[0]!).questions.contradicts.criteria), ["none", "d0"]);
+  });
 });
