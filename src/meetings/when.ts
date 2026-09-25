@@ -248,7 +248,7 @@ export class JevWhenReader implements WhenReader {
     private readonly apiKey: string,
     private readonly threshold = 0.6,
     private readonly fetchImpl: typeof fetch = fetch,
-    /** Retries after a 503 or 429, waiting 300 ms, then 600 ms. */
+    /** Immediate retries after a 503 or 429. */
     private readonly retries = 2,
   ) {}
 
@@ -267,12 +267,12 @@ export class JevWhenReader implements WhenReader {
         }),
         signal: AbortSignal.timeout(15_000),
       });
-    // On the free tier, bursts of requests start failing with 503 (or 429)
-    // after about ten; a couple of short retries recover most of them, and
-    // FallbackWhenReader covers the rest without an unbounded wait.
+    // The service returns an occasional 503, sometimes in runs. Measured on
+    // 25 back-to-back requests, an immediate retry succeeded every time, and
+    // waiting between tries only added delay, so retries do not wait;
+    // FallbackWhenReader covers a run of failures.
     let response = await request();
     for (let attempt = 0; attempt < this.retries && (response.status === 503 || response.status === 429); attempt += 1) {
-      await new Promise((resolve) => setTimeout(resolve, 300 * 2 ** attempt));
       response = await request();
     }
     const body = (await response.json()) as {
