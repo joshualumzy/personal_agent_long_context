@@ -11,12 +11,12 @@ async function openSmePage() {
   const { port } = app.server.address() as AddressInfo;
   const base = `http://127.0.0.1:${port}`;
   const [html, markedScript, domPurifyScript, script] = await Promise.all([
-    fetch(`${base}/sme`).then((response) => response.text()),
+    fetch(`${base}/`).then((response) => response.text()),
     fetch(`${base}/vendor/marked.js`).then((response) => response.text()),
     fetch(`${base}/vendor/dompurify.js`).then((response) => response.text()),
-    fetch(`${base}/sme.js`).then((response) => response.text()),
+    fetch(`${base}/app.js`).then((response) => response.text()),
   ]);
-  const dom = new JSDOM(html, { url: `${base}/sme`, runScripts: "outside-only" });
+  const dom = new JSDOM(html, { url: `${base}/`, runScripts: "outside-only" });
   const { window } = dom;
   Object.defineProperty(window, "fetch", {
     value: async () =>
@@ -43,6 +43,7 @@ async function openSmePage() {
           personalMemory: {
             answer: "Jax is coordinating the TitanDB migration rollout.",
             sources: [{ sourceId: "note-jax-1", label: "context/note-jax-1" }],
+            memoryUpdated: true,
           },
         }),
         { status: 200, headers: { "content-type": "application/json" } },
@@ -50,9 +51,12 @@ async function openSmePage() {
     writable: true,
   });
   const form = window.HTMLFormElement.prototype as unknown as {
-    reportValidity?: () => boolean;
+    requestSubmit?: (this: { dispatchEvent(event: unknown): boolean }) => void;
+    dispatchEvent: (event: unknown) => boolean;
   };
-  form.reportValidity ??= () => true;
+  form.requestSubmit ??= function (this: { dispatchEvent(event: unknown): boolean }) {
+    this.dispatchEvent(new window.Event("submit", { bubbles: true, cancelable: true }));
+  };
   window.eval(markedScript);
   window.eval(domPurifyScript);
   window.eval(script);
@@ -68,22 +72,43 @@ async function openSmePage() {
   };
 }
 
-describe("SME answer rendering", () => {
-  test("renders model Markdown without exposing markup or encoded spaces", async () => {
+describe("SME Assistant conversational rendering", () => {
+  test("renders model Markdown, sanitizes unsafe markup, and displays working context", async () => {
     const page = await openSmePage();
     after(() => page.close());
-    const form = page.document.querySelector("#question-form") as HTMLFormElement;
-    const question = page.document.querySelector("#question") as HTMLTextAreaElement;
-    question.value = "What is the latest project?";
+    const statusIndicator = page.document.querySelector("#status-indicator");
+    assert.equal(statusIndicator?.hasAttribute("hidden"), true);
+
+    const sidebar = page.document.querySelector("#sidebar");
+    assert.ok(sidebar);
+    assert.ok(page.document.querySelector("#new-chat-btn"));
+    assert.ok(page.document.querySelector("#conversations-list"));
+    const toggleBtn = page.document.querySelector("#toggle-sidebar-btn") as HTMLButtonElement;
+    assert.ok(toggleBtn);
+    const collapseBtn = page.document.querySelector("#collapse-sidebar-btn") as HTMLButtonElement;
+    assert.ok(collapseBtn);
+
+    // Verify minimizing sidebar via collapse button
+    collapseBtn.click();
+    assert.equal(sidebar?.classList.contains("collapsed"), true);
+
+    // Verify reopening sidebar via toggle button
+    toggleBtn.click();
+    assert.equal(sidebar?.classList.contains("collapsed"), false);
+
+    const form = page.document.querySelector("#chat-form") as HTMLFormElement;
+    const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
+    input.value = "What is the latest project?";
     form.dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
 
     const deadline = Date.now() + 2_000;
-    while (page.document.querySelector("#answer")?.hasAttribute("hidden")) {
-      if (Date.now() > deadline) throw new Error("Timed out waiting for the SME answer.");
+    while (!page.document.querySelector(".message-row.assistant")) {
+      if (Date.now() > deadline) throw new Error("Timed out waiting for the SME assistant answer.");
       await new Promise((resolve) => setTimeout(resolve, 10));
     }
 
-    const rendered = page.document.querySelector("#answer-text")!;
+    const assistantRow = page.document.querySelector(".message-row.assistant")!;
+    const rendered = assistantRow.querySelector(".message-text")!;
     assert.equal(rendered.querySelector("h2")?.textContent, "Answer");
     assert.deepEqual(
       [...rendered.querySelectorAll("strong")].map((node) => node.textContent),
@@ -92,7 +117,16 @@ describe("SME answer rendering", () => {
     assert.equal(rendered.querySelector("code")?.textContent, "/config");
     assert.doesNotMatch(rendered.textContent ?? "", /&#x20;|\*\*\*\*/);
     assert.equal(rendered.querySelector("[onerror]"), null);
-    assert.equal(page.document.querySelector("#memory-section")?.hasAttribute("hidden"), false);
-    assert.match(page.document.querySelector("#memory-answer")?.textContent ?? "", /coordinating/);
+
+    // Verify inline citation button was generated
+    const citationBtn = rendered.querySelector(".inline-citation");
+    assert.ok(citationBtn);
+    assert.equal(citationBtn.getAttribute("data-source-id"), "CONF-ENG-239");
+
+    // Verify working context indicators
+    const contextTags = assistantRow.querySelector(".context-tags");
+    assert.ok(contextTags);
+    assert.match(contextTags.textContent ?? "", /Working memory updated/);
+    assert.match(contextTags.textContent ?? "", /Working context referenced/);
   });
 });

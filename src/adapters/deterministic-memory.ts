@@ -5,6 +5,7 @@ import type {
   MemoryInspection,
   MemoryItem,
   MemoryProvider,
+  WorkingContextResult,
 } from "../domain.js";
 
 export class DeterministicMemoryProvider implements MemoryProvider {
@@ -54,6 +55,24 @@ export class DeterministicMemoryProvider implements MemoryProvider {
     return {
       userId,
       items: structuredClone(this.memoryByUser.get(userId) ?? []),
+    };
+  }
+
+  async processWorkingContext(input: {
+    userId: string;
+    message: string;
+  }): Promise<WorkingContextResult> {
+    const askRes = await this.ask({
+      userId: input.userId,
+      question: input.message,
+      correlationId: "deterministic-turn",
+      receivedAt: new Date().toISOString(),
+    });
+    const hasMemory = askRes.sources.length > 0;
+    return {
+      contextConsidered: hasMemory ? askRes.answer : "",
+      memoryUpdated: false,
+      sources: askRes.sources,
     };
   }
 }

@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Deliberately submit a Transcript and inspect the Memory retained by your Personal Context Agent."
+    />
+    <title>Personal Context Agent</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <main>
+      <header class="hero">
+        <p class="eyebrow">Personal Context Agent</p>
+        <h1>Carry the useful context forward.</h1>
+        <p>
+          Submit a dated Transcript so the agent can retain useful personal context for later
+          assistance. This prototype processes only material you deliberately provide; it is not
+          for ambient, covert, or unknown-speaker recordings.
+        </p>
+      </header>
+
+      <section class="panel" aria-labelledby="submit-heading">
+        <div class="section-heading">
+          <span>01</span>
+          <div>
+            <h2 id="submit-heading">Submit a Transcript</h2>
+            <p>Your text is sent to the server-side adapter, then to your user-scoped Letta agent.</p>
+          </div>
+        </div>
+
+        <form id="transcript-form" novalidate>
+          <div class="field-grid">
+            <label>
+              User identifier
+              <input id="user-id" name="userId" value="demo-user" required maxlength="128" />
+            </label>
+            <label>
+              Source identifier
+              <input
+                id="source-id"
+                name="sourceId"
+                placeholder="voice-note-001"
+                required
+                maxlength="128"
+              />
+            </label>
+          </div>
+
+          <label>
+            Recorded time
+            <input id="recorded-at" name="recordedAt" type="datetime-local" required />
+            <small>This is kept separate from the time the server receives your submission.</small>
+          </label>
+
+          <label>
+            Transcript
+            <textarea
+              id="transcript"
+              name="transcript"
+              rows="8"
+              maxlength="50000"
+              placeholder="Today I decided…"
+              required
+            ></textarea>
+          </label>
+
+          <fieldset>
+            <legend>Consent Attestation <span aria-hidden="true">*</span></legend>
+            <p class="field-help">
+              Confirm one statement before processing. This is your attestation, not technical or
+              legal verification of consent.
+            </p>
+            <label class="choice">
+              <input
+                type="radio"
+                name="attestation"
+                value="uploader_only_identifiable_speaker"
+              />
+              <span>I am the only identifiable speaker.</span>
+            </label>
+            <label class="choice">
+              <input
+                type="radio"
+                name="attestation"
+                value="all_identifiable_speakers_agreed"
+              />
+              <span
+                >Every identifiable speaker agreed to the relevant recording or creation,
+                transcription, and memory processing.</span
+              >
+            </label>
+          </fieldset>
+
+          <div class="form-footer">
+            <p>
+              Do not submit credentials, authentication secrets, payment or bank details, private
+              keys, or government identifiers. The server applies basic prohibited-data filtering
+              to catch obvious cases before anything reaches your agent. It is a narrow safety
+              gate, not full detection of every kind of personal data.
+            </p>
+            <button id="submit-button" type="submit" disabled>Submit Transcript</button>
+          </div>
+          <output id="submission-result" class="result" aria-live="polite"></output>
+        </form>
+      </section>
+
+      <section class="panel" aria-labelledby="question-heading">
+        <div class="section-heading">
+          <span>02</span>
+          <div>
+            <h2 id="question-heading">Ask about retained Memory</h2>
+            <p>
+              Your question goes to the same server-side adapter, which routes it to your
+              user-scoped Letta agent. The answer uses the Memory that agent retained.
+            </p>
+          </div>
+        </div>
+
+        <form id="question-form" novalidate>
+          <label>
+            Question
+            <textarea
+              id="question"
+              name="question"
+              rows="3"
+              maxlength="2000"
+              placeholder="When do I plan my week?"
+              required
+            ></textarea>
+          </label>
+          <div class="form-footer">
+            <p>Answers are grounded in retained Memory, not in this page.</p>
+            <button id="ask-button" type="submit">Ask</button>
+          </div>
+          <output id="answer-result" class="result" aria-live="polite"></output>
+          <div id="answer" class="answer" aria-live="polite"></div>
+        </form>
+      </section>
+
+      <section class="panel" aria-labelledby="memory-heading">
+        <div class="section-heading">
+          <span>03</span>
+          <div>
+            <h2 id="memory-heading">Inspect retained Memory</h2>
+            <p>Review the Memory Letta currently exposes for this user.</p>
+          </div>
+        </div>
+        <button id="refresh-memory" class="secondary" type="button">Refresh Memory</button>
+        <div id="memory-list" class="memory-list" aria-live="polite">
+          <p class="empty">Submit a Transcript or refresh to inspect Memory.</p>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

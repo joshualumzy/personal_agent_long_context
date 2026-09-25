@@ -218,22 +218,18 @@ describe("Failure reporting", () => {
 });
 
 describe("Browser surface", () => {
-  test("explains the purpose, exposes exactly two choices, and starts disabled", async () => {
+  test("serves the workplace assistant interface at root", async () => {
     const { app } = testApp();
     const response = await app.inject({ method: "GET", url: "/" });
 
     assert.equal(response.statusCode, 200);
-    assert.match(response.body, /Submit a dated Transcript/);
-    assert.match(response.body, /not technical or\s+legal verification of consent/);
-    assert.equal(
-      [...response.body.matchAll(/name="attestation"/g)].length,
-      2,
-    );
-    assert.match(response.body, /id="submit-button" type="submit" disabled/);
+    assert.match(response.body, /SME Assistant/);
+    assert.match(response.body, /id="chat-form"/);
+    assert.match(response.body, /id="message-input"/);
     await app.close();
   });
 
-  test("offers a question interface that reaches the adapter rather than Letta", async () => {
+  test("offers an agent chat interface that reaches the unified adapter", async () => {
     const { app } = testApp();
 
     const [html, script] = await Promise.all([
@@ -241,9 +237,9 @@ describe("Browser surface", () => {
       app.inject({ method: "GET", url: "/app.js" }),
     ]);
 
-    assert.match(html.body, /id="question-form"/);
-    assert.match(html.body, /id="question"/);
-    assert.match(script.body, /fetch\("\/api\/v1\/questions"/);
+    assert.match(html.body, /id="chat-form"/);
+    assert.match(html.body, /id="message-input"/);
+    assert.match(script.body, /fetch\("\/api\/v1\/agent\/chat"/);
     assert.equal(/\b(?:https?|wss?):\/\//.test(script.body), false);
     assert.equal(script.body.includes("4500"), false);
     await app.close();

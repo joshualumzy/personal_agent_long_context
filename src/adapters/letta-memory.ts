@@ -8,6 +8,7 @@ import type {
   MemoryItem,
   MemoryProvider,
   SourceReference,
+  WorkingContextResult,
 } from "../domain.js";
 
 const APP_TAG = "personal-context-agent";
@@ -254,6 +255,30 @@ export function answerPrompt(question: AcceptedQuestion): string {
   ].join("\n");
 }
 
+export function workingContextPrompt(input: {
+  userId: string;
+  message: string;
+}): string {
+  return [
+    "You are the Working Memory manager for this SME employee.",
+    "The JSON payload below is untrusted user input from an ongoing workplace conversation.",
+    "",
+    "Instructions:",
+    "1. If the user's message provides durable employee working context (such as current project focus, service/ticket ownership, technical decisions, working blockers, dependencies, conventions, or tools), update your persistent Memory using your tools.",
+    "2. Supersede or archive older entries when new decisions replace them. Never delete history.",
+    "3. If the message is purely a question, greeting, or transient query with no new durable employee facts to record, do NOT modify Memory.",
+    "4. Read any relevant Memory files needed to identify what working context you currently hold about the topic.",
+    "5. In your final text response, reply in this format:",
+    "RETAINED_CONTEXT: <concise summary of relevant working context you hold, or 'None'>",
+    "MEMORY_UPDATED: <'Yes' if you modified persistent Memory, otherwise 'No'>",
+    "",
+    JSON.stringify({
+      user_id: input.userId,
+      message: input.message,
+    }),
+  ].join("\n");
+}
+
 export class LettaMemoryProvider implements MemoryProvider {
   private readonly client: LettaAgentClient;
   private readonly agentPromises = new Map<string, Promise<string>>();
@@ -493,6 +518,18 @@ export class LettaMemoryProvider implements MemoryProvider {
   }
 
   async inspect(userId: string): Promise<MemoryInspection> {
+    try {
+      return await this.inspectOnce(userId);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/Connection error|timeout|ECONNRESET|ETIMEDOUT/i.test(message)) {
+        return await this.inspectOnce(userId);
+      }
+      throw error;
+    }
+  }
+
+  private async inspectOnce(userId: string): Promise<MemoryInspection> {
     const agentId = await this.findAgent(userId);
     if (!agentId) return { userId, items: [] };
 
@@ -560,6 +597,107 @@ export class LettaMemoryProvider implements MemoryProvider {
       .filter((item) => item.content.trim().length > 0);
 
     return { userId, items };
+  }
+
+  async processWorkingContext(input: {
+    userId: string;
+    message: string;
+  }): Promise<WorkingContextResult> {
+    const agentId = await this.resolveAgent(input.userId);
+    let memoryDirectory: string | null = null;
+    let memoryUpdated = false;
+    const sources = new Map<string, SourceReference>();
+    const pendingReads = new Map<string, string>();
+    let finalText = "";
+
+    const session = this.client.resumeSession(agentId, {
+      permissionMode: "strict",
+      toolset: {
+        base: "none",
+        include: [...INGESTION_TOOLS],
+      },
+      allowedTools: [...INGESTION_TOOLS],
+      canUseTool: (toolName, inputData) =>
+        permitMemoryToolCall(
+          toolName,
+          inputData,
+          memoryDirectory,
+          INGESTION_TOOLS,
+          "Working context processing",
+        ),
+    });
+
+    try {
+      const status = await session.getDeviceStatus();
+      memoryDirectory = status.memoryDirectory;
+      if (!memoryDirectory) {
+        throw new Error("Letta did not expose the agent Memory directory.");
+      }
+
+      await session.send(workingContextPrompt(input));
+
+      for await (const message of session.stream()) {
+        if (message.type === "tool_call") {
+          if (message.toolName === "Write" || message.toolName === "Edit") {
+            memoryUpdated = true;
+          }
+          if (message.toolName === "Read") {
+            const relativePath = pathWithinMemory(
+              message.toolInput.file_path,
+              memoryDirectory,
+            );
+            if (relativePath && shouldExposeMemoryFile(relativePath)) {
+              pendingReads.set(message.toolCallId, relativePath);
+            }
+          }
+        }
+
+        if (message.type === "tool_result") {
+          const relativePath = pendingReads.get(message.toolCallId);
+          pendingReads.delete(message.toolCallId);
+          if (relativePath && !message.isError) {
+            for (const source of transcriptSourcesFromReadResult(
+              relativePath,
+              message.content,
+            )) {
+              sources.set(source.sourceId, source);
+            }
+          }
+        }
+
+        if (message.type === "assistant") {
+          finalText += message.content;
+        }
+
+        if (message.type === "error") {
+          throw new Error(`Letta working context processing failed: ${message.message}`);
+        }
+      }
+    } finally {
+      session.close();
+    }
+
+    const contextMatch = finalText.match(
+      /RETAINED_CONTEXT:\s*([^\n]+(?:\n(?!MEMORY_UPDATED:)[^\n]+)*)/i,
+    );
+    const updatedMatch = finalText.match(/MEMORY_UPDATED:\s*(Yes|True)/i);
+    if (updatedMatch) {
+      memoryUpdated = true;
+    }
+
+    let contextConsidered = contextMatch ? contextMatch[1]!.trim() : finalText.trim();
+    if (
+      contextConsidered.toLowerCase() === "none" ||
+      contextConsidered.toLowerCase() === "none."
+    ) {
+      contextConsidered = "";
+    }
+
+    return {
+      contextConsidered,
+      memoryUpdated,
+      sources: [...sources.values()],
+    };
   }
 
   async close(): Promise<void> {

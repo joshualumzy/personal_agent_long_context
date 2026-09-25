@@ -13,11 +13,14 @@ import {
 } from "./domain.js";
 import type { CompanyKnowledge } from "./company-domain.js";
 import type { SoCLaaSCompanyAgent } from "./soclaas-company-agent.js";
+import { detectProhibitedData } from "./prohibited-data.js";
+import type { ConversationStore } from "./conversation-domain.js";
 
 export interface BuildAppOptions extends ApplicationOptions {
   memory: MemoryProvider;
   companyAgent?: SoCLaaSCompanyAgent;
   companyKnowledge?: CompanyKnowledge;
+  conversationStore?: ConversationStore;
   /** Fastify logger configuration. Tests pass a stream to capture output. */
   logger?: FastifyServerOptions["logger"];
 }
@@ -84,10 +87,208 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
   });
 
-  app.post("/api/v1/agent/questions", async (request, reply) => {
+  const handleAgentTurn = async (
+    userId: string,
+    employeeId: string,
+    message: string,
+    request: { log: FastifyInstance["log"] },
+    reply: FastifyReply,
+    requestedConversationId?: string,
+  ) => {
     if (!options.companyAgent) {
       return reply.code(503).send({ message: "The company context agent is not configured." });
     }
+
+    const prohibited = detectProhibitedData(message);
+    if (prohibited) {
+      return reply.code(400).send({
+        status: "rejected",
+        code: "prohibited_data",
+        category: prohibited.category,
+        message: `Your message was blocked because it appears to contain ${/^[aeiou]/i.test(prohibited.category) ? "an" : "a"} ${prohibited.category}. Remove credentials or sensitive numbers before continuing.`,
+      });
+    }
+
+    let conversationId = requestedConversationId;
+    if (options.conversationStore) {
+      if (conversationId) {
+        const existing = await options.conversationStore.get(conversationId, userId);
+        if (!existing) {
+          const conv = await options.conversationStore.create(userId);
+          conversationId = conv.conversationId;
+        }
+      } else {
+        const title = message.length > 50 ? `${message.slice(0, 47).trim()}…` : message;
+        const conv = await options.conversationStore.create(userId, title);
+        conversationId = conv.conversationId;
+      }
+
+      await options.conversationStore.appendMessage({
+        conversationId,
+        role: "user",
+        content: message,
+      });
+    }
+
+    let contextConsidered = "";
+    let memoryUpdated = false;
+    let memorySources: Array<{ sourceId: string; label: string }> = [];
+
+    if (typeof options.memory.processWorkingContext === "function") {
+      try {
+        const memRes = await options.memory.processWorkingContext({ userId, message });
+        contextConsidered = memRes.contextConsidered;
+        memoryUpdated = memRes.memoryUpdated;
+        memorySources = memRes.sources;
+      } catch (err) {
+        request.log.warn({ err }, "Working context processing fallback");
+        const memoryResult = await application.ask({ userId, question: message });
+        if (memoryResult.statusCode === 200 && memoryResult.body.status === "answered") {
+          contextConsidered = memoryResult.body.answer;
+          memorySources = memoryResult.body.sources;
+        }
+      }
+    } else {
+      const memoryResult = await application.ask({ userId, question: message });
+      if (memoryResult.statusCode === 200 && memoryResult.body.status === "answered") {
+        contextConsidered = memoryResult.body.answer;
+        memorySources = memoryResult.body.sources;
+      }
+    }
+
+    try {
+      const companyAnswer = await options.companyAgent.answer({
+        employeeId,
+        question: message,
+        ...(contextConsidered ? { personalMemory: contextConsidered } : {}),
+      });
+
+      if (options.conversationStore && conversationId) {
+        await options.conversationStore.appendMessage({
+          conversationId,
+          role: "assistant",
+          content: companyAnswer.answer,
+          metadata: {
+            sources: companyAnswer.sources,
+            personalMemory: {
+              answer: contextConsidered,
+              sources: memorySources,
+              memoryUpdated,
+            },
+            runId: companyAnswer.runId,
+            toolCalls: companyAnswer.toolCalls,
+          },
+        });
+      }
+
+      return reply.send({
+        ...companyAnswer,
+        ...(conversationId ? { conversationId } : {}),
+        personalMemory: {
+          answer: contextConsidered,
+          sources: memorySources,
+          memoryUpdated,
+        },
+      });
+    } catch (error) {
+      request.log.error(
+        { employeeId, reason: error instanceof Error ? error.message : "Unknown failure." },
+        "Unified agent turn failed",
+      );
+      return reply.code(502).send({
+        message: "The agent could not complete this question. Please try again.",
+      });
+    }
+  };
+
+  app.post("/api/v1/agent/chat", async (request, reply) => {
+    const body = request.body;
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      Array.isArray(body) ||
+      (typeof (body as Record<string, unknown>).message !== "string" &&
+        typeof (body as Record<string, unknown>).question !== "string")
+    ) {
+      return reply.code(400).send({ message: "message is required." });
+    }
+    const userId =
+      typeof (body as Record<string, unknown>).userId === "string"
+        ? (body as Record<string, string>).userId.trim()
+        : "jax";
+    const employeeId =
+      typeof (body as Record<string, unknown>).employeeId === "string"
+        ? (body as Record<string, string>).employeeId.trim()
+        : "jax";
+    const message = (
+      (body as Record<string, string>).message ??
+      (body as Record<string, string>).question
+    ).trim();
+
+    if (!message || message.length > 2_000) {
+      return reply.code(400).send({ message: "Provide a valid message (up to 2000 characters)." });
+    }
+
+    const conversationId =
+      typeof (body as Record<string, unknown>).conversationId === "string"
+        ? (body as Record<string, string>).conversationId.trim()
+        : undefined;
+
+    return handleAgentTurn(userId, employeeId, message, request, reply, conversationId);
+  });
+
+  app.get("/api/v1/conversations", async (request, reply) => {
+    if (!options.conversationStore) {
+      return reply.send([]);
+    }
+    const query = (request.query ?? {}) as Record<string, string>;
+    const userId = query.userId?.trim() || "jax";
+    const list = await options.conversationStore.list(userId);
+    return reply.send(list);
+  });
+
+  app.post("/api/v1/conversations", async (request, reply) => {
+    if (!options.conversationStore) {
+      return reply.code(503).send({ message: "Conversation store is not configured." });
+    }
+    const body = (request.body ?? {}) as Record<string, string>;
+    const userId = body.userId?.trim() || "jax";
+    const title = body.title?.trim();
+    const created = await options.conversationStore.create(userId, title);
+    return reply.code(201).send(created);
+  });
+
+  app.get<{ Params: { conversationId: string }; Querystring: { userId?: string } }>(
+    "/api/v1/conversations/:conversationId",
+    async (request, reply) => {
+      if (!options.conversationStore) {
+        return reply.code(503).send({ message: "Conversation store is not configured." });
+      }
+      const userId = request.query?.userId?.trim() || "jax";
+      const detail = await options.conversationStore.get(request.params.conversationId, userId);
+      if (!detail) {
+        return reply.code(404).send({ message: "Conversation not found." });
+      }
+      return reply.send(detail);
+    },
+  );
+
+  app.delete<{ Params: { conversationId: string }; Querystring: { userId?: string } }>(
+    "/api/v1/conversations/:conversationId",
+    async (request, reply) => {
+      if (!options.conversationStore) {
+        return reply.code(503).send({ message: "Conversation store is not configured." });
+      }
+      const userId = request.query?.userId?.trim() || "jax";
+      const deleted = await options.conversationStore.delete(request.params.conversationId, userId);
+      if (!deleted) {
+        return reply.code(404).send({ message: "Conversation not found." });
+      }
+      return reply.send({ status: "deleted", conversationId: request.params.conversationId });
+    },
+  );
+
+  app.post("/api/v1/agent/questions", async (request, reply) => {
     const body = request.body;
     if (
       typeof body !== "object" ||
@@ -106,33 +307,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       return reply.code(400).send({ message: "Provide valid userId, employeeId, and question values." });
     }
 
-    const memoryResult = await application.ask({ userId, question });
-    if (memoryResult.statusCode !== 200 || memoryResult.body.status !== "answered") {
-      return reply.code(memoryResult.statusCode).send(memoryResult.body);
-    }
-    const personalMemory = memoryResult.body;
-    try {
-      const companyAnswer = await options.companyAgent.answer({
-        employeeId,
-        question,
-        ...(personalMemory.sources.length > 0 ? { personalMemory: personalMemory.answer } : {}),
-      });
-      return {
-        ...companyAnswer,
-        personalMemory: {
-          answer: personalMemory.answer,
-          sources: personalMemory.sources,
-        },
-      };
-    } catch (error) {
-      request.log.error(
-        { employeeId, reason: error instanceof Error ? error.message : "Unknown failure." },
-        "Unified agent question failed",
-      );
-      return reply.code(502).send({
-        message: "The agent could not complete this question. Please try again.",
-      });
-    }
+    return handleAgentTurn(userId, employeeId, question, request, reply);
   });
 
   app.get<{ Params: { sourceId: string } }>(
@@ -201,7 +376,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     };
 
   app.get("/", serve("index.html", "text/html; charset=utf-8"));
-  app.get("/sme", serve("sme.html", "text/html; charset=utf-8"));
+  app.get("/sme", async (_request, reply) => reply.redirect("/", 302));
   app.get(
     "/vendor/marked.js",
     serveFile(markedBrowserBundle, "text/javascript; charset=utf-8"),
@@ -210,14 +385,15 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     "/vendor/dompurify.js",
     serveFile(domPurifyBrowserBundle, "text/javascript; charset=utf-8"),
   );
-  app.get("/sme.js", serve("sme.js", "text/javascript; charset=utf-8"));
-  app.get("/sme.css", serve("sme.css", "text/css; charset=utf-8"));
   app.get("/app.js", serve("app.js", "text/javascript; charset=utf-8"));
   app.get("/styles.css", serve("styles.css", "text/css; charset=utf-8"));
+  app.get("/sme.js", serve("app.js", "text/javascript; charset=utf-8"));
+  app.get("/sme.css", serve("styles.css", "text/css; charset=utf-8"));
 
   app.addHook("onClose", async () => {
     await options.memory.close?.();
     await options.companyKnowledge?.close?.();
+    await options.conversationStore?.close?.();
   });
 
   return app;

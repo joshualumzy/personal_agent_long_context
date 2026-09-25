@@ -5,6 +5,7 @@ import type { MemoryProvider } from "./domain.js";
 import { buildApp } from "./http-app.js";
 import { lettaOptionsFromEnvironment } from "./letta-config.js";
 import { PostgresCompanyKnowledge } from "./adapters/postgres-company-knowledge.js";
+import { PostgresConversationStore } from "./adapters/postgres-conversations.js";
 import { SoCLaaSCompanyAgent } from "./soclaas-company-agent.js";
 import { embeddingProviderFromEnvironment } from "./embeddings.js";
 
@@ -33,6 +34,7 @@ const companyKnowledge = new PostgresCompanyKnowledge(
   databaseUrl,
   embeddingProviderFromEnvironment(process.env),
 );
+const conversationStore = new PostgresConversationStore(companyKnowledge.pool);
 const companyAgent = new SoCLaaSCompanyAgent(companyKnowledge, {
   apiKey: soCLaaSApiKey,
   baseUrl: process.env.SOCLAAS_BASE_URL,
@@ -43,6 +45,7 @@ const app = buildApp({
   memory: memoryProviderFromEnvironment(),
   companyAgent,
   companyKnowledge,
+  conversationStore,
   logger: true,
 });
 
