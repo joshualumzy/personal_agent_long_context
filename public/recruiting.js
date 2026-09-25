@@ -153,6 +153,14 @@ function renderStatus() {
   line.append(parts.join(", ") + (state.busy ? ". Thinking…" : "."));
 }
 
+/** Gmail's compose page, prefilled. Spaces stay %20: some mail apps show "+" literally. */
+function gmailCompose(to, subject, body) {
+  const query = [["view", "cm"], ["fs", "1"], ["to", to], ["su", subject], ["body", body]]
+    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+    .join("&");
+  return `https://mail.google.com/mail/?${query}`;
+}
+
 function renderTop() {
   const day = state.clockOffsetDays;
   $("#clock").textContent = day ? `${day} days later` : "Today";
@@ -654,9 +662,31 @@ function outreachPanel(candidate) {
         h(
           "div",
           { class: "row sticky-actions" },
-          state.integrations?.gmail
-            ? h("button", { type: "button", class: "primary", disabled: !candidate.contact && !email.value ? true : undefined, title: candidate.contact ? undefined : "Add an email address first", onclick: async (event) => { await save(); await call(`/api/recruiting/candidates/${candidate.id}/send`, {}, event.currentTarget); } }, "Send from Gmail")
-            : null,
+          // Opens the message ready to send in the founder's own Gmail; their
+          // Send there is what sends it. The link is filled in at click time
+          // so it carries any last edits.
+          h(
+            "a",
+            {
+              class: "button primary",
+              href: "#",
+              target: "_blank",
+              rel: "noopener",
+              "aria-disabled": draft.warnings.length ? "true" : undefined,
+              title: draft.warnings.length ? draft.warnings[0] : "Opens in your Gmail, ready to send",
+              onclick: (event) => {
+                const link = event.currentTarget;
+                if (draft.warnings.length || !email.value) {
+                  event.preventDefault();
+                  if (!email.value) email.focus();
+                  return;
+                }
+                link.href = gmailCompose(email.value, subject.value, body.value);
+                void save().then(() => call(`/api/recruiting/candidates/${candidate.id}/send`, {}));
+              },
+            },
+            "Open in Gmail to send",
+          ),
           h("button", { type: "button", class: "quiet", onclick: async (event) => { await save(); await call(`/api/recruiting/candidates/${candidate.id}/send`, { manual: true }, event.currentTarget); } }, "I sent it myself"),
           h("button", { type: "button", class: "quiet", onclick: save }, "Save edits"),
         ),

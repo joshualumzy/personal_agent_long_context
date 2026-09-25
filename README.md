@@ -123,7 +123,7 @@ The agent holds no credentials for the employee's everyday tools. An approved ac
 
 | Action | Opens in | Setting |
 |---|---|---|
-| Email | Gmail or Outlook compose; sent directly instead when Gmail is connected | `MEETINGS_SUITE=google` or `microsoft` |
+| Email | Gmail or Outlook compose | `MEETINGS_SUITE=google` or `microsoft` |
 | Calendar invite | Google Calendar or Outlook event, plus an `.ics` file for any other calendar | `MEETINGS_SUITE` |
 | Chat message | WhatsApp (straight to the chat when a phone number was mentioned), or Teams when the recipient's work email is known | `MEETINGS_CHAT=whatsapp` or `teams` |
 | New document | a blank Google Doc (`docs.new`) or Word document (`word.new`), with the draft copied to paste in | `MEETINGS_SUITE` |
@@ -144,7 +144,7 @@ What turns up becomes cited evidence and the action is drafted once more. Whatev
 
 Every calendar invite is also checked against the employee's Google Calendar free/busy when it is connected: at a proposed time, who is free, busy, or not visible; with no time set, the first free working-hour weekday slots. Free/busy shows when someone is busy, never what the event is. The check is listed on the card under "Checked for you"; the invite itself is not changed.
 
-Google access (Gmail send, Gmail read-only, calendar free/busy) is one grant, made from Recruiting's Connect Gmail. `npm run google:check` shows which mailbox is connected, what it granted, and whether free/busy answers. While the OAuth app is in testing mode, a grant expires after 7 days; reconnect before a demo.
+Google access is one read-only grant (Gmail read-only, calendar free/busy), made from Recruiting's Connect Gmail or the meetings page's prompt. Neither agent can send mail: S2 and S3 both open drafts in the person's own mailbox. A Google account without Gmail is refused, keeping the previous grant, since replies and contact lookups need a mailbox. `npm run google:check` shows which mailbox is connected, what it granted, and whether free/busy answers. While the OAuth app is in testing mode, a grant expires after 7 days; reconnect before a demo.
 
 ### Evaluate
 
@@ -190,7 +190,7 @@ One founder, hiring for one open role at a time.
 4. **Give feedback in plain words.** "Remote is fine after all", "pass on Ben, too corporate", "why do we need this?". Criteria changes rescore the pool at once and the role is renamed to match.
 5. **Learn preferences.** When two passes share a reason, the agent proposes a new criterion. It applies only if the founder accepts.
 6. **Widen the search when hiring stalls.** After a quiet week the agent proposes the next step: widen location, drop background filters, then demote one must. Each step needs the founder's approval.
-7. **Reach out.** For a chosen person the agent looks up a work email (Hunter, then Prospeo) and drafts a short message in the founder's voice. It never guesses an address. The founder edits and sends from their own Gmail, or sends on LinkedIn by hand.
+7. **Reach out.** For a chosen person the agent looks up a work email (Hunter, then Prospeo) and drafts a short message in the founder's voice. It never guesses an address. The founder edits it and opens it ready to send in their own Gmail, where their Send is what sends it, or sends on LinkedIn by hand.
 8. **Follow up.** Replies arrive from Gmail, from the LinkedIn inbox, or by paste. The agent moves the candidate on and drafts a scheduling reply. No reply after five days: a follow-up draft. Seven more: marked cold.
 9. **Remember why.** Every criteria change, preference, and expansion goes to Letta Memory, so "why is Singapore no longer required?" gets the founder's own reason back.
 

@@ -753,9 +753,10 @@ export class RecruitingService {
   }
 
   /**
-   * Sends the current draft. Only ever called from the founder's press of the
-   * send button. Without Gmail, `manual` records that the founder sent it
-   * themselves (for example as a LinkedIn message).
+   * Records that the founder sent the current draft from their own mailbox
+   * (the page opens it prefilled in Gmail) or, with `manual`, some other way
+   * such as a LinkedIn message. Nothing is sent from here: the founder's own
+   * send is the approval.
    */
   async send(candidateId: string, manual: boolean): Promise<void> {
     const state = await this.current();
@@ -765,19 +766,8 @@ export class RecruitingService {
     if (draft.warnings.length) {
       throw new RecruitingError("draft_has_warnings", draft.warnings[0]!, 409);
     }
-    let threadId = candidate.gmailThreadId;
-    if (!manual) {
-      if (!this.deps.gmail || !(await this.deps.gmail.connected())) {
-        throw new RecruitingError("gmail_not_connected", "Connect Gmail first, or mark it as sent by hand.", 409);
-      }
-      if (!candidate.contact) throw new RecruitingError("no_email", "There is no email address for this person.", 409);
-      const sent = await this.deps.gmail.send({
-        to: candidate.contact.email,
-        subject: draft.subject,
-        body: draft.body,
-        ...(threadId ? { threadId } : {}),
-      });
-      threadId = sent.threadId;
+    if (!manual && !candidate.contact) {
+      throw new RecruitingError("no_email", "There is no email address for this person.", 409);
     }
     await this.mutate((latest) => {
       const target = this.candidate(latest, candidateId);
@@ -788,7 +778,6 @@ export class RecruitingService {
         at,
         text: `${draft.subject}\n\n${draft.body}`,
       });
-      if (threadId) target.gmailThreadId = threadId;
       target.lastContactedAt = at;
       if (draft.kind === "follow_up") target.followUps += 1;
       if (draft.kind === "scheduling") target.stage = "scheduling";
@@ -860,15 +849,16 @@ export class RecruitingService {
     });
   }
 
-  /** Reads new replies in every Gmail thread the founder started from here. */
+  /** Reads new replies in Gmail from everyone the founder has emailed from here. */
   async syncGmail(): Promise<number> {
     if (!this.deps.gmail || !(await this.deps.gmail.connected())) return 0;
     const state = await this.current();
     let count = 0;
     for (const candidate of Object.values(state.candidates)) {
-      if (!candidate.gmailThreadId || candidate.stage === "closed") continue;
+      const emailed = candidate.messages.some((message) => message.direction === "outbound" && message.channel === "email");
+      if (!emailed || !candidate.contact || candidate.stage === "closed") continue;
       const lastSeen = candidate.messages.at(-1)?.at ?? candidate.discoveredAt;
-      const replies = await this.deps.gmail.repliesIn(candidate.gmailThreadId, lastSeen);
+      const replies = await this.deps.gmail.repliesFrom(candidate.contact.email, lastSeen);
       for (const message of replies) {
         await this.reply(message.text, candidate.profile.id, "email", message.at);
         count += 1;

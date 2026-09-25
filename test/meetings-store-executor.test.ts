@@ -9,7 +9,6 @@ import {
   MeetingError,
   type ActionPayload,
   type EmailPayload,
-  type EmailSender,
   type HiringHandoff,
   type MeetingState,
   type ProposedAction,
@@ -53,18 +52,6 @@ function action(id: string, overrides: Partial<ProposedAction> = {}): ProposedAc
     payload,
     payloadHash: overrides.payloadHash ?? hashPayload(payload),
   };
-}
-
-class FakeEmail implements EmailSender {
-  isConnected = true;
-  sent: { to: string; subject: string; body: string }[] = [];
-  async connected(): Promise<boolean> {
-    return this.isConnected;
-  }
-  async send(message: { to: string; subject: string; body: string }): Promise<{ threadId: string }> {
-    this.sent.push(message);
-    return { threadId: `thread-${this.sent.length}` };
-  }
 }
 
 class FakeHiring implements HiringHandoff {
@@ -151,17 +138,8 @@ describe("InMemoryMeetingStore", () => {
 // ------------------------------------------------------------- executor
 
 describe("DispatchingExecutor", () => {
-  test("email_draft sends and returns the thread as externalRef", async () => {
-    const email = new FakeEmail();
-    const executor = new DispatchingExecutor({ email });
-    const payload: EmailPayload = { to: "founder@example.com", subject: "Hi", body: "Body" };
-    const result = await executor.execute(action("a1", { kind: "email_draft", payload }), meeting("m1"));
-    assert.deepEqual(result, { summary: "Sent to founder@example.com", simulated: false, externalRef: "thread-1" });
-    assert.deepEqual(email.sent, [{ to: "founder@example.com", subject: "Hi", body: "Body" }]);
-  });
-
   test("email_draft refuses an implausible address", async () => {
-    const executor = new DispatchingExecutor({ email: new FakeEmail() });
+    const executor = new DispatchingExecutor({});
     const payload: EmailPayload = { to: "not-an-email", subject: "Hi", body: "Body" };
     await assert.rejects(
       () => executor.execute(action("a1", { kind: "email_draft", payload }), meeting("m1")),
@@ -174,22 +152,22 @@ describe("DispatchingExecutor", () => {
     );
   });
 
-  test("email_draft without a connected mailbox hands off to a prefilled Gmail compose", async () => {
+  test("email_draft is never sent from here: it opens prefilled in the employee's Gmail", async () => {
     const payload: EmailPayload = { to: "founder@example.com", subject: "Hi & bye", body: "Line one\nLine two" };
-    const disconnected = new FakeEmail();
-    disconnected.isConnected = false;
+    const result = await new DispatchingExecutor({}).execute(action("a1", { kind: "email_draft", payload }), meeting("m1"));
+    assert.equal(result.simulated, false);
+    assert.equal(result.summary, "Ready in Gmail: Hi & bye");
+    const url = new URL(result.handoffUrl!);
+    assert.equal(url.origin + url.pathname, "https://mail.google.com/mail/");
+    assert.equal(url.searchParams.get("to"), "founder@example.com");
+    assert.equal(url.searchParams.get("su"), "Hi & bye");
+    assert.equal(url.searchParams.get("body"), "Line one\nLine two");
+  });
 
-    for (const executor of [new DispatchingExecutor({}), new DispatchingExecutor({ email: disconnected })]) {
-      const result = await executor.execute(action("a1", { kind: "email_draft", payload }), meeting("m1"));
-      assert.equal(result.simulated, false);
-      assert.equal(result.summary, "Ready in Gmail: Hi & bye");
-      const url = new URL(result.handoffUrl!);
-      assert.equal(url.origin + url.pathname, "https://mail.google.com/mail/");
-      assert.equal(url.searchParams.get("to"), "founder@example.com");
-      assert.equal(url.searchParams.get("su"), "Hi & bye");
-      assert.equal(url.searchParams.get("body"), "Line one\nLine two");
-    }
-    assert.equal(disconnected.sent.length, 0);
+  test("email_draft with no recipient still opens, for the employee to fill in", async () => {
+    const payload: EmailPayload = { to: "", subject: "Hi", body: "Body" };
+    const result = await new DispatchingExecutor({}).execute(action("a1", { kind: "email_draft", payload }), meeting("m1"));
+    assert.equal(new URL(result.handoffUrl!).searchParams.has("to"), false);
   });
 
   test("hiring_request hands off to the recruiting agent", async () => {

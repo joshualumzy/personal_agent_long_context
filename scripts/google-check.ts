@@ -43,7 +43,11 @@ if (!tokenResponse.ok || !token.access_token) {
 const auth = { authorization: `Bearer ${token.access_token}` };
 const profile = (await (await fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", { headers: auth })).json()) as { emailAddress?: string };
 const scopes = (token.scope ?? "").split(" ");
-console.log(`Mailbox: ${profile.emailAddress ?? "unknown"}`);
+console.log(
+  profile.emailAddress
+    ? `Mailbox: ${profile.emailAddress}`
+    : "Mailbox: NONE. This Google account has no Gmail, so sending and reading replies fail. Reconnect with the account you use for email.",
+);
 for (const scope of scopes) console.log(`  granted: ${scope.replace("https://www.googleapis.com/auth/", "")}`);
 
 if (!scopes.includes(FREEBUSY)) {

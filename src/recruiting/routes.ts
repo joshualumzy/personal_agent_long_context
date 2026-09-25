@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { RecruitingError, type ClosedReason, type CriterionKind } from "./domain.js";
-import type { GmailClient } from "./gmail.js";
+import { NoGmailError, type GmailClient } from "./gmail.js";
 import type { RecruitingService } from "./service.js";
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
@@ -226,7 +226,7 @@ export function registerRecruitingRoutes(
     const state = randomBytes(16).toString("hex");
     const back = request.query.return;
     oauthStates.set(state, back && RETURN_PAGES.has(back) ? back : "/recruiting");
-    return reply.redirect(gmail.consentUrl(state));
+    return reply.redirect(gmail.consentUrl(state, (await gmail.storedAddress()) ?? undefined));
   });
 
   app.get<{ Querystring: { code?: string; state?: string; error?: string } }>(
@@ -240,7 +240,12 @@ export function registerRecruitingRoutes(
       oauthStates.delete(state);
       // The person pressed Cancel on Google's consent screen.
       if (error || !code) return reply.redirect(`${back}?google=denied`);
-      await gmail.exchangeCode(code);
+      try {
+        await gmail.exchangeCode(code);
+      } catch (failure) {
+        if (failure instanceof NoGmailError) return reply.redirect(`${back}?google=no-gmail`);
+        throw failure;
+      }
       return reply.redirect(`${back}?google=connected`);
     },
   );

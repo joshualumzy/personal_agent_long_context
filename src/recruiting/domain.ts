@@ -110,7 +110,6 @@ export interface Candidate {
   messages: Message[];
   lastContactedAt?: string;
   followUps: number;
-  gmailThreadId?: string;
 }
 
 export interface FeedbackEntry {

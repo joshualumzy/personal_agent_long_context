@@ -55,7 +55,6 @@ const meetings = meetingsFromEnvironment(process.env, {
   pool: companyKnowledge.pool,
   knowledge: companyKnowledge,
   answerer: companyAgent,
-  email: recruiting?.gmail ?? null,
   contacts: recruiting?.gmail ? gmailContactDirectory(recruiting.gmail) : null,
   availability: recruiting?.gmail ? googleAvailability(recruiting.gmail) : null,
   ...(recruiting?.gmail

@@ -4,7 +4,7 @@ import type pg from "pg";
 import type { CompanyKnowledge } from "../company-domain.js";
 import { OpenAiCompatibleModel, type JsonModel } from "../recruiting/llm.js";
 import { ActionDrafter } from "./drafter.js";
-import type { AvailabilityChecker, ContactDirectory, EmailSender, HiringHandoff, QuestionAnswerer } from "./domain.js";
+import type { AvailabilityChecker, ContactDirectory, HiringHandoff, QuestionAnswerer } from "./domain.js";
 import { companyContactDirectory } from "./contacts.js";
 import type { GoogleStatus } from "./routes.js";
 import { DispatchingExecutor } from "./executor.js";
@@ -46,8 +46,6 @@ export interface MeetingDependencies {
   knowledge: CompanyKnowledge;
   /** S1, for questions asked during the meeting. */
   answerer?: QuestionAnswerer;
-  /** Gmail, shared with recruiting. */
-  email?: EmailSender | null;
   /** The employee's mailbox, read-only, for finding a person's address a draft needs. */
   contacts?: ContactDirectory | null;
   /** The employee's calendar free/busy, read-only, for checking invites. */
@@ -90,7 +88,6 @@ export function meetingsFromEnvironment(environment: Environment, deps: MeetingD
       availability: deps.availability ?? null,
     }),
     executor: new DispatchingExecutor({
-      email: deps.email ?? null,
       hiring: deps.hiring ?? null,
       ticketRepo: environment.MEETINGS_TICKET_REPO || undefined,
       suite: environment.MEETINGS_SUITE === "microsoft" ? "microsoft" : "google",

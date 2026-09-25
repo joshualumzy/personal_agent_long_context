@@ -7,7 +7,6 @@ import {
   type CalendarPayload,
   type DocPayload,
   type EmailPayload,
-  type EmailSender,
   type HiringHandoff,
   type HiringPayload,
   type MeetingState,
@@ -48,8 +47,6 @@ export interface RecordedEffect {
 }
 
 export interface DispatchingExecutorDeps {
-  /** S2's own outbound mail. Absent or disconnected means email_draft cannot run. */
-  email?: EmailSender | null;
   /** S3, the recruiting agent. Absent means hiring_request cannot run. */
   hiring?: HiringHandoff | null;
   /** Optional sink for simulated effects (ticket_draft, calendar_draft), for anyone who wants to list them later. */
@@ -127,18 +124,15 @@ export class DispatchingExecutor implements ActionExecutor {
     }
   }
 
-  private async sendEmail(action: ProposedAction): Promise<ActionResult> {
+  /** Never sent from here: it opens in the employee's own mailbox, and their send is what sends it. An empty recipient is left for them to fill in. */
+  private sendEmail(action: ProposedAction): ActionResult {
     const payload = action.payload as EmailPayload;
-    if (!EMAIL_RE.test(payload.to)) {
+    if (payload.to && !EMAIL_RE.test(payload.to)) {
       throw new MeetingError("invalid_email", `"${payload.to}" is not a plausible email address.`, 400);
     }
-    if (!this.deps.email || !(await this.deps.email.connected())) {
-      return this.microsoft
-        ? this.handOff(action, outlookComposeLink(payload), "Outlook")
-        : this.handOff(action, gmailComposeLink(payload), "Gmail");
-    }
-    const sent = await this.deps.email.send({ to: payload.to, subject: payload.subject, body: payload.body });
-    return { summary: `Sent to ${payload.to}`, simulated: false, externalRef: sent.threadId };
+    return this.microsoft
+      ? this.handOff(action, outlookComposeLink(payload), "Outlook")
+      : this.handOff(action, gmailComposeLink(payload), "Gmail");
   }
 
   private async startHiring(action: ProposedAction): Promise<ActionResult> {

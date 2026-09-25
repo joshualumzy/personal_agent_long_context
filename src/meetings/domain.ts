@@ -294,11 +294,6 @@ export interface HiringHandoff {
   start(requirement: string): Promise<{ message: string }>;
 }
 
-/** GmailClient satisfies it. */
-export interface EmailSender {
-  connected(): Promise<boolean>;
-  send(message: { to: string; subject: string; body: string }): Promise<{ threadId: string }>;
-}
 
 /**
  * Read-only lookup of people in the employee's own mailbox, used when a

@@ -941,12 +941,14 @@ function renderGoogleBanner(outcome) {
   banner.hidden = false;
   banner.className = "banner connect";
   const lead =
-    outcome === "denied"
+    outcome === "no-gmail"
+      ? "That Google account has no Gmail, so it was not connected and the previous connection was kept. Choose the account you use for email: "
+      : outcome === "denied"
       ? "Google access was not granted, so calendar invites are not checked. "
       : google.connected
         ? "Let the agent check calendar invites: it needs to see when you are busy (never what your events are). "
         : "Connect Google so the agent can find people's addresses in your mail and check calendar invites against when you are busy. ";
-  const hint = google.connected && outcome !== "denied" ? " On Google's screen, tick the calendar box." : "";
+  const hint = google.connected && outcome !== "denied" ? ". On Google's screen, tick the calendar box." : ".";
   banner.append(lead, h("a", { href: google.connectUrl }, google.connected ? "Allow calendar access" : "Connect Google"), hint);
 }
 
