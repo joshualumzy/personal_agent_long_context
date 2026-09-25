@@ -2,7 +2,15 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ActionPayload, MeetingActions, MeetingEvent } from "./domain.js";
 import { MeetingError } from "./domain.js";
 
+export interface GoogleStatus {
+  connected: boolean;
+  /** Calendar free/busy granted, so invites can be checked. */
+  calendar: boolean;
+}
+
 export interface RegisterMeetingRoutesOptions {
+  /** Google connection, for the page to offer connecting it. Absent means Google is not configured. */
+  googleStatus?: () => Promise<GoogleStatus>;
   /** Loads an OrgForge meeting to replay. Absent means replay is not configured. */
   loadReplay?: (
     sourceId: string,
@@ -131,6 +139,18 @@ export function registerMeetingRoutes(
   app.get(
     "/api/v1/meetings",
     route(app, async () => ({ status: 200, body: await meetings.list() })),
+  );
+
+  app.get(
+    "/api/v1/meetings/integrations",
+    route(app, async () => ({
+      status: 200,
+      body: {
+        google: options.googleStatus
+          ? { ...(await options.googleStatus()), connectUrl: "/api/recruiting/gmail/connect?return=/meetings" }
+          : null,
+      },
+    })),
   );
 
   app.post(

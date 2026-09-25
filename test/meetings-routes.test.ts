@@ -431,3 +431,22 @@ describe("meeting routes: SSE", () => {
     assert.equal(response.json().code, "meeting_not_found");
   });
 });
+
+describe("meeting routes: integrations", () => {
+  test("reports the Google connection and where to connect, returning to this page", async () => {
+    const app = buildTestApp(new FakeMeetings(), { googleStatus: async () => ({ connected: true, calendar: false }) });
+    after(() => app.close());
+    const response = await app.inject({ method: "GET", url: "/api/v1/meetings/integrations" });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), {
+      google: { connected: true, calendar: false, connectUrl: "/api/recruiting/gmail/connect?return=/meetings" },
+    });
+  });
+
+  test("says null when Google is not configured", async () => {
+    const app = buildTestApp(new FakeMeetings());
+    after(() => app.close());
+    const response = await app.inject({ method: "GET", url: "/api/v1/meetings/integrations" });
+    assert.deepEqual(response.json(), { google: null });
+  });
+});

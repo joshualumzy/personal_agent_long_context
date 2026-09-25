@@ -58,6 +58,15 @@ const meetings = meetingsFromEnvironment(process.env, {
   email: recruiting?.gmail ?? null,
   contacts: recruiting?.gmail ? gmailContactDirectory(recruiting.gmail) : null,
   availability: recruiting?.gmail ? googleAvailability(recruiting.gmail) : null,
+  ...(recruiting?.gmail
+    ? {
+        googleStatus: async () => {
+          const gmail = recruiting.gmail!;
+          const connected = await gmail.connected();
+          return { connected, calendar: connected && (await gmail.canReadCalendar()) };
+        },
+      }
+    : {}),
   hiring: recruiting?.service ?? null,
   log: (context, error) => logMeetingFailure(context, error),
 });

@@ -21,7 +21,7 @@ import { registerRecruitingRoutes } from "./recruiting/routes.js";
 import type { RecruitingService } from "./recruiting/service.js";
 import type { MeetingActions } from "./meetings/domain.js";
 import { replayTranscript, type ReplaySource } from "./meetings/replay.js";
-import { registerMeetingRoutes } from "./meetings/routes.js";
+import { registerMeetingRoutes, type GoogleStatus } from "./meetings/routes.js";
 
 export interface BuildAppOptions extends ApplicationOptions {
   memory: MemoryProvider;
@@ -33,7 +33,7 @@ export interface BuildAppOptions extends ApplicationOptions {
   /** The recruiting direction (S3). Omitted, its routes are not registered. */
   recruiting?: { service: RecruitingService; gmail: GmailClient | null };
   /** Meeting actions (S2). Omitted, its routes are not registered. */
-  meetings?: { service: MeetingActions; replays?: ReplaySource };
+  meetings?: { service: MeetingActions; replays?: ReplaySource; googleStatus?: () => Promise<GoogleStatus> };
 }
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
@@ -466,8 +466,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   }
 
   if (options.meetings) {
-    const { service, replays } = options.meetings;
+    const { service, replays, googleStatus } = options.meetings;
     registerMeetingRoutes(app, service, {
+      ...(googleStatus ? { googleStatus } : {}),
       ...(replays
         ? {
             listReplays: () => replays.list(),

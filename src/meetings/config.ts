@@ -6,6 +6,7 @@ import { OpenAiCompatibleModel, type JsonModel } from "../recruiting/llm.js";
 import { ActionDrafter } from "./drafter.js";
 import type { AvailabilityChecker, ContactDirectory, EmailSender, HiringHandoff, QuestionAnswerer } from "./domain.js";
 import { companyContactDirectory } from "./contacts.js";
+import type { GoogleStatus } from "./routes.js";
 import { DispatchingExecutor } from "./executor.js";
 import { ModelCommitmentExtractor } from "./extractor.js";
 import { postgresReplaySource, type ReplaySegment } from "./replay.js";
@@ -51,6 +52,8 @@ export interface MeetingDependencies {
   contacts?: ContactDirectory | null;
   /** The employee's calendar free/busy, read-only, for checking invites. */
   availability?: AvailabilityChecker | null;
+  /** Whether Google is connected and calendar free/busy granted, for the page's connect prompt. */
+  googleStatus?: () => Promise<GoogleStatus>;
   /** S3, so a hiring need heard in a meeting becomes a draft role. */
   hiring?: HiringHandoff | null;
   log: (context: string, error: unknown) => void;
@@ -116,5 +119,5 @@ export function meetingsFromEnvironment(environment: Environment, deps: MeetingD
     },
   };
 
-  return { service, replays };
+  return { service, replays, ...(deps.googleStatus ? { googleStatus: deps.googleStatus } : {}) };
 }

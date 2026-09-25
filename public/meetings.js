@@ -104,6 +104,7 @@ const READONLY_FIELDS = {
 };
 
 const state = {
+  google: null, // { connected, calendar, connectUrl } once loaded; null when Google is not configured
   meetings: [],
   replays: [],
   current: null, // MeetingState, filled in once the "snapshot" SSE event arrives
@@ -402,6 +403,24 @@ function renderCard(action) {
         { class: "checked-notes" },
         h("p", { class: "missing-head" }, "Checked for you:"),
         h("ul", {}, action.notes.map((note) => h("li", {}, note))),
+      ),
+    );
+  }
+
+  if (
+    action.kind === "calendar_draft" &&
+    action.status === "proposed" &&
+    !action.notes?.length &&
+    state.google &&
+    !(state.google.connected && state.google.calendar)
+  ) {
+    card.append(
+      h(
+        "p",
+        { class: "connect-hint" },
+        "Availability not checked. ",
+        h("a", { href: state.google.connectUrl }, "Allow calendar access"),
+        " to check it on the next invite.",
       ),
     );
   }
@@ -883,6 +902,52 @@ function init() {
 
   loadMeetingList();
   loadReplayList();
+  loadIntegrations();
+}
+
+// ------------------------------------------------------------ integrations
+
+/**
+ * Offers to connect Google when the agent could do more with it: the
+ * calendar check needs free/busy, which only shows when someone is busy,
+ * never what their events are. Also reports how a connect attempt ended.
+ */
+async function loadIntegrations() {
+  const outcome = new URLSearchParams(location.search).get("google");
+  if (outcome) history.replaceState(null, "", location.pathname);
+  try {
+    state.google = (await getJSON("/api/v1/meetings/integrations")).google;
+  } catch {
+    state.google = null;
+  }
+  renderGoogleBanner(outcome);
+  if (state.current) renderActions();
+}
+
+function renderGoogleBanner(outcome) {
+  const banner = $("#google-banner");
+  banner.replaceChildren();
+  const google = state.google;
+  if (!google) {
+    banner.hidden = true;
+    return;
+  }
+  if (google.connected && google.calendar) {
+    banner.hidden = outcome !== "connected";
+    banner.className = "banner connect done";
+    banner.append("Google connected. Calendar invites are now checked against your free/busy.");
+    return;
+  }
+  banner.hidden = false;
+  banner.className = "banner connect";
+  const lead =
+    outcome === "denied"
+      ? "Google access was not granted, so calendar invites are not checked. "
+      : google.connected
+        ? "Let the agent check calendar invites: it needs to see when you are busy (never what your events are). "
+        : "Connect Google so the agent can find people's addresses in your mail and check calendar invites against when you are busy. ";
+  const hint = google.connected && outcome !== "denied" ? " On Google's screen, tick the calendar box." : "";
+  banner.append(lead, h("a", { href: google.connectUrl }, google.connected ? "Allow calendar access" : "Connect Google"), hint);
 }
 
 document.addEventListener("DOMContentLoaded", init);

@@ -211,9 +211,12 @@ export function registerRecruitingRoutes(
 
   app.post("/api/recruiting/dismiss-error", handle(async () => service.clearError()));
 
-  // Gmail OAuth. The state value ties the callback to a consent this server started.
-  const oauthStates = new Set<string>();
-  app.get("/api/recruiting/gmail/connect", async (_request, reply) => {
+  // Google OAuth (Gmail, and calendar free/busy for meeting actions). The
+  // state value ties the callback to a consent this server started and
+  // remembers which page to return to.
+  const oauthStates = new Map<string, string>();
+  const RETURN_PAGES = new Set(["/recruiting", "/meetings"]);
+  app.get<{ Querystring: { return?: string } }>("/api/recruiting/gmail/connect", async (request, reply) => {
     if (!gmail) {
       return reply.code(409).send({
         code: "gmail_not_configured",
@@ -221,19 +224,24 @@ export function registerRecruitingRoutes(
       });
     }
     const state = randomBytes(16).toString("hex");
-    oauthStates.add(state);
+    const back = request.query.return;
+    oauthStates.set(state, back && RETURN_PAGES.has(back) ? back : "/recruiting");
     return reply.redirect(gmail.consentUrl(state));
   });
 
-  app.get<{ Querystring: { code?: string; state?: string } }>(
+  app.get<{ Querystring: { code?: string; state?: string; error?: string } }>(
     "/api/recruiting/gmail/callback",
     async (request, reply) => {
-      const { code, state } = request.query;
-      if (!gmail || !code || !state || !oauthStates.delete(state)) {
+      const { code, state, error } = request.query;
+      const back = state ? oauthStates.get(state) : undefined;
+      if (!gmail || !state || !back) {
         return reply.code(400).send({ code: "invalid_oauth_callback", message: "Start from Connect Gmail." });
       }
+      oauthStates.delete(state);
+      // The person pressed Cancel on Google's consent screen.
+      if (error || !code) return reply.redirect(`${back}?google=denied`);
       await gmail.exchangeCode(code);
-      return reply.redirect("/recruiting");
+      return reply.redirect(`${back}?google=connected`);
     },
   );
 }
