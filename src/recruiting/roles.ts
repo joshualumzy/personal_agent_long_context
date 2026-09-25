@@ -109,6 +109,7 @@ export class RoleBoard {
   constructor(
     private readonly repository: RoleRepository,
     private readonly serviceFor: (store: StateStore) => RecruitingService,
+    private readonly onUnreadable?: (roleId: string, error: unknown) => void,
   ) {}
 
   async get(roleId: string): Promise<RecruitingService> {
@@ -117,7 +118,8 @@ export class RoleBoard {
     if (!(await this.repository.list()).includes(roleId)) {
       throw new RecruitingError("unknown_role", "No such role.", 404);
     }
-    return this.open(roleId);
+    // Another request may have opened it while we listed; one service per role.
+    return this.services.get(roleId) ?? this.open(roleId);
   }
 
   /** A new, empty role. It is listed once its first change is saved. */
@@ -127,14 +129,26 @@ export class RoleBoard {
   }
 
   async remove(roleId: string): Promise<void> {
-    await this.get(roleId);
+    const service = await this.get(roleId);
     this.services.delete(roleId);
+    // Stop the role first, so its background work cannot write the file back.
+    await service.dispose();
     await this.repository.remove(roleId);
   }
 
+  /** Every role that can be read. One damaged file never takes the others down. */
   async all(): Promise<Array<{ id: string; service: RecruitingService }>> {
-    const ids = await this.repository.list();
-    return Promise.all(ids.map(async (id) => ({ id, service: await this.get(id) })));
+    const readable = [];
+    for (const id of await this.repository.list()) {
+      try {
+        const service = await this.get(id);
+        await service.snapshot();
+        readable.push({ id, service });
+      } catch (error) {
+        this.onUnreadable?.(id, error);
+      }
+    }
+    return readable;
   }
 
   /** Newest first. */

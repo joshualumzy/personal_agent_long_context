@@ -17,6 +17,7 @@ import { findContact, type ContactFinder } from "./contacts.js";
 import {
   emptyState,
   RecruitingError,
+  verdictFor,
   type Candidate,
   type CandidateProfile,
   type ClosedReason,
@@ -38,6 +39,8 @@ import type { StateStore } from "./store.js";
 import { isInPool, tierOf } from "./tiers.js";
 
 const DAY_MS = 86_400_000;
+/** Longest requirement passed to the model, typed or read from a file. */
+const MAX_REQUIREMENT = 8000;
 
 export interface RecruitingSettings {
   /** People to add per search round. The first round is kept small on purpose. */
@@ -96,6 +99,8 @@ function personKey(profile: CandidateProfile): string {
  */
 function mergeDuplicatePeople(state: RecruitingState): void {
   const progress = (candidate: Candidate) =>
+    // A decision the founder made (pass, hire, decline) outranks everything else.
+    (candidate.stage === "closed" ? 10_000 : 0) +
     candidate.messages.length * 100 +
     (candidate.draft ? 50 : 0) +
     (candidate.kept ? 20 : 0) +
@@ -117,11 +122,17 @@ function mergeDuplicatePeople(state: RecruitingState): void {
     delete state.candidates[dropped.profile.id];
   }
   if (renamed.size === 0) return;
-  for (const entry of state.feedback) entry.candidateId = renamed.get(entry.candidateId) ?? entry.candidateId;
+  // Three copies can rename a -> b and later b -> c; follow the chain to the survivor.
+  const survivor = (id: string) => {
+    let current = id;
+    for (let hops = 0; renamed.has(current) && hops < renamed.size; hops += 1) current = renamed.get(current)!;
+    return current;
+  };
+  for (const entry of state.feedback) entry.candidateId = survivor(entry.candidateId);
   for (const proposal of state.proposals) {
     if (proposal.type === "criterion") {
       proposal.supportingCandidateIds = [
-        ...new Set(proposal.supportingCandidateIds.map((id) => renamed.get(id) ?? id)),
+        ...new Set(proposal.supportingCandidateIds.map(survivor)),
       ];
     }
   }
@@ -134,6 +145,7 @@ export class RecruitingService {
   private settleAgain = false;
   private backgroundWork = 0;
   private lastError: string | null = null;
+  private disposed = false;
   readonly settings: RecruitingSettings;
 
   constructor(private readonly deps: RecruitingDependencies) {
@@ -147,8 +159,17 @@ export class RecruitingService {
     return new Date(real.getTime() + state.clockOffsetDays * DAY_MS);
   }
 
+  private loading: Promise<RecruitingState> | null = null;
+
   private async current(): Promise<RecruitingState> {
-    if (!this.state) {
+    if (this.state) return this.state;
+    // Concurrent first callers share one load, so an older copy can never land last.
+    this.loading ??= this.load();
+    return this.loading;
+  }
+
+  private async load(): Promise<RecruitingState> {
+    {
       const loaded = await this.deps.store.load();
       // A brief earlier version kept unscored search results aside. They are paid for; score them.
       const legacy = loaded as RecruitingState & { reserve?: CandidateProfile[] };
@@ -164,16 +185,23 @@ export class RecruitingService {
         if ((candidate.contact?.provider as string | undefined) === "guess") delete candidate.contact;
       }
       this.state = loaded;
+      return loaded;
     }
-    return this.state;
   }
 
-  /** Runs one change at a time against the state, then saves it. */
+  /**
+   * Runs one change at a time. The change edits a copy, which replaces the
+   * state only after the change and the save both succeed: a change that
+   * throws halfway leaves nothing behind.
+   */
   private mutate<T>(change: (state: RecruitingState) => Promise<T> | T): Promise<T> {
     const run = this.chain.then(async () => {
-      const state = await this.current();
-      const result = await change(state);
-      await this.deps.store.save(state);
+      if (this.disposed) throw new RecruitingError("unknown_role", "No such role.", 404);
+      const draft = structuredClone(await this.current());
+      const result = await change(draft);
+      if (this.disposed) return result;
+      await this.deps.store.save(draft);
+      this.state = draft;
       return result;
     });
     this.chain = run.catch(() => undefined);
@@ -227,7 +255,7 @@ export class RecruitingService {
 
   /** Turns the founder's requirement into proposed criteria awaiting confirmation. */
   async start(requirement: string): Promise<SayResult> {
-    const trimmed = requirement.trim();
+    const trimmed = requirement.trim().slice(0, MAX_REQUIREMENT);
     if (trimmed.length < 10) {
       throw new RecruitingError("invalid_request", "Describe the role in a sentence or more.");
     }
@@ -272,10 +300,15 @@ export class RecruitingService {
         throw new RecruitingError("invalid_state", "There are no draft criteria to revise.", 409);
       }
       const at = this.now(state).toISOString();
+      const known = new Set(state.criteria.map((criterion) => criterion.id));
+      const used = new Set<string>();
       state.criteria = criteria
         .filter((criterion) => criterion.text.trim())
         .map((criterion) => ({
-          id: criterion.id ?? randomUUID().slice(0, 8),
+          // Ids are ours: a client may keep an existing one once, never invent one.
+          id: criterion.id && known.has(criterion.id) && !used.has(criterion.id)
+            ? (used.add(criterion.id), criterion.id)
+            : randomUUID().slice(0, 8),
           text: criterion.text.trim(),
           kind: criterion.kind === "nice" ? "nice" : "must",
           origin: "stated",
@@ -457,7 +490,7 @@ export class RecruitingService {
       for (const candidate of Object.values(state.candidates)) {
         const id = candidate.profile.id;
         if (!isInPool(candidate) || claimed.has(id) || failed.has(id)) continue;
-        const missing = criteria.filter((criterion) => !candidate.verdicts[criterion.id]);
+        const missing = criteria.filter((criterion) => !verdictFor(candidate, criterion.id));
         if (missing.length) return { candidate, missing: missing.map((criterion) => ({ ...criterion })) };
       }
       return null;
@@ -583,6 +616,8 @@ export class RecruitingService {
     const at = this.now(state).toISOString();
     const summary: string[] = [];
     for (const operation of operations) {
+      // Every path that changes criteria passes here; none may select on a protected characteristic.
+      if ((operation.op === "add" || operation.op === "edit") && protectedCharacteristic(operation.text)) continue;
       if (operation.op === "add") {
         const id = randomUUID().slice(0, 8);
         state.criteria.push({ id, text: operation.text, kind: operation.kind, origin, active: true, createdAt: at });
@@ -605,6 +640,10 @@ export class RecruitingService {
         if (origin === "relaxed") criterion.origin = "relaxed";
         for (const candidate of Object.values(state.candidates)) delete candidate.verdicts[criterion.id];
       }
+    }
+    // Judging needs something to judge by; a confirmed role always keeps one criterion.
+    if (state.role?.confirmed && this.active(state).length === 0) {
+      throw new RecruitingError("invalid_request", "Keep at least one criterion.");
     }
     return summary;
   }
@@ -683,8 +722,12 @@ export class RecruitingService {
         proposal.type === "criterion" ? proposal.supportingCandidateIds : [],
       ),
     );
-    const open = state.feedback.filter(
-      (entry) => entry.decision === decision && !consumed.has(entry.candidateId),
+    // One decision per person (the latest), and only people still on record.
+    const latest = new Map<string, (typeof state.feedback)[number]>();
+    for (const entry of state.feedback) latest.set(entry.candidateId, entry);
+    const open = [...latest.values()].filter(
+      (entry) =>
+        entry.decision === decision && !consumed.has(entry.candidateId) && state.candidates[entry.candidateId],
     );
     if (open.length < this.settings.preferenceThreshold) return;
 
@@ -762,6 +805,8 @@ export class RecruitingService {
   }
 
   private closeCandidate(state: RecruitingState, candidate: Candidate, reason: ClosedReason) {
+    // Nothing more goes to someone who is closed.
+    delete candidate.draft;
     candidate.stage = "closed";
     candidate.closedReason = reason;
     candidate.closedAt = this.now(state).toISOString();
@@ -785,7 +830,7 @@ export class RecruitingService {
 
   private async makeDraft(state: RecruitingState, candidate: Candidate, kind: Draft["kind"]): Promise<Draft> {
     const matched = this.active(state)
-      .filter((criterion) => candidate.verdicts[criterion.id]?.satisfied === "yes")
+      .filter((criterion) => verdictFor(candidate, criterion.id)?.satisfied === "yes")
       .map((criterion) => criterion.text);
     const { subject, body } = await draftMessage(this.deps.model, kind, {
       role: state.role?.title ?? "the role",
@@ -853,29 +898,31 @@ export class RecruitingService {
    * themselves (for example as a LinkedIn message).
    */
   async send(candidateId: string, manual: boolean): Promise<void> {
-    const state = await this.current();
-    const candidate = this.candidate(state, candidateId);
-    const draft = candidate.draft;
-    if (!draft) throw new RecruitingError("no_draft", "There is no draft to send.", 409);
-    if (draft.warnings.length) {
-      throw new RecruitingError("draft_has_warnings", draft.warnings[0]!, 409);
-    }
-    let threadId = candidate.gmailThreadId;
-    if (!manual) {
-      if (!this.deps.gmail || !(await this.deps.gmail.connected())) {
-        throw new RecruitingError("gmail_not_connected", "Connect Gmail first, or mark it as sent by hand.", 409);
-      }
-      if (!candidate.contact) throw new RecruitingError("no_email", "There is no email address for this person.", 409);
-      const sent = await this.deps.gmail.send({
-        to: candidate.contact.email,
-        subject: draft.subject,
-        body: draft.body,
-        ...(threadId ? { threadId } : {}),
-      });
-      threadId = sent.threadId;
-    }
-    await this.mutate((latest) => {
+    // Checked and sent inside one serialized change, so a double press sends once.
+    await this.mutate(async (latest) => {
       const target = this.candidate(latest, candidateId);
+      if (target.stage === "closed") {
+        throw new RecruitingError("candidate_closed", "This candidate is closed, so nothing more is sent.", 409);
+      }
+      const draft = target.draft;
+      if (!draft) throw new RecruitingError("no_draft", "There is no draft to send.", 409);
+      if (draft.warnings.length) {
+        throw new RecruitingError("draft_has_warnings", draft.warnings[0]!, 409);
+      }
+      let threadId = target.gmailThreadId;
+      if (!manual) {
+        if (!this.deps.gmail || !(await this.deps.gmail.connected())) {
+          throw new RecruitingError("gmail_not_connected", "Connect Gmail first, or mark it as sent by hand.", 409);
+        }
+        if (!target.contact) throw new RecruitingError("no_email", "There is no email address for this person.", 409);
+        const sent = await this.deps.gmail.send({
+          to: target.contact.email,
+          subject: draft.subject,
+          body: draft.body,
+          ...(threadId ? { threadId } : {}),
+        });
+        threadId = sent.threadId;
+      }
       const at = this.now(latest).toISOString();
       target.messages.push({
         direction: "outbound",
@@ -920,6 +967,8 @@ export class RecruitingService {
     await this.mutate(async (latest) => {
       const candidate = this.candidate(latest, id);
       candidate.messages.push({ direction: "inbound", channel, at: at ?? this.now(latest).toISOString(), text });
+      // They answered, so "just checking in" no longer fits.
+      if (candidate.draft?.kind === "follow_up") delete candidate.draft;
       if (reading.interested === false) {
         this.closeCandidate(latest, candidate, "declined");
         return;
@@ -1048,6 +1097,9 @@ export class RecruitingService {
     const step = state.expansionStep;
     const plan = await planExpansion(this.deps.model, step, state.role.title, state.criteria, lastRound.query);
     await this.mutate((latest) => {
+      // Another tick may have proposed while the model was planning.
+      if (latest.expansionStep !== step) return;
+      if (latest.proposals.some((proposal) => proposal.type === "expansion" && proposal.status === "pending")) return;
       latest.proposals.push({
         id: randomUUID().slice(0, 8),
         type: "expansion",
@@ -1078,7 +1130,7 @@ export class RecruitingService {
     const state = await this.current();
     const criteria = this.active(state);
     const judged = (candidate: Candidate) =>
-      criteria.filter((criterion) => candidate.verdicts[criterion.id]);
+      criteria.filter((criterion) => verdictFor(candidate, criterion.id));
     const candidates = Object.values(state.candidates).map((candidate) => {
       const tier = tierOf(candidate, criteria);
       // While new verdicts are pending, show the tier from the ones we have.
@@ -1093,7 +1145,7 @@ export class RecruitingService {
         kept: candidate.kept,
         poolRound: candidate.poolRound,
         origin: candidate.origin ?? "search",
-        verdicts: criteria.map((criterion) => candidate.verdicts[criterion.id] ?? null),
+        verdicts: criteria.map((criterion) => verdictFor(candidate, criterion.id) ?? null),
         contact: candidate.contact ?? null,
         draft: candidate.draft ?? null,
         messages: candidate.messages,
@@ -1120,6 +1172,16 @@ export class RecruitingService {
         gmail: this.deps.gmail ? await this.deps.gmail.connected() : null,
       },
     };
+  }
+
+  /**
+   * Stops this role for good: later changes are refused and nothing is saved
+   * again, so background work cannot write a deleted role back. Resolves once
+   * the change in progress, if any, has finished.
+   */
+  dispose(): Promise<void> {
+    this.disposed = true;
+    return this.chain.then(() => undefined);
   }
 
   clearError(): void {

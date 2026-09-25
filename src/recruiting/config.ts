@@ -13,8 +13,9 @@ type Environment = Readonly<Record<string, string | undefined>>;
 const samplePath = fileURLToPath(new URL("./sample-candidates.json", import.meta.url));
 
 function positiveInteger(environment: Environment, key: string): number | undefined {
-  const value = environment[key];
-  if (value === undefined) return undefined;
+  const value = environment[key]?.trim();
+  // KEY= in .env means unset, as it does for every other key here.
+  if (value === undefined || value === "") return undefined;
   if (!/^[1-9]\d*$/.test(value)) throw new Error(`${key} must be a positive integer.`);
   return Number(value);
 }

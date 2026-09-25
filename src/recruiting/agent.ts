@@ -264,11 +264,14 @@ export async function interpret(
       };
     case "feedback": {
       const candidateId = knownCandidate(reply.candidateId);
-      if (!candidateId) return { intent: "unknown", summary };
+      // Passing closes a candidate, so it is never the default for an unclear decision.
+      if (!candidateId || (reply.decision !== "keep" && reply.decision !== "pass")) {
+        return { intent: "unknown", summary };
+      }
       return {
         intent: "feedback",
         candidateId,
-        decision: reply.decision === "keep" ? "keep" : "pass",
+        decision: reply.decision,
         reason: text(reply.reason),
       };
     }
@@ -368,7 +371,7 @@ export async function findPattern(
   if (!isRecord(reply) || reply.found !== true || !text(reply.text)) return null;
   const known = new Set(decisions.map((entry) => entry.candidateId));
   const supportingCandidateIds = Array.isArray(reply.supportingCandidateIds)
-    ? reply.supportingCandidateIds.map((id) => text(id)).filter((id) => known.has(id))
+    ? [...new Set(reply.supportingCandidateIds.map((id) => text(id)).filter((id) => known.has(id)))]
     : [];
   if (supportingCandidateIds.length < threshold) return null;
   return {

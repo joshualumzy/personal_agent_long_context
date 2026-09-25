@@ -1,0 +1,7 @@
+24ae71778defa3f9b01f8bcab55d1e443ba902d95761a9d7606ec423e6278b19  test/regression/r1-agent-http.test.ts
+4e113085a27b34e7809704ce7d50ee56e422bbc0a69d1265e4bd14b25cf72ef9  test/regression/r1-agent-loop.test.ts
+ec1690aa69fe0c1312fcd0aca10eddf315874591c046f6b0a54735515a0fab2b  test/regression/r1-agent-recruiting-tools.test.ts
+adfa0340275a90d1bf97ea166502e59cf56a651b9b121736b48119622001a8eb  test/regression/r1-agent-skills.test.ts
+cc6fdd127f2449071b0a4130e2eeed7fdf84e0da714bc0c16854d4de7f7e3ed5  test/regression/r1-core-guards.test.ts
+1eb67412f7377c9ff8b987d0b2299ab404ce447e0e0ff3fd38c7d061fa635db0  test/regression/r1-core.test.ts
+711b86221c22adc956f02e0c4d7f085501cf7feb82d016bc5caaf77148fff3f2  test/regression/r1-routes.test.ts

@@ -117,6 +117,13 @@ const tools: ToolDefinition[] = [
   ),
 ];
 
+/** A real yes or no. Accepting or declining changes the search, so a guess is not good enough. */
+function yesOrNo(value: unknown): boolean {
+  if (value === true || value === "true") return true;
+  if (value === false || value === "false") return false;
+  throw new RecruitingError("invalid_request", "accept must be true or false.");
+}
+
 function text(args: Record<string, unknown>, key: string): string {
   const value = args[key];
   if (typeof value !== "string" || !value.trim()) {
@@ -183,7 +190,12 @@ export function recruitingExtension(board: RoleBoard): AgentExtension {
         if (error instanceof RecruitingError) {
           return { content: JSON.stringify({ error: error.message }) };
         }
-        throw error;
+        // An outage (model, search) is news for the founder, not a crash of the chat.
+        return {
+          content: JSON.stringify({
+            error: `Something the recruiting tools depend on failed: ${error instanceof Error ? error.message : String(error)}. Tell the founder and suggest trying again shortly.`,
+          }),
+        };
       }
     },
   };
@@ -196,7 +208,8 @@ async function runTool(
 ): Promise<{ content: string; block?: ChatBlock }> {
   if (name === "recruiting_status") {
     const roles = await board.list();
-    const chosen = typeof args.role_id === "string" ? args.role_id : roles.length === 1 ? roles[0]!.id : null;
+    const named = typeof args.role_id === "string" ? args.role_id.trim() : "";
+    const chosen = named || (roles.length === 1 ? roles[0]!.id : null);
     return {
       content: JSON.stringify({
         roles,
@@ -217,15 +230,23 @@ async function runTool(
 
   switch (name) {
     case "recruiting_revise_criteria": {
-      const criteria = Array.isArray(args.criteria) ? args.criteria : [];
+      if (!Array.isArray(args.criteria)) {
+        throw new RecruitingError("invalid_request", "criteria must be a list of {text, kind}.");
+      }
+      const criteria = args.criteria;
       await service.reviseDraft(
         criteria
           .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
-          .map((entry) => ({
-            ...(typeof entry.id === "string" ? { id: entry.id } : {}),
-            text: String(entry.text ?? ""),
-            kind: (entry.kind === "nice" ? "nice" : "must") as CriterionKind,
-          })),
+          .map((entry) => {
+            if (typeof entry.text !== "string") {
+              throw new RecruitingError("invalid_request", "Each criterion needs text.");
+            }
+            return {
+              ...(typeof entry.id === "string" ? { id: entry.id } : {}),
+              text: entry.text,
+              kind: (entry.kind === "nice" ? "nice" : "must") as CriterionKind,
+            };
+          }),
       );
       return { content: await status() };
     }
@@ -253,7 +274,7 @@ async function runTool(
       };
     }
     case "recruiting_resolve_proposal":
-      await service.resolveProposal(text(args, "proposal_id"), args.accept === true);
+      await service.resolveProposal(text(args, "proposal_id"), yesOrNo(args.accept));
       return { content: await status() };
     case "show_recruiting_panel": {
       const view = args.view as PanelView;

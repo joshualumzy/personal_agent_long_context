@@ -89,7 +89,13 @@ const loadSkillTool: ToolDefinition = {
 };
 
 function parseArguments(value: string): Record<string, unknown> {
-  const parsed: unknown = JSON.parse(value);
+  if (!value.trim()) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error("The tool arguments were not valid JSON.");
+  }
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     throw new Error("SoCLaaS returned non-object tool arguments.");
   }
@@ -160,23 +166,16 @@ async function streamChatCompletion(
   let fullContent = "";
   const toolCallsMap = new Map<number, ToolCall>();
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-
-    for (const rawLine of lines) {
+  const handle = (rawLine: string) => {
       const line = rawLine.trim();
-      if (!line.startsWith("data:")) continue;
+      if (!line.startsWith("data:")) return;
       const dataStr = line.slice(5).trim();
-      if (!dataStr || dataStr === "[DONE]") continue;
+      if (!dataStr || dataStr === "[DONE]") return;
 
       try {
         const parsed = JSON.parse(dataStr);
         const choice = parsed.choices?.[0];
-        if (!choice) continue;
+        if (!choice) return;
 
         if (choice.delta?.content) {
           fullContent += choice.delta.content;
@@ -202,8 +201,18 @@ async function streamChatCompletion(
       } catch {
         // ignore parse errors for partial chunks
       }
-    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+    for (const line of lines) handle(line);
   }
+  // The last event may arrive without a trailing newline.
+  handle(buffer + decoder.decode());
 
   const tool_calls = Array.from(toolCallsMap.values()).filter((t) => t.id && t.function.name);
   return {
@@ -250,6 +259,7 @@ export class SoCLaaSCompanyAgent {
     const skills = this.options.skills ?? [];
     const loadedSkills = new Set<string>();
     const blocks: ChatBlock[] = [];
+    let extensionRan = false;
     const offeredTools = (): readonly unknown[] => [
       ...companyTools,
       ...(skills.length ? [loadSkillTool] : []),
@@ -263,6 +273,47 @@ export class SoCLaaSCompanyAgent {
           loadedSkills.has(extension.skill) &&
           extension.tools.some((definition) => definition.function.name === name),
       );
+    const runTool = async (call: ToolCall): Promise<string> => {
+      toolCalls.push({ name: call.function.name, arguments: call.function.arguments });
+      const args = parseArguments(call.function.arguments);
+      toolCalls[toolCalls.length - 1]!.arguments = args;
+      if (call.function.name === "load_skill") {
+        const skill = skills.find((entry) => entry.name === args.name);
+        if (skill) loadedSkills.add(skill.name);
+        return skill
+          ? skill.body
+          : `No skill named ${String(args.name)}. Available: ${skills.map((entry) => entry.name).join(", ") || "none"}.`;
+      }
+      const extension = extensionFor(call.function.name);
+      if (extension) {
+        callbacks?.onStatus?.("Working on it…");
+        const outcome = await extension.run(call.function.name, args);
+        extensionRan = true;
+        if (outcome.block) blocks.push(outcome.block);
+        return outcome.content;
+      }
+      const unloaded = (this.options.extensions ?? []).find((entry) =>
+        entry.tools.some((definition) => definition.function.name === call.function.name),
+      );
+      if (unloaded) return `Call load_skill with name "${unloaded.skill}" before using ${call.function.name}.`;
+      let result: Evidence[];
+      if (call.function.name === "search_company_knowledge") {
+        if (typeof args.query !== "string" || !args.query.trim()) {
+          throw new Error("search_company_knowledge requires a non-empty query.");
+        }
+        result = await this.knowledge.search(args.query.trim(), typeof args.limit === "number" ? args.limit : 6);
+      } else if (call.function.name === "get_related_sources") {
+        if (!Array.isArray(args.source_ids) || !args.source_ids.every((id) => typeof id === "string")) {
+          throw new Error("get_related_sources requires source_ids.");
+        }
+        const allowedSeeds = args.source_ids.filter((id) => retrieved.has(id));
+        result = await this.knowledge.related(allowedSeeds, typeof args.limit === "number" ? args.limit : 6);
+      } else {
+        throw new Error(`There is no tool named ${call.function.name}.`);
+      }
+      for (const item of result) retrieved.set(item.sourceId, item);
+      return compactEvidence(result);
+    };
     const messages: Message[] = [
       {
         role: "system",
@@ -350,6 +401,8 @@ export class SoCLaaSCompanyAgent {
           rawContent = message.content ?? null;
         }
 
+        // On the last step there is no room for tools; take whatever it said.
+        if (mustAnswer) calls = [];
         messages.push(
           calls.length > 0
             ? { role: "assistant", content: rawContent, tool_calls: calls }
@@ -366,9 +419,19 @@ export class SoCLaaSCompanyAgent {
             messages.push({ role: "user", content: "You returned nothing. Reply to the user now in plain text." });
             continue;
           }
-          if (!answer) throw new Error("Agent returned an empty answer.");
+          if (!answer) {
+            return {
+              answer: "I could not finish that one. Could you ask again, perhaps a little more specifically?",
+              sources: [],
+              runId,
+              toolCalls,
+              ...(blocks.length ? { blocks } : {}),
+            };
+          }
           const hasPersonalContext = Boolean(input.personalMemory && input.personalMemory.trim().length > 0);
-          const groundedElsewhere = loadedSkills.size > 0;
+          // A skill answers from its own state (or asks a question); company evidence, once
+          // retrieved, still needs citing.
+          const groundedElsewhere = (loadedSkills.size > 0 || extensionRan) && retrieved.size === 0;
           let citationCheck = validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere);
           if (citationCheck.problem) {
             if (isStreaming) {
@@ -408,14 +471,16 @@ export class SoCLaaSCompanyAgent {
             }
             const repairCompletion = (await repairResponse.json()) as CompletionResponse;
             answer = repairCompletion.choices?.[0]?.message?.content?.trim();
-            if (!answer) throw new Error("SoCLaaS returned an empty citation repair.");
-            citationCheck = validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere);
-            if (citationCheck.problem) {
+            citationCheck = answer
+              ? validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere)
+              : { citedSourceIds: [], problem: "empty repair" };
+            if (citationCheck.problem || !answer) {
               return {
                 answer: INSUFFICIENT_EVIDENCE_ANSWER,
                 sources: [],
                 runId,
                 toolCalls,
+                ...(blocks.length ? { blocks } : {}),
               };
             }
           }
@@ -429,68 +494,20 @@ export class SoCLaaSCompanyAgent {
         }
 
         for (const call of calls) {
-          const args = parseArguments(call.function.arguments);
-          toolCalls.push({ name: call.function.name, arguments: args });
-          if (call.function.name === "load_skill") {
-            const skill = skills.find((entry) => entry.name === args.name);
-            if (skill) loadedSkills.add(skill.name);
+          // Each call stands alone: a bad call becomes an error the model can read and recover from.
+          try {
+            messages.push({ role: "tool", tool_call_id: call.id, content: await runTool(call) });
+          } catch (error) {
             messages.push({
               role: "tool",
               tool_call_id: call.id,
-              content: skill
-                ? skill.body
-                : `No skill named ${String(args.name)}. Available: ${skills.map((entry) => entry.name).join(", ")}.`,
+              content: `Error: ${error instanceof Error ? error.message : String(error)} Fix the arguments or choose another tool.`,
             });
-            continue;
           }
-          const extension = extensionFor(call.function.name);
-          if (extension) {
-            callbacks?.onStatus?.("Working on it…");
-            const outcome = await extension.run(call.function.name, args);
-            if (outcome.block) blocks.push(outcome.block);
-            messages.push({ role: "tool", tool_call_id: call.id, content: outcome.content });
-            continue;
-          }
-          const unloaded = (this.options.extensions ?? []).find((entry) =>
-            entry.tools.some((definition) => definition.function.name === call.function.name),
-          );
-          if (unloaded) {
-            messages.push({
-              role: "tool",
-              tool_call_id: call.id,
-              content: `Call load_skill with name "${unloaded.skill}" before using ${call.function.name}.`,
-            });
-            continue;
-          }
-          let result: Evidence[];
-          if (call.function.name === "search_company_knowledge") {
-            if (typeof args.query !== "string" || !args.query.trim()) {
-              throw new Error("search_company_knowledge requires a non-empty query.");
-            }
-            result = await this.knowledge.search(
-              args.query.trim(),
-              typeof args.limit === "number" ? args.limit : 6,
-            );
-          } else if (call.function.name === "get_related_sources") {
-            if (
-              !Array.isArray(args.source_ids) ||
-              !args.source_ids.every((id) => typeof id === "string")
-            ) {
-              throw new Error("get_related_sources requires source_ids.");
-            }
-            const allowedSeeds = args.source_ids.filter((id) => retrieved.has(id));
-            result = await this.knowledge.related(
-              allowedSeeds,
-              typeof args.limit === "number" ? args.limit : 6,
-            );
-          } else {
-            throw new Error(`SoCLaaS requested unknown tool ${call.function.name}.`);
-          }
-          for (const item of result) retrieved.set(item.sourceId, item);
-          messages.push({ role: "tool", tool_call_id: call.id, content: compactEvidence(result) });
         }
       }
 
-    throw new Error("The company context agent exceeded its tool-step limit.");
+    // Unreachable in practice: the last step never keeps tool calls.
+    return { answer: "I could not finish that one. Could you ask again?", sources: [], runId, toolCalls };
   }
 }

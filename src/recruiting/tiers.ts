@@ -1,4 +1,4 @@
-import type { Candidate, Criterion, Tier } from "./domain.js";
+import { verdictFor, type Candidate, type Criterion, type Tier } from "./domain.js";
 
 /**
  * 100: every active criterion is met.
@@ -14,7 +14,7 @@ export function tierOf(candidate: Candidate, criteria: readonly Criterion[]): Ti
   let mustMisses = 0;
   let niceMisses = 0;
   for (const criterion of active) {
-    const verdict = candidate.verdicts[criterion.id];
+    const verdict = verdictFor(candidate, criterion.id);
     if (!verdict) return "pending";
     if (verdict.satisfied === "yes") continue;
     if (criterion.kind === "must") mustMisses += 1;

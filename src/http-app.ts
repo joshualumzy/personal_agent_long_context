@@ -149,13 +149,34 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       }
     };
 
-    const requestedModel = (
-      (request.body as Record<string, unknown> | undefined)?.model as string | undefined
-    )?.toLowerCase();
-    const activeAgent =
-      (requestedModel && options.companyAgents?.[requestedModel]) ||
-      options.companyAgents?.soclaas ||
-      options.companyAgent;
+    // Everything after the stream has started must end the stream, never throw:
+    // a second attempt to send headers would take the whole process down.
+    try {
+      return await runAgentTurn();
+    } catch (error) {
+      request.log.error(
+        { employeeId, reason: error instanceof Error ? error.message : "Unknown failure." },
+        "Unified agent turn failed",
+      );
+      const payload = { message: "The agent could not complete this question. Please try again." };
+      if (isStream) {
+        if (!reply.raw.writableEnded) {
+          sendEvent("error", payload);
+          reply.raw.end();
+        }
+        return;
+      }
+      return reply.code(502).send(payload);
+    }
+
+    async function runAgentTurn() {
+    const rawModel = (request.body as Record<string, unknown> | undefined)?.model;
+    const requestedModel = typeof rawModel === "string" ? rawModel.toLowerCase() : undefined;
+    const agents = options.companyAgents ?? {};
+    // Own keys only: "constructor" is not a model.
+    const namedAgent = requestedModel && Object.hasOwn(agents, requestedModel) ? agents[requestedModel] : undefined;
+    const activeAgent = namedAgent || agents.soclaas || options.companyAgent;
+    const modelUsed = namedAgent ? requestedModel! : "soclaas";
 
     if (!activeAgent) {
       const payload = {
@@ -260,7 +281,6 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       );
 
       const durationMs = Date.now() - turnStartTime;
-      const modelUsed = requestedModel === "sonnet" ? "sonnet" : "soclaas";
 
       if (options.conversationStore && conversationId) {
         await options.conversationStore.appendMessage({
@@ -317,6 +337,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       return reply.code(502).send({
         message: "The agent could not complete this question. Please try again.",
       });
+    }
     }
   };
 

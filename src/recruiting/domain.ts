@@ -191,6 +191,11 @@ export interface RecruitingState {
   events: HiringEvent[];
 }
 
+/** A candidate's verdict on one criterion. Own keys only: an id like "toString" must not match Object.prototype. */
+export function verdictFor(candidate: Candidate, criterionId: string): Verdict | undefined {
+  return Object.hasOwn(candidate.verdicts, criterionId) ? candidate.verdicts[criterionId] : undefined;
+}
+
 export function emptyState(): RecruitingState {
   return {
     version: 1,

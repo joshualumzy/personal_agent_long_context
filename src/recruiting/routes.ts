@@ -30,16 +30,21 @@ export async function textFromFile(filename: string, content: Buffer): Promise<s
 async function rawTextFromFile(filename: string, content: Buffer): Promise<string> {
   const extension = filename.toLowerCase().split(".").at(-1);
   if (extension === "txt" || extension === "md") return content.toString("utf8");
-  if (extension === "pdf") {
-    const { extractText, getDocumentProxy } = await import("unpdf");
-    const document = await getDocumentProxy(new Uint8Array(content));
-    const { text } = await extractText(document, { mergePages: true });
-    return text;
-  }
-  if (extension === "docx") {
-    const mammoth = await import("mammoth");
-    const { value } = await mammoth.default.extractRawText({ buffer: content });
-    return value;
+  if (extension === "pdf" || extension === "docx") {
+    try {
+      if (extension === "pdf") {
+        const { extractText, getDocumentProxy } = await import("unpdf");
+        const document = await getDocumentProxy(new Uint8Array(content));
+        const { text } = await extractText(document, { mergePages: true });
+        return text;
+      }
+      const mammoth = await import("mammoth");
+      const { value } = await mammoth.default.extractRawText({ buffer: content });
+      return value;
+    } catch {
+      // A damaged or mislabelled file is the uploader's problem to fix, not an outage.
+      throw new RecruitingError("unreadable_file", `That .${extension} file could not be read. Try another copy or paste the text.`);
+    }
   }
   throw new RecruitingError("unsupported_file", "Upload a .txt, .md, .pdf, or .docx file.");
 }
@@ -95,7 +100,13 @@ export function registerRecruitingRoutes(
 
   const role = (path: string) => `/api/recruiting/roles/:roleId${path}`;
 
-  app.get("/api/recruiting/roles", async () => ({ roles: await board.list() }));
+  app.get("/api/recruiting/roles", async (_request, reply) => {
+    try {
+      return reply.send({ roles: await board.list() });
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
 
   /** A new role from typed or dictated words, or from an uploaded job description. */
   app.post(
@@ -139,11 +150,16 @@ export function registerRecruitingRoutes(
         throw new RecruitingError("invalid_request", "\"criteria\" is required.");
       }
       await service.reviseDraft(
-        body.criteria.filter(isRecord).map((criterion) => ({
-          ...(typeof criterion.id === "string" ? { id: criterion.id } : {}),
-          text: String(criterion.text ?? ""),
-          kind: (criterion.kind === "nice" ? "nice" : "must") as CriterionKind,
-        })),
+        body.criteria.filter(isRecord).map((criterion) => {
+          if (typeof criterion.text !== "string") {
+            throw new RecruitingError("invalid_request", "Each criterion needs text.");
+          }
+          return {
+            ...(typeof criterion.id === "string" ? { id: criterion.id } : {}),
+            text: criterion.text,
+            kind: (criterion.kind === "nice" ? "nice" : "must") as CriterionKind,
+          };
+        }),
       );
     }),
   );
@@ -223,7 +239,9 @@ export function registerRecruitingRoutes(
 
   app.post(
     role("/fast-forward"),
-    handle(async (body, _params, service) => service.fastForward(isRecord(body) ? Number(body.days) : Number.NaN, true)),
+    handle(async (body, _params, service) =>
+      service.fastForward(isRecord(body) && typeof body.days === "number" ? body.days : Number.NaN, true),
+    ),
   );
 
   /**
@@ -243,7 +261,11 @@ export function registerRecruitingRoutes(
       const matched = new Set<string>();
       const results = [];
       for (const { service } of await board.all()) {
-        for (const text of await service.relevantConversations(texts)) {
+        const unclaimed = texts.filter((text) => !matched.has(text));
+        if (unclaimed.length === 0) break;
+        for (const text of await service.relevantConversations(unclaimed)) {
+          // One conversation belongs to one role: the first (newest) that contacted the person.
+          if (matched.has(text)) continue;
           matched.add(text);
           results.push(await service.reply(text, null, "linkedin"));
         }
@@ -279,6 +301,8 @@ export function registerRecruitingRoutes(
     }
     const state = randomBytes(16).toString("hex");
     oauthStates.add(state);
+    // Abandoned consents must not pile up forever.
+    while (oauthStates.size > 50) oauthStates.delete(oauthStates.values().next().value!);
     return reply.redirect(gmail.consentUrl(state));
   });
 
@@ -289,7 +313,11 @@ export function registerRecruitingRoutes(
       if (!gmail || !code || !state || !oauthStates.delete(state)) {
         return reply.code(400).send({ code: "invalid_oauth_callback", message: "Start from Connect Gmail." });
       }
-      await gmail.exchangeCode(code);
+      try {
+        await gmail.exchangeCode(code);
+      } catch (error) {
+        return fail(reply, error);
+      }
       return reply.redirect("/recruiting");
     },
   );

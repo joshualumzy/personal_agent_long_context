@@ -42,7 +42,8 @@ const PROTECTED: readonly ProtectedPattern[] = [
   },
   {
     characteristic: "nationality",
-    pattern: /\b(nationality|citizens? only|singaporeans? only|locals? only|foreigners?)\b|国籍|只要本地人|外国人/i,
+    pattern:
+      /\b(nationality|citizens?|citizenship|permanent residents?|PRs? only|singaporeans? only|locals? only|foreigners?)\b|\bsingaporeans?\b(?![\s-]+(market|customers?|clients?|users?|companies|startups?|business(es)?))|国籍|公民|永久居民|只要本地人|外国人/i,
   },
 ];
 
