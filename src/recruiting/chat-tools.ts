@@ -191,7 +191,7 @@ function funnelOf(snapshot: Snapshot) {
   return {
     found: all.length,
     scored: settled.length,
-    pending: all.length - settled.length,
+    pending: open.filter((candidate) => !candidate.settled).length,
     in_view: ring(100) + ring(75) + ring(50),
     centre: ring(100),
     middle: ring(75),
@@ -359,6 +359,10 @@ async function runTool(
         criteria as never,
       );
       if (operations.length === 0) throw new RecruitingError("invalid_request", "None of the changes could be applied.");
+      // All or nothing: applying part of a batch and calling it done would mislead the founder.
+      if (operations.length < args.changes.length) {
+        throw new RecruitingError("invalid_request", "Some changes were not understood (an empty text, an unknown op, or a missing kind). Nothing was changed; fix them and send the whole list again.");
+      }
       const said = typeof args.said === "string" && args.said.trim() ? args.said.trim() : "changed in the chat";
       return { content: await status({ result: await service.changeCriteria(operations, said) }) };
     }

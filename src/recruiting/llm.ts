@@ -58,11 +58,16 @@ export class OpenAiCompatibleModel implements JsonModel {
 
   private async slot(): Promise<() => void> {
     const limit = this.options.maxConcurrent ?? 6;
+    // A released slot passes straight to the next waiter, so a newcomer cannot slip in between.
     if (this.inFlight >= limit) await new Promise<void>((resolve) => this.waiting.push(resolve));
-    this.inFlight += 1;
+    else this.inFlight += 1;
+    let released = false;
     return () => {
-      this.inFlight -= 1;
-      this.waiting.shift()?.();
+      if (released) return;
+      released = true;
+      const next = this.waiting.shift();
+      if (next) next();
+      else this.inFlight -= 1;
     };
   }
 
@@ -132,9 +137,13 @@ export class OpenAiCompatibleModel implements JsonModel {
       }
       throw new Error(`HTTP ${status}`);
     }
-    const body = (await response.json()) as {
-      choices?: { message?: { content?: string | null } }[];
-    };
+    let body: { choices?: { message?: { content?: string | null } }[] };
+    try {
+      body = (await response.json()) as typeof body;
+    } catch (error) {
+      // A proxy's error page can arrive with a 200; the next try usually reaches the model.
+      throw new RetryableError(`The reply was not JSON: ${error instanceof Error ? error.message : String(error)}`);
+    }
     const content = body.choices?.[0]?.message?.content;
     if (!content) throw new RetryableError("The model returned an empty reply.");
     try {

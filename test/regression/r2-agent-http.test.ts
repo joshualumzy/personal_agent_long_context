@@ -186,7 +186,8 @@ describe("NOT A BUG (verified)", () => {
     await app.close();
   });
 
-  test("history keeps the last 6 turns and caps each at 1500 characters", async () => {
+  // Round 3 raised the cap from 1500 to about 4000 and keeps both ends (see docs/s3-bug-hunt.md).
+  test("history keeps the last 6 turns and caps each at about 4000 characters", async () => {
     const store = new InMemoryConversationStore();
     const long = "x".repeat(5000);
     const { agent, asked } = fakeAgent({ answer: long });
@@ -198,7 +199,7 @@ describe("NOT A BUG (verified)", () => {
     }
     const last = asked.at(-1)!.history!;
     assert.equal(last.length, 6);
-    assert.ok(last.every((turn) => turn.content.length <= 1500));
+    assert.ok(last.every((turn) => turn.content.length <= 4100));
     await app.close();
   });
 

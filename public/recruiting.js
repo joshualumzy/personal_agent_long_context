@@ -865,6 +865,9 @@ function outreachPanel(candidate) {
         subject,
         body,
         draft.warnings.map((warning) => h("p", { class: "banner note" }, warning)),
+        draft.unconfirmed
+          ? h("p", { class: "banner note" }, "Gmail did not confirm this email, so it may have gone out. Check your Sent folder: if it is there, press \"I sent it myself\"; if not, change the draft and send it again.")
+          : null,
         h(
           "div",
           { class: "row sticky-actions" },

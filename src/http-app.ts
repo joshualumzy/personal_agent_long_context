@@ -49,6 +49,19 @@ const securityHeaders = {
 };
 
 const HISTORY_TURNS = 6;
+/** Longest chat message either agent route accepts. */
+const MAX_MESSAGE = 8000;
+const HISTORY_CHARS = 4000;
+
+/**
+ * Shortens an old turn for the model's context, keeping both ends: a pasted
+ * description's last lines and an answer's closing question both matter.
+ */
+function clipped(content: string): string {
+  if (content.length <= HISTORY_CHARS) return content;
+  const half = HISTORY_CHARS / 2;
+  return `${content.slice(0, half)}\n[… ${content.length - HISTORY_CHARS} characters left out …]\n${content.slice(-half)}`;
+}
 
 function titleFrom(message: string): string {
   return message.length > 50 ? `${message.slice(0, 47).trim()}…` : message;
@@ -231,7 +244,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         const existing = await options.conversationStore.get(conversationId, userId);
         history = (existing?.messages ?? [])
           .slice(-HISTORY_TURNS)
-          .map(({ role, content }) => ({ role, content: content.slice(0, 1500) }));
+          .map(({ role, content }) => ({ role, content: clipped(content) }));
         if (!existing) {
           const conv = await options.conversationStore.create(userId, titleFrom(message));
           conversationId = conv.conversationId;
@@ -380,7 +393,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     const message = (typeof fields.message === "string" ? fields.message : String(fields.question)).trim();
 
     // Long enough for a pasted job description.
-    if (!message || message.length > 8_000) {
+    if (!message || message.length > MAX_MESSAGE) {
       return reply.code(400).send({ message: "Provide a valid message (up to 8000 characters)." });
     }
 
@@ -458,7 +471,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     const userId = (body as Record<string, string>).userId.trim();
     const employeeId = (body as Record<string, string>).employeeId.trim();
     const question = (body as Record<string, string>).question.trim();
-    if (!userId || !employeeId || !question || question.length > 2_000) {
+    if (!userId || !employeeId || !question || question.length > MAX_MESSAGE) {
       return reply.code(400).send({ message: "Provide valid userId, employeeId, and question values." });
     }
 

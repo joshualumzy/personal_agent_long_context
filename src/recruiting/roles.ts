@@ -142,8 +142,14 @@ export class RoleBoard {
     this.removed.add(roleId);
     this.services.delete(roleId);
     // Stop the role first, so its background work cannot write the file back.
-    await service.dispose();
-    await this.repository.remove(roleId);
+    try {
+      await service.dispose();
+      await this.repository.remove(roleId);
+    } catch (error) {
+      // The data is still there, so the delete must stay possible to retry.
+      this.removed.delete(roleId);
+      throw error;
+    }
   }
 
   /** Every role that can be read, newest first. One damaged file never takes the others down. */

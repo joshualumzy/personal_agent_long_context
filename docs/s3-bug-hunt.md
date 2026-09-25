@@ -317,3 +317,69 @@ Not code: asking which role when two are open, and routing candidate
 questions to the recruiting skill, rely on the prompt; the eval measures
 them. Age and citizenship criteria are no longer flagged (owner's
 decision).
+
+## Round 3 (2026-09-26)
+
+Two fresh hunters read the code changed since round 2; one took the
+recruiting backend, one the chat agent loop and HTTP layer. 39 confirmed
+bugs, each with a failing test (`r3-backend-*.test.ts`,
+`r3-agent-*.test.ts`). The titles still say "BUG" so the log reads as it
+happened; all pass now.
+
+Backend (17):
+- Sending. A draft being sent could be replaced and sent again (B1); a
+  candidate closed while Gmail was sending was reopened by the record step
+  (B2); a failed save after Gmail sent left the draft stuck with the send
+  lost (B3); Gmail that delivered but lost its answer released the claim so
+  a retry sent twice (B4). Now: a draft being sent cannot be replaced; the
+  record step keeps a closed person closed; a send that went out but was not
+  saved is remembered, and the next press only records it; an ambiguous
+  Gmail failure (network, timeout) keeps the claim and marks the draft
+  unconfirmed. The founder then either presses "I sent it myself" (recorded
+  as the email it was) or changes the draft, which releases it. Saving it
+  unchanged, as the panel does before every send, releases nothing
+  (`r3-unconfirmed-send.test.ts`).
+- Signature. A changed signature missed a draft released after a failed send
+  (B5) and overwrote the founder's own edits (B6). Released drafts are
+  redrafted; edited drafts are left alone.
+- Reopening. A reopened candidate was never scored on criteria added while
+  closed (B7) and restarted at "scored" even after contact, so no follow-up
+  (B8). Reopening rescores and resumes at contacted or replied.
+- Rescoring had one budget for the whole role; one unscoreable person used
+  it up for everyone (B9). Now per person, reset when criteria change.
+- funnel.pending counted closed people (B10). Adding an existing criterion
+  made a duplicate (B11); proposals that repeat a criterion are skipped too,
+  so one old unit test's fixture now proposes a new criterion. A batch of
+  criteria changes with one bad entry applied the rest silently (B12); now
+  all or nothing.
+- Model client: a 200 with a non-JSON body was not retried (B13); a freed
+  slot could be taken by a newcomer, exceeding the limit (B14).
+- Stored files: a candidate under a key other than its id looped forever
+  (B15); one null entry made a role unreadable (B16). Both normalized.
+- A delete that failed half way could never be retried (B17).
+
+Agent loop and HTTP (22):
+- History was cut to 1500 characters, losing a pasted description's end and
+  the agent's own closing question. Now 4000, keeping head and tail with a
+  marker. The older test that asserted 1500 was updated. The questions route
+  accepts 8000 like the chat route.
+- Retries: a server asking to wait an hour made the user wait 90 s before
+  failing; an HTTP-date Retry-After was ignored; dropped bodies were never
+  cancelled. Now one 30 s budget per call, dates parsed, bodies cancelled.
+- Spoken text: only text beside a panel call is kept. Preambles and drafts
+  the model corrected after searching are dropped; a spoken line the final
+  answer repeats appears once.
+- Repeats: only a whole reply written twice is collapsed. Paragraph-level
+  dedupe deleted real content (per-candidate verdicts, code).
+- Language: "Chinese" now means at least two Han characters per Latin word,
+  and kana means Japanese. The retry carries the checked answer, the
+  translation must pass the same citation check and keep citations, and a
+  failed translation keeps the answer in hand.
+- The meta filter only catches text about passing or failing the check, so
+  a real "citation check" feature can be discussed. A Chinese "证据不足"
+  naming what is missing is accepted like the English one.
+- A company claim could ride along uncited once any recruiting tool ran.
+  Now, when company evidence was retrieved and the answer cites none, it
+  gets one repair asked to cite company facts and leave the skill's facts
+  alone. If the repair fails or the call errors, the skill's answer stands,
+  so recruiting answers are never replaced by "Insufficient evidence".

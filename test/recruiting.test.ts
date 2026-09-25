@@ -91,7 +91,8 @@ function fakeModel(): JsonModel & { calls: string[] } {
             consultants.length >= 2
               ? {
                   found: true,
-                  text: "startup",
+                  // Not an existing criterion: since round 3 a duplicate add is skipped.
+                  text: "product company",
                   kind: "must",
                   rationale: "You passed on two consultants.",
                   supportingCandidateIds: consultants.map((entry: { candidateId: string }) => entry.candidateId),

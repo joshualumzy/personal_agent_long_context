@@ -10,6 +10,11 @@ export interface StateStore {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** The object entries of a saved list; a null or stray value is dropped rather than crashing a reader. */
+function records<T>(value: unknown): T[] {
+  return Array.isArray(value) ? (value.filter(isRecord) as T[]) : [];
+}
+
 function normalizeRole(raw: unknown): RecruitingState["role"] {
   if (!isRecord(raw)) return null;
   return {
@@ -24,9 +29,12 @@ function normalizeRole(raw: unknown): RecruitingState["role"] {
 function normalizeCandidates(raw: unknown): RecruitingState["candidates"] {
   const candidates: RecruitingState["candidates"] = {};
   if (!isRecord(raw)) return candidates;
-  for (const [id, value] of Object.entries(raw)) {
+  for (const value of Object.values(raw)) {
     if (!isRecord(value) || !isRecord(value.profile) || typeof value.profile.id !== "string") continue;
     const profile = value.profile as Record<string, unknown>;
+    // Every lookup goes by the profile id, so that is the key, whatever the file used.
+    const id = profile.id as string;
+    if (Object.hasOwn(candidates, id)) continue;
     candidates[id] = {
       ...(value as object),
       profile: {
@@ -42,8 +50,10 @@ function normalizeCandidates(raw: unknown): RecruitingState["candidates"] {
       },
       stage: typeof value.stage === "string" ? value.stage : "discovered",
       kept: value.kept === true,
-      verdicts: isRecord(value.verdicts) ? value.verdicts : {},
-      messages: Array.isArray(value.messages) ? value.messages : [],
+      verdicts: isRecord(value.verdicts)
+        ? Object.fromEntries(Object.entries(value.verdicts).filter(([, verdict]) => isRecord(verdict)))
+        : {},
+      messages: records(value.messages),
       followUps: typeof value.followUps === "number" ? value.followUps : 0,
       poolRound: typeof value.poolRound === "number" ? value.poolRound : 1,
       discoveredAt: typeof value.discoveredAt === "string" ? value.discoveredAt : new Date(0).toISOString(),
@@ -63,12 +73,12 @@ export function normalizeState(raw: unknown): RecruitingState {
     ...base,
     ...saved,
     role: normalizeRole(saved.role),
-    criteria: Array.isArray(saved.criteria) ? saved.criteria : [],
+    criteria: records(saved.criteria),
     candidates: normalizeCandidates(saved.candidates),
-    feedback: Array.isArray(saved.feedback) ? saved.feedback : [],
-    proposals: Array.isArray(saved.proposals) ? saved.proposals : [],
-    rounds: Array.isArray(saved.rounds) ? saved.rounds : [],
-    events: Array.isArray(saved.events) ? saved.events : [],
+    feedback: records(saved.feedback),
+    proposals: records(saved.proposals),
+    rounds: records(saved.rounds),
+    events: records(saved.events),
     expansionStep: Number.isInteger(saved.expansionStep) ? saved.expansionStep! : 0,
     clockOffsetDays: Number.isFinite(saved.clockOffsetDays) ? saved.clockOffsetDays! : 0,
   };

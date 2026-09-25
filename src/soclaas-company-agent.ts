@@ -48,30 +48,53 @@ export interface SoCLaaSCompanyAgentOptions {
  */
 function retrying(request: typeof globalThis.fetch, baseMs: number): typeof globalThis.fetch {
   return (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    // A chat turn waits at most this long in total; a server asking for longer gets its answer passed on.
+    let budget = RETRY_BUDGET_MS;
     for (let attempt = 0; ; attempt += 1) {
       let response: Response | undefined;
       try {
         response = await request(input, init);
       } catch (error) {
-        if (attempt >= 3) throw error;
+        if (attempt >= 3 || budget <= 0) throw error;
       }
       if (response && !(response.status === 429 || response.status === 408 || response.status >= 500)) return response;
-      if (response && attempt >= 3) return response;
-      const asked = Number(response?.headers.get("retry-after")) * 1000;
+      if (response && (attempt >= 3 || budget <= 0)) return response;
+      const asked = retryAfterMs(response?.headers.get("retry-after"));
       const backoff = baseMs * 2 ** attempt * (1 + Math.random() * 0.5);
-      await new Promise((resolve) => setTimeout(resolve, Math.min(Math.max(backoff, asked || 0), 30_000)));
+      const pause = Math.min(Math.max(backoff, asked), budget);
+      budget -= pause;
+      // A dropped response still holds its connection until its body is read or cancelled.
+      await response?.body?.cancel().catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, pause));
     }
   }) as typeof globalThis.fetch;
 }
 
-const CJK = /[\u3400-\u9fff]/g;
-/** Mostly Chinese (or Japanese) text. */
-function isCjk(text: string): boolean {
-  const letters = text.replace(/[\s\d\p{P}\p{S}]/gu, "");
-  return letters.length > 0 && (text.match(CJK)?.length ?? 0) / letters.length > 0.3;
+const RETRY_BUDGET_MS = 30_000;
+
+/** Retry-After as seconds or as an HTTP date; 0 when absent or unreadable. */
+function retryAfterMs(header: string | null | undefined): number {
+  if (!header) return 0;
+  const seconds = Number(header);
+  if (Number.isFinite(seconds)) return Math.max(seconds * 1000, 0);
+  const at = Date.parse(header);
+  return Number.isFinite(at) ? Math.max(at - Date.now(), 0) : 0;
 }
 
-/** Collapses a reply the model wrote twice, and repeated paragraphs. */
+/**
+ * Written mainly in Chinese: at least two Han characters for every Latin word,
+ * so "帮我整理 Kubernetes 的 rollback 流程" counts and "Who is 王小明?" does not.
+ * Any kana makes it Japanese, which is not Chinese.
+ */
+function isChinese(text: string): boolean {
+  const plain = text.replace(/\[source:[^\]]*\]/g, "").replace(/```[\s\S]*?```/g, "");
+  if (/[\u3040-\u30ff]/.test(plain)) return false;
+  const han = plain.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+  const words = plain.match(/[A-Za-z]+/g)?.length ?? 0;
+  return han > 0 && han >= 2 * words;
+}
+
+/** Collapses a reply the model wrote twice in a row. Repeated paragraphs are left alone. */
 function withoutRepeats(text: string): string {
   const trimmed = text.trim();
   const half = trimmed.length / 2;
@@ -79,16 +102,24 @@ function withoutRepeats(text: string): string {
     const first = trimmed.slice(0, cut).trim();
     if (first.length > 20 && first === trimmed.slice(cut).trim()) return first;
   }
-  const seen = new Set<string>();
-  return trimmed
-    .split(/\n{2,}/)
-    .filter((paragraph) => {
-      const key = paragraph.replace(/\s+/g, " ").trim().toLowerCase();
-      if (!key || seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .join("\n\n");
+  return trimmed;
+}
+
+/** Text compared without citations, spacing or case. */
+function gist(text: string): string {
+  return text.replace(/\[source:[^\]]*\]/g, "").replace(/[\s\p{P}]+/gu, " ").trim().toLowerCase();
+}
+
+/** Joins what the model said beside its panel with its final reply, dropping what the reply repeats. */
+function joinSpoken(spoken: string[], final: string): string {
+  const said = gist(final);
+  const kept = spoken.filter((text) => {
+    const own = gist(text);
+    return own && !said.includes(own);
+  });
+  // The final reply may itself only repeat what was said beside the panel.
+  const rest = kept.some((text) => gist(text).includes(said)) ? "" : final;
+  return [...kept, rest].filter(Boolean).join("\n\n");
 }
 
 const companyTools = [
@@ -178,10 +209,11 @@ const INSUFFICIENT_EVIDENCE_ANSWER =
   "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.";
 
 function honestlyInsufficient(answer: string): boolean {
-  const match = /^\W*insufficient evidence\b[\s:.,-]*([\s\S]*)$/i.exec(answer.trim());
+  const match = /^[\s*_#>"'`]*(insufficient evidence\b|证据不足)[\s:.,：，。-]*([\s\S]*)$/i.exec(answer.trim());
   if (!match) return false;
-  const rest = match[1]!.trim();
-  return rest.length >= 12 && !/\b(but|however|although|though|still|nevertheless)\b/i.test(rest);
+  const rest = match[2]!.trim();
+  const long = isChinese(rest) ? rest.length >= 6 : rest.length >= 12;
+  return long && !/\b(but|however|although|though|still|nevertheless)\b|但|不过|然而|可是|尽管/i.test(rest);
 }
 
 function validateCitations(
@@ -488,16 +520,18 @@ export class SoCLaaSCompanyAgent {
           );
         }
         if (calls.length > 0) {
-          // A short preamble ("Let me check") is not part of the answer; a real paragraph is.
+          // Text beside a panel is usually the answer the panel illustrates. Text beside any other
+          // call is a preamble or a draft the model may correct once the results are in.
           const said = rawContent?.trim();
-          if (said && said.length >= 60) spoken.push(said);
+          const panelOnly = calls.every((call) => call.function.name === "show_recruiting_panel");
+          if (said && said.length >= 60 && panelOnly) spoken.push(said);
           if (isStreaming) {
             callbacks?.onResetTokens?.();
             callbacks?.onStatus?.("Investigating additional company evidence…");
           }
         } else {
           let answer = rawContent?.trim();
-          if (answer || spoken.length) answer = withoutRepeats([...spoken, answer ?? ""].join("\n\n"));
+          if (answer || spoken.length) answer = joinSpoken(spoken.map(withoutRepeats), withoutRepeats(answer ?? ""));
           if (!answer && !mustAnswer) {
             messages.push({ role: "user", content: "You returned nothing. Reply to the user now in plain text." });
             continue;
@@ -518,7 +552,12 @@ export class SoCLaaSCompanyAgent {
           // search happened earlier in the turn.
           const groundedElsewhere = extensionRan || (loadedSkills.size > 0 && retrieved.size === 0);
           let citationCheck = validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere);
+          // A skill's answer that also used company evidence without citing any gets one chance to
+          // add the citations. If that fails the skill's answer stands, since its facts came from the skill.
+          const softCheck = !citationCheck.problem && extensionRan && retrieved.size > 0 && citationCheck.citedSourceIds.length === 0;
+          if (softCheck) citationCheck = { citedSourceIds: [], problem: "uncited company evidence beside a skill" };
           if (citationCheck.problem) {
+            const original = answer;
             if (isStreaming) {
               callbacks?.onResetTokens?.();
               callbacks?.onStatus?.("Refining citations…");
@@ -528,11 +567,14 @@ export class SoCLaaSCompanyAgent {
               content: [
                 "Revise your previous answer so it can pass the source-citation check.",
                 "Cite every factual claim using [source:SOURCE_ID] and only the available IDs below.",
-                "If the evidence cannot support the answer, say 'Insufficient evidence' and name what is missing.",
+                softCheck
+                  ? "Keep what the skill's tools reported as it is; it needs no citation. Cite only company facts."
+                  : "If the evidence cannot support the answer, say 'Insufficient evidence' and name what is missing.",
                 "Keep the revision under 250 words, lead with the conclusion, and use ordinary Markdown only.",
                 `Available source IDs: ${[...retrieved.keys()].join(", ") || "none"}.`,
               ].join(" "),
             });
+            // The optional soft repair never fails the turn: the skill's answer is already in hand.
             const repairResponse = await this.request(`${this.baseUrl}/chat/completions`, {
               method: "POST",
               headers: {
@@ -547,7 +589,20 @@ export class SoCLaaSCompanyAgent {
                 ...this.noThinking,
                 max_tokens: 1800,
               }),
+            }).catch((error: unknown) => {
+              if (softCheck) return null;
+              throw error;
             });
+            if (!repairResponse || (!repairResponse.ok && softCheck)) {
+              await repairResponse?.body?.cancel().catch(() => undefined);
+              return {
+                answer: original,
+                sources: [],
+                runId,
+                toolCalls,
+                ...(blocks.length ? { blocks } : {}),
+              };
+            }
             if (!repairResponse.ok) {
               const detail = await repairResponse.text();
               throw new Error(
@@ -557,13 +612,19 @@ export class SoCLaaSCompanyAgent {
             const repairCompletion = (await repairResponse.json()) as CompletionResponse;
             answer = repairCompletion.choices?.[0]?.message?.content?.trim();
             citationCheck = answer
-              ? validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere, true)
+              ? validateCitations(answer, retrieved, hasPersonalContext, softCheck ? false : groundedElsewhere, !softCheck)
               : { citedSourceIds: [], problem: "empty repair" };
-            // A repair that talks about the check itself is not an answer for the user.
-            if (answer && /citation check|source-citation/i.test(answer)) citationCheck = { citedSourceIds: [], problem: "meta" };
+            // A repair that talks about passing the check is not an answer for the user.
+            if (answer && /\b(pass|passes|passed|passing|fail|fails|failed|failing)\b[^.\n]{0,20}\b(source-)?citation check\b/i.test(answer)) {
+              citationCheck = { citedSourceIds: [], problem: "meta" };
+            }
+            if (softCheck && (citationCheck.problem || !answer)) {
+              answer = original;
+              citationCheck = { citedSourceIds: [] };
+            }
             if (citationCheck.problem || !answer) {
               return {
-                answer: isCjk(input.question) ? INSUFFICIENT_EVIDENCE_ANSWER_ZH : INSUFFICIENT_EVIDENCE_ANSWER,
+                answer: isChinese(input.question) ? INSUFFICIENT_EVIDENCE_ANSWER_ZH : INSUFFICIENT_EVIDENCE_ANSWER,
                 sources: [],
                 runId,
                 toolCalls,
@@ -572,17 +633,32 @@ export class SoCLaaSCompanyAgent {
             }
           }
           // The system prompt asks for the user's language; when the model still answers a
-          // Chinese question in English, ask once more.
-          if (isCjk(input.question) && !/[\u3400-\u9fff]/.test(answer)) {
-            messages.push({ role: "user", content: "Reply to the user again, in the language of their message (Chinese). Same content, nothing added." });
-            const again = await this.request(`${this.baseUrl}/chat/completions`, {
-              method: "POST",
-              headers: { authorization: `Bearer ${this.options.apiKey}`, "content-type": "application/json" },
-              body: JSON.stringify({ model: this.model, messages, tools: offeredTools(), tool_choice: "none", ...this.noThinking, max_tokens: 1800 }),
-            });
-            if (again.ok) {
-              const translated = ((await again.json()) as CompletionResponse).choices?.[0]?.message?.content?.trim();
-              if (translated && (translated.match(CJK)?.length ?? 0) > 0) answer = translated;
+          // Chinese question in another language, ask once more. The translation must pass the
+          // same citation check; if it does not, or the call fails, the checked answer stands.
+          if (isChinese(input.question) && !isChinese(answer)) {
+            const last = messages[messages.length - 1];
+            if (last?.role === "assistant" && !last.tool_calls) last.content = answer;
+            else messages.push({ role: "assistant", content: answer });
+            messages.push({ role: "user", content: "Reply to the user again, in the language of their message (Chinese). Same content and the same [source:ID] citations, nothing added." });
+            try {
+              const again = await this.request(`${this.baseUrl}/chat/completions`, {
+                method: "POST",
+                headers: { authorization: `Bearer ${this.options.apiKey}`, "content-type": "application/json" },
+                body: JSON.stringify({ model: this.model, messages, tools: offeredTools(), tool_choice: "none", ...this.noThinking, max_tokens: 1800 }),
+              });
+              if (again.ok) {
+                const translated = ((await again.json()) as CompletionResponse).choices?.[0]?.message?.content?.trim();
+                if (translated && isChinese(translated)) {
+                  const check = validateCitations(translated, retrieved, hasPersonalContext, groundedElsewhere);
+                  const keepsCitations = citationCheck.citedSourceIds.length === 0 || check.citedSourceIds.length > 0;
+                  if (!check.problem && keepsCitations) {
+                    answer = translated;
+                    citationCheck = check;
+                  }
+                }
+              }
+            } catch {
+              // The answer in hand is already checked; the translation was optional.
             }
           }
           return {

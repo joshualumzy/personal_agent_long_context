@@ -143,6 +143,26 @@ function mergeDuplicatePeople(state: RecruitingState): void {
   }
 }
 
+const UNCONFIRMED =
+  "Gmail did not confirm this email, so it may have gone out. Check your Sent folder: if it is there, mark it as sent by hand; if not, edit the draft and send it again.";
+
+function beingSent(): RecruitingError {
+  return new RecruitingError("already_sending", "The current draft is being sent, so it cannot be replaced.", 409);
+}
+
+/** Only a refusal (not connected, or Gmail answering with an error status) proves nothing went out. */
+function certainlyNotSent(error: unknown): boolean {
+  if (error instanceof RecruitingError) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /HTTP \d{3}|not connected|token/i.test(message);
+}
+
+interface SentMessage {
+  draft: Draft;
+  threadId: string | undefined;
+  channel: "email" | "linkedin";
+}
+
 export class RecruitingService {
   private state: RecruitingState | null = null;
   private chain: Promise<unknown> = Promise.resolve();
@@ -494,6 +514,8 @@ export class RecruitingService {
       for (const candidate of Object.values(state.candidates)) {
         const id = candidate.profile.id;
         if (!isInPool(candidate) || claimed.has(id) || failed.has(id)) continue;
+        // Someone who failed every retry is left alone until the criteria change.
+        if ((this.scoringFailures.get(id) ?? 0) > this.settings.rescoreAttempts) continue;
         const missing = criteria.filter((criterion) => !verdictFor(candidate, criterion.id));
         if (missing.length) return { candidate, missing: missing.map((criterion) => ({ ...criterion })) };
       }
@@ -524,8 +546,10 @@ export class RecruitingService {
               candidate.stage = "scored";
             }
           });
+          this.scoringFailures.delete(id);
         } catch (error) {
           failed.add(id);
+          this.scoringFailures.set(id, (this.scoringFailures.get(id) ?? 0) + 1);
           if (this.disposed) return; // the role was deleted; nothing to report
           this.fail(`Scoring ${job.candidate.profile.name}`, error);
         } finally {
@@ -537,17 +561,21 @@ export class RecruitingService {
     await Promise.all(Array.from({ length: this.settings.judgeConcurrency }, worker));
     // People left unscored by a failure (a rate limit, an outage) are tried again after a
     // pause, a few times, instead of waiting for the founder to happen to change something.
-    if (failed.size && !this.disposed && this.rescores < this.settings.rescoreAttempts) {
-      this.rescores += 1;
-      setTimeout(() => {
+    // Each person gets their own retries, so one who can never be scored does not use up
+    // the retries of someone who was only rate limited once.
+    const retryable = [...failed].some((id) => (this.scoringFailures.get(id) ?? 0) <= this.settings.rescoreAttempts);
+    if (retryable && !this.disposed && !this.rescoreTimer) {
+      this.rescoreTimer = setTimeout(() => {
+        this.rescoreTimer = null;
         if (!this.disposed) this.settle();
-      }, this.settings.rescoreAfterMs).unref?.();
-    } else if (!failed.size) {
-      this.rescores = 0;
+      }, this.settings.rescoreAfterMs);
+      this.rescoreTimer.unref?.();
     }
   }
 
-  private rescores = 0;
+  /** Failed scoring attempts in a row, per person. */
+  private readonly scoringFailures = new Map<string, number>();
+  private rescoreTimer: ReturnType<typeof setTimeout> | null = null;
 
   // -------------------------------------------------------------- talking
 
@@ -604,6 +632,7 @@ export class RecruitingService {
       }
       return summary;
     });
+    if (result.length) this.scoringFailures.clear();
     this.settle();
     if (result.length) {
       await this.retitleRole();
@@ -624,6 +653,9 @@ export class RecruitingService {
     const summary: string[] = [];
     for (const operation of operations) {
       if (operation.op === "add") {
+        // The same criterion twice would count twice in every tier.
+        const same = (text: string) => text.trim().toLowerCase() === operation.text.trim().toLowerCase();
+        if (this.active(state).some((criterion) => same(criterion.text))) continue;
         const id = randomUUID().slice(0, 8);
         state.criteria.push({ id, text: operation.text, kind: operation.kind, origin, active: true, createdAt: at });
         summary.push(`added ${operation.kind} "${operation.text}"`);
@@ -694,6 +726,7 @@ export class RecruitingService {
       state.criteria,
       statedReason,
     );
+    let reopened = false;
     await this.mutate((latest) => {
       const target = this.candidate(latest, candidateId);
       const at = this.now(latest).toISOString();
@@ -708,10 +741,14 @@ export class RecruitingService {
       else {
         target.kept = true;
         // Keeping someone the founder passed on is changing their mind: they come back.
+        // They pick up where the conversation had got to.
         if (target.stage === "closed" && target.closedReason === "passed") {
-          target.stage = "scored";
+          const heard = target.messages.some((message) => message.direction === "inbound");
+          const wrote = target.messages.some((message) => message.direction === "outbound");
+          target.stage = heard ? "replied" : wrote ? "contacted" : "scored";
           delete target.closedReason;
           delete target.closedAt;
+          reopened = true;
         }
       }
       this.record(
@@ -723,6 +760,8 @@ export class RecruitingService {
         }.`,
       );
     });
+    // Criteria added while they were closed still need a verdict.
+    if (reopened) this.settle();
     this.background("Looking for a preference", () => this.proposeFromFeedback(decision));
   }
 
@@ -759,6 +798,9 @@ export class RecruitingService {
       this.settings.preferenceThreshold,
     );
     if (!finding) return;
+    // A "preference" the criteria already hold is nothing new to ask about.
+    const known = (text: string) => text.trim().toLowerCase() === finding.text.trim().toLowerCase();
+    if (this.active(state).some((criterion) => known(criterion.text))) return;
 
     await this.mutate((latest) => {
       if (latest.proposals.some((proposal) => proposal.type === "criterion" && proposal.status === "pending")) {
@@ -876,6 +918,7 @@ export class RecruitingService {
     if (candidate.stage === "closed") {
       throw new RecruitingError("invalid_state", "This candidate is closed.", 409);
     }
+    if (candidate.draft?.sending) throw beingSent();
     const contact =
       candidate.contact ??
       (await findContact(this.deps.contactFinders, candidate.profile));
@@ -886,6 +929,7 @@ export class RecruitingService {
       if (target.stage === "closed") {
         throw new RecruitingError("candidate_closed", "This candidate was closed, so the draft was dropped.", 409);
       }
+      if (target.draft?.sending) throw beingSent();
       if (contact) target.contact = contact;
       target.draft = draft;
       if (target.stage === "discovered" || target.stage === "scored") target.stage = "drafted";
@@ -901,12 +945,13 @@ export class RecruitingService {
     let redrafted = 0;
     for (const candidate of Object.values(state.candidates)) {
       const waiting = candidate.draft;
-      if (!waiting || waiting.sending || candidate.stage === "closed") continue;
+      // The founder's own words are kept; only drafts they have not touched are rewritten.
+      if (!waiting || waiting.sending || waiting.editedByFounder || candidate.stage === "closed") continue;
       const draft = await this.makeDraft(state, candidate, waiting.kind);
       await this.mutate((latest) => {
         const target = latest.candidates[candidate.profile.id];
         // Only replace the draft that was there when we started, never one being sent.
-        if (target?.draft && !target.draft.sending && target.draft.createdAt === waiting.createdAt) {
+        if (target?.draft && !target.draft.sending && !target.draft.editedByFounder && target.draft.createdAt === waiting.createdAt) {
           target.draft = draft;
           redrafted += 1;
         }
@@ -919,11 +964,28 @@ export class RecruitingService {
     await this.mutate((state) => {
       const candidate = this.candidate(state, candidateId);
       if (!candidate.draft) throw new RecruitingError("no_draft", "There is no draft to edit.", 409);
+      if (candidate.draft.sending && candidate.draft.unconfirmed && !this.unrecorded.has(candidateId)) {
+        const changes =
+          (edit.subject !== undefined && edit.subject !== candidate.draft.subject) ||
+          (edit.body !== undefined && edit.body !== candidate.draft.body) ||
+          (edit.email !== undefined && edit.email !== candidate.contact?.email);
+        // Saving it unchanged (the panel saves before every send) settles nothing.
+        if (!changes) return;
+        // Changing a draft Gmail never confirmed means the founder found it was not sent.
+        delete candidate.draft.sending;
+        delete candidate.draft.unconfirmed;
+      }
       if (candidate.draft.sending) {
         throw new RecruitingError("already_sending", "This message is being sent and can no longer be edited.", 409);
       }
-      if (edit.subject !== undefined) candidate.draft.subject = edit.subject;
-      if (edit.body !== undefined) candidate.draft.body = edit.body;
+      if (edit.subject !== undefined && edit.subject !== candidate.draft.subject) {
+        candidate.draft.subject = edit.subject;
+        candidate.draft.editedByFounder = true;
+      }
+      if (edit.body !== undefined && edit.body !== candidate.draft.body) {
+        candidate.draft.body = edit.body;
+        candidate.draft.editedByFounder = true;
+      }
       if (edit.email !== undefined) {
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(edit.email)) {
           throw new RecruitingError("invalid_request", "That is not an email address.");
@@ -943,6 +1005,14 @@ export class RecruitingService {
    * themselves (for example as a LinkedIn message).
    */
   async send(candidateId: string, manual: boolean): Promise<void> {
+    // 0. Gmail already sent it but recording failed: record it now, never send it twice.
+    const pending = this.unrecorded.get(candidateId);
+    if (pending) {
+      await this.recordSent(candidateId, pending);
+      this.unrecorded.delete(candidateId);
+      return;
+    }
+
     // 1. Claim the draft and save the claim. A second press, or a retry after a
     //    failed save below, finds it claimed and cannot send it again.
     const claimed = await this.mutate((latest) => {
@@ -952,6 +1022,13 @@ export class RecruitingService {
       }
       const draft = target.draft;
       if (!draft) throw new RecruitingError("no_draft", "There is no draft to send.", 409);
+      // Gmail never confirmed an earlier try. The founder, having checked Sent, says it went out.
+      if (draft.sending && draft.unconfirmed && manual) {
+        return { draft: { ...draft }, contact: target.contact, threadId: target.gmailThreadId, confirmed: true, sender: null };
+      }
+      if (draft.sending && draft.unconfirmed) {
+        throw new RecruitingError("send_unconfirmed", UNCONFIRMED, 409);
+      }
       if (draft.sending) {
         throw new RecruitingError("already_sending", "This message is already being sent. Check your sent mail before trying again.", 409);
       }
@@ -962,8 +1039,18 @@ export class RecruitingService {
         throw new RecruitingError("no_email", "There is no email address for this person.", 409);
       }
       draft.sending = true;
-      return { draft: { ...draft }, contact: target.contact, threadId: target.gmailThreadId };
+      return {
+        draft: { ...draft },
+        contact: target.contact,
+        threadId: target.gmailThreadId,
+        confirmed: false,
+        sender: JSON.stringify(latest.sender ?? null),
+      };
     });
+    if (claimed.confirmed) {
+      await this.recordSent(candidateId, { draft: claimed.draft, threadId: claimed.threadId, channel: "email" });
+      return;
+    }
 
     // 2. The one irreversible step, outside any change that could be rolled back.
     let threadId = claimed.threadId;
@@ -980,23 +1067,42 @@ export class RecruitingService {
         });
         threadId = sent.threadId;
       } catch (error) {
+        if (!certainlyNotSent(error)) {
+          // The request may have reached Gmail. Keep the claim so a retry cannot send it twice.
+          await this.mutate((latest) => {
+            const target = latest.candidates[candidateId];
+            if (target?.draft?.sending) target.draft.unconfirmed = true;
+          });
+          throw new RecruitingError("send_unconfirmed", UNCONFIRMED, 502);
+        }
         // Nothing went out: release the claim so the founder can try again.
         await this.mutate((latest) => {
           const target = latest.candidates[candidateId];
           if (target?.draft) delete target.draft.sending;
         });
+        await this.redraftIfSenderChanged(candidateId, claimed.draft, claimed.sender);
         throw error;
       }
     }
 
-    // 3. Record it.
-    const draft = claimed.draft;
+    // 3. Record it. If that fails, the send is remembered so the next press only records it.
+    const sent = { draft: claimed.draft, threadId, channel: manual ? "linkedin" : "email" } as const;
+    this.unrecorded.set(candidateId, sent);
+    await this.recordSent(candidateId, sent);
+    this.unrecorded.delete(candidateId);
+  }
+
+  /** Sends that went out but are not yet saved, by candidate. */
+  private readonly unrecorded = new Map<string, SentMessage>();
+
+  private async recordSent(candidateId: string, sent: SentMessage): Promise<void> {
+    const { draft, threadId } = sent;
     await this.mutate((latest) => {
       const target = this.candidate(latest, candidateId);
       const at = this.now(latest).toISOString();
       target.messages.push({
         direction: "outbound",
-        channel: manual ? "linkedin" : "email",
+        channel: sent.channel,
         at,
         realAt: this.realNow(),
         text: `${draft.subject}\n\n${draft.body}`,
@@ -1004,10 +1110,32 @@ export class RecruitingService {
       if (threadId) target.gmailThreadId = threadId;
       target.lastContactedAt = at;
       if (draft.kind === "follow_up") target.followUps += 1;
-      if (draft.kind === "scheduling") target.stage = "scheduling";
+      // Closed while the email was going out (hired, or asked not to be contacted) stays closed.
+      if (target.stage === "closed") {
+        // nothing: the message is kept on record, the decision stands
+      } else if (draft.kind === "scheduling") target.stage = "scheduling";
       else if (target.stage !== "replied" && target.stage !== "scheduling") target.stage = "contacted";
       delete target.draft;
     });
+  }
+
+  /** A draft released after a failed send is rewritten if the signature changed meanwhile. */
+  private async redraftIfSenderChanged(candidateId: string, sentDraft: Draft, senderAtClaim: string | null): Promise<void> {
+    try {
+      const state = await this.current();
+      const candidate = state.candidates[candidateId];
+      if (!candidate?.draft || senderAtClaim === null || JSON.stringify(state.sender ?? null) === senderAtClaim) return;
+      if (candidate.draft.editedByFounder || candidate.stage === "closed") return;
+      const draft = await this.makeDraft(state, candidate, candidate.draft.kind);
+      await this.mutate((latest) => {
+        const target = latest.candidates[candidateId];
+        if (target?.draft && !target.draft.sending && !target.draft.editedByFounder && target.draft.createdAt === sentDraft.createdAt) {
+          target.draft = draft;
+        }
+      });
+    } catch (error) {
+      this.fail("Updating the signature", error);
+    }
   }
 
   /** A reply relayed by paste, dictation, Gmail, or the LinkedIn reader. */
@@ -1287,6 +1415,7 @@ export class RecruitingService {
    */
   dispose(): Promise<void> {
     this.disposed = true;
+    if (this.rescoreTimer) clearTimeout(this.rescoreTimer);
     return this.chain.then(() => undefined);
   }
 
