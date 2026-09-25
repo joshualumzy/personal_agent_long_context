@@ -89,6 +89,8 @@ export interface RecruitingDependencies {
 export interface SayResult {
   intent: string;
   message: string;
+  /** For a reply: whether it was saved on someone's record. */
+  recorded?: boolean;
   refused?: { text: string; characteristic: string }[];
 }
 
@@ -146,6 +148,10 @@ function mergeDuplicatePeople(state: RecruitingState): void {
 const UNCONFIRMED =
   "Gmail did not confirm this email, so it may have gone out. Check your Sent folder: if it is there, mark it as sent by hand; if not, edit the draft and send it again.";
 
+function rewritten(): RecruitingError {
+  return new RecruitingError("invalid_state", "You rewrote this draft yourself, so it is kept. Edit it in the outreach tab.", 409);
+}
+
 function beingSent(): RecruitingError {
   return new RecruitingError("already_sending", "The current draft is being sent, so it cannot be replaced.", 409);
 }
@@ -154,13 +160,16 @@ function beingSent(): RecruitingError {
 function certainlyNotSent(error: unknown): boolean {
   if (error instanceof RecruitingError) return true;
   const message = error instanceof Error ? error.message : String(error);
-  return /HTTP \d{3}|not connected|token/i.test(message);
+  // A reply Gmail sent but that could not be read (a proxy page) proves nothing either way.
+  return /HTTP \d{3}|not connected/i.test(message);
 }
 
 interface SentMessage {
   draft: Draft;
   threadId: string | undefined;
   channel: "email" | "linkedin";
+  /** When it went out, if known; Gmail sync reads replies after this. */
+  realAt?: string;
 }
 
 export class RecruitingService {
@@ -664,6 +673,7 @@ export class RecruitingService {
   ): string[] {
     const at = this.now(state).toISOString();
     const summary: string[] = [];
+    const edited = new Set<string>();
     for (const operation of operations) {
       if (operation.op === "add") {
         // The same criterion twice would count twice in every tier.
@@ -684,21 +694,29 @@ export class RecruitingService {
         if (origin === "relaxed") criterion.origin = "relaxed";
         summary.push(`"${criterion.text}" is now ${operation.kind}`);
       } else if (operation.op === "edit" && criterion.text !== operation.text) {
-        const clash = this.active(state).find(
-          (other) => other.id !== criterion.id && other.text.trim().toLowerCase() === operation.text.trim().toLowerCase(),
-        );
-        // Edited into another's words, the two are one criterion: this one is merged away.
-        if (clash) {
-          criterion.active = false;
-          summary.push(`"${criterion.text}" merged into "${clash.text}"`);
-          continue;
-        }
+        edited.add(criterion.id);
         // History stays in Memory; the projection keeps only the current text.
         summary.push(`"${criterion.text}" became "${operation.text}"`);
         criterion.text = operation.text;
         if (origin === "relaxed") criterion.origin = "relaxed";
         for (const candidate of Object.values(state.candidates)) delete candidate.verdicts[criterion.id];
       }
+    }
+    // An edit that ends up in another active criterion's words (judged after the whole batch,
+    // so a removal later in it counts) merges the two: the edited one goes.
+    const byText = new Map<string, Criterion>();
+    for (const criterion of this.active(state)) {
+      const key = criterion.text.trim().toLowerCase();
+      const other = byText.get(key);
+      if (!other) {
+        byText.set(key, criterion);
+        continue;
+      }
+      const merged = edited.has(criterion.id) ? criterion : other;
+      const kept = merged === criterion ? other : criterion;
+      merged.active = false;
+      byText.set(key, kept);
+      summary.push(`"${merged.text}" merged into "${kept.text}"`);
     }
     // Judging needs something to judge by; a confirmed role always keeps one criterion.
     if (state.role?.confirmed && this.active(state).length === 0) {
@@ -946,6 +964,7 @@ export class RecruitingService {
       throw new RecruitingError("invalid_state", "This candidate is closed.", 409);
     }
     if (candidate.draft?.sending) throw beingSent();
+    if (candidate.draft?.editedByFounder) throw rewritten();
     // Once they are in a conversation, the next message answers them; it is never a cold intro.
     if (candidate.draft && candidate.draft.kind !== "intro") {
       throw new RecruitingError("invalid_state", "A reply to this person is already drafted. Edit it in the outreach tab.", 409);
@@ -963,6 +982,7 @@ export class RecruitingService {
         throw new RecruitingError("candidate_closed", "This candidate was closed, so the draft was dropped.", 409);
       }
       if (target.draft?.sending) throw beingSent();
+      if (target.draft?.editedByFounder) throw rewritten();
       if (target.draft && target.draft.kind !== "intro") {
         throw new RecruitingError("invalid_state", "A reply to this person is already drafted. Edit it in the outreach tab.", 409);
       }
@@ -1000,7 +1020,7 @@ export class RecruitingService {
     await this.mutate((state) => {
       const candidate = this.candidate(state, candidateId);
       if (!candidate.draft) throw new RecruitingError("no_draft", "There is no draft to edit.", 409);
-      if (candidate.draft.sending && candidate.draft.unconfirmed && !this.unrecorded.has(candidateId)) {
+      if (this.unconfirmedClaim(candidateId, candidate.draft)) {
         const changes =
           (edit.subject !== undefined && edit.subject !== candidate.draft.subject) ||
           (edit.body !== undefined && edit.body !== candidate.draft.body) ||
@@ -1010,6 +1030,7 @@ export class RecruitingService {
         // Changing a draft Gmail never confirmed means the founder found it was not sent.
         delete candidate.draft.sending;
         delete candidate.draft.unconfirmed;
+        delete candidate.draft.claimedAt;
       }
       if (candidate.draft.sending) {
         throw new RecruitingError("already_sending", "This message is being sent and can no longer be edited.", 409);
@@ -1041,6 +1062,19 @@ export class RecruitingService {
    * themselves (for example as a LinkedIn message).
    */
   async send(candidateId: string, manual: boolean): Promise<void> {
+    // One send per person at a time, decided before anything is awaited.
+    if (this.inFlight.has(candidateId)) {
+      throw new RecruitingError("already_sending", "This message is already being sent. Check your sent mail before trying again.", 409);
+    }
+    this.inFlight.add(candidateId);
+    try {
+      await this.sendOnce(candidateId, manual);
+    } finally {
+      this.inFlight.delete(candidateId);
+    }
+  }
+
+  private async sendOnce(candidateId: string, manual: boolean): Promise<void> {
     // 0. Gmail already sent it but recording failed: record it now, never send it twice.
     const pending = this.unrecorded.get(candidateId);
     if (pending) {
@@ -1049,8 +1083,8 @@ export class RecruitingService {
       return;
     }
 
-    // 1. Claim the draft and save the claim. A second press, or a retry after a
-    //    failed save below, finds it claimed and cannot send it again.
+    // 1. Claim the draft and save the claim. A retry after a failed save below finds it
+    //    claimed and cannot send it again.
     const claimed = await this.mutate((latest) => {
       const target = this.candidate(latest, candidateId);
       if (target.stage === "closed") {
@@ -1058,15 +1092,11 @@ export class RecruitingService {
       }
       const draft = target.draft;
       if (!draft) throw new RecruitingError("no_draft", "There is no draft to send.", 409);
-      // Gmail never confirmed an earlier try. The founder, having checked Sent, says it went out.
-      if (draft.sending && draft.unconfirmed && manual) {
-        return { draft: { ...draft }, contact: target.contact, threadId: target.gmailThreadId, confirmed: true, sender: null };
-      }
-      if (draft.sending && draft.unconfirmed) {
-        throw new RecruitingError("send_unconfirmed", UNCONFIRMED, 409);
-      }
+      // Claimed, yet nothing of ours is sending it: an earlier try never learned whether Gmail
+      // sent it (or the server stopped mid-send). Only the founder, having checked Sent, can say.
       if (draft.sending) {
-        throw new RecruitingError("already_sending", "This message is already being sent. Check your sent mail before trying again.", 409);
+        if (!manual) throw new RecruitingError("send_unconfirmed", UNCONFIRMED, 409);
+        return { draft: { ...draft }, contact: target.contact, threadId: target.gmailThreadId, confirmed: true, sender: null };
       }
       if (draft.warnings.length) {
         throw new RecruitingError("draft_has_warnings", draft.warnings[0]!, 409);
@@ -1079,6 +1109,7 @@ export class RecruitingService {
         throw new RecruitingError("no_subject", "Add a subject line before sending this as an email.", 409);
       }
       draft.sending = true;
+      draft.claimedAt = this.realNow();
       return {
         draft: { ...draft },
         contact: target.contact,
@@ -1088,7 +1119,13 @@ export class RecruitingService {
       };
     });
     if (claimed.confirmed) {
-      await this.recordSent(candidateId, { draft: claimed.draft, threadId: claimed.threadId, channel: "email" });
+      // Stamped with the time it was claimed, so replies since then are still read.
+      await this.recordSent(candidateId, {
+        draft: claimed.draft,
+        threadId: claimed.threadId,
+        channel: "email",
+        ...(claimed.draft.claimedAt ? { realAt: claimed.draft.claimedAt } : {}),
+      });
       return;
     }
 
@@ -1108,17 +1145,21 @@ export class RecruitingService {
         threadId = sent.threadId;
       } catch (error) {
         if (!certainlyNotSent(error)) {
-          // The request may have reached Gmail. Keep the claim so a retry cannot send it twice.
+          // The request may have reached Gmail. The claim stays, so a retry cannot send it twice.
+          // The flag only tells the panel; a claim with nothing sending counts as unconfirmed anyway.
           await this.mutate((latest) => {
             const target = latest.candidates[candidateId];
             if (target?.draft?.sending) target.draft.unconfirmed = true;
-          });
+          }).catch(() => undefined);
           throw new RecruitingError("send_unconfirmed", UNCONFIRMED, 502);
         }
         // Nothing went out: release the claim so the founder can try again.
         await this.mutate((latest) => {
           const target = latest.candidates[candidateId];
-          if (target?.draft) delete target.draft.sending;
+          if (target?.draft) {
+            delete target.draft.sending;
+            delete target.draft.claimedAt;
+          }
         });
         await this.redraftIfSenderChanged(candidateId, claimed.draft, claimed.sender);
         throw error;
@@ -1126,14 +1167,21 @@ export class RecruitingService {
     }
 
     // 3. Record it. If that fails, the send is remembered so the next press only records it.
-    const sent = { draft: claimed.draft, threadId, channel: manual ? "linkedin" : "email" } as const;
+    const sent: SentMessage = { draft: claimed.draft, threadId, channel: manual ? "linkedin" : "email", realAt: this.realNow() };
     this.unrecorded.set(candidateId, sent);
     await this.recordSent(candidateId, sent);
     this.unrecorded.delete(candidateId);
   }
 
+  /** People whose send is running right now. */
+  private readonly inFlight = new Set<string>();
   /** Sends that went out but are not yet saved, by candidate. */
   private readonly unrecorded = new Map<string, SentMessage>();
+
+  /** A claimed draft that nothing is sending and nothing waits to record: its fate is unknown. */
+  private unconfirmedClaim(candidateId: string, draft: Draft | undefined): boolean {
+    return Boolean(draft?.sending) && !this.inFlight.has(candidateId) && !this.unrecorded.has(candidateId);
+  }
 
   private async recordSent(candidateId: string, sent: SentMessage): Promise<void> {
     const { draft, threadId } = sent;
@@ -1144,7 +1192,7 @@ export class RecruitingService {
         direction: "outbound",
         channel: sent.channel,
         at,
-        realAt: this.realNow(),
+        realAt: sent.realAt ?? this.realNow(),
         text: `${draft.subject}\n\n${draft.body}`,
       });
       if (threadId) target.gmailThreadId = threadId;
@@ -1229,8 +1277,8 @@ export class RecruitingService {
       return null;
     });
     const name = state.candidates[id]?.profile.name ?? "The candidate";
-    if (closedAs) return { intent: "reply", message: `${name} is closed (${closedAs}). Their message is saved.` };
-    if (reading.interested === false) return { intent: "reply", message: `${name} declined. Closed.` };
+    if (closedAs) return { intent: "reply", recorded: true, message: `${name} is closed (${closedAs}). Their message is saved.` };
+    if (reading.interested === false) return { intent: "reply", recorded: true, message: `${name} declined. Closed.` };
 
     // 2. A scheduling answer, if they want to talk. Failing here keeps the reply.
     let drafted = false;
@@ -1254,6 +1302,7 @@ export class RecruitingService {
     }
     return {
       intent: "reply",
+      recorded: true,
       message: `${name}: ${reading.summary}${drafted ? " A scheduling reply is drafted." : ""}`,
     };
   }

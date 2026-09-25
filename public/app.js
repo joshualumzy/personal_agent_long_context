@@ -37,6 +37,10 @@ let activeConversationId = null;
 // Bumped whenever another conversation is put on screen; an answer or history asked for
 // before that is not about what is shown and must not be drawn or change the active one.
 let chatEpoch = 0;
+/** A question is being answered; the composer and the chips wait for it. */
+let asking = false;
+/** Numbers sidebar list requests; only the latest one is drawn. */
+let listRequest = 0;
 
 function scrollToBottom() {
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -123,11 +127,36 @@ function normalizeModelMarkdown(markdown) {
   return markdown.replace(/\*{4}(`[^`\n]+`)\*{4}/g, "$1");
 }
 
-function linkifyCitations(html) {
-  return html.replace(
-    /\[source:([A-Za-z0-9._:-]+)\]/gi,
-    '<button type="button" class="inline-citation" data-source-id="$1">$1</button>',
-  );
+/**
+ * Puts sanitized HTML into `container` and turns [source:ID] in its text into citation buttons.
+ * Only text nodes are touched: a citation inside a link title or image alt stays plain text.
+ */
+function setAnswerHtml(container, sanitizedHtml) {
+  container.innerHTML = sanitizedHtml;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const texts = [];
+  while (walker.nextNode()) texts.push(walker.currentNode);
+  const pattern = /\[source:([A-Za-z0-9._:-]+)\]/gi;
+  for (const node of texts) {
+    const text = node.nodeValue;
+    pattern.lastIndex = 0;
+    if (!pattern.test(text)) continue;
+    pattern.lastIndex = 0;
+    const pieces = document.createDocumentFragment();
+    let at = 0;
+    for (const match of text.matchAll(pattern)) {
+      pieces.append(text.slice(at, match.index));
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "inline-citation";
+      button.dataset.sourceId = match[1];
+      button.textContent = match[1];
+      pieces.append(button);
+      at = match.index + match[0].length;
+    }
+    pieces.append(text.slice(at));
+    node.replaceWith(pieces);
+  }
 }
 
 // Auto-expand textarea
@@ -303,6 +332,8 @@ if (newChatBtn) {
 // Suggestion chips
 suggestionChips.forEach((chip) => {
   chip.addEventListener("click", () => {
+    // One question at a time, whichever way it is asked.
+    if (asking) return;
     messageInput.value = chip.textContent.trim();
     messageInput.dispatchEvent(new Event("input"));
     chatForm.requestSubmit();
@@ -395,11 +426,9 @@ function appendAssistantMessage(data) {
   const normalized = normalizeModelMarkdown(data.answer);
   const rawHtml = marked.parse(normalized, { gfm: true, breaks: false });
   const sanitized = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } });
-  const linkedHtml = linkifyCitations(sanitized);
-
   const textContainer = document.createElement("div");
   textContainer.className = "message-text";
-  textContainer.innerHTML = linkedHtml;
+  setAnswerHtml(textContainer, sanitized);
 
   // Add click listeners to inline citations
   textContainer.querySelectorAll(".inline-citation").forEach((btn) => {
@@ -597,10 +626,13 @@ function appendErrorMessage(message) {
 // Conversation Management
 async function loadConversations() {
   if (!conversationsList) return;
+  const asked = ++listRequest;
   try {
     const response = await fetch("/api/v1/conversations?userId=jax");
     if (!response.ok) return;
     const conversations = await response.json();
+    // A list asked for later (after a delete, say) may already be drawn.
+    if (asked !== listRequest) return;
 
     if (!Array.isArray(conversations) || conversations.length === 0) {
       conversationsList.innerHTML = '<div class="conversations-empty">No saved chats yet</div>';
@@ -694,7 +726,13 @@ async function selectConversation(conversationId, title) {
       if (emptyState) emptyState.style.display = "block";
     }
   } catch (err) {
-    if (asked === chatEpoch) appendErrorMessage("Could not load conversation history.");
+    if (asked === chatEpoch) {
+      // Nothing of the conversation that was open before may stay under this one's title,
+      // and the next message must not go to a conversation that could not be read.
+      activeConversationId = null;
+      chatMessages.innerHTML = "";
+      appendErrorMessage("Could not load this conversation. Pick it again, or start a new chat.");
+    }
   } finally {
     statusIndicator.hidden = true;
     scrollToBottom();
@@ -703,22 +741,25 @@ async function selectConversation(conversationId, title) {
 
 async function deleteConversation(conversationId) {
   try {
-    await fetch(`/api/v1/conversations/${encodeURIComponent(conversationId)}?userId=jax`, {
+    const response = await fetch(`/api/v1/conversations/${encodeURIComponent(conversationId)}?userId=jax`, {
       method: "DELETE",
     });
+    // Already gone counts as deleted; anything else leaves the chat where it is.
+    if (!response.ok && response.status !== 404) throw new Error(`HTTP ${response.status}`);
     if (activeConversationId === conversationId) {
       startNewChat();
     }
     await loadConversations();
   } catch (err) {
-    alert("Could not delete conversation.");
+    appendErrorMessage("Could not delete the conversation. It is still saved; try again.");
   }
 }
 
 chatForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const message = messageInput.value.trim();
-  if (!message) return;
+  if (!message || asking) return;
+  asking = true;
 
   if (emptyState) {
     emptyState.style.display = "none";
@@ -860,7 +901,7 @@ chatForm.addEventListener("submit", async (e) => {
             const normalized = normalizeModelMarkdown(accumulatedContent);
             const rawHtml = marked.parse(normalized, { gfm: true, breaks: false });
             const sanitized = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } });
-            textContainer.innerHTML = linkifyCitations(sanitized);
+            setAnswerHtml(textContainer, sanitized);
             textContainer.querySelectorAll(".inline-citation").forEach((btn) => {
               btn.addEventListener("click", () => showSource(btn.getAttribute("data-source-id")));
             });
@@ -877,7 +918,13 @@ chatForm.addEventListener("submit", async (e) => {
     }
 
     if (!stillHere()) {
-      // The answer is saved in its own conversation; the sidebar shows it moved.
+      // The answer is saved in its own conversation. If that conversation is back on screen (the
+      // user left and returned, and its history loaded before the answer was saved), draw it now.
+      const id = finalPayload?.conversationId;
+      if (finalPayload && id && id === activeConversationId) {
+        finalPayload.durationMs = typeof finalPayload.durationMs === "number" ? finalPayload.durationMs : Math.round(performance.now() - requestStartTime);
+        appendAssistantMessage(finalPayload);
+      }
       loadConversations();
       return;
     }
@@ -895,7 +942,7 @@ chatForm.addEventListener("submit", async (e) => {
         // wrote alongside a tool call, a translation, a repaired citation): show that.
         if (typeof finalPayload.answer === "string" && finalPayload.answer.trim() && textContainer) {
           const rawHtml = marked.parse(normalizeModelMarkdown(finalPayload.answer), { gfm: true, breaks: false });
-          textContainer.innerHTML = linkifyCitations(DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } }));
+          setAnswerHtml(textContainer, DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } }));
           textContainer.querySelectorAll(".inline-citation").forEach((btn) => {
             btn.addEventListener("click", () => showSource(btn.getAttribute("data-source-id")));
           });
@@ -908,6 +955,7 @@ chatForm.addEventListener("submit", async (e) => {
   } catch (err) {
     if (stillHere()) appendErrorMessage(err instanceof Error ? err.message : "The request failed.");
   } finally {
+    asking = false;
     stopWaitingAnimation();
     messageInput.disabled = false;
     sendButton.disabled = false;

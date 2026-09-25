@@ -16,6 +16,10 @@ let state = null;
 let selectedId = null;
 let detailSignature = "";
 let draftCriteria = null;
+/** Unsaved draft edits by candidate and draft, kept across drawer rebuilds. */
+const typedDrafts = new Map();
+/** People whose message is being saved and sent right now. */
+const sendingFor = new Set();
 let lastRoundCount = 0;
 let pollTimer = null;
 const nodes = new Map();
@@ -147,6 +151,7 @@ function showError(message, fromServer = false) {
 async function createRole(body, button) {
   if (button) button.disabled = true;
   showError("");
+  const asked = view;
   try {
     const response = await fetch("/api/recruiting/roles", {
       method: "POST",
@@ -159,7 +164,14 @@ async function createRole(body, button) {
       return undefined;
     }
     startingNew = false;
+    // The founder opened another role meanwhile: the new role is listed, not forced on screen.
+    if (asked !== view) {
+      refresh();
+      return undefined;
+    }
     roleId = data.roleId;
+    // Anything still in flight was asked about the intake, not this role.
+    view += 1;
     rememberRole();
     render(data.state);
     refresh();
@@ -172,7 +184,11 @@ async function createRole(body, button) {
   }
 }
 
-async function call(path, body, button) {
+/**
+ * Posts an action and paints the answer. Undefined on failure, or when the founder moved to
+ * another role meanwhile; `onStale(ok)` then says whether the action itself worked.
+ */
+async function call(path, body, button, options = {}) {
   if (button) button.disabled = true;
   showError("");
   const asked = view;
@@ -184,7 +200,10 @@ async function call(path, body, button) {
     });
     const data = await response.json();
     // The founder moved to another role meanwhile: this answer is not about what is on screen.
-    if (asked !== view) return undefined;
+    if (asked !== view) {
+      options.onStale?.(response.ok);
+      return undefined;
+    }
     if (!response.ok) {
       showError(data.message ?? "Something went wrong.");
       return undefined;
@@ -843,40 +862,55 @@ function outreachPanel(candidate) {
 
   if (candidate.draft) {
     const draft = candidate.draft;
-    const email = h("input", { type: "email", value: candidate.contact?.email ?? "", placeholder: "Email address", "aria-label": "To" });
-    const subject = h("input", { type: "text", value: draft.subject, "aria-label": "Subject", placeholder: "Subject (emails only)" });
-    const body = h("textarea", { "aria-label": "Message" }, draft.body);
+    // What the founder typed survives a rebuild of the drawer until it is saved.
+    const typedKey = `${candidate.id}:${draft.createdAt}`;
+    const typed = typedDrafts.get(typedKey) ?? {};
+    const email = h("input", { type: "email", value: typed.email ?? candidate.contact?.email ?? "", placeholder: "Email address", "aria-label": "To" });
+    const subject = h("input", { type: "text", value: typed.subject ?? draft.subject, "aria-label": "Subject", placeholder: "Subject (emails only)" });
+    const body = h("textarea", { "aria-label": "Message" }, typed.body ?? draft.body);
+    for (const [field, input] of [["email", email], ["subject", subject], ["body", body]]) {
+      input.addEventListener("input", () => {
+        typedDrafts.set(typedKey, { ...typedDrafts.get(typedKey), [field]: input.value });
+      });
+    }
     // call() answers undefined on failure (and shows why); a send only follows a save that worked.
-    const save = async () =>
-      (await call(api(`/candidates/${candidate.id}/draft`), {
-        subject: subject.value,
-        body: body.value,
-        ...(email.value && email.value !== candidate.contact?.email ? { email: email.value } : {}),
-      })) !== undefined;
+    const save = async () => {
+      const saved =
+        (await call(api(`/candidates/${candidate.id}/draft`), {
+          subject: subject.value,
+          body: body.value,
+          ...(email.value && email.value !== candidate.contact?.email ? { email: email.value } : {}),
+        })) !== undefined;
+      if (saved) typedDrafts.delete(typedKey);
+      return saved;
+    };
     // Both send buttons stay locked from the save until the send answers: one press, one send.
-    let sending = false;
+    // The lock is per person, not per drawer build, so a rebuild meanwhile keeps it.
     const sendAfterSave = (manual) => async (event) => {
       const button = event.currentTarget;
-      if (sending) return;
-      sending = true;
+      if (sendingFor.has(candidate.id)) return;
+      sendingFor.add(candidate.id);
       button.disabled = true;
       try {
         if (!(await save())) return;
         await call(api(`/candidates/${candidate.id}/send`), manual ? { manual: true } : {}, button);
       } finally {
-        sending = false;
+        sendingFor.delete(candidate.id);
         button.disabled = false;
+        detailSignature = "";
+        if (state) renderDetail();
       }
     };
+    const locked = sendingFor.has(candidate.id) ? true : undefined;
     const source = {
       hunter: "Found by Hunter",
       prospeo: "Found by Prospeo",
       founder: "Entered by you",
     }[candidate.contact?.provider];
-    const gmailButton = h("button", { type: "button", class: "primary", disabled: !candidate.contact && !email.value ? true : undefined, title: candidate.contact ? undefined : "Add an email address first", onclick: sendAfterSave(false) }, "Send from Gmail");
+    const gmailButton = h("button", { type: "button", class: "primary", disabled: locked ?? (!candidate.contact && !email.value ? true : undefined), title: candidate.contact ? undefined : "Add an email address first", onclick: sendAfterSave(false) }, "Send from Gmail");
     // Typing an address makes Gmail sending possible right away.
     email.addEventListener("input", () => {
-      gmailButton.disabled = !candidate.contact && !email.value.trim();
+      gmailButton.disabled = sendingFor.has(candidate.id) || (!candidate.contact && !email.value.trim());
     });
     const status = candidate.contact
       ? h(
@@ -906,7 +940,7 @@ function outreachPanel(candidate) {
           state.integrations?.gmail
             ? gmailButton
             : null,
-          h("button", { type: "button", class: "quiet", onclick: sendAfterSave(true) }, "I sent it myself"),
+          h("button", { type: "button", class: "quiet", disabled: locked, onclick: sendAfterSave(true) }, "I sent it myself"),
           h("button", { type: "button", class: "quiet", onclick: save }, "Save edits"),
         ),
       ),
@@ -1032,9 +1066,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const links = text.match(/https:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\/in\/[^\s,]+/gi);
     let result;
     try {
+      // Done for a role no longer on screen: the instruction must not linger in this one's box.
+      const onStale = (ok) => {
+        if (ok && say.value.trim() === text) say.value = "";
+      };
       result = links
-        ? await call(api("/candidates/import"), { urls: links })
-        : await call(api("/say"), { text });
+        ? await call(api("/candidates/import"), { urls: links }, undefined, { onStale })
+        : await call(api("/say"), { text }, undefined, { onStale });
     } finally {
       saying = false;
       fit();

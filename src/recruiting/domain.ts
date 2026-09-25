@@ -91,6 +91,8 @@ export interface Draft {
    * claimed until the founder says whether it did (mark as sent) or edits it to send again.
    */
   unconfirmed?: boolean;
+  /** When the send was claimed (real time); a send confirmed by hand later is dated from here. */
+  claimedAt?: string;
   /** The founder changed the subject or body; a new signature does not overwrite it. */
   editedByFounder?: boolean;
 }

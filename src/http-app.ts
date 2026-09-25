@@ -59,8 +59,11 @@ const HISTORY_CHARS = 4000;
  */
 function clipped(content: string): string {
   if (content.length <= HISTORY_CHARS) return content;
+  // Cut by code point, so an emoji at the cut is kept whole or left out, never halved.
+  const points = Array.from(content);
+  if (points.length <= HISTORY_CHARS) return content;
   const half = HISTORY_CHARS / 2;
-  return `${content.slice(0, half)}\n[… ${content.length - HISTORY_CHARS} characters left out …]\n${content.slice(-half)}`;
+  return `${points.slice(0, half).join("")}\n[… ${points.length - HISTORY_CHARS} characters left out …]\n${points.slice(-half).join("")}`;
 }
 
 function titleFrom(message: string): string {

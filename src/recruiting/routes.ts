@@ -279,11 +279,15 @@ export function registerRecruitingRoutes(
         for (const text of await service.relevantConversations(unclaimed)) {
           // One conversation belongs to one role: the first (newest) that contacted the person.
           if (matched.has(text)) continue;
-          matched.add(text);
           // One conversation that cannot be read is reported; the others are still recorded, once.
           try {
-            results.push(await service.reply(text, null, "linkedin"));
+            const result = await service.reply(text, null, "linkedin");
+            // A role that could not place it (a shared first name) leaves it to the next role.
+            if (!result.recorded) continue;
+            matched.add(text);
+            results.push(result);
           } catch (error) {
+            matched.add(text);
             failed.push(text);
             results.push({ intent: "reply", message: `Could not read one conversation: ${error instanceof Error ? error.message : String(error)}` });
           }

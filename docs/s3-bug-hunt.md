@@ -424,3 +424,43 @@ are escaped inside attributes.
 
 Found by the round 3 fix itself: the panel saves the draft before every
 send, so "editing releases an unconfirmed send" had to mean a real change.
+
+## Round 5 (2026-09-26)
+
+Three fresh hunters again, told to look hardest at the round 4 fixes. 34
+confirmed bugs (`r5-backend.test.ts`, `r5-agent.test.ts`, `ui/r5/`), about
+a third of them caused by round 4 fixes. All fixed.
+
+Backend (8): the send flow now tracks sends in flight in memory. A claimed
+draft that nothing is sending and nothing waits to record is treated as
+unconfirmed whether or not its flag was saved (a failed save, or a server
+restart mid-send, no longer leaves it stuck). One send per person at a time,
+checked before anything is awaited, so two presses never record twice. A
+Gmail reply that cannot be read no longer counts as "certainly not sent".
+A late or hand-confirmed record is dated from the send, so Gmail sync still
+reads replies that came in between. Merging criteria is judged after the
+whole batch. An inbox conversation a role cannot place goes on to the next
+role. Preparing outreach never replaces a draft the founder rewrote.
+
+Chat agent (16): the "states no facts" exemption was too loose. It now needs
+every sentence (lines count) to be a question, a whole-sentence greeting, or
+what the agent can help with ("I can confirm" and "我可以告诉你" do not
+count), and handles "你好！". The explicit-language rule needs a reply verb
+("用英文回答"), so "以英语为母语" no longer disables the Chinese retry. The
+repair and translation read odd bodies safely; the repair revises the whole
+answer the user would see. Duplicate calls merge only when consecutive, so
+a read after a change sees it. Streamed steps that are cut or unreadable are
+asked for again. History is clipped by code point.
+
+Front end (10): an answer finishing for a conversation the user left and came
+back to is drawn; chips wait for a running question; a failed history load
+clears the view; citations are linked in text nodes only (no attribute
+break-out); a failed conversation delete says so; only the latest sidebar
+list is drawn; a role created after the founder switched roles no longer
+splits the screen from the actions; typed draft text survives drawer
+rebuilds until saved; the send lock is per person; an instruction carried
+out on a role the founder left is cleared from the box.
+
+One hunter check (r07) required a specific remedy (the new role must take
+over the screen). It was widened to accept either remedy and still fails on
+the old code.

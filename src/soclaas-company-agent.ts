@@ -207,7 +207,14 @@ function limitOf(value: unknown): number {
 
 /** The user said which language to answer in ("请用英文回答", "in English"); that wins over theirs. */
 function asksForLanguage(question: string): boolean {
-  return /(用|以)(英文|英语|日文|日语|韩文|韩语|法语|德语|西班牙语)|(英文|英语)(回答|回复|写|说)|\b(in|into) (english|japanese|korean|french|german|spanish)\b/i.test(question);
+  const zh = "(英文|英语|日文|日语|韩文|韩语|法语|德语|西班牙语)";
+  return (
+    // "请用英文回答", "用英语写": a language followed by a reply verb.
+    new RegExp(`(用|以)${zh}(来)?(回答|回复|作答|写|答)`).test(question) ||
+    new RegExp(`${zh}(回答|回复|作答)`).test(question) ||
+    /\b(answer|reply|respond|write|explain|say it|tell me)\b[^.?!]{0,30}\b(in|into) (english|japanese|korean|french|german|spanish)\b/i.test(question) ||
+    /^\s*in (english|japanese|korean|french|german|spanish)\b/i.test(question)
+  );
 }
 
 /**
@@ -217,15 +224,20 @@ function asksForLanguage(question: string): boolean {
 function statesNoFacts(answer: string): boolean {
   const text = answer.trim();
   if (!text || text.length > 400 || /\d|\[source:/.test(text)) return false;
-  const sentences = text.split(/(?<=[.!?。！？])\s*/).map((sentence) => sentence.trim()).filter(Boolean);
+  // Lines count as sentences too, so a bullet list cannot hide inside the closing question.
+  const sentences = text
+    .split(/(?<=[.!?。！？])\s*|\n+/)
+    .map((sentence) => sentence.replace(/^[-*•\s]+/, "").trim())
+    .filter(Boolean);
   const last = sentences[sentences.length - 1] ?? "";
   if (!/[?？]$/.test(last)) return false;
   return sentences.every(
     (sentence) =>
       /[?？]$/.test(sentence) ||
-      /^(hi|hello|hey|thanks|thank you|sure|of course|good (morning|afternoon|evening)|你好|您好|嗨|好的|谢谢)\b/i.test(sentence) ||
-      /^(hi|hello|hey|你好|您好|嗨)[\s,，]/i.test(sentence) ||
-      /^(I can|I'm here to|I am here to|I help|I could|我可以|我能|我会帮)/i.test(sentence),
+      // The whole sentence is a greeting, perhaps with a name: "Hi Jax!", "你好！".
+      /^(hi|hello|hey|thanks|thank you|sure|of course|good (morning|afternoon|evening)|你好|您好|嗨|好的|谢谢)([\s,，]+[\p{L}]+)?[\s!！.。,，~]*$/iu.test(sentence) ||
+      // What the agent can do for the user, never what it can confirm or tell.
+      /^(I can (also )?(help|answer|look up|search|draft|find)|I'm here to help|I am here to help|我(也)?(可以|能)(帮|替)(你|您))/i.test(sentence),
   );
 }
 
@@ -298,7 +310,7 @@ export interface CompanyAgentCallbacks {
 async function streamChatCompletion(
   response: Response,
   onToken?: (delta: string) => void,
-): Promise<{ content: string; tool_calls?: ToolCall[] }> {
+): Promise<{ content: string; tool_calls?: ToolCall[]; sawData: boolean }> {
   if (!response.body) {
     throw new Error("Response body is not readable.");
   }
@@ -308,15 +320,19 @@ async function streamChatCompletion(
   let fullContent = "";
   const toolCallsMap = new Map<number, ToolCall>();
   let lastIndex = 0;
+  // Whether anything in the body was a stream event: a proxy's error page has none.
+  let sawData = false;
 
   const handle = (rawLine: string) => {
       const line = rawLine.trim();
       if (!line.startsWith("data:")) return;
       const dataStr = line.slice(5).trim();
+      if (dataStr === "[DONE]") sawData = true;
       if (!dataStr || dataStr === "[DONE]") return;
 
       try {
         const parsed = JSON.parse(dataStr);
+        sawData = true;
         const choice = parsed.choices?.[0];
         if (!choice) return;
 
@@ -367,6 +383,7 @@ async function streamChatCompletion(
   return {
     content: fullContent,
     tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+    sawData,
   };
 }
 
@@ -411,6 +428,12 @@ export class SoCLaaSCompanyAgent {
     let extensionRan = false;
     // What the model wrote alongside tool calls; often the real answer comes with the last panel call.
     const spoken: string[] = [];
+    /** Makes `text` the model's last word, so a follow-up request is about exactly that. */
+    const showAnswer = (text: string) => {
+      const last = messages[messages.length - 1];
+      if (last?.role === "assistant" && !last.tool_calls) last.content = text;
+      else messages.push({ role: "assistant", content: text });
+    };
     const offeredTools = (): readonly unknown[] => [
       ...companyTools,
       ...(skills.length ? [loadSkillTool] : []),
@@ -543,7 +566,14 @@ export class SoCLaaSCompanyAgent {
             throw new Error(`SoCLaaS request failed (${response.status}): ${detail.slice(0, 500)}`);
           }
           if (isStreaming) {
-            const streamResult = await streamChatCompletion(response, callbacks?.onToken);
+            // A stream cut off mid-way, or a body that was no stream at all, is asked for again:
+            // the tools earlier in the turn already acted, so failing now would make "try again" repeat them.
+            const streamResult = await streamChatCompletion(response, callbacks?.onToken).catch(() => null);
+            if (!streamResult || !streamResult.sawData) {
+              callbacks?.onResetTokens?.();
+              if (read < 2) continue;
+              throw new Error("SoCLaaS returned no readable stream.");
+            }
             calls = streamResult.tool_calls ?? [];
             rawContent = streamResult.content;
             break;
@@ -621,6 +651,8 @@ export class SoCLaaSCompanyAgent {
           if (softCheck) citationCheck = { citedSourceIds: [], problem: "uncited company evidence beside a skill" };
           if (citationCheck.problem) {
             const original = answer;
+            // The model revises what the user would see: the joined answer, not only its last line.
+            showAnswer(answer);
             if (isStreaming) {
               callbacks?.onResetTokens?.();
               callbacks?.onStatus?.("Refining citations…");
@@ -672,8 +704,8 @@ export class SoCLaaSCompanyAgent {
                 `SoCLaaS citation repair failed (${repairResponse.status}): ${detail.slice(0, 500)}`,
               );
             }
-            const repairCompletion = (await repairResponse.json()) as CompletionResponse;
-            answer = repairCompletion.choices?.[0]?.message?.content?.trim();
+            const repairCompletion = (await repairResponse.json().catch(() => null)) as CompletionResponse | null;
+            answer = textOf(repairCompletion?.choices?.[0]?.message?.content)?.trim();
             citationCheck = answer
               ? validateCitations(answer, retrieved, hasPersonalContext, softCheck ? false : groundedElsewhere, !softCheck)
               : { citedSourceIds: [], problem: "empty repair" };
@@ -699,9 +731,7 @@ export class SoCLaaSCompanyAgent {
           // Chinese question in another language, ask once more. The translation must pass the
           // same citation check; if it does not, or the call fails, the checked answer stands.
           if (isChinese(input.question) && !isChinese(answer) && !asksForLanguage(input.question)) {
-            const last = messages[messages.length - 1];
-            if (last?.role === "assistant" && !last.tool_calls) last.content = answer;
-            else messages.push({ role: "assistant", content: answer });
+            showAnswer(answer);
             messages.push({ role: "user", content: "Reply to the user again, in the language of their message (Chinese). Same content and the same [source:ID] citations, nothing added." });
             try {
               const again = await this.request(`${this.baseUrl}/chat/completions`, {
@@ -710,9 +740,12 @@ export class SoCLaaSCompanyAgent {
                 body: JSON.stringify({ model: this.model, messages, tools: offeredTools(), tool_choice: "none", ...this.noThinking, max_tokens: 1800 }),
               });
               if (again.ok) {
-                const translated = ((await again.json()) as CompletionResponse).choices?.[0]?.message?.content?.trim();
+                const reply = (await again.json().catch(() => null)) as CompletionResponse | null;
+                const translated = textOf(reply?.choices?.[0]?.message?.content)?.trim();
                 if (translated && isChinese(translated)) {
-                  const check = validateCitations(translated, retrieved, hasPersonalContext, groundedElsewhere);
+                  let check = validateCitations(translated, retrieved, hasPersonalContext, groundedElsewhere);
+                  // A greeting or a question back stays exempt in Chinese too.
+                  if (check.problem && citationCheck.citedSourceIds.length === 0 && statesNoFacts(translated)) check = { citedSourceIds: [] };
                   const keepsCitations = citationCheck.citedSourceIds.length === 0 || check.citedSourceIds.length > 0;
                   if (!check.problem && keepsCitations) {
                     answer = translated;
@@ -733,13 +766,13 @@ export class SoCLaaSCompanyAgent {
           };
         }
 
-        // The same call twice in one reply runs once: twice would open two roles or draft twice.
-        const answered = new Map<string, string>();
+        // The same call twice in a row runs once: twice would open two roles or draft twice.
+        // Only in a row: a read after a change must see the change.
+        let previous = null as { key: string; content: string } | null;
         for (const call of calls) {
           const key = `${call.function.name}\u0000${typeof call.function.arguments === "string" ? call.function.arguments : JSON.stringify(call.function.arguments ?? null)}`;
-          const earlier = answered.get(key);
-          if (earlier !== undefined) {
-            messages.push({ role: "tool", tool_call_id: call.id, content: `Same call as the one before; it ran once. ${earlier}` });
+          if (previous?.key === key) {
+            messages.push({ role: "tool", tool_call_id: call.id, content: `Same call as the one before; it ran once. ${previous.content}` });
             continue;
           }
           // Each call stands alone: a bad call becomes an error the model can read and recover from.
@@ -749,7 +782,7 @@ export class SoCLaaSCompanyAgent {
           } catch (error) {
             content = `Error: ${error instanceof Error ? error.message : String(error)} Fix the arguments or choose another tool.`;
           }
-          answered.set(key, content);
+          previous = { key, content };
           messages.push({ role: "tool", tool_call_id: call.id, content });
         }
       }
