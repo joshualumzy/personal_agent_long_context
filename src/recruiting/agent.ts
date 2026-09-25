@@ -59,12 +59,35 @@ function criteriaForModel(criteria: readonly Criterion[]) {
     }));
 }
 
+/**
+ * How to phrase people-search queries. Measured on Exa: an abstract label such
+ * as "career switcher from a non-CS background" found 5 matching people in 40;
+ * the same need phrased with a concrete degree field found 10, and four such
+ * queries together found 22.
+ */
+const QUERY_RULES = [
+  "Each query is one plain English sentence of at most 20 words describing a person the way their profile reads: job title, company, and location, plus at most one concrete detail.",
+  "A concrete detail is a word that literally appears on profiles: a degree field (\"bachelor's degree in economics\"), a technology, a past employer, a program (\"coding bootcamp\", \"Master of Computing\").",
+  "Never use abstract labels such as \"career switcher\", \"non-CS background\", \"strong\", \"passionate\", or \"ideal candidate\". Never say the same thing twice in one query.",
+  "Keep the location in every query when there is one. Do not mention age, sex, race, religion, family status, disability, or nationality.",
+].join("\n");
+
+function queriesFrom(reply: unknown, previous: readonly string[] = []): string[] {
+  if (!isRecord(reply)) return [];
+  const listed = Array.isArray(reply.queries) ? reply.queries : [reply.query];
+  const seen = new Set(previous.map((query) => query.toLowerCase()));
+  return listed
+    .map((query) => text(query))
+    .filter((query) => query && !seen.has(query.toLowerCase()) && seen.add(query.toLowerCase()))
+    .slice(0, 4);
+}
+
 export interface Brief {
   title: string;
   criteria: { text: string; kind: CriterionKind }[];
   /** Wishes the model refused to turn into criteria, so the founder is told. */
   excluded: { text: string; characteristic: string }[];
-  query: string;
+  queries: string[];
 }
 
 export async function extractBrief(model: JsonModel, requirement: string): Promise<Brief> {
@@ -76,8 +99,9 @@ export async function extractBrief(model: JsonModel, requirement: string): Promi
       "Mark each criterion must (a dealbreaker) or nice (a plus). When the founder does not say, prefer must for the core skill and nice for the rest.",
       "Write each criterion as a short checkable phrase in the founder's language, for example \"3+ years building production backends\".",
       "Never write a criterion about age, sex, race, religion, marital or family status, pregnancy, disability, or nationality. If the founder asks for one, list it under excluded with the characteristic it selects on, instead of under criteria.",
-      "Also write a people-search query of at most 25 words describing the ideal profile, in English, including location if the founder gave one.",
-      'Reply as {"title": string, "criteria": [{"text": string, "kind": "must"|"nice"}], "excluded": [{"text": string, "characteristic": string}], "query": string}.',
+      "Also write 3 or 4 people-search queries. They share the core (title, company, location) and each adds a different concrete detail aimed at the must criterion hardest to find. When no criterion needs that, vary the skill or seniority instead.",
+      QUERY_RULES,
+      'Reply as {"title": string, "criteria": [{"text": string, "kind": "must"|"nice"}], "excluded": [{"text": string, "characteristic": string}], "queries": [string]}.',
     ].join("\n"),
     input: { requirement },
   });
@@ -98,28 +122,32 @@ export async function extractBrief(model: JsonModel, requirement: string): Promi
     title: text(reply.title, "Open role"),
     criteria,
     excluded,
-    query: text(reply.query),
+    queries: queriesFrom(reply),
   };
 }
 
-export async function writeQuery(
+/** Queries for the role as its criteria stand, different from ones already run. */
+export async function writeQueries(
   model: JsonModel,
   role: string,
   criteria: readonly Criterion[],
-  guidance?: string,
-): Promise<string> {
+  previous: readonly string[] = [],
+  count = 3,
+): Promise<string[]> {
   const reply = await model.json<unknown>({
     task: "search query",
     system: [
-      "Write one people-search query of at most 25 words, in English, that describes the ideal candidate for the role from its criteria.",
-      "Weight must criteria over nice ones. Do not mention age, sex, race, religion, family status, disability, or nationality.",
-      'Reply as {"query": string}.',
+      `Write ${count} people-search queries that find candidates for the role from its criteria. Weight must criteria over nice ones.`,
+      "They share the core (title, company, location) and each adds a different concrete detail aimed at the must criterion hardest to find.",
+      "Do not repeat any of the previous queries or their concrete details; take new angles.",
+      QUERY_RULES,
+      'Reply as {"queries": [string]}.',
     ].join("\n"),
-    input: { role, criteria: criteriaForModel(criteria), guidance: guidance ?? null },
+    input: { role, criteria: criteriaForModel(criteria), previous },
   });
-  const query = isRecord(reply) ? text(reply.query) : "";
-  if (!query) throw new Error("The model returned no search query.");
-  return query;
+  const queries = queriesFrom(reply, previous);
+  if (queries.length === 0) throw new Error("The model returned no new search query.");
+  return queries.slice(0, count);
 }
 
 /** A role title that matches the criteria as they stand now. */
@@ -382,7 +410,8 @@ export async function planExpansion(
     system: [
       "Hiring has stalled, so the candidate pool must grow. Apply exactly this step:",
       rung.guidance,
-      "Express criteria changes as operations: remove {op, id}, set_kind {op, id, kind}, edit {op, id, text}. Write a new people-search query of at most 25 words.",
+      "Express criteria changes as operations: remove {op, id}, set_kind {op, id, kind}, edit {op, id, text}. Write one new people-search query.",
+      QUERY_RULES,
       'Reply as {"query": string, "operations": [...], "rationale": string}. rationale is one sentence for the founder saying what changes and why.',
     ].join("\n"),
     input: { role, criteria: criteriaForModel(criteria), previousQuery },

@@ -11,13 +11,14 @@ import {
   privateRemarksIn,
   readReply,
   retitle,
-  writeQuery,
+  writeQueries,
 } from "./agent.js";
 import { findContact, type ContactFinder } from "./contacts.js";
 import {
   emptyState,
   RecruitingError,
   type Candidate,
+  type CandidateProfile,
   type ClosedReason,
   type CriteriaOperation,
   type Criterion,
@@ -32,7 +33,7 @@ import { protectedCharacteristic } from "./fairness.js";
 import type { GmailClient } from "./gmail.js";
 import type { IntentMemory } from "./intent-memory.js";
 import type { JsonModel } from "./llm.js";
-import type { CandidateSource } from "./sources.js";
+import { canonicalProfileUrl, type CandidateSource } from "./sources.js";
 import type { StateStore } from "./store.js";
 import { isInPool, tierOf } from "./tiers.js";
 
@@ -40,7 +41,8 @@ const DAY_MS = 86_400_000;
 
 export interface RecruitingSettings {
   /** People to add per search round. The first round is kept small on purpose. */
-  roundSize: number;
+  /** People asked of each search query. Everyone returned is scored. */
+  resultsPerQuery: number;
   /** Same-direction decisions needed before the agent proposes a criterion. */
   preferenceThreshold: number;
   followUpAfterDays: number;
@@ -55,7 +57,7 @@ export interface RecruitingSettings {
 }
 
 export const DEFAULT_SETTINGS: RecruitingSettings = {
-  roundSize: 20,
+  resultsPerQuery: 30,
   preferenceThreshold: 2,
   followUpAfterDays: 5,
   coldAfterDays: 7,
@@ -82,6 +84,49 @@ export interface SayResult {
   refused?: { text: string; characteristic: string }[];
 }
 
+/** Who a profile is, however the source spelled the address. */
+function personKey(profile: CandidateProfile): string {
+  return profile.profileUrl ? canonicalProfileUrl(profile.profileUrl) : profile.id;
+}
+
+/**
+ * Keeps one record per person when the same profile arrived under two
+ * addresses: the one the founder has done the most with. References to the
+ * dropped record move to the kept one.
+ */
+function mergeDuplicatePeople(state: RecruitingState): void {
+  const progress = (candidate: Candidate) =>
+    candidate.messages.length * 100 +
+    (candidate.draft ? 50 : 0) +
+    (candidate.kept ? 20 : 0) +
+    (candidate.contact ? 10 : 0) +
+    (candidate.stage === "discovered" ? 0 : 5) +
+    Object.keys(candidate.verdicts).length;
+  const byPerson = new Map<string, Candidate>();
+  const renamed = new Map<string, string>();
+  for (const candidate of Object.values(state.candidates)) {
+    const key = personKey(candidate.profile);
+    const other = byPerson.get(key);
+    if (!other) {
+      byPerson.set(key, candidate);
+      continue;
+    }
+    const [kept, dropped] = progress(candidate) > progress(other) ? [candidate, other] : [other, candidate];
+    byPerson.set(key, kept);
+    renamed.set(dropped.profile.id, kept.profile.id);
+    delete state.candidates[dropped.profile.id];
+  }
+  if (renamed.size === 0) return;
+  for (const entry of state.feedback) entry.candidateId = renamed.get(entry.candidateId) ?? entry.candidateId;
+  for (const proposal of state.proposals) {
+    if (proposal.type === "criterion") {
+      proposal.supportingCandidateIds = [
+        ...new Set(proposal.supportingCandidateIds.map((id) => renamed.get(id) ?? id)),
+      ];
+    }
+  }
+}
+
 export class RecruitingService {
   private state: RecruitingState | null = null;
   private chain: Promise<unknown> = Promise.resolve();
@@ -105,6 +150,15 @@ export class RecruitingService {
   private async current(): Promise<RecruitingState> {
     if (!this.state) {
       const loaded = await this.deps.store.load();
+      // A brief earlier version kept unscored search results aside. They are paid for; score them.
+      const legacy = loaded as RecruitingState & { reserve?: CandidateProfile[] };
+      if (legacy.reserve?.length) {
+        const known = new Set(Object.values(loaded.candidates).map((candidate) => personKey(candidate.profile)));
+        this.addToPool(loaded, legacy.reserve.filter((profile) => !known.has(personKey(profile))));
+        delete legacy.reserve;
+        queueMicrotask(() => this.settle());
+      }
+      mergeDuplicatePeople(loaded);
       // Earlier versions guessed addresses. A guess could reach a stranger, so drop it.
       for (const candidate of Object.values(loaded.candidates)) {
         if ((candidate.contact?.provider as string | undefined) === "guess") delete candidate.contact;
@@ -195,7 +249,7 @@ export class RecruitingService {
         active: true,
         createdAt: at,
       }));
-      state.rounds = [{ round: 0, query: brief.query, at, found: 0, added: 0 }];
+      state.rounds = [{ round: 0, query: brief.queries[0] ?? "", queries: brief.queries, at, found: 0, added: 0 }];
       return {
         intent: "start",
         message: `Proposed ${kept.length} criteria for ${brief.title}. Check them, then confirm.`,
@@ -245,9 +299,12 @@ export class RecruitingService {
         "criteria_confirmed",
         `Hiring a ${state.role.title}. Requirement as stated: "${state.role.requirement}". Criteria: ${this.describeCriteria(state)}.`,
       );
-      const query = state.rounds[0]?.query || (await writeQuery(this.deps.model, state.role.title, this.active(state)));
+      const drafted = state.rounds[0]?.queries ?? (state.rounds[0]?.query ? [state.rounds[0].query] : []);
+      const queries = drafted.length
+        ? drafted
+        : await writeQueries(this.deps.model, state.role.title, this.active(state));
       state.rounds = [];
-      await this.searchRound(state, query, this.settings.roundSize);
+      await this.searchRound(state, queries);
     });
     this.settle();
   }
@@ -258,15 +315,42 @@ export class RecruitingService {
       .join("; ");
   }
 
-  private async searchRound(state: RecruitingState, query: string, size: number): Promise<number> {
-    // Ask for more than we keep so an expansion still yields new people.
-    const found = await this.deps.source.search(query, Math.min(size * 2, 100));
+  /**
+   * Runs the queries side by side and adds everyone new they return, taking
+   * from each query in turn. Everyone is scored: judging uses the model, which
+   * costs nothing, while the search results are already paid for.
+   */
+  private async searchRound(state: RecruitingState, queries: string[]): Promise<number> {
+    const results = await Promise.all(
+      queries.map((query) => this.deps.source.search(query, this.settings.resultsPerQuery)),
+    );
+    const found: CandidateProfile[] = [];
+    const seen = new Set(Object.values(state.candidates).map((candidate) => personKey(candidate.profile)));
+    for (let index = 0; results.some((list) => index < list.length); index += 1) {
+      for (const list of results) {
+        const profile = list[index];
+        if (profile && !seen.has(personKey(profile))) {
+          seen.add(personKey(profile));
+          found.push(profile);
+        }
+      }
+    }
+    this.addToPool(state, found);
+    state.rounds.push({
+      round: state.rounds.length + 1,
+      query: queries[0] ?? "",
+      queries,
+      at: this.now(state).toISOString(),
+      found: found.length,
+      added: found.length,
+    });
+    return found.length;
+  }
+
+  private addToPool(state: RecruitingState, profiles: CandidateProfile[]): void {
     const at = this.now(state).toISOString();
     const round = state.rounds.length + 1;
-    let added = 0;
-    for (const profile of found) {
-      if (added >= size) break;
-      if (state.candidates[profile.id]) continue;
+    for (const profile of profiles) {
       state.candidates[profile.id] = {
         profile,
         poolRound: round,
@@ -277,11 +361,20 @@ export class RecruitingService {
         messages: [],
         followUps: 0,
       };
-      added += 1;
     }
-    state.rounds.push({ round, query, at, found: found.length, added });
-    return added;
   }
+
+  /** More people under the same criteria, from queries that take new angles. */
+  async findMore(): Promise<{ added: number; searched: string[] }> {
+    const state = await this.current();
+    const role = this.requireRole(state);
+    const previous = state.rounds.flatMap((round) => round.queries ?? [round.query]).filter(Boolean);
+    const searched = await writeQueries(this.deps.model, role.title, this.active(state), previous);
+    const added = await this.mutate((latest) => this.searchRound(latest, searched));
+    this.settle();
+    return { added, searched };
+  }
+
 
   /** Adds people the founder already has in mind, by public LinkedIn link. */
   async importProfiles(urls: string[]): Promise<SayResult> {
@@ -302,8 +395,9 @@ export class RecruitingService {
     const added = await this.mutate((latest) => {
       const at = this.now(latest).toISOString();
       const names: string[] = [];
+      const known = new Set(Object.values(latest.candidates).map((candidate) => personKey(candidate.profile)));
       for (const profile of profiles) {
-        if (latest.candidates[profile.id]) continue;
+        if (known.has(personKey(profile))) continue;
         latest.candidates[profile.id] = {
           profile,
           poolRound: Math.max(latest.rounds.length, 1),
@@ -536,8 +630,9 @@ export class RecruitingService {
     this.background("Refreshing the pool", async () => {
       const state = await this.current();
       if (!state.role?.confirmed) return;
-      const query = await writeQuery(this.deps.model, state.role.title, this.active(state));
-      await this.mutate((latest) => this.searchRound(latest, query, Math.ceil(this.settings.roundSize / 2)));
+      const previous = state.rounds.flatMap((round) => round.queries ?? [round.query]).filter(Boolean);
+      const queries = await writeQueries(this.deps.model, state.role.title, this.active(state), previous, 2);
+      await this.mutate((latest) => this.searchRound(latest, queries));
       this.settle();
     });
   }
@@ -660,7 +755,7 @@ export class RecruitingService {
     const approved = expansion as { query: string } | null;
     if (approved) {
       this.background("Expanding the pool", async () => {
-        await this.mutate((state) => this.searchRound(state, approved.query, this.settings.roundSize));
+        await this.mutate((state) => this.searchRound(state, [approved.query]));
         this.settle();
       });
     }

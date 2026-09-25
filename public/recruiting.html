@@ -10,6 +10,11 @@
 <body>
   <header class="top">
     <div class="title-block">
+      <nav id="roles" class="roles" aria-label="Open roles" hidden>
+        <label for="role-select" class="visually-hidden">Role</label>
+        <select id="role-select"></select>
+        <button type="button" class="quiet" id="new-role">New role</button>
+      </nav>
       <h1 id="role-title">Who do you need?</h1>
       <p id="status-line" class="status-line"></p>
     </div>
@@ -17,7 +22,7 @@
       <span id="clock" class="clock"></span>
       <button type="button" class="quiet" id="fast-forward" title="Simulate a week passing">Skip a week</button>
       <a class="quiet" id="gmail" href="/api/recruiting/gmail/connect">Connect Gmail</a>
-      <button type="button" class="quiet warn" id="reset">Start over</button>
+      <button type="button" class="quiet warn" id="reset">Delete this role</button>
     </div>
   </header>
 
@@ -69,6 +74,7 @@
       <section class="criteria-panel">
         <h2>Looking for</h2>
         <ul id="criteria" class="chips"></ul>
+        <button type="button" class="quiet" id="find-more">Find more people</button>
       </section>
 
       <div class="rail-foot">

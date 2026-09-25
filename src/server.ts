@@ -5,6 +5,8 @@ import type { MemoryProvider } from "./domain.js";
 import { buildApp } from "./http-app.js";
 import { lettaOptionsFromEnvironment } from "./letta-config.js";
 import { recruitingFromEnvironment } from "./recruiting/config.js";
+import { recruitingExtension } from "./recruiting/chat-tools.js";
+import { loadSkills } from "./skills.js";
 import { PostgresCompanyKnowledge } from "./adapters/postgres-company-knowledge.js";
 import { PostgresConversationStore } from "./adapters/postgres-conversations.js";
 import { SoCLaaSCompanyAgent } from "./soclaas-company-agent.js";
@@ -36,10 +38,26 @@ const companyKnowledge = new PostgresCompanyKnowledge(
   embeddingProviderFromEnvironment(process.env),
 );
 const conversationStore = new PostgresConversationStore(companyKnowledge.pool);
+
+const memory = memoryProviderFromEnvironment();
+let logRecruitingFailure: (context: string, error: unknown) => void = () => {};
+const recruiting = recruitingFromEnvironment(process.env, memory, (context, error) =>
+  logRecruitingFailure(context, error),
+);
+await recruiting?.ready;
+// Recruiting reaches the chat agent as a skill whose tools load with it.
+const agentSkills = recruiting
+  ? {
+      skills: (await loadSkills()).filter((skill) => skill.name === "recruiting"),
+      extensions: [recruitingExtension(recruiting.board)],
+    }
+  : {};
+
 const companyAgent = new SoCLaaSCompanyAgent(companyKnowledge, {
   apiKey: soCLaaSApiKey,
   baseUrl: process.env.SOCLAAS_BASE_URL,
   model: process.env.SOCLAAS_COMPANY_MODEL,
+  ...agentSkills,
 });
 
 const gatewayUrl = (process.env.LLM_GATEWAY_URL || process.env.LM_GATEWAY_URL)?.replace(/\/$/, "");
@@ -52,6 +70,7 @@ const sonnetAgent =
         apiKey: gatewayApiKey,
         baseUrl: `${gatewayUrl}/v1`,
         model: gatewayModel,
+        ...agentSkills,
       })
     : null;
 
@@ -60,11 +79,6 @@ const companyAgents: Record<string, SoCLaaSCompanyAgent> = {
   ...(sonnetAgent ? { sonnet: sonnetAgent } : {}),
 };
 
-const memory = memoryProviderFromEnvironment();
-let logRecruitingFailure: (context: string, error: unknown) => void = () => {};
-const recruiting = recruitingFromEnvironment(process.env, memory, (context, error) =>
-  logRecruitingFailure(context, error),
-);
 const app = buildApp({
   memory,
   companyAgent,
@@ -72,7 +86,7 @@ const app = buildApp({
   companyKnowledge,
   conversationStore,
   logger: true,
-  ...(recruiting ? { recruiting } : {}),
+  ...(recruiting ? { recruiting: { board: recruiting.board, gmail: recruiting.gmail } } : {}),
 });
 logRecruitingFailure = (context, error) =>
   app.log.error(

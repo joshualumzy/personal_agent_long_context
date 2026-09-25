@@ -18,7 +18,7 @@ import { detectProhibitedData } from "./prohibited-data.js";
 import type { ConversationStore } from "./conversation-domain.js";
 import type { GmailClient } from "./recruiting/gmail.js";
 import { registerRecruitingRoutes } from "./recruiting/routes.js";
-import type { RecruitingService } from "./recruiting/service.js";
+import type { RoleBoard } from "./recruiting/roles.js";
 
 export interface BuildAppOptions extends ApplicationOptions {
   memory: MemoryProvider;
@@ -29,7 +29,7 @@ export interface BuildAppOptions extends ApplicationOptions {
   /** Fastify logger configuration. Tests pass a stream to capture output. */
   logger?: FastifyServerOptions["logger"];
   /** The recruiting direction (S3). Omitted, its routes are not registered. */
-  recruiting?: { service: RecruitingService; gmail: GmailClient | null };
+  recruiting?: { board: RoleBoard; gmail: GmailClient | null };
 }
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
@@ -47,6 +47,8 @@ const securityHeaders = {
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
 };
+
+const HISTORY_TURNS = 6;
 
 export function buildApp(options: BuildAppOptions): FastifyInstance {
   const app = Fastify({
@@ -187,9 +189,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
 
     let conversationId = requestedConversationId;
+    // Recent turns let the agent follow up on its own questions ("replace the role?" "yes").
+    let history: Array<{ role: "user" | "assistant"; content: string }> = [];
     if (options.conversationStore) {
       if (conversationId) {
         const existing = await options.conversationStore.get(conversationId, userId);
+        history = (existing?.messages ?? [])
+          .slice(-HISTORY_TURNS)
+          .map(({ role, content }) => ({ role, content: content.slice(0, 1500) }));
         if (!existing) {
           const conv = await options.conversationStore.create(userId);
           conversationId = conv.conversationId;
@@ -241,6 +248,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           employeeId,
           question: message,
           ...(contextConsidered ? { personalMemory: contextConsidered } : {}),
+          ...(history.length ? { history } : {}),
         },
         isStream
           ? {
@@ -268,6 +276,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
             },
             runId: companyAnswer.runId,
             toolCalls: companyAnswer.toolCalls,
+            ...(companyAnswer.blocks ? { blocks: companyAnswer.blocks } : {}),
             durationMs,
             model: modelUsed,
           },
@@ -501,8 +510,22 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.get("/sme.css", serve("styles.css", "text/css; charset=utf-8"));
 
   if (options.recruiting) {
-    registerRecruitingRoutes(app, options.recruiting.service, options.recruiting.gmail);
-    app.get("/recruiting", serve("recruiting.html", "text/html; charset=utf-8"));
+    registerRecruitingRoutes(app, options.recruiting.board, options.recruiting.gmail);
+    // The chat page embeds this page as a live panel, so only same-origin framing is allowed.
+    app.get("/recruiting", async (_request, reply) => {
+      const content = await readFile(`${publicDirectory}recruiting.html`);
+      return reply
+        .headers({
+          ...securityHeaders,
+          "content-security-policy": securityHeaders["content-security-policy"].replace(
+            "frame-ancestors 'none'",
+            "frame-ancestors 'self'",
+          ),
+          "x-frame-options": "SAMEORIGIN",
+        })
+        .type("text/html; charset=utf-8")
+        .send(content);
+    });
     app.get("/recruiting/", async (_request, reply) => reply.redirect("/recruiting", 301));
     app.get("/recruiting/app.js", serve("recruiting.js", "text/javascript; charset=utf-8"));
     app.get("/recruiting/styles.css", serve("recruiting.css", "text/css; charset=utf-8"));

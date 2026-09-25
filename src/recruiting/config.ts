@@ -6,7 +6,7 @@ import { LettaIntentMemory, LocalIntentMemory } from "./intent-memory.js";
 import { OpenAiCompatibleModel } from "./llm.js";
 import { RecruitingService } from "./service.js";
 import { ExaPeopleSource, SampleSource } from "./sources.js";
-import { JsonFileStore } from "./store.js";
+import { JsonRoleRepository, RoleBoard } from "./roles.js";
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -60,32 +60,42 @@ export function recruitingFromEnvironment(
           (reason) => log("Sending hiring intent to Memory", new Error(reason)),
         );
 
-  const service = new RecruitingService({
-    model: new OpenAiCompatibleModel({
-      baseUrl,
-      apiKey,
-      model: environment.RECRUITING_MODEL ?? "qwen3.8:27b",
-    }),
-    source: environment.EXA_API_KEY
-      ? new ExaPeopleSource(environment.EXA_API_KEY)
-      : new SampleSource(samplePath),
-    store: new JsonFileStore(environment.RECRUITING_STATE_PATH ?? "data/recruiting.json"),
+  const settings = {
+    ...(positiveInteger(environment, "RECRUITING_RESULTS_PER_QUERY") !== undefined
+      ? { resultsPerQuery: positiveInteger(environment, "RECRUITING_RESULTS_PER_QUERY")! }
+      : {}),
+    ...(positiveInteger(environment, "RECRUITING_PREFERENCE_THRESHOLD") !== undefined
+      ? { preferenceThreshold: positiveInteger(environment, "RECRUITING_PREFERENCE_THRESHOLD")! }
+      : {}),
+    ...(environment.FOUNDER_NAME ? { founderName: environment.FOUNDER_NAME } : {}),
+    ...(environment.COMPANY_NAME ? { companyName: environment.COMPANY_NAME } : {}),
+    ...(environment.COMPANY_PITCH ? { companyPitch: environment.COMPANY_PITCH } : {}),
+  };
+
+  const repository = new JsonRoleRepository(environment.RECRUITING_ROLES_DIR ?? "data/recruiting/roles");
+  const legacyPath = environment.RECRUITING_STATE_PATH ?? "data/recruiting.json";
+  const model = new OpenAiCompatibleModel({
+    baseUrl,
+    apiKey,
+    model: environment.RECRUITING_MODEL ?? "qwen3.8:27b",
+  });
+  const source = environment.EXA_API_KEY
+    ? new ExaPeopleSource(environment.EXA_API_KEY)
+    : new SampleSource(samplePath);
+  const board = new RoleBoard(repository, (store) => new RecruitingService({
+    model,
+    source,
+    store,
     memory: intentMemory,
     contactFinders,
     gmail,
     onError: log,
-    settings: {
-      ...(positiveInteger(environment, "RECRUITING_ROUND_SIZE") !== undefined
-        ? { roundSize: positiveInteger(environment, "RECRUITING_ROUND_SIZE")! }
-        : {}),
-      ...(positiveInteger(environment, "RECRUITING_PREFERENCE_THRESHOLD") !== undefined
-        ? { preferenceThreshold: positiveInteger(environment, "RECRUITING_PREFERENCE_THRESHOLD")! }
-        : {}),
-      ...(environment.FOUNDER_NAME ? { founderName: environment.FOUNDER_NAME } : {}),
-      ...(environment.COMPANY_NAME ? { companyName: environment.COMPANY_NAME } : {}),
-      ...(environment.COMPANY_PITCH ? { companyPitch: environment.COMPANY_PITCH } : {}),
-    },
-  });
+    settings,
+  }));
+  // Earlier versions kept one role in one file; it becomes the first role here.
+  const ready = repository
+    .adoptLegacy(legacyPath)
+    .catch((error) => log("Moving the earlier single role", error));
 
-  return { service, gmail };
+  return { board, gmail, ready };
 }

@@ -1,3 +1,5 @@
+import type { ChatBlock } from "./agent-extension.js";
+
 export interface EmployeeContext {
   employeeId: string;
   displayName: string;
@@ -29,6 +31,8 @@ export interface CompanyQuestion {
   question: string;
   /** User-scoped Letta context. It is context, never Company Evidence. */
   personalMemory?: string;
+  /** The last few turns of this conversation, oldest first. */
+  history?: Array<{ role: "user" | "assistant"; content: string }>;
 }
 
 export interface CompanyAnswer {
@@ -36,4 +40,6 @@ export interface CompanyAnswer {
   sources: Evidence[];
   runId: string;
   toolCalls: Array<{ name: string; arguments: unknown }>;
+  /** Live panels to show under the answer, in the order the model asked. */
+  blocks?: ChatBlock[];
 }

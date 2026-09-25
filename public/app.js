@@ -425,7 +425,86 @@ function formatRuntime(durationMs, ttftMs) {
   };
 }
 
+const PANEL_LABELS = {
+  criteria: "Review the criteria",
+  pool: "Candidates",
+  candidate: "Candidate",
+};
+
+function panelSource(block) {
+  const query = new URLSearchParams({ embed: "1" });
+  if (block.roleId) query.set("role", block.roleId);
+  if (block.candidateId) query.set("candidate", block.candidateId);
+  return `/recruiting?${query}`;
+}
+
+// The panel fits in the visible chat area, so the orbit is never cut by the composer.
+function panelHeight() {
+  const available = messagesContainer.clientHeight - 64;
+  return Math.max(360, Math.min(620, available));
+}
+
+window.addEventListener("resize", () => {
+  const height = `${panelHeight()}px`;
+  document.querySelectorAll(".chat-block.live iframe").forEach((frame) => (frame.style.height = height));
+});
+
+// Only the newest panel stays live; older ones fold into a button so they stop polling.
+function mountPanel(container, block) {
+  document.querySelectorAll(".chat-block.live").forEach((other) => {
+    if (other !== container) foldPanel(other, other.recruitingBlock);
+  });
+  const frame = document.createElement("iframe");
+  frame.src = panelSource(block);
+  frame.title = `Hiring panel: ${PANEL_LABELS[block.view] || "Candidates"}`;
+  frame.loading = "lazy";
+  frame.style.height = `${panelHeight()}px`;
+  container.querySelector(".chat-block-body").replaceChildren(frame);
+  container.classList.add("live");
+}
+
+function foldPanel(container, block) {
+  const reopen = document.createElement("button");
+  reopen.type = "button";
+  reopen.className = "chat-block-reopen";
+  reopen.textContent = "Show this panel";
+  reopen.addEventListener("click", () => mountPanel(container, block));
+  container.querySelector(".chat-block-body").replaceChildren(reopen);
+  container.classList.remove("live");
+}
+
+function renderBlocks(bubble, blocks, live) {
+  const recruiting = (blocks || []).filter((block) => block && block.type === "recruiting");
+  if (recruiting.length === 0) return;
+  bubble.classList.add("has-block");
+  // One panel per message is enough: the last one the agent asked for.
+  const block = recruiting[recruiting.length - 1];
+  const container = document.createElement("div");
+  container.className = "chat-block";
+  container.recruitingBlock = block;
+
+  const head = document.createElement("div");
+  head.className = "chat-block-head";
+  const label = document.createElement("span");
+  label.textContent = `Hiring · ${PANEL_LABELS[block.view] || "Candidates"}`;
+  const open = document.createElement("a");
+  open.href = block.roleId ? `/recruiting?role=${encodeURIComponent(block.roleId)}` : "/recruiting";
+  open.target = "_blank";
+  open.rel = "noopener";
+  open.textContent = "Open full page ↗";
+  head.append(label, open);
+
+  const body = document.createElement("div");
+  body.className = "chat-block-body";
+  container.append(head, body);
+  bubble.appendChild(container);
+  if (live) mountPanel(container, block);
+  else foldPanel(container, block);
+}
+
 function attachAssistantMeta(bubble, data) {
+  renderBlocks(bubble, data.blocks, !data.fromHistory);
+
   const meta = document.createElement("div");
   meta.className = "message-meta";
 
@@ -598,6 +677,8 @@ async function selectConversation(conversationId, title) {
             personalMemory: msg.metadata?.personalMemory,
             durationMs: typeof msg.metadata?.durationMs === "number" ? msg.metadata.durationMs : undefined,
             model: msg.metadata?.model,
+            blocks: msg.metadata?.blocks,
+            fromHistory: true,
           });
         }
       }
@@ -725,8 +806,8 @@ chatForm.addEventListener("submit", async (e) => {
           }
 
           if (currentEvent === "status") {
-            if (waitingStatusText && parsed?.phrase) {
-              waitingStatusText.textContent = parsed.phrase;
+            if (parsed?.phrase) {
+              statusText.textContent = parsed.phrase;
             }
           } else if (currentEvent === "reset_tokens") {
             accumulatedContent = "";
@@ -766,6 +847,8 @@ chatForm.addEventListener("submit", async (e) => {
           } else if (currentEvent === "done") {
             finalPayload = parsed;
           } else if (currentEvent === "error") {
+            // Drop a bubble that only ever received whitespace before the failure.
+            if (assistantRow && !accumulatedContent.trim()) assistantRow.remove();
             throw new Error(parsed?.message || "Agent request failed.");
           }
         }

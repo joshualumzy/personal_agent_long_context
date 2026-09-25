@@ -156,7 +156,9 @@ export type Proposal = CriterionProposal | ExpansionProposal;
 
 export interface PoolRound {
   round: number;
+  /** The first query, kept for rounds saved before there were several. */
   query: string;
+  queries?: string[];
   at: string;
   found: number;
   added: number;

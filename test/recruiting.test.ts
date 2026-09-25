@@ -9,9 +9,17 @@ import { protectedCharacteristic } from "../src/recruiting/fairness.js";
 import { LocalIntentMemory } from "../src/recruiting/intent-memory.js";
 import type { JsonModel } from "../src/recruiting/llm.js";
 import { RecruitingService } from "../src/recruiting/service.js";
-import { profileFromExaResult, type CandidateSource } from "../src/recruiting/sources.js";
+import { canonicalProfileUrl, profileFromExaResult, type CandidateSource } from "../src/recruiting/sources.js";
 import { MemoryStore } from "../src/recruiting/store.js";
+import { JsonRoleRepository, MemoryRoleRepository, RoleBoard } from "../src/recruiting/roles.js";
+import { mkdtemp, readdir, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { tierOf } from "../src/recruiting/tiers.js";
+import { recruitingExtension } from "../src/recruiting/chat-tools.js";
+import { SoCLaaSCompanyAgent } from "../src/soclaas-company-agent.js";
+import { loadSkills, parseSkill } from "../src/skills.js";
+import type { CompanyKnowledge } from "../src/company-domain.js";
 
 function profile(id: string, traits: string, location = "Singapore"): CandidateProfile {
   return {
@@ -94,7 +102,9 @@ function fakeModel(): JsonModel & { calls: string[] } {
           ) as T;
         }
         case "search query":
-          return { query: "typescript startup engineer singapore" } as T;
+          return {
+            queries: [`typescript startup engineer singapore ${data.previous.length + 1}`],
+          } as T;
         case "pool expansion":
           return { query: "typescript engineer remote", operations: [], rationale: "Accept remote." } as T;
         case "outreach draft":
@@ -137,9 +147,40 @@ function setup(options: { finders?: ContactFinder[] } = {}) {
     contactFinders: options.finders ?? [],
     gmail: null,
     clock: () => now,
-    settings: { roundSize: 6 },
+    settings: { resultsPerQuery: 6 },
   });
   return { service, model, source, memory, advance: (ms: number) => (now = new Date(now.getTime() + ms)) };
+}
+
+/** Several roles over in-memory stores, sharing the same fakes. */
+function boardSetup() {
+  const model = fakeModel();
+  const source = new FakeSource();
+  const memory = new LocalIntentMemory();
+  const board = new RoleBoard(
+    new MemoryRoleRepository(),
+    (store) =>
+      new RecruitingService({
+        model,
+        source,
+        store,
+        memory,
+        contactFinders: [],
+        gmail: null,
+        clock: () => new Date("2026-09-23T02:00:00.000Z"),
+        settings: { resultsPerQuery: 6 },
+      }),
+  );
+  return { board };
+}
+
+async function confirmedRole() {
+  const { board } = boardSetup();
+  const { id, service } = board.create();
+  await service.start("We need a founding backend engineer in Singapore who knows TypeScript.");
+  await service.confirm();
+  await service.settle();
+  return { board, roleId: id, service };
 }
 
 async function tiers(service: RecruitingService) {
@@ -367,37 +408,201 @@ describe("helpers", () => {
   });
 });
 
-describe("recruiting routes", () => {
-  test("are served only when configured and answer with state", async () => {
-    const plain = buildApp({ memory: new DeterministicMemoryProvider() });
-    assert.equal((await plain.inject({ method: "GET", url: "/api/recruiting/state" })).statusCode, 404);
+/** Ten different people per query, so rounds overflow into the reserve. */
+class WideSource implements CandidateSource {
+  readonly name = "wide";
+  readonly queries: string[] = [];
+  async search(query: string): Promise<CandidateProfile[]> {
+    this.queries.push(query);
+    const tag = query.replace(/\W+/g, "").slice(-6);
+    return Array.from({ length: 10 }, (_, index) => profile(`${tag}${index}`, "typescript startup rust"));
+  }
+}
 
-    const { service } = setup();
-    const app = buildApp({ memory: new DeterministicMemoryProvider(), recruiting: { service, gmail: null } });
+describe("searching with several queries", () => {
+  function wideSetup() {
+    const source = new WideSource();
+    const model = fakeModel();
+    const inner = model.json.bind(model);
+    // The brief drafts three queries, as the real model is asked to.
+    model.json = async <T>(request: { task: string; input: unknown }) =>
+      request.task === "criteria extraction"
+        ? ({ ...(await inner<Record<string, unknown>>(request as never)), queries: ["q one", "q two", "q three"] } as T)
+        : inner<T>(request as never);
+    const service = new RecruitingService({
+      model,
+      source,
+      store: new MemoryStore(),
+      memory: new LocalIntentMemory(),
+      contactFinders: [],
+      gmail: null,
+      clock: () => new Date("2026-09-23T02:00:00.000Z"),
+      settings: { resultsPerQuery: 6 },
+    });
+    return { service, source };
+  }
+
+  test("a round runs every drafted query and scores everyone they return, one from each in turn", async () => {
+    const { service, source } = wideSetup();
+    await service.start("We need a founding backend engineer in Singapore who knows TypeScript.");
+    await service.confirm();
+    await service.settle();
+    assert.deepEqual(source.queries, ["q one", "q two", "q three"]);
+    const snapshot = await service.snapshot();
+    assert.equal(snapshot.candidates.length, 30);
+    assert.deepEqual(
+      snapshot.candidates.map((candidate) => candidate.id).slice(0, 3),
+      ["qone0", "qtwo0", "qthree0"],
+    );
+    assert.ok(snapshot.candidates.every((candidate) => candidate.settled), "everyone found is scored");
+    assert.deepEqual(snapshot.rounds[0]!.queries, ["q one", "q two", "q three"]);
+  });
+
+  test("find more searches with new queries under the same criteria", async () => {
+    const { service, source } = wideSetup();
+    await service.start("We need a founding backend engineer in Singapore who knows TypeScript.");
+    await service.confirm();
+    await service.settle();
+    const criteria = (await service.snapshot()).criteria.map((criterion) => criterion.text);
+
+    const more = await service.findMore();
+    assert.equal(more.searched.length, 1);
+    assert.ok(!["q one", "q two", "q three"].includes(more.searched[0]!), "new queries, not repeats");
+    assert.equal(source.queries.at(-1), more.searched[0]);
+    assert.equal(more.added, 10);
+    const after = await service.snapshot();
+    assert.equal(after.candidates.length, 40);
+    assert.deepEqual(after.criteria.map((criterion) => criterion.text), criteria);
+  });
+
+  test("people an earlier version set aside unscored are added and scored on load", async () => {
+    const store = new MemoryStore();
+    const { service: first } = setup();
+    await first.start("We need a founding backend engineer in Singapore who knows TypeScript.");
+    await first.confirm();
+    await first.settle();
+    const saved = JSON.parse(JSON.stringify({ ...(await (first as any).current()), reserve: [profile("z", "typescript startup rust")] }));
+    await store.save(saved);
+    const service = new RecruitingService({
+      model: fakeModel(),
+      source: new FakeSource(),
+      store,
+      memory: new LocalIntentMemory(),
+      contactFinders: [],
+      gmail: null,
+      clock: () => new Date("2026-09-23T02:00:00.000Z"),
+    });
+    await waitFor(async () => (await service.snapshot()).candidates.find((c) => c.id === "z")?.settled === true);
+    assert.equal((await service.snapshot()).candidates.find((c) => c.id === "z")?.tier, 100);
+  });
+});
+
+describe("one record per person", () => {
+  test("country subdomains and www are the same LinkedIn profile", () => {
+    assert.equal(
+      canonicalProfileUrl("https://sg.linkedin.com/in/Tze-Jit-Kho-0a6826196/"),
+      canonicalProfileUrl("https://www.linkedin.com/in/tze-jit-kho-0a6826196"),
+    );
+    assert.notEqual(canonicalProfileUrl("https://www.linkedin.com/in/a"), canonicalProfileUrl("https://www.linkedin.com/in/b"));
+  });
+
+  test("a duplicate saved earlier is merged into the record with more progress", async () => {
+    const store = new MemoryStore();
+    const { service: first } = setup();
+    await first.start("We need a founding backend engineer in Singapore who knows TypeScript.");
+    await first.confirm();
+    await first.settle();
+    await first.feedback("a", "keep");
+    const saved = JSON.parse(JSON.stringify(await (first as any).current()));
+    const twin = structuredClone(saved.candidates.a);
+    twin.profile.id = "a-twin";
+    twin.kept = false;
+    twin.profile.profileUrl = "https://sg.linkedin.com/in/person-a";
+    saved.candidates.a.profile.profileUrl = "https://www.linkedin.com/in/person-a";
+    saved.candidates["a-twin"] = twin;
+    await store.save(saved);
+    const service = new RecruitingService({
+      model: fakeModel(),
+      source: new FakeSource(),
+      store,
+      memory: new LocalIntentMemory(),
+      contactFinders: [],
+      gmail: null,
+      clock: () => new Date("2026-09-23T02:00:00.000Z"),
+    });
+    const ids = (await service.snapshot()).candidates.map((candidate) => candidate.id);
+    assert.ok(ids.includes("a"), "the kept record survives");
+    assert.ok(!ids.includes("a-twin"));
+  });
+});
+
+describe("recruiting routes", () => {
+  test("are served only when configured, and each role answers with its own state", async () => {
+    const plain = buildApp({ memory: new DeterministicMemoryProvider() });
+    assert.equal((await plain.inject({ method: "GET", url: "/api/recruiting/roles" })).statusCode, 404);
+
+    const { board } = boardSetup();
+    const app = buildApp({ memory: new DeterministicMemoryProvider(), recruiting: { board, gmail: null } });
     const page = await app.inject({ method: "GET", url: "/recruiting" });
     assert.equal(page.statusCode, 200);
     for (const asset of ["/recruiting/app.js", "/recruiting/styles.css"]) {
       assert.ok(page.body.includes(asset));
       assert.equal((await app.inject({ method: "GET", url: asset })).statusCode, 200);
     }
+    assert.deepEqual((await app.inject({ method: "GET", url: "/api/recruiting/roles" })).json(), { roles: [] });
 
-    const early = await app.inject({ method: "POST", url: "/api/recruiting/confirm", payload: {} });
-    assert.equal(early.statusCode, 409);
-
-    const said = await app.inject({
+    const created = await app.inject({
       method: "POST",
-      url: "/api/recruiting/say",
+      url: "/api/recruiting/roles",
       payload: { text: "We need a founding backend engineer in Singapore who knows TypeScript." },
     });
-    assert.equal(said.statusCode, 200);
-    assert.equal(said.json().state.criteria.length, 3);
+    assert.equal(created.statusCode, 200);
+    const { roleId } = created.json();
+    assert.equal(created.json().state.criteria.length, 3);
+
+    const second = await app.inject({
+      method: "POST",
+      url: "/api/recruiting/roles",
+      payload: { text: "A product designer in Jakarta who has shipped a mobile app." },
+    });
+    const roles = (await app.inject({ method: "GET", url: "/api/recruiting/roles" })).json().roles;
+    assert.equal(roles.length, 2);
+
+    const confirmedFirst = await app.inject({ method: "POST", url: `/api/recruiting/roles/${roleId}/confirm`, payload: {} });
+    assert.equal(confirmedFirst.statusCode, 200);
+    const secondState = await app.inject({ method: "GET", url: `/api/recruiting/roles/${second.json().roleId}/state` });
+    assert.equal(secondState.json().role.confirmed, false, "confirming one role leaves the other alone");
 
     const upload = await app.inject({
       method: "POST",
-      url: "/api/recruiting/upload",
+      url: "/api/recruiting/roles",
       payload: { filename: "jd.exe", contentBase64: Buffer.from("x").toString("base64") },
     });
     assert.equal(upload.json().code, "unsupported_file");
+
+    assert.equal((await app.inject({ method: "GET", url: "/api/recruiting/roles/nope/state" })).statusCode, 404);
+    assert.equal((await app.inject({ method: "GET", url: "/api/recruiting/roles/..%2Fx/state" })).statusCode, 404);
+
+    const removed = await app.inject({ method: "DELETE", url: `/api/recruiting/roles/${roleId}` });
+    assert.equal(removed.json().roles.length, 1);
+    assert.equal((await app.inject({ method: "GET", url: `/api/recruiting/roles/${roleId}/state` })).statusCode, 404);
+  });
+});
+
+describe("role storage", () => {
+  test("keeps one file per role and adopts the earlier single-role file once", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "roles-"));
+    const legacy = join(directory, "recruiting.json");
+    const { service } = setup();
+    await service.start("We need a founding backend engineer in Singapore who knows TypeScript.");
+    await writeFile(legacy, JSON.stringify({ ...(await service.snapshot()), candidates: {}, events: [], proposals: [], rounds: [], clockOffsetDays: 0, expansionStep: 0 }));
+    const repository = new JsonRoleRepository(join(directory, "roles"));
+    const adopted = await repository.adoptLegacy(legacy);
+    assert.ok(adopted);
+    assert.deepEqual(await repository.list(), [adopted]);
+    assert.equal(await repository.adoptLegacy(legacy), null, "nothing left to adopt");
+    assert.deepEqual(await readdir(directory), ["roles"]);
+    assert.throws(() => repository.store("../escape"), /No such role/);
   });
 });
 
@@ -453,4 +658,186 @@ describe("job description files", () => {
       assert.equal(/[⼀-⿟]/.test(text), false);
     });
   }
+});
+
+describe("recruiting as a chat skill", () => {
+  const knowledge: CompanyKnowledge = {
+    async employee() {
+      return { employeeId: "jax", displayName: "Jax", currentAssignments: [] };
+    },
+    async search() {
+      return [];
+    },
+    async related() {
+      return [];
+    },
+    async sources() {
+      return [];
+    },
+  };
+
+  /** Plays back scripted model turns and records what each request offered. */
+  function scriptedAgent(board: RoleBoard, turns: Array<Array<[string, object]> | string>) {
+    const offered: string[][] = [];
+    const toolReplies: string[] = [];
+    const agent = new SoCLaaSCompanyAgent(knowledge, {
+      apiKey: "test-key",
+      skills: [parseSkill("---\nname: recruiting\ndescription: Hiring.\n---\nCall recruiting_status first.")],
+      extensions: [recruitingExtension(board)],
+      fetch: async (_url, init) => {
+        const body = JSON.parse(String(init?.body)) as {
+          tools: Array<{ function: { name: string } }>;
+          messages: Array<{ role: string; content: string }>;
+        };
+        offered.push(body.tools.map((entry) => entry.function.name));
+        const last = body.messages.at(-1);
+        if (last?.role === "tool") toolReplies.push(last.content);
+        const turn = turns.shift();
+        const message =
+          typeof turn === "string"
+            ? { content: turn }
+            : {
+                content: null,
+                tool_calls: turn!.map(([name, args], index) => ({
+                  id: `call-${offered.length}-${index}`,
+                  type: "function",
+                  // "ROLE" stands for the role id the last tool reply named, as a model would read it.
+                  function: {
+                    name,
+                    arguments: JSON.stringify(args).replace(
+                      '"ROLE"',
+                      JSON.stringify(/"role_id":"(\w+)"/.exec(toolReplies.at(-1) ?? "")?.[1] ?? "ROLE"),
+                    ),
+                  },
+                })),
+              };
+        return new Response(JSON.stringify({ choices: [{ message }] }), { status: 200 });
+      },
+    });
+    return { agent, offered, toolReplies };
+  }
+
+  test("the recruiting skill ships with the repository", async () => {
+    const skills = await loadSkills();
+    const recruiting = skills.find((skill) => skill.name === "recruiting");
+    assert.ok(recruiting);
+    assert.match(recruiting.description, /hire/i);
+    assert.match(recruiting.body, /recruiting_status/);
+  });
+
+  test("tools load with the skill, the answer needs no company citation, and a panel is attached", async () => {
+    const { board } = boardSetup();
+    const { agent, offered } = scriptedAgent(board, [
+      [["load_skill", { name: "recruiting" }]],
+      [["recruiting_start", { requirement: "We need a founding backend engineer in Singapore who knows TypeScript." }]],
+      [["show_recruiting_panel", { view: "criteria", role_id: "ROLE" }]],
+      "I drafted three criteria. Check them in the panel, then confirm.",
+    ]);
+
+    const result = await agent.answer({ employeeId: "jax", question: "I need to hire a backend engineer." });
+
+    assert.equal(offered[0]!.includes("load_skill"), true);
+    assert.equal(offered[0]!.includes("recruiting_start"), false, "tools stay hidden until the skill loads");
+    assert.equal(offered[1]!.includes("recruiting_start"), true);
+    assert.equal(offered.flat().some((name) => /send/.test(name)), false, "no tool can send");
+    assert.match(result.answer, /three criteria/);
+    const [role] = await board.list();
+    assert.deepEqual(result.blocks, [{ type: "recruiting", view: "criteria", roleId: role!.id }]);
+    assert.equal(role!.confirmed, false);
+  });
+
+  test("a recruiting tool called before the skill is loaded is refused, not fatal", async () => {
+    const { board } = boardSetup();
+    const { agent, toolReplies } = scriptedAgent(board, [
+      [["recruiting_status", {}]],
+      [["load_skill", { name: "recruiting" }]],
+      [["recruiting_status", {}]],
+      "No role yet. Tell me who you need.",
+    ]);
+    const result = await agent.answer({ employeeId: "jax", question: "How is hiring going?" });
+    assert.match(toolReplies[0]!, /load_skill/);
+    assert.match(toolReplies[2]!, /"roles":\[\]/);
+    assert.match(result.answer, /No role yet/);
+  });
+
+  test("a panel for an unknown candidate is refused", async () => {
+    const { board, roleId } = await confirmedRole();
+    const tools = recruitingExtension(board);
+    const outcome = await tools.run("show_recruiting_panel", { role_id: roleId, view: "candidate", candidate_id: "nobody" });
+    assert.equal(outcome.block, undefined);
+    assert.match(outcome.content, /No candidate/);
+    const shown = await tools.run("show_recruiting_panel", { role_id: roleId, view: "candidate", candidate_id: "a" });
+    assert.deepEqual(shown.block, { type: "recruiting", view: "candidate", roleId, candidateId: "a" });
+    assert.match((await tools.run("recruiting_confirm", { role_id: "missing" })).content, /No such role/);
+  });
+
+  test("status gives the model ids and tiers, and drafting outreach sends nothing", async () => {
+    const { board, roleId, service } = await confirmedRole();
+    const tools = recruitingExtension(board);
+    const status = JSON.parse((await tools.run("recruiting_status", {})).content).status;
+    assert.equal(status.role.confirmed, true);
+    assert.equal(status.candidates[0].tier, 100);
+    await tools.run("recruiting_prepare_outreach", { role_id: roleId, candidate_id: "a" });
+    const candidate = (await service.snapshot()).candidates.find((entry) => entry.id === "a")!;
+    assert.ok(candidate.draft);
+    assert.equal(candidate.messages.length, 0);
+  });
+
+  test("a second role opens beside the first, and status asks for a role once there are two", async () => {
+    const { board, roleId, service } = await confirmedRole();
+    const tools = recruitingExtension(board);
+    const started = JSON.parse(
+      (await tools.run("recruiting_start", { requirement: "A product designer in Jakarta who has shipped a mobile app." })).content,
+    );
+    assert.notEqual(started.role_id, roleId);
+    assert.equal((await service.snapshot()).role?.confirmed, true, "the first role is untouched");
+    const overview = JSON.parse((await tools.run("recruiting_status", {})).content);
+    assert.equal(overview.roles.length, 2);
+    assert.equal(overview.status, undefined, "with two roles the model must name one");
+  });
+
+  test("recent turns reach the model, and an empty reply gets one more try", async () => {
+    const { board } = boardSetup();
+    const seen: Array<Array<{ role: string; content: string | null }>> = [];
+    const replies = [
+      { content: null, tool_calls: [{ id: "c1", type: "function", function: { name: "load_skill", arguments: '{"name":"recruiting"}' } }] },
+      { content: "" },
+      { content: "Replaced. Check the criteria below." },
+    ];
+    const agent = new SoCLaaSCompanyAgent(knowledge, {
+      apiKey: "test-key",
+      model: "qwen3.8:27b",
+      skills: [parseSkill("---\nname: recruiting\ndescription: Hiring.\n---\nBody.")],
+      extensions: [recruitingExtension(board)],
+      fetch: async (_url, init) => {
+        const body = JSON.parse(String(init?.body));
+        seen.push(body.messages);
+        assert.deepEqual(body.chat_template_kwargs, { enable_thinking: false });
+        return new Response(JSON.stringify({ choices: [{ message: replies.shift() }] }), { status: 200 });
+      },
+    });
+    const result = await agent.answer({
+      employeeId: "jax",
+      question: "yes",
+      history: [
+        { role: "user", content: "Hire a designer in Jakarta." },
+        { role: "assistant", content: "Replace the Founding backend engineer role?" },
+      ],
+    });
+    assert.deepEqual(
+      seen[0]!.slice(1, 3).map((message) => message.content),
+      ["Hire a designer in Jakarta.", "Replace the Founding backend engineer role?"],
+    );
+    assert.match(result.answer, /Replaced/);
+  });
+
+  test("only the recruiting page may be framed, and only by this origin", async () => {
+    const { board } = boardSetup();
+    const app = buildApp({ memory: new DeterministicMemoryProvider(), recruiting: { board, gmail: null } });
+    const page = await app.inject({ method: "GET", url: "/recruiting?embed=1" });
+    assert.equal(page.headers["x-frame-options"], "SAMEORIGIN");
+    assert.match(String(page.headers["content-security-policy"]), /frame-ancestors 'self'/);
+    const home = await app.inject({ method: "GET", url: "/" });
+    assert.equal(home.headers["x-frame-options"], "DENY");
+  });
 });

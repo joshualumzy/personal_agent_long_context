@@ -19,7 +19,7 @@
   --radius-control: 10px;
   --radius-surface: 16px;
   font-family: Inter, "PingFang SC", "Hiragino Sans GB", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.5;
   color: var(--text);
   background: var(--sky);
@@ -27,9 +27,13 @@
 
 * { box-sizing: border-box; }
 html, body { height: 100%; }
+/* One screen on desktop: the header takes what it needs and the board fills the rest. */
 body {
   margin: 0;
-  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--sky);
 }
 [hidden] { display: none !important; }
@@ -39,13 +43,13 @@ body {
 /* Controls */
 button, .quiet { font: inherit; cursor: pointer; }
 .primary {
-  border: 0; border-radius: var(--radius-control); padding: 10px 18px;
+  border: 0; border-radius: var(--radius-control); padding: 8px 14px;
   background: var(--gold); color: var(--on-accent); font-weight: 600;
 }
 .primary:hover { filter: brightness(1.06); }
 .primary:disabled { opacity: .5; cursor: progress; }
 .quiet {
-  border: 1px solid var(--line); border-radius: var(--radius-control); padding: 7px 12px;
+  border: 1px solid var(--line); border-radius: var(--radius-control); padding: 5px 10px;
   background: transparent; color: var(--text); text-decoration: none; font-size: .88rem;
 }
 .quiet:hover { border-color: var(--muted); }
@@ -61,12 +65,18 @@ textarea:focus, input:focus { outline: none; border-color: var(--gold); }
 
 /* Header */
 .top {
-  display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; flex-wrap: wrap;
-  width: min(1320px, calc(100% - 32px)); margin: 0 auto; padding: 28px 0 8px;
+  flex: none;
+  display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;
+  width: min(1320px, calc(100% - 32px)); margin: 0 auto; padding: 14px 0 6px;
 }
-h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(2rem, 4vw, 3.2rem); font-weight: 500; line-height: 1.05; }
-.status-line { margin: 6px 0 0; color: var(--muted); }
-.top-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.title-block { flex: 1 1 auto; min-width: 0; }
+/* A long role name is cut, not wrapped, so the actions stay on the same row. */
+h1 {
+  margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(1.35rem, 2vw, 1.85rem); font-weight: 500; line-height: 1.1;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.status-line { margin: 4px 0 0; color: var(--muted); }
+.top-actions { flex: none; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
 .clock { color: var(--muted); font-size: .88rem; margin-right: 4px; font-variant-numeric: tabular-nums; }
 
 .banner { width: min(1320px, calc(100% - 32px)); margin: 8px auto; padding: 10px 14px; border-radius: var(--radius-control); line-height: 1.5; }
@@ -75,8 +85,8 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(2rem,
 
 /* Intake and review */
 .intake, .review { width: min(720px, calc(100% - 32px)); margin: 8vh auto 64px; }
-.prompt { display: block; margin: 0 0 14px; font-size: 1.25rem; color: var(--text); }
-.intake textarea { font-size: 1.1rem; padding: 18px; }
+.prompt { display: block; margin: 0 0 12px; font-size: 1.1rem; color: var(--text); }
+.intake textarea { font-size: 1rem; padding: 14px; }
 .intake-row { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-top: 14px; flex-wrap: wrap; }
 .file-button input { position: absolute; opacity: 0; width: 1px; }
 .file-button span { color: var(--aqua); cursor: pointer; border-bottom: 1px dashed var(--aqua); }
@@ -93,12 +103,15 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(2rem,
 
 /* Board: one screen on desktop, no page scroll */
 .board {
+  flex: 1 1 auto; min-height: 0;
   width: min(1320px, calc(100% - 32px)); margin: 0 auto;
-  height: calc(100vh - 118px); min-height: 560px;
-  display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 28px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px;
 }
 .orbit-wrap { min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-#orbit { width: 100%; height: 100%; min-height: 0; max-height: calc(100vh - 170px); overflow: visible; }
+#orbit { flex: 1 1 auto; width: 100%; min-height: 0; overflow: visible; }
+.intake, .review { flex: none; }
+/* Intake and review are forms of any length: let them scroll. */
+body:has(#board[hidden]) { overflow-y: auto; }
 
 .ring { fill: none; stroke: var(--line); stroke-width: 1.2; }
 .ring.r100 { fill: rgb(31 109 95 / .05); stroke: rgb(31 109 95 / .35); }
@@ -137,11 +150,11 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(2rem,
 
 /* Rail */
 .rail { min-height: 0; display: flex; flex-direction: column; gap: 18px; padding-bottom: 16px; }
-.rail h2 { margin: 0 0 10px; font-size: .95rem; font-weight: 600; color: var(--muted); }
+.rail h2 { margin: 0 0 8px; font-size: .78rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
 .criteria-panel { min-height: 0; overflow-y: auto; }
-.chips { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.chips { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .chip {
-  border-radius: var(--radius-control); padding: 6px 11px; font-size: .88rem; line-height: 1.35;
+  border-radius: var(--radius-control); padding: 4px 9px; font-size: .86rem; line-height: 1.35;
   border: 1px solid var(--gold); background: var(--gold); color: var(--on-accent);
 }
 .chip.nice { background: transparent; color: var(--gold); }
@@ -185,16 +198,16 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(2rem,
 
 /* Drawer: slides over the rail, scrolls inside itself */
 .drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(460px, 100%); z-index: 10;
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(400px, 100%); z-index: 10;
   display: flex; flex-direction: column;
   background: var(--sky-raised); border-left: 1px solid var(--line);
   box-shadow: -24px 0 60px rgb(29 37 48 / .12);
   animation: slide-in .28s cubic-bezier(.2, .8, .2, 1);
 }
 @keyframes slide-in { from { transform: translateX(40px); opacity: 0; } }
-.drawer-head { padding: 22px 24px 0; border-bottom: 1px solid var(--line); }
+.drawer-head { padding: 16px 20px 0; border-bottom: 1px solid var(--line); }
 .drawer-title { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-.drawer h3 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: 1.7rem; font-weight: 500; line-height: 1.2; }
+.drawer h3 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: 1.35rem; font-weight: 500; line-height: 1.2; }
 .drawer .meta { margin: 4px 0 0; color: var(--muted); line-height: 1.45; }
 .drawer .close { border: 0; background: none; color: var(--muted); font-size: 1.5rem; line-height: 1; padding: 2px 6px; }
 .drawer .close:hover { color: var(--text); }
@@ -211,9 +224,9 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(2rem,
 }
 .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--gold); }
 .tab .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--ochre); margin-left: 6px; vertical-align: 2px; }
-.drawer-body { flex: 1; overflow-y: auto; padding: 18px 24px 28px; }
+.drawer-body { flex: 1; overflow-y: auto; padding: 14px 20px 24px; }
 
-.verdicts { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; }
+.verdicts { list-style: none; padding: 0; margin: 0; display: grid; gap: 10px; }
 .verdicts li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; line-height: 1.45; }
 .verdicts .mark { font-weight: 700; text-align: center; }
 .mark.yes { color: var(--gold); } .mark.no { color: var(--danger); } .mark.unclear { color: var(--ochre); } .mark.closed { color: var(--faint); }
@@ -221,7 +234,7 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(2rem,
 .verdicts .criterion small { margin-left: 6px; color: var(--faint); font-size: .78rem; }
 .verdicts .reason { display: block; color: var(--muted); font-size: .9rem; }
 
-.timeline { list-style: none; margin: 0 0 22px; padding: 0 0 0 18px; border-left: 1px solid var(--line); display: grid; gap: 16px; }
+.timeline { list-style: none; margin: 0 0 18px; padding: 0 0 0 16px; border-left: 1px solid var(--line); display: grid; gap: 12px; }
 .timeline li { position: relative; }
 .timeline li::before { content: ""; position: absolute; left: -23px; top: 7px; width: 9px; height: 9px; border-radius: 50%; background: var(--sky-raised); border: 2px solid var(--slate); }
 .timeline li.current::before { border-color: var(--gold); background: var(--gold); }
@@ -232,12 +245,12 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(2rem,
 .external { color: var(--aqua); }
 
 .draft-box { display: grid; gap: 10px; }
-.draft-box textarea { min-height: 200px; font-size: .92rem; }
+.draft-box textarea { min-height: 170px; font-size: .92rem; }
 .draft-box input { padding: 9px 12px; }
 .email-status { font-size: .82rem; color: var(--muted); margin-top: -4px; }
 .email-status.missing { color: var(--ochre); }
 .sticky-actions {
-  position: sticky; bottom: -28px; margin: 0 -24px -28px; padding: 14px 24px 20px;
+  position: sticky; bottom: -24px; margin: 0 -20px -24px; padding: 12px 20px 16px;
   background: linear-gradient(to bottom, rgb(255 253 248 / 0), var(--sky-raised) 30%);
 }
 .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -249,8 +262,10 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(2rem,
 .empty-note { color: var(--muted); margin: 0 0 14px; }
 
 @media (max-width: 960px) {
-  .board { height: auto; grid-template-columns: 1fr; }
-  #orbit { max-height: none; }
+  body { height: auto; overflow: visible; }
+  .top { flex-wrap: wrap; }
+  .board { grid-template-columns: 1fr; }
+  #orbit { min-height: 70vw; }
   .rail-foot { margin-top: 0; }
 }
 
@@ -258,3 +273,27 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(2rem,
   .node, .node .dot { transition: none; }
   .node.provisional .dot, .ripple.go, .proposal, .drawer, .busy-dot { animation: none; }
 }
+
+.roles { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; flex-wrap: wrap; }
+.roles select {
+  max-width: min(420px, 100%); padding: 7px 10px; border: 1px solid var(--line);
+  border-radius: var(--radius-control); background: var(--sky-raised); color: inherit; font: inherit;
+}
+
+/* Framed as a panel inside the chat page. The chat is the composer, and the
+   frame is sized to the visible chat, so the panel is always one screen. */
+body.embed { height: 100vh; overflow: hidden; }
+body.embed #orbit { min-height: 0; }
+body.embed .top { padding-top: 10px; padding-bottom: 4px; }
+body.embed h1 { font-size: 1.15rem; }
+body.embed .status-line { font-size: .88rem; }
+body.embed .top-actions,
+body.embed .rail-foot,
+body.embed .intake { display: none !important; }
+body.embed .board { grid-template-columns: minmax(0, 1fr) 230px; gap: 12px; }
+@media (max-width: 720px) {
+  body.embed .board { grid-template-columns: 1fr; height: auto; }
+}
+#find-more { margin-top: 12px; }
+body.embed .legend { gap: 12px; margin-top: 2px; font-size: .74rem; }
+.orbit-wrap { padding-bottom: 10px; }

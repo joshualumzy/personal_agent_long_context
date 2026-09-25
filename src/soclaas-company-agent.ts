@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
+import type { AgentExtension, ChatBlock, ToolDefinition } from "./agent-extension.js";
 import type {
   CompanyAnswer,
   CompanyKnowledge,
   CompanyQuestion,
   Evidence,
 } from "./company-domain.js";
+import type { Skill } from "./skills.js";
 
 type Message =
   | { role: "system" | "user"; content: string }
@@ -31,9 +33,13 @@ export interface SoCLaaSCompanyAgentOptions {
   model?: string;
   maxSteps?: number;
   fetch?: typeof globalThis.fetch;
+  /** Skills the model may load by name. Only their names and descriptions are sent up front. */
+  skills?: Skill[];
+  /** Tools that become available once the model loads the matching skill. */
+  extensions?: AgentExtension[];
 }
 
-const tools = [
+const companyTools = [
   {
     type: "function",
     function: {
@@ -68,6 +74,20 @@ const tools = [
   },
 ] as const;
 
+const loadSkillTool: ToolDefinition = {
+  type: "function",
+  function: {
+    name: "load_skill",
+    description: "Load a skill's instructions, and any tools that come with it, before doing that kind of task.",
+    parameters: {
+      type: "object",
+      properties: { name: { type: "string", description: "The skill name." } },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  },
+};
+
 function parseArguments(value: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(value);
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -100,6 +120,7 @@ function validateCitations(
   answer: string,
   retrieved: ReadonlyMap<string, Evidence>,
   hasPersonalContext = false,
+  groundedElsewhere = false,
 ): { citedSourceIds: string[]; problem?: string } {
   const citedSourceIds = [...new Set(citedIds(answer))];
   const invalid = citedSourceIds.filter((id) => !retrieved.has(id));
@@ -109,6 +130,8 @@ function validateCitations(
       problem: `SoCLaaS cited sources it did not retrieve: ${invalid.join(", ")}`,
     };
   }
+  // A skill's tools ground the answer in their own state, not in company artifacts.
+  if (groundedElsewhere) return { citedSourceIds };
   if (citedSourceIds.length === 0 && retrieved.size > 0) {
     return { citedSourceIds, problem: "SoCLaaS returned an uncited factual answer." };
   }
@@ -202,8 +225,19 @@ export class SoCLaaSCompanyAgent {
     if (!options.apiKey?.trim()) throw new Error("API key is required.");
     this.baseUrl = (options.baseUrl ?? "https://soclaas-api.comp.nus.edu.sg/v1").replace(/\/$/, "");
     this.model = options.model ?? "qwen3.8:27b";
-    this.maxSteps = options.maxSteps ?? 4;
+    this.maxSteps = options.maxSteps ?? (options.extensions?.length ? 8 : 4);
     this.request = options.fetch ?? globalThis.fetch;
+  }
+
+  /**
+   * SoCLaaS serves Qwen through vLLM, which ignores `thinking` and only turns
+   * reasoning off through the chat template. Left on, reasoning can use the
+   * whole token budget and leave an empty answer.
+   */
+  private get noThinking(): Record<string, unknown> {
+    return /qwen/i.test(this.model)
+      ? { thinking: { type: "disabled" }, chat_template_kwargs: { enable_thinking: false } }
+      : { thinking: { type: "disabled" } };
   }
 
   async answer(input: CompanyQuestion, callbacks?: CompanyAgentCallbacks): Promise<CompanyAnswer> {
@@ -213,6 +247,22 @@ export class SoCLaaSCompanyAgent {
     const runId = randomUUID();
     const retrieved = new Map<string, Evidence>();
     const toolCalls: Array<{ name: string; arguments: unknown }> = [];
+    const skills = this.options.skills ?? [];
+    const loadedSkills = new Set<string>();
+    const blocks: ChatBlock[] = [];
+    const offeredTools = (): readonly unknown[] => [
+      ...companyTools,
+      ...(skills.length ? [loadSkillTool] : []),
+      ...(this.options.extensions ?? [])
+        .filter((extension) => loadedSkills.has(extension.skill))
+        .flatMap((extension) => extension.tools),
+    ];
+    const extensionFor = (name: string) =>
+      (this.options.extensions ?? []).find(
+        (extension) =>
+          loadedSkills.has(extension.skill) &&
+          extension.tools.some((definition) => definition.function.name === name),
+      );
     const messages: Message[] = [
       {
         role: "system",
@@ -223,10 +273,20 @@ export class SoCLaaSCompanyAgent {
           "Cite every factual claim about company systems using [source:SOURCE_ID], using only IDs returned by tools. Do not invent facts—if evidence is insufficient, state plainly what is known and what is missing.",
           "Conversational memory: Treat prior conversational context as your own stateful recall of past discussions with this person (e.g., 'As you mentioned in our last chat...', 'Earlier you noted...'). Never refer to it as 'your personal notes' or 'your personal memory', and do not cite it with [source:...]. When describing their current role, focus, or situation, lead with what they communicated to you directly.",
           "Situational discrepancy handling: Handle mismatches between what the employee communicated and what company records show with situational intelligence: (1) Where a natural workplace explanation applies (such as HR directories or documentation lagging behind recent promotions or in-flight initiatives), mention that context helpfully. (2) Where there is a genuine technical conflict, policy mismatch, or potential misunderstanding, present the tension plainly and objectively without making excuses, allowing the employee to assess the discrepancy.",
+          "When the request is ambiguous in a way that would change what you do, ask one short clarifying question that names the likely options instead of guessing. Earlier turns of this conversation are included, so you will see the answer.",
+          "Always reply in the language of the user's latest message, even when tool results and instructions are in another language.",
           "Structure responses cleanly with concise headings or bullet points so they are effortless to scan, offering practical next steps where relevant.",
           "Default to 250-300 words unless the employee requests deeper detail. Do not add an 'Answer' heading. Use ordinary Markdown only (never emit HTML or HTML entities).",
+          ...(skills.length
+            ? [
+                `Skills: when a request matches one of these, call load_skill with its name first and follow what it says; it may bring its own tools and replace the citation rule. ${skills
+                  .map((skill) => `${skill.name}: ${skill.description}`)
+                  .join(" | ")}`,
+              ]
+            : []),
         ].join(" "),
       },
+      ...(input.history ?? []).map((turn) => ({ role: turn.role, content: turn.content })),
       {
         role: "user",
         content: JSON.stringify({
@@ -262,9 +322,9 @@ export class SoCLaaSCompanyAgent {
           body: JSON.stringify({
             model: this.model,
             messages,
-            tools,
+            tools: offeredTools(),
             tool_choice: mustAnswer ? "none" : step === 0 ? "required" : "auto",
-            thinking: { type: "disabled" },
+            ...this.noThinking,
             max_tokens: 1800,
             ...(isStreaming ? { stream: true } : {}),
           }),
@@ -302,9 +362,14 @@ export class SoCLaaSCompanyAgent {
           }
         } else {
           let answer = rawContent?.trim();
+          if (!answer && !mustAnswer) {
+            messages.push({ role: "user", content: "You returned nothing. Reply to the user now in plain text." });
+            continue;
+          }
           if (!answer) throw new Error("Agent returned an empty answer.");
           const hasPersonalContext = Boolean(input.personalMemory && input.personalMemory.trim().length > 0);
-          let citationCheck = validateCitations(answer, retrieved, hasPersonalContext);
+          const groundedElsewhere = loadedSkills.size > 0;
+          let citationCheck = validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere);
           if (citationCheck.problem) {
             if (isStreaming) {
               callbacks?.onResetTokens?.();
@@ -329,9 +394,9 @@ export class SoCLaaSCompanyAgent {
               body: JSON.stringify({
                 model: this.model,
                 messages,
-                tools,
+                tools: offeredTools(),
                 tool_choice: "none",
-                thinking: { type: "disabled" },
+                ...this.noThinking,
                 max_tokens: 1800,
               }),
             });
@@ -344,7 +409,7 @@ export class SoCLaaSCompanyAgent {
             const repairCompletion = (await repairResponse.json()) as CompletionResponse;
             answer = repairCompletion.choices?.[0]?.message?.content?.trim();
             if (!answer) throw new Error("SoCLaaS returned an empty citation repair.");
-            citationCheck = validateCitations(answer, retrieved, hasPersonalContext);
+            citationCheck = validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere);
             if (citationCheck.problem) {
               return {
                 answer: INSUFFICIENT_EVIDENCE_ANSWER,
@@ -359,12 +424,44 @@ export class SoCLaaSCompanyAgent {
             sources: citationCheck.citedSourceIds.map((id) => retrieved.get(id)!),
             runId,
             toolCalls,
+            ...(blocks.length ? { blocks } : {}),
           };
         }
 
         for (const call of calls) {
           const args = parseArguments(call.function.arguments);
           toolCalls.push({ name: call.function.name, arguments: args });
+          if (call.function.name === "load_skill") {
+            const skill = skills.find((entry) => entry.name === args.name);
+            if (skill) loadedSkills.add(skill.name);
+            messages.push({
+              role: "tool",
+              tool_call_id: call.id,
+              content: skill
+                ? skill.body
+                : `No skill named ${String(args.name)}. Available: ${skills.map((entry) => entry.name).join(", ")}.`,
+            });
+            continue;
+          }
+          const extension = extensionFor(call.function.name);
+          if (extension) {
+            callbacks?.onStatus?.("Working on it…");
+            const outcome = await extension.run(call.function.name, args);
+            if (outcome.block) blocks.push(outcome.block);
+            messages.push({ role: "tool", tool_call_id: call.id, content: outcome.content });
+            continue;
+          }
+          const unloaded = (this.options.extensions ?? []).find((entry) =>
+            entry.tools.some((definition) => definition.function.name === call.function.name),
+          );
+          if (unloaded) {
+            messages.push({
+              role: "tool",
+              tool_call_id: call.id,
+              content: `Call load_skill with name "${unloaded.skill}" before using ${call.function.name}.`,
+            });
+            continue;
+          }
           let result: Evidence[];
           if (call.function.name === "search_company_knowledge") {
             if (typeof args.query !== "string" || !args.query.trim()) {

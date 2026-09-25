@@ -17,8 +17,18 @@ function str(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+/**
+ * One person's LinkedIn address in one form. Exa returns the same profile as
+ * www.linkedin.com and as a country subdomain such as sg.linkedin.com.
+ */
+export function canonicalProfileUrl(url: string): string {
+  const linkedIn = /^https?:\/\/(?:[a-z]{2,3}\.|www\.)*linkedin\.com\/in\/([^/?#\s]+)/i.exec(url.trim());
+  if (linkedIn) return `linkedin.com/in/${decodeURIComponent(linkedIn[1]!).toLowerCase()}`;
+  return url.trim().replace(/^https?:\/\/(www\.)?/i, "").replace(/\/+$/, "").toLowerCase();
+}
+
 function stableId(url: string, name: string): string {
-  return createHash("sha256").update(url || name).digest("hex").slice(0, 16);
+  return createHash("sha256").update(url ? canonicalProfileUrl(url) : name).digest("hex").slice(0, 16);
 }
 
 /** Maps one Exa `category: "people"` result to the fields we keep. */

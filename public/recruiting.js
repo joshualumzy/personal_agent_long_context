@@ -20,6 +20,39 @@ let lastRoundCount = 0;
 let pollTimer = null;
 const nodes = new Map();
 
+// Inside the chat page the panel is framed: the chat is the composer, and the
+// candidate named in the link opens once.
+const params = new URLSearchParams(location.search);
+const embedded = params.get("embed") === "1" && window.top !== window;
+let pendingCandidate = embedded ? params.get("candidate") : null;
+let roleId = params.get("role");
+let roles = [];
+
+/** Every role-scoped call goes under the open role. */
+function api(path) {
+  return `/api/recruiting/roles/${encodeURIComponent(roleId)}${path}`;
+}
+
+function rememberRole() {
+  const next = new URLSearchParams(location.search);
+  if (roleId) next.set("role", roleId);
+  else next.delete("role");
+  history.replaceState(null, "", `${location.pathname}${next.size ? `?${next}` : ""}`);
+}
+
+/** Opens another role, or the intake when id is null. */
+function switchRole(id) {
+  roleId = id;
+  selectedId = null;
+  draftCriteria = null;
+  lastRoundCount = 0;
+  for (const node of nodes.values()) node.remove();
+  nodes.clear();
+  rememberRole();
+  showError("");
+  refresh();
+}
+
 function h(tag, attributes = {}, ...children) {
   const element = document.createElement(tag);
   for (const [key, value] of Object.entries(attributes)) {
@@ -68,6 +101,35 @@ function showError(message) {
   banner.hidden = !message;
 }
 
+/** Opens a new role from words or an uploaded file. */
+async function createRole(body, button) {
+  if (button) button.disabled = true;
+  showError("");
+  try {
+    const response = await fetch("/api/recruiting/roles", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      showError(data.message ?? "Something went wrong.");
+      return undefined;
+    }
+    startingNew = false;
+    roleId = data.roleId;
+    rememberRole();
+    render(data.state);
+    refresh();
+    return data.result;
+  } catch {
+    showError("The server did not answer. Is it running?");
+    return undefined;
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
 async function call(path, body, button) {
   if (button) button.disabled = true;
   showError("");
@@ -94,11 +156,44 @@ async function call(path, body, button) {
 
 async function refresh() {
   try {
-    const response = await fetch("/api/recruiting/state");
+    const listed = await fetch("/api/recruiting/roles");
+    if (listed.ok) roles = (await listed.json()).roles;
+    // Without a role in the link, open the newest one. Panels saved before roles existed name none.
+    if (!roleId && roles.length && !startingNew) {
+      roleId = roles[0].id;
+      rememberRole();
+    }
+    renderRoles();
+    if (!roleId) {
+      render(null);
+      return;
+    }
+    const response = await fetch(api("/state"));
+    if (response.status === 404 && !embedded) {
+      switchRole(null);
+      return;
+    }
     if (response.ok) render(await response.json());
   } catch {
     // The next poll tries again.
   }
+}
+
+let startingNew = false;
+
+function renderRoles() {
+  const select = $("#role-select");
+  select.replaceChildren(
+    ...roles.map((role) =>
+      h(
+        "option",
+        { value: role.id, selected: role.id === roleId ? true : undefined },
+        role.confirmed ? `${role.title} (${role.strong} strong)` : `${role.title} (draft)`,
+      ),
+    ),
+  );
+  if (!roleId) select.prepend(h("option", { value: "", selected: true }, "New role"));
+  $("#roles").hidden = embedded || roles.length === 0;
 }
 
 function schedulePoll() {
@@ -114,6 +209,15 @@ function schedulePoll() {
 
 function render(next) {
   state = next;
+  if (!state) {
+    $("#intake").hidden = false;
+    $("#review").hidden = true;
+    $("#board").hidden = true;
+    $("#top-actions").hidden = true;
+    $("#role-title").textContent = "Who do you need?";
+    $("#status-line").textContent = "Step 1 of 2: describe the role.";
+    return;
+  }
   const role = state.role;
   $("#intake").hidden = Boolean(role);
   $("#review").hidden = !role || role.confirmed;
@@ -125,6 +229,15 @@ function render(next) {
 
   if (role && !role.confirmed) renderReview();
   if (role?.confirmed) {
+    if (pendingCandidate) {
+      const named = state.candidates.find((candidate) => candidate.id === pendingCandidate);
+      if (named) {
+        selectedId = named.id;
+        // Shown for a draft, the panel opens where the send button is.
+        if (named.draft) activeTab = "outreach";
+      }
+      pendingCandidate = null;
+    }
     $("#say").dispatchEvent(new Event("input"));
     renderStatus();
     renderOrbit();
@@ -360,7 +473,7 @@ function renderProposals() {
     ...state.proposals.map((proposal) => {
       const isCriterion = proposal.type === "criterion";
       const decide = (accept) => (event) =>
-        call(`/api/recruiting/proposals/${proposal.id}`, { accept }, event.currentTarget);
+        call(api(`/proposals/${proposal.id}`), { accept }, event.currentTarget);
       return h(
         "article",
         { class: "proposal" },
@@ -451,7 +564,7 @@ function renderDetail() {
   const hasOutreach = Boolean(candidate.draft) || candidate.messages.length > 0;
   const reasonInput = h("input", { type: "text", placeholder: "Why? Optional, stays private" });
   const decision = (value) => (event) =>
-    call(`/api/recruiting/candidates/${candidate.id}/feedback`, { decision: value, reason: reasonInput.value }, event.currentTarget);
+    call(api(`/candidates/${candidate.id}/feedback`), { decision: value, reason: reasonInput.value }, event.currentTarget);
 
   const tab = (key, label, dot = false) =>
     h(
@@ -490,7 +603,7 @@ function renderDetail() {
         h("span", { class: "fact" }, candidate.stage === "closed" ? `Closed: ${candidate.closedReason}` : STAGE_LABEL[candidate.stage]),
         candidate.kept ? h("span", { class: "fact match100" }, "Kept") : null,
         candidate.origin === "referral" ? h("span", { class: "fact" }, "Added by you") : null,
-        candidate.origin !== "referral" && candidate.poolRound > 1 ? h("span", { class: "fact" }, "From a wider search") : null,
+        candidate.origin !== "referral" && candidate.poolRound > 1 ? h("span", { class: "fact" }, "Found in a later search") : null,
       ),
       candidate.stage === "closed"
         ? null
@@ -622,7 +735,7 @@ function outreachPanel(candidate) {
     const subject = h("input", { type: "text", value: draft.subject, "aria-label": "Subject", placeholder: "Subject (emails only)" });
     const body = h("textarea", { "aria-label": "Message" }, draft.body);
     const save = () =>
-      call(`/api/recruiting/candidates/${candidate.id}/draft`, {
+      call(api(`/candidates/${candidate.id}/draft`), {
         subject: subject.value,
         body: body.value,
         ...(email.value && email.value !== candidate.contact?.email ? { email: email.value } : {}),
@@ -655,9 +768,9 @@ function outreachPanel(candidate) {
           "div",
           { class: "row sticky-actions" },
           state.integrations?.gmail
-            ? h("button", { type: "button", class: "primary", disabled: !candidate.contact && !email.value ? true : undefined, title: candidate.contact ? undefined : "Add an email address first", onclick: async (event) => { await save(); await call(`/api/recruiting/candidates/${candidate.id}/send`, {}, event.currentTarget); } }, "Send from Gmail")
+            ? h("button", { type: "button", class: "primary", disabled: !candidate.contact && !email.value ? true : undefined, title: candidate.contact ? undefined : "Add an email address first", onclick: async (event) => { await save(); await call(api(`/candidates/${candidate.id}/send`), {}, event.currentTarget); } }, "Send from Gmail")
             : null,
-          h("button", { type: "button", class: "quiet", onclick: async (event) => { await save(); await call(`/api/recruiting/candidates/${candidate.id}/send`, { manual: true }, event.currentTarget); } }, "I sent it myself"),
+          h("button", { type: "button", class: "quiet", onclick: async (event) => { await save(); await call(api(`/candidates/${candidate.id}/send`), { manual: true }, event.currentTarget); } }, "I sent it myself"),
           h("button", { type: "button", class: "quiet", onclick: save }, "Save edits"),
         ),
       ),
@@ -668,7 +781,7 @@ function outreachPanel(candidate) {
       h("button", { type: "button", class: "primary", onclick: async (event) => {
         const button = event.currentTarget;
         button.textContent = "Finding email and drafting…";
-        await call(`/api/recruiting/candidates/${candidate.id}/outreach`, {}, button);
+        await call(api(`/candidates/${candidate.id}/outreach`), {}, button);
         button.textContent = "Find email and draft";
       } }, "Find email and draft"),
     );
@@ -686,10 +799,10 @@ function outreachPanel(candidate) {
           "div",
           { class: "row" },
           h("button", { type: "button", class: "quiet", onclick: async (event) => {
-            const result = await call(`/api/recruiting/candidates/${candidate.id}/reply`, { text: reply.value }, event.currentTarget);
+            const result = await call(api(`/candidates/${candidate.id}/reply`), { text: reply.value }, event.currentTarget);
             if (result) $("#agent-reply").textContent = result.message;
           } }, "Add reply"),
-          h("button", { type: "button", class: "quiet", onclick: (event) => call(`/api/recruiting/candidates/${candidate.id}/close`, { reason: "hired" }, event.currentTarget) }, "Mark as hired"),
+          h("button", { type: "button", class: "quiet", onclick: (event) => call(api(`/candidates/${candidate.id}/close`), { reason: "hired" }, event.currentTarget) }, "Mark as hired"),
         ),
       ),
     );
@@ -709,12 +822,25 @@ function readFile(file) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
+  document.body.classList.toggle("embed", embedded);
+  $("#role-select").addEventListener("change", (event) => {
+    if (event.target.value) {
+      startingNew = false;
+      switchRole(event.target.value);
+    }
+  });
+  $("#new-role").addEventListener("click", () => {
+    startingNew = true;
+    switchRole(null);
+    $("#requirement").focus();
+  });
+
   $("#intake-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const text = $("#requirement").value.trim();
     if (!text) return;
     draftCriteria = null;
-    const result = await call("/api/recruiting/say", { text }, event.submitter);
+    const result = await createRole({ text }, event.submitter);
     showRefused(result?.refused);
   });
 
@@ -722,7 +848,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const [file] = event.target.files;
     if (!file) return;
     draftCriteria = null;
-    const result = await call("/api/recruiting/upload", { filename: file.name, contentBase64: await readFile(file) });
+    const result = await createRole({ filename: file.name, contentBase64: await readFile(file) });
     showRefused(result?.refused);
     event.target.value = "";
   });
@@ -735,10 +861,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   $("#confirm").addEventListener("click", async (event) => {
     const button = event.currentTarget;
-    const revised = await call("/api/recruiting/criteria/draft", { criteria: draftCriteria }, button);
+    const revised = await call(api("/criteria/draft"), { criteria: draftCriteria }, button);
     if (revised === undefined) return;
     button.textContent = "Searching…";
-    await call("/api/recruiting/confirm", {}, button);
+    await call(api("/confirm"), {}, button);
     button.textContent = "Confirm and search";
     draftCriteria = null;
     showRefused([]);
@@ -764,8 +890,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // Pasted LinkedIn profile links add those people; anything else goes to the agent.
     const links = text.match(/https:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\/in\/[^\s,]+/gi);
     const result = links
-      ? await call("/api/recruiting/candidates/import", { urls: links }, sendButton)
-      : await call("/api/recruiting/say", { text }, sendButton);
+      ? await call(api("/candidates/import"), { urls: links }, sendButton)
+      : await call(api("/say"), { text }, sendButton);
     if (result) {
       say.value = "";
       fit();
@@ -794,8 +920,18 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  $("#find-more").addEventListener("click", async (event) => {
+    const result = await call(api("/more"), {}, event.currentTarget);
+    if (result) {
+      const reply = $("#agent-reply");
+      reply.textContent = result.added
+        ? `Added ${result.added} ${result.added === 1 ? "person" : "people"}. Scoring them now.`
+        : "No new people turned up. Try loosening a criterion.";
+    }
+  });
+
   $("#fast-forward").addEventListener("click", async (event) => {
-    await call("/api/recruiting/fast-forward", { days: 7 }, event.currentTarget);
+    await call(api("/fast-forward"), { days: 7 }, event.currentTarget);
     schedulePoll();
   });
 
@@ -806,13 +942,13 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     event.currentTarget.dataset.armed = "";
-    event.currentTarget.textContent = "Start over";
-    selectedId = null;
-    draftCriteria = null;
-    for (const node of nodes.values()) node.remove();
-    nodes.clear();
-    lastRoundCount = 0;
-    await call("/api/recruiting/reset", {}, event.currentTarget);
+    event.currentTarget.textContent = "Delete this role";
+    const response = await fetch(api(""), { method: "DELETE" });
+    if (!response.ok) {
+      showError("Could not delete the role.");
+      return;
+    }
+    switchRole(null);
   });
 
   document.addEventListener("keydown", (event) => {

@@ -99,7 +99,7 @@ A founder hiring for a small company has no recruiter. They know roughly who the
 
 ### User
 
-One founder, hiring for one open role at a time.
+One founder, hiring for one or more open roles. Each role keeps its own criteria, candidates, and drafts, stored as one JSON file per role under `data/recruiting/roles/` (git-ignored). The storage sits behind a `RoleRepository` interface in `src/recruiting/roles.ts`, so a database can replace the files later.
 
 ### What it does
 
@@ -132,6 +132,8 @@ One founder, hiring for one open role at a time.
 
 It runs inside the same server as the SME agent, as a sub-path. Set the keys in `.env` (see `.env.example`), start the database as above, then `npm run letta:server` and `npm run dev`, and open [http://127.0.0.1:3000/recruiting](http://127.0.0.1:3000/recruiting). Its API lives under `/api/recruiting/`.
 
+The same flow also runs inside the main chat. The recruiting skill (`skills/recruiting/SKILL.md`) is listed to the agent by name only; when the model loads it, its tools (`src/recruiting/chat-tools.ts`) become available, and `show_recruiting_panel` attaches the live page under the answer as an embedded panel. No tool can send: sending stays a button in that panel.
+
 ### Not in scope
 
-Several open roles at once, calendar booking, sending on LinkedIn, speech-to-text inside the app, multiple users.
+Calendar booking, sending on LinkedIn, speech-to-text inside the app, multiple users.
