@@ -104,3 +104,35 @@ non-string models were accepted as "no model named". The test keeps its
 intent (a failure before the agent runs must end the stream with an error
 event) with a different trigger, and a new test checks that `model: 5` now
 answers normally.
+
+## Frontend, round 1 (deferred)
+
+The owner asked to focus on the backend now and change the frontend later,
+so these are recorded, not fixed. Repro scripts:
+`test/hunt/ui-hunt/*.py` (Playwright; each exits 1 when the bug reproduces).
+No XSS was found: HTML in names, criteria, drafts, and model text renders as
+text.
+
+Destructive (fix first):
+- "Delete this role" stays armed across a role switch, so a single click on
+  the next role deletes it (`h03`).
+- The candidate drawer stays open after switching to another role; its
+  buttons post to the new role, and closing it throws (`h15`).
+- Late responses paint the previous role over the current one, with the
+  Delete button targeting the role on the URL (`h04`, `h05`).
+
+Other:
+- Editing draft criteria loses focus on every 5-second poll (`h02`).
+- The composer can send the same instruction twice (`h17`, `h17b`).
+- "I sent it myself" proceeds after the draft save failed, and the error is
+  cleared (`h21`).
+- "Send from Gmail" stays disabled after typing an address until saved
+  (`h12`).
+- The chat stream loses an event split across network chunks, dropping the
+  panel and the conversation id (`h08`).
+- The chat panel is sized 20px too tall and its header scrolls out (`h09`).
+- An embedded pool panel with two proposals hides controls with no scroll
+  (`h23`).
+- An embedded panel for a deleted or unknown role shows an empty shell or a
+  stale board (`h07`, `h16`).
+- A background error banner cannot be dismissed (`h20`).
