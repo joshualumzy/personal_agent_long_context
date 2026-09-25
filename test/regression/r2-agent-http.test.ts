@@ -175,11 +175,12 @@ describe("NOT A BUG (verified)", () => {
     await app.close();
   });
 
-  test("2000 characters pass, 2001 are refused, surrounding whitespace is not counted", async () => {
+  // The limit moved from 2000 to 8000 so a pasted job description fits (black-box use case 15).
+  test("8000 characters pass, 8001 are refused, surrounding whitespace is not counted", async () => {
     const { agent } = fakeAgent();
     const app = buildApp({ memory: new DeterministicMemoryProvider(), companyAgent: agent as never });
-    const ok = await app.inject({ method: "POST", url: "/api/v1/agent/chat", payload: { message: `  ${"a".repeat(2000)}  ` } });
-    const tooLong = await app.inject({ method: "POST", url: "/api/v1/agent/chat", payload: { message: "a".repeat(2001) } });
+    const ok = await app.inject({ method: "POST", url: "/api/v1/agent/chat", payload: { message: `  ${"a".repeat(8000)}  ` } });
+    const tooLong = await app.inject({ method: "POST", url: "/api/v1/agent/chat", payload: { message: "a".repeat(8001) } });
     assert.equal(ok.statusCode, 200);
     assert.equal(tooLong.statusCode, 400);
     await app.close();

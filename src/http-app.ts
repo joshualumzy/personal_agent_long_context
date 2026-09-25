@@ -379,8 +379,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     const employeeId = idOr(fields.employeeId);
     const message = (typeof fields.message === "string" ? fields.message : String(fields.question)).trim();
 
-    if (!message || message.length > 2_000) {
-      return reply.code(400).send({ message: "Provide a valid message (up to 2000 characters)." });
+    // Long enough for a pasted job description.
+    if (!message || message.length > 8_000) {
+      return reply.code(400).send({ message: "Provide a valid message (up to 8000 characters)." });
     }
 
     const conversationId =

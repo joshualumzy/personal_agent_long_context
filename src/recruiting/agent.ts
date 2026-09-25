@@ -107,6 +107,7 @@ export async function extractBrief(model: JsonModel, requirement: string): Promi
       "Write each criterion as a short checkable phrase in the founder's language, for example \"3+ years building production backends\".",
       "Also write 3 or 4 people-search queries. They share the core (title, company, location) and each adds a different concrete detail aimed at the must criterion hardest to find. When no criterion needs that, vary the skill or seniority instead.",
       QUERY_RULES,
+      "The title is a short job title of 2 to 5 words in the founder's language (for example \"Backend Engineer\" or \"产品经理\"), never the whole requirement.",
       'Reply as {"title": string, "criteria": [{"text": string, "kind": "must"|"nice"}], "queries": [string]}.',
     ].join("\n"),
     input: { requirement },
@@ -418,7 +419,7 @@ export async function planExpansion(
       rung.guidance,
       "Express criteria changes as operations: remove {op, id}, set_kind {op, id, kind}, edit {op, id, text}. Write one new people-search query.",
       QUERY_RULES,
-      'Reply as {"query": string, "operations": [...], "rationale": string}. rationale is one sentence for the founder saying what changes and why.',
+      'Reply as {"query": string, "operations": [...], "rationale": string}. rationale is one sentence for the founder proposing the change and why, as a suggestion that has not happened yet (for example "Accept remote candidates too, since nobody in Singapore has replied in a week?"), never in the past tense.',
     ].join("\n"),
     input: { role, criteria: criteriaForModel(criteria), previousQuery },
   });

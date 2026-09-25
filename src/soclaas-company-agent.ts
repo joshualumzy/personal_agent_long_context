@@ -342,7 +342,7 @@ export class SoCLaaSCompanyAgent {
           "Default to 250-300 words unless the employee requests deeper detail. Do not add an 'Answer' heading. Use ordinary Markdown only (never emit HTML or HTML entities).",
           ...(skills.length
             ? [
-                `Skills: when a request matches one of these, call load_skill with its name first and follow what it says; it may bring its own tools and replace the citation rule. ${skills
+                `Skills: when a request matches one of these, call load_skill with its name first and follow what it says; it may bring its own tools and replace the citation rule. Questions about job candidates, hiring, or outreach belong to the recruiting skill, not to company knowledge. When asked what you can do, include these skills. ${skills
                   .map((skill) => `${skill.name}: ${skill.description}`)
                   .join(" | ")}`,
               ]

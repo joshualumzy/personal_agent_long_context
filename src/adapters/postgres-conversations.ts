@@ -49,6 +49,9 @@ function messageFromRow(row: MessageRow): ConversationMessage {
   };
 }
 
+/** Conversation ids are UUIDs; anything else is an id that cannot exist, not a database error. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export class PostgresConversationStore implements ConversationStore {
   readonly pool: pg.Pool;
   private readonly ownsPool: boolean;
@@ -78,6 +81,7 @@ export class PostgresConversationStore implements ConversationStore {
   }
 
   async get(conversationId: string, userId: string): Promise<ConversationDetail | null> {
+    if (!UUID.test(conversationId)) return null;
     const convResult = await this.pool.query<ConversationRow>(
       `SELECT conversation_id, user_id, title, created_at, updated_at
        FROM conversations
@@ -140,6 +144,7 @@ export class PostgresConversationStore implements ConversationStore {
   }
 
   async updateTitle(conversationId: string, userId: string, title: string): Promise<boolean> {
+    if (!UUID.test(conversationId)) return false;
     const result = await this.pool.query(
       `UPDATE conversations
        SET title = $3, updated_at = now()
@@ -150,6 +155,7 @@ export class PostgresConversationStore implements ConversationStore {
   }
 
   async delete(conversationId: string, userId: string): Promise<boolean> {
+    if (!UUID.test(conversationId)) return false;
     const result = await this.pool.query(
       `DELETE FROM conversations
        WHERE conversation_id = $1 AND user_id = $2`,

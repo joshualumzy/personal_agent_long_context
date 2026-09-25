@@ -1,4 +1,5 @@
 import type { AgentExtension, ChatBlock, ToolDefinition } from "../agent-extension.js";
+import { parseOperations } from "./agent.js";
 import { RecruitingError, type CriterionKind } from "./domain.js";
 import type { RoleBoard } from "./roles.js";
 import type { RecruitingService } from "./service.js";
@@ -81,6 +82,41 @@ const tools: ToolDefinition[] = [
     },
   ),
   tool(
+    "recruiting_change_criteria",
+    "Change a confirmed role's criteria exactly, by id: add, remove, set_kind (must or nice), or edit the text. Prefer this over recruiting_update for criteria changes.",
+    {
+      properties: {
+        changes: {
+          type: "array",
+          minItems: 1,
+          items: {
+            type: "object",
+            properties: {
+              op: { type: "string", enum: ["add", "remove", "set_kind", "edit"] },
+              id: { type: "string", description: "The criterion id, for remove, set_kind, and edit." },
+              text: { type: "string", description: "For add and edit." },
+              kind: { type: "string", enum: ["must", "nice"], description: "For add and set_kind." },
+            },
+            required: ["op"],
+            additionalProperties: false,
+          },
+        },
+        said: { type: "string", description: "The founder's words, kept as the reason in Memory." },
+      },
+      required: ["changes"],
+    },
+  ),
+  tool(
+    "recruiting_set_signature",
+    "Set who outreach is from for this role (the founder's name, and a phrase about the company such as 'a 12-person fintech startup'), and redraft messages that are waiting to be sent.",
+    {
+      properties: {
+        name: { type: "string" },
+        company: { type: "string", description: "A short phrase about the company, as the founder would say it." },
+      },
+    },
+  ),
+  tool(
     "recruiting_find_more",
     "Add more people to a confirmed role without changing its criteria, by searching with new queries.",
   ),
@@ -142,6 +178,33 @@ function text(args: Record<string, unknown>, key: string): string {
 
 type Snapshot = Awaited<ReturnType<RecruitingService["snapshot"]>>;
 
+function funnelOf(snapshot: Snapshot) {
+  const all = snapshot.candidates;
+  const open = all.filter((candidate) => candidate.stage !== "closed");
+  const settled = all.filter((candidate) => candidate.settled);
+  // The same (possibly provisional) tiers the panel shows, so numbers match the screen.
+  const ring = (tier: number) => open.filter((candidate) => candidate.tier === tier).length;
+  const said = (candidate: (typeof all)[number], direction: string) =>
+    (candidate.messages ?? []).some((message) => message.direction === direction);
+  const contacted = all.filter((candidate) => said(candidate, "outbound"));
+  const replied = contacted.filter((candidate) => said(candidate, "inbound"));
+  return {
+    found: all.length,
+    scored: settled.length,
+    pending: all.length - settled.length,
+    in_view: ring(100) + ring(75) + ring(50),
+    centre: ring(100),
+    middle: ring(75),
+    outer: ring(50),
+    out: open.filter((candidate) => candidate.tier === "out").length,
+    contacted: contacted.length,
+    replied: replied.length,
+    reply_rate: contacted.length ? Math.round((replied.length / contacted.length) * 100) / 100 : null,
+    closed: all.length - open.length,
+    drafts_waiting: open.filter((candidate) => candidate.draft && !candidate.draft.sending).length,
+  };
+}
+
 /** What the model needs to decide; the panel shows the rest. */
 export function statusForModel(snapshot: Snapshot) {
   const open = snapshot.candidates.filter((candidate) => candidate.stage !== "closed");
@@ -159,6 +222,9 @@ export function statusForModel(snapshot: Snapshot) {
       pending: open.filter((candidate) => !candidate.settled).length,
       closed: snapshot.candidates.length - open.length,
     },
+    // The numbers a founder asks for. "found" minus "in_view" is everyone the criteria ruled out,
+    // so "found 15" and "0 in view" are never mistaken for each other.
+    funnel: funnelOf(snapshot),
     candidates: open
       .filter((candidate) => candidate.tier !== "out")
       .sort((a, b) => rank(a.tier) - rank(b.tier))
@@ -271,6 +337,37 @@ async function runTool(
       return { content: await status({ result: "Confirmed. Scoring continues in the background." }) };
     case "recruiting_update":
       return { content: await status({ result: await service.say(text(args, "text")) }) };
+    case "recruiting_change_criteria": {
+      if (!Array.isArray(args.changes) || args.changes.length === 0) {
+        throw new RecruitingError("invalid_request", "changes must be a non-empty list.");
+      }
+      const criteria = (await service.snapshot()).criteria;
+      for (const change of args.changes) {
+        if (typeof change !== "object" || change === null) throw new RecruitingError("invalid_request", "Each change must be an object.");
+        const entry = change as Record<string, unknown>;
+        if ((entry.op === "add" || entry.op === "set_kind") && entry.kind !== undefined) kindOf(entry.kind);
+        if (entry.op !== "add" && !criteria.some((criterion) => criterion.id === entry.id)) {
+          throw new RecruitingError("invalid_request", `No criterion with id ${String(entry.id)}; read recruiting_status for the ids.`);
+        }
+      }
+      const operations = parseOperations(
+        args.changes.map((change) => {
+          const entry = change as Record<string, unknown>;
+          return entry.kind === undefined ? entry : { ...entry, kind: kindOf(entry.kind) };
+        }),
+        criteria as never,
+      );
+      if (operations.length === 0) throw new RecruitingError("invalid_request", "None of the changes could be applied.");
+      const said = typeof args.said === "string" && args.said.trim() ? args.said.trim() : "changed in the chat";
+      return { content: await status({ result: await service.changeCriteria(operations, said) }) };
+    }
+    case "recruiting_set_signature": {
+      const name = typeof args.name === "string" ? args.name.trim() : "";
+      const company = typeof args.company === "string" ? args.company.trim() : "";
+      if (!name && !company) throw new RecruitingError("invalid_request", "Give a name, a company phrase, or both.");
+      const redrafted = await service.setSender({ ...(name ? { name } : {}), ...(company ? { company } : {}) });
+      return { content: await status({ result: `Outreach is now from ${name || "the same person"}${company ? `, ${company}` : ""}. Redrafted ${redrafted} waiting ${redrafted === 1 ? "message" : "messages"}.` }) };
+    }
     case "recruiting_find_more":
       return { content: await status({ result: await service.findMore() }) };
     case "recruiting_import_profiles": {

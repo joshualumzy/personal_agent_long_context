@@ -194,6 +194,8 @@ export interface RecruitingState {
   /** Simulated days added to the real clock by the fast-forward control. */
   clockOffsetDays: number;
   events: HiringEvent[];
+  /** Who outreach for this role is from, when the founder said so in the chat. */
+  sender?: { name?: string; company?: string };
 }
 
 /** A candidate's verdict on one criterion. Own keys only: an id like "toString" must not match Object.prototype. */

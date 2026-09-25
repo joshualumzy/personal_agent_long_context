@@ -258,3 +258,34 @@ design doc and README. Tests that asserted refusals were deleted
 to `r2-backend-parsing.test.ts`; one test in `r2-backend-nonbugs.test.ts`;
 the fairness tests in `test/recruiting.test.ts`); the fake model in
 `test/recruiting.test.ts` no longer proposes an "under 30" criterion.
+
+## Black-box use cases from docs/ref (2026-09-26)
+
+An agent that did not read the code derived 15 use cases from the hackathon
+briefing, the business-proposal guidelines and the IT5007 rubric, and ran
+them against a live server (3 pass, 6 partial, 6 fail). Fixed, with
+`r3-blackbox.test.ts` where the behaviour is deterministic:
+- A conversation id that is not a UUID made Postgres throw (502). Now it is
+  "not found".
+- A pasted job description over 2000 characters was refused. The chat limit
+  is now 8000 (the earlier test of the 2000 limit was updated to match).
+- The agent said "pulled in 15 candidates" while none were in view, and
+  gave no numbers when asked for a funnel. The status now carries a funnel
+  (found, scored, in view by ring, ruled out, contacted, replied, reply
+  rate, drafts waiting) on the same tiers the panel shows, and the skill
+  tells the agent to report it plainly.
+- "Make it a nice-to-have" went through a second model and was lost. New
+  tool `recruiting_change_criteria` changes criteria exactly, by id.
+- Drafts stayed signed by the server's default name after "I'm Jax, we're a
+  12-person startup", while the agent claimed otherwise. New tool
+  `recruiting_set_signature` sets who outreach is from and redrafts waiting
+  messages; the skill forbids describing actions no tool confirmed.
+- Prompt fixes: widening proposals are phrased as proposals, not as done;
+  role titles are short job titles; candidate questions go to the recruiting
+  skill; "what can you do" includes skills; no personal phone or address;
+  missing information is asked for explicitly; no unrelated role's panel.
+Checked live with the real model: capabilities, short title, and an exact
+must-to-nice change with correct counts.
+Not changed: "50% match" wording (UI), the sample data's example.com
+profile links, import without an Exa key (expected). Reply times of 50 to
+240 s in that run were partly rate limiting caused by parallel test agents.

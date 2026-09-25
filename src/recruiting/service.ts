@@ -841,9 +841,10 @@ export class RecruitingService {
     const { subject, body } = await draftMessage(this.deps.model, kind, {
       role: state.role?.title ?? "the role",
       channel: candidate.contact ? "email" : "linkedin",
-      ...(this.settings.companyName ? { company: this.settings.companyName } : {}),
+      // What the founder said in the chat wins over the server's defaults.
+      ...((state.sender?.company ?? this.settings.companyName) ? { company: state.sender?.company ?? this.settings.companyName } : {}),
       ...(this.settings.companyPitch ? { companyPitch: this.settings.companyPitch } : {}),
-      ...(this.settings.founderName ? { founderName: this.settings.founderName } : {}),
+      ...((state.sender?.name ?? this.settings.founderName) ? { founderName: state.sender?.name ?? this.settings.founderName } : {}),
       profile: candidate.profile,
       matched,
       messages: candidate.messages,
@@ -881,6 +882,29 @@ export class RecruitingService {
       target.draft = draft;
       if (target.stage === "discovered" || target.stage === "scored") target.stage = "drafted";
     });
+  }
+
+  /** Sets who outreach is from and redrafts every message still waiting to be sent. */
+  async setSender(sender: { name?: string; company?: string }): Promise<number> {
+    await this.mutate((state) => {
+      state.sender = { ...state.sender, ...sender };
+    });
+    const state = await this.current();
+    let redrafted = 0;
+    for (const candidate of Object.values(state.candidates)) {
+      const waiting = candidate.draft;
+      if (!waiting || waiting.sending || candidate.stage === "closed") continue;
+      const draft = await this.makeDraft(state, candidate, waiting.kind);
+      await this.mutate((latest) => {
+        const target = latest.candidates[candidate.profile.id];
+        // Only replace the draft that was there when we started, never one being sent.
+        if (target?.draft && !target.draft.sending && target.draft.createdAt === waiting.createdAt) {
+          target.draft = draft;
+          redrafted += 1;
+        }
+      });
+    }
+    return redrafted;
   }
 
   async editDraft(candidateId: string, edit: { subject?: string; body?: string; email?: string }): Promise<void> {
