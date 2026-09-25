@@ -132,6 +132,16 @@ The agent holds no credentials for the employee's everyday tools. An approved ac
 
 Only new things are handed off. Editing something that already exists (a section of a spec, a CRM record) would need write access through the tool's API, so the agent does not do it.
 
+### When a draft is missing something
+
+Reading is automatic; writing waits for the employee. When a draft lacks something (a recipient's address, a date, a figure), the drafter says what is missing and looks for it before anyone sees the card:
+
+1. Company records, by keyword and by the person's name alone.
+2. Contact details written next to the person's name in company records, such as an email signature or a contact table. An address only counts when it is theirs (the part before the @ contains their name), so a colleague listed beside them is never picked up.
+3. The employee's own Gmail when it is connected, reading only the From/To/Cc headers of messages that mention the person, never message bodies.
+
+What turns up becomes cited evidence and the action is drafted once more. Whatever is still missing is listed on the card as "Still needed from you" instead of being guessed, and every lookup appears in the trace. Code, not the model, also checks for an empty recipient or start time, so those are always looked for and reported.
+
 ### Evaluate
 
 ```bash

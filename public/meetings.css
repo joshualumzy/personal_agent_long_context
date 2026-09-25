@@ -168,6 +168,9 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(1.7re
 .badge.simulated { background: var(--warn-bg); color: var(--warn-text); }
 .badge.rejected { background: var(--error-bg); color: var(--error-text); }
 .handoff { font-size: .88rem; }
+.missing { font-size: .84rem; background: var(--warn-bg); color: var(--warn-text); border-radius: var(--radius-control); padding: 8px 10px; }
+.missing-head { margin: 0 0 4px; font-weight: 600; }
+.missing ul { margin: 0; padding-left: 1.1rem; }
 .sheet-preview { overflow-x: auto; }
 .sheet-preview table { border-collapse: collapse; font-size: .82rem; }
 .sheet-preview th, .sheet-preview td { border: 1px solid var(--line, #d8d4cc); padding: 3px 8px; text-align: left; white-space: nowrap; }

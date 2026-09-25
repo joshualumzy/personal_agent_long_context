@@ -210,6 +210,8 @@ export interface ProposedAction {
   version: number;
   /** Company Evidence retrieved for this action in this run. */
   evidence: Evidence[];
+  /** What the agent still could not find after looking, for the employee to fill in. */
+  missing?: string[];
   /** Same commitment mentioned again maps to the same key and updates, not duplicates. */
   dedupeKey: string;
   createdAt: string;
@@ -224,6 +226,7 @@ export type TraceStep =
   | "segment_screened"
   | "extracted"
   | "evidence_retrieved"
+  | "looked_up"
   | "drafted"
   | "tiered"
   | "deduplicated"
@@ -293,6 +296,16 @@ export interface HiringHandoff {
 export interface EmailSender {
   connected(): Promise<boolean>;
   send(message: { to: string; subject: string; body: string }): Promise<{ threadId: string }>;
+}
+
+/**
+ * Read-only lookup of people in the employee's own mailbox, used when a
+ * draft needs an address the meeting and company records did not give.
+ * Returns only names and addresses from message headers, never bodies.
+ */
+export interface ContactDirectory {
+  connected(): Promise<boolean>;
+  lookup(name: string): Promise<Evidence[]>;
 }
 
 export interface ActionExecutor {

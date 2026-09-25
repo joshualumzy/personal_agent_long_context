@@ -4,7 +4,8 @@ import type pg from "pg";
 import type { CompanyKnowledge } from "../company-domain.js";
 import { OpenAiCompatibleModel, type JsonModel } from "../recruiting/llm.js";
 import { ActionDrafter } from "./drafter.js";
-import type { EmailSender, HiringHandoff, QuestionAnswerer } from "./domain.js";
+import type { ContactDirectory, EmailSender, HiringHandoff, QuestionAnswerer } from "./domain.js";
+import { companyContactDirectory } from "./contacts.js";
 import { DispatchingExecutor } from "./executor.js";
 import { ModelCommitmentExtractor } from "./extractor.js";
 import { postgresReplaySource, type ReplaySegment } from "./replay.js";
@@ -46,6 +47,8 @@ export interface MeetingDependencies {
   answerer?: QuestionAnswerer;
   /** Gmail, shared with recruiting. */
   email?: EmailSender | null;
+  /** The employee's mailbox, read-only, for finding a person's address a draft needs. */
+  contacts?: ContactDirectory | null;
   /** S3, so a hiring need heard in a meeting becomes a draft role. */
   hiring?: HiringHandoff | null;
   log: (context: string, error: unknown) => void;
@@ -77,6 +80,8 @@ export function meetingsFromEnvironment(environment: Environment, deps: MeetingD
       model,
       knowledge: deps.knowledge,
       ...(deps.answerer ? { answerer: deps.answerer } : {}),
+      contacts: deps.contacts ?? null,
+      records: companyContactDirectory(deps.pool),
     }),
     executor: new DispatchingExecutor({
       email: deps.email ?? null,

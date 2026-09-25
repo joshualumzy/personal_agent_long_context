@@ -61,6 +61,42 @@ function withoutQuote(body: string): string {
   return (cut >= 0 ? lines.slice(0, cut) : lines).join("\n").trim();
 }
 
+export interface GmailContact {
+  name: string;
+  email: string;
+  /** How many header entries named this address. */
+  count: number;
+}
+
+const ADDRESS_RE = /(?:"?([^"<>,;]*?)"?\s*)<([^<>\s@]+@[^<>\s]+)>|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/g;
+
+/**
+ * Addresses in raw From/To/Cc header values whose display name contains every
+ * word of `name`, or whose local part starts with its first word, most
+ * frequent first. `own` (the mailbox owner) is never returned.
+ */
+export function contactsMatching(headerValues: string[], name: string, own: string): GmailContact[] {
+  const words = name.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const found = new Map<string, GmailContact>();
+  for (const value of headerValues) {
+    for (const match of value.matchAll(ADDRESS_RE)) {
+      const email = (match[2] ?? match[3] ?? "").toLowerCase();
+      const display = (match[1] ?? "").trim();
+      if (!email || email === own) continue;
+      const lowerDisplay = display.toLowerCase();
+      const byName = display !== "" && words.every((word) => lowerDisplay.includes(word));
+      const byAddress = words[0]!.length >= 3 && email.split("@")[0]!.startsWith(words[0]!);
+      if (!byName && !byAddress) continue;
+      const entry = found.get(email) ?? { name: display, email, count: 0 };
+      if (!entry.name && display) entry.name = display;
+      entry.count += 1;
+      found.set(email, entry);
+    }
+  }
+  return [...found.values()].sort((a, b) => b.count - a.count);
+}
+
 export class GmailClient {
   private readonly fetch: typeof fetch;
   private accessToken: { value: string; expiresAt: number } | null = null;
@@ -163,6 +199,25 @@ export class GmailClient {
           Date.parse(message.at) > sinceMs &&
           message.text.length > 0,
       );
+  }
+
+  /**
+   * People whose name matches `name`, taken from the From/To/Cc headers of
+   * recent messages that mention it. Only header metadata is fetched; message
+   * bodies are never read. Uses the existing read-only scope.
+   */
+  async contactsNamed(name: string, limit = 3): Promise<GmailContact[]> {
+    const own = (await this.address()).toLowerCase();
+    const query = encodeURIComponent(`"${name.replace(/"/g, "")}"`);
+    const list = (await this.api(`users/me/messages?q=${query}&maxResults=10`)) as { messages?: { id: string }[] };
+    const headerValues: string[] = [];
+    for (const { id } of list.messages ?? []) {
+      const message = (await this.api(
+        `users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc`,
+      )) as { payload?: { headers?: { name: string; value: string }[] } };
+      for (const header of message.payload?.headers ?? []) headerValues.push(header.value);
+    }
+    return contactsMatching(headerValues, name, own).slice(0, limit);
   }
 
   private async refreshToken(): Promise<string | null> {

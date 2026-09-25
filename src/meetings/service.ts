@@ -423,6 +423,7 @@ export class MeetingService implements MeetingActions {
       payloadHash: hashPayload(draft.payload),
       version: 1,
       evidence: draft.evidence,
+      ...(draft.missing && draft.missing.length > 0 ? { missing: draft.missing } : {}),
       dedupeKey: candidate.dedupeKey,
       createdAt,
       ...(status === "executed" ? { decidedAt: createdAt, result: this.autoResult(candidate.kind, draft.payload) } : {}),
@@ -474,6 +475,9 @@ export class MeetingService implements MeetingActions {
         `Retrieved ${draft.evidence.length} evidence item(s).`,
       );
     }
+    for (const lookup of draft.lookups ?? []) {
+      await this.traceOnly(meetingId, "looked_up", existing?.id, candidate.trigger.segmentIndex, lookup.slice(0, 300));
+    }
 
     if (existing) {
       if (existing.status !== "proposed" && existing.status !== "escalated") {
@@ -490,6 +494,8 @@ export class MeetingService implements MeetingActions {
         const target = state.actions.find((entry) => entry.id === existing.id)!;
         target.payload = draft.payload;
         target.evidence = draft.evidence;
+        if (draft.missing && draft.missing.length > 0) target.missing = draft.missing;
+        else delete target.missing;
         target.title = draft.title;
         target.tier = tier;
         target.payloadHash = hashPayload(draft.payload);

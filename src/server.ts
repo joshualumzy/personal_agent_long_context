@@ -10,6 +10,7 @@ import { PostgresConversationStore } from "./adapters/postgres-conversations.js"
 import { SoCLaaSCompanyAgent } from "./soclaas-company-agent.js";
 import { embeddingProviderFromEnvironment } from "./embeddings.js";
 import { meetingsFromEnvironment } from "./meetings/config.js";
+import { gmailContactDirectory } from "./meetings/contacts.js";
 
 try {
   loadEnvFile();
@@ -54,6 +55,7 @@ const meetings = meetingsFromEnvironment(process.env, {
   knowledge: companyKnowledge,
   answerer: companyAgent,
   email: recruiting?.gmail ?? null,
+  contacts: recruiting?.gmail ? gmailContactDirectory(recruiting.gmail) : null,
   hiring: recruiting?.service ?? null,
   log: (context, error) => logMeetingFailure(context, error),
 });

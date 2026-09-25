@@ -6,6 +6,7 @@ import type {
   CalendarPayload,
   CandidateAction,
   ConflictPayload,
+  ContactDirectory,
   Decision,
   DocPayload,
   EmailPayload,
@@ -110,7 +111,7 @@ function emailsIn(...texts: string[]): Set<string> {
 function phonesIn(...texts: string[]): Set<string> {
   const found = new Set<string>();
   for (const value of texts) {
-    for (const match of value.matchAll(/\+?\d[\d\s-]{6,}\d/g)) found.add(normalizePhone(match[0]));
+    for (const match of value.matchAll(/\+?\d[\d\s()\u2010-\u2015-]{6,}\d/g)) found.add(normalizePhone(match[0]));
   }
   return found;
 }
@@ -145,33 +146,185 @@ export interface ActionDrafterDeps {
   model: JsonModel;
   knowledge: CompanyKnowledge;
   answerer?: QuestionAnswerer;
+  /** The employee's own mailbox, read-only, for finding a person's address. */
+  contacts?: ContactDirectory | null;
+  /** Company records searched for a person's address (signatures, contact tables). */
+  records?: ContactDirectory | null;
 }
 
 export interface DraftResult {
   payload: ActionPayload;
   evidence: Evidence[];
   title: string;
+  /** What the draft still lacks after looking, for the employee to fill in. */
+  missing?: string[];
+  /** One line per lookup made to fill a gap, for the trace. */
+  lookups?: string[];
+}
+
+/** Something a draft needed but did not have, and where to look for it. */
+interface Gap {
+  need: string;
+  /** Query for company records, or empty. */
+  search: string;
+  /** Person whose email or phone is needed, or empty. */
+  person: string;
+}
+
+interface RawDraft extends DraftResult {
+  gaps?: Gap[];
+}
+
+const MISSING_RULE =
+  'Also include "missing" in that object: a list of {"need": string, "search": string, "person": string}, one per piece of information the draft needed but did not have (a recipient\'s address, a date, a figure, a ticket number). need says what is missing in a few plain words; search is a short query for company records that could contain it, or ""; person is the name of whoever\'s email or phone number is needed, or "". Use an empty list when nothing is missing, and never fill a gap by guessing.';
+
+const MAX_GAPS_LOOKED_UP = 3;
+
+function gapsIn(record: Record<string, unknown>): Gap[] {
+  if (!Array.isArray(record.missing)) return [];
+  return record.missing
+    .filter(isRecord)
+    .map((entry) => ({ need: text(entry.need).trim(), search: text(entry.search).trim(), person: text(entry.person).trim() }))
+    .filter((gap) => gap.need.length > 0);
+}
+
+function withExtra(evidence: Evidence[], extra: Evidence[]): Evidence[] {
+  const seen = new Set(evidence.map((item) => item.sourceId));
+  return [...evidence, ...extra.filter((item) => !seen.has(item.sourceId))];
+}
+
+const EMAIL_SHAPE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Gaps read straight off the payload, so an empty recipient or start time is
+ * always reported and looked up even when the model forgot to list it.
+ */
+function structuralGaps(kind: CandidateAction["kind"], payload: ActionPayload, candidate: CandidateAction): Gap[] {
+  const named = detailText(candidate.details, "recipient");
+  switch (kind) {
+    case "email_draft": {
+      const email = payload as EmailPayload;
+      return email.to ? [] : [{ need: `Email address for ${named || "the recipient"}`, search: "", person: named }];
+    }
+    case "message_draft": {
+      const message = payload as MessagePayload;
+      return message.address
+        ? []
+        : [{ need: `Phone number or work email for ${message.recipient || "the recipient"}`, search: "", person: message.recipient }];
+    }
+    case "calendar_draft": {
+      const invite = payload as CalendarPayload;
+      const gaps: Gap[] = invite.attendees
+        .filter((attendee) => !EMAIL_SHAPE.test(attendee))
+        .map((attendee) => ({ need: `Email address for ${attendee}`, search: "", person: attendee }));
+      if (!invite.proposedStart) gaps.push({ need: "Day and time for the meeting", search: "", person: "" });
+      return gaps;
+    }
+    default:
+      return [];
+  }
+}
+
+/** Two gaps are the same when they name the same need or person, or both ask for a contact detail and one names no one. */
+function sameNeed(a: Gap, b: Gap): boolean {
+  const contact = (gap: Gap) => /\b(e-?mail|phone|number|whatsapp|contact)\b/i.test(gap.need);
+  return (
+    a.need.toLowerCase() === b.need.toLowerCase() ||
+    (a.person !== "" && a.person.toLowerCase() === b.person.toLowerCase()) ||
+    (contact(a) && contact(b) && (a.person === "" || b.person === ""))
+  );
+}
+
+function mergeGaps(...lists: Gap[][]): Gap[] {
+  const merged: Gap[] = [];
+  for (const gap of lists.flat()) {
+    const same = merged.find((entry) => sameNeed(entry, gap));
+    if (!same) merged.push({ ...gap });
+    else {
+      if (!same.search) same.search = gap.search;
+      if (!same.person) same.person = gap.person;
+    }
+  }
+  return merged;
 }
 
 export class ActionDrafter {
   constructor(private readonly deps: ActionDrafterDeps) {}
 
+  /**
+   * Drafts once; when the draft lacks something (an address, a date, a
+   * figure), looks for it in company records and, for a person's address,
+   * the employee's own mailbox, then drafts once more with what was found.
+   * Whatever is still missing is returned for the employee to fill in, never
+   * guessed.
+   */
   async draft(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
+    const first = await this.draftOnce(candidate, meeting, []);
+    const gaps = mergeGaps(structuralGaps(candidate.kind, first.payload, candidate), first.gaps ?? []);
+    if (gaps.length === 0) return { payload: first.payload, evidence: first.evidence, title: first.title };
+
+    const { found, lookups } = await this.lookUp(gaps.slice(0, MAX_GAPS_LOOKED_UP), first.evidence);
+    const final = found.length > 0 ? await this.draftOnce(candidate, meeting, found) : first;
+    const remaining =
+      final === first ? gaps : mergeGaps(structuralGaps(candidate.kind, final.payload, candidate), final.gaps ?? []);
+    return {
+      payload: final.payload,
+      evidence: final.evidence,
+      title: final.title,
+      ...(remaining.length > 0 ? { missing: remaining.map((gap) => gap.need) } : {}),
+      ...(lookups.length > 0 ? { lookups } : {}),
+    };
+  }
+
+  private async lookUp(gaps: Gap[], known: Evidence[]): Promise<{ found: Evidence[]; lookups: string[] }> {
+    const seen = new Set(known.map((item) => item.sourceId));
+    const found: Evidence[] = [];
+    const lookups: string[] = [];
+    const keep = (items: Evidence[]) => {
+      const fresh = items.filter((item) => !seen.has(item.sourceId));
+      for (const item of fresh) {
+        seen.add(item.sourceId);
+        found.push(item);
+      }
+      return fresh.length;
+    };
+    const mailbox = this.deps.contacts && (await this.deps.contacts.connected().catch(() => false)) ? this.deps.contacts : null;
+
+    for (const gap of gaps) {
+      // Keyword search needs every word to match, so a person is also searched
+      // by name alone: "Lena Gomez" finds her emails, "Lena Gomez email" does not.
+      for (const query of new Set([gap.search, gap.person].filter(Boolean))) {
+        const items = await this.deps.knowledge.search(query, 3).catch(() => [] as Evidence[]);
+        lookups.push(`Searched company records for "${query}" (${gap.need}): ${keep(items)} new item(s).`);
+      }
+      if (gap.person && this.deps.records) {
+        const items = await this.deps.records.lookup(gap.person).catch(() => [] as Evidence[]);
+        lookups.push(`Looked for contact details of "${gap.person}" in company records: ${keep(items)} found.`);
+      }
+      if (gap.person && mailbox) {
+        const items = await mailbox.lookup(gap.person).catch(() => [] as Evidence[]);
+        lookups.push(`Looked up "${gap.person}" in the employee's Gmail (headers only): ${keep(items)} address(es).`);
+      }
+    }
+    return { found, lookups };
+  }
+
+  private async draftOnce(candidate: CandidateAction, meeting: MeetingState, extra: Evidence[]): Promise<RawDraft> {
     switch (candidate.kind) {
       case "answer_question":
         return this.draftAnswer(candidate, meeting);
       case "email_draft":
-        return this.draftEmail(candidate, meeting);
+        return this.draftEmail(candidate, meeting, extra);
       case "ticket_draft":
-        return this.draftTicket(candidate, meeting);
+        return this.draftTicket(candidate, meeting, extra);
       case "calendar_draft":
-        return this.draftCalendar(candidate, meeting);
+        return this.draftCalendar(candidate, meeting, extra);
       case "message_draft":
-        return this.draftMessage(candidate, meeting);
+        return this.draftMessage(candidate, meeting, extra);
       case "doc_draft":
-        return this.draftDoc(candidate, meeting);
+        return this.draftDoc(candidate, meeting, extra);
       case "sheet_draft":
-        return this.draftSheet(candidate, meeting);
+        return this.draftSheet(candidate, meeting, extra);
       case "escalation":
         return this.draftEscalation(candidate, meeting);
       case "hiring_request":
@@ -227,22 +380,24 @@ export class ActionDrafter {
     return null;
   }
 
-  private async draftEmail(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
-    const evidence = await gatherEvidence(this.deps.knowledge, candidate, meeting);
+  private async draftEmail(candidate: CandidateAction, meeting: MeetingState, extra: Evidence[]): Promise<RawDraft> {
+    const evidence = withExtra(await gatherEvidence(this.deps.knowledge, candidate, meeting), extra);
     const retrievedIds = new Set(evidence.map((item) => item.sourceId));
     const reply = await this.deps.model.json<unknown>({
       task: "email draft",
       system: [
         "Write a short work email for the employee to review and send, for a commitment heard in a meeting.",
-        "Use only facts from the commitment and the retrieved Company Evidence below. Cite every factual claim that comes from evidence with [source:ID], using only the IDs given; never cite an ID that is not listed.",
+        "Use only facts from the commitment, the meeting excerpt, and the retrieved Company Evidence below; state the actual content promised (a figure, date, or decision from the meeting), not just that it is coming. Cite every factual claim that comes from evidence with [source:ID], using only the IDs given; never cite an ID that is not listed.",
         "Suggest a recipient only when an email address for them literally appears in the meeting excerpt or the evidence below. Otherwise leave the recipient as an empty string so the employee fills it in. Never invent or guess an address.",
         'Reply as {"to": string, "subject": string, "body": string}.',
+        MISSING_RULE,
       ].join("\n"),
       input: {
         commitment: candidate.summary,
         details: candidate.details,
         triggerQuote: candidate.trigger.quote,
         speaker: candidate.trigger.speaker,
+        meetingExcerpt: heardUpTo(meeting, candidate),
         evidence: evidenceForModel(evidence),
       },
     });
@@ -255,12 +410,13 @@ export class ActionDrafter {
     return {
       payload: { to, subject, body } satisfies EmailPayload,
       evidence,
+      gaps: gapsIn(record),
       title: `Email: ${subject}`.slice(0, 120),
     };
   }
 
-  private async draftTicket(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
-    const evidence = await gatherEvidence(this.deps.knowledge, candidate, meeting);
+  private async draftTicket(candidate: CandidateAction, meeting: MeetingState, extra: Evidence[]): Promise<RawDraft> {
+    const evidence = withExtra(await gatherEvidence(this.deps.knowledge, candidate, meeting), extra);
     const retrievedIds = new Set(evidence.map((item) => item.sourceId));
     const reply = await this.deps.model.json<unknown>({
       task: "ticket draft",
@@ -268,12 +424,14 @@ export class ActionDrafter {
         "Write a work ticket for a commitment heard in a meeting.",
         "Use only facts from the commitment and the retrieved Company Evidence below. Cite every factual claim that comes from evidence with [source:ID], using only the IDs given; never cite an ID that is not listed.",
         'Reply as {"title": string, "description": string, "assignee": string, "due": string, "project": string}. Leave assignee, due, or project as an empty string when the meeting did not say.',
+        MISSING_RULE,
       ].join("\n"),
       input: {
         commitment: candidate.summary,
         details: candidate.details,
         triggerQuote: candidate.trigger.quote,
         speaker: candidate.trigger.speaker,
+        meetingExcerpt: heardUpTo(meeting, candidate),
         evidence: evidenceForModel(evidence),
       },
     });
@@ -287,11 +445,11 @@ export class ActionDrafter {
       ...(text(record.due) ? { due: text(record.due) } : {}),
       ...(text(record.project) ? { project: text(record.project) } : {}),
     };
-    return { payload, evidence, title: `Ticket: ${title}`.slice(0, 120) };
+    return { payload, evidence, gaps: gapsIn(record), title: `Ticket: ${title}`.slice(0, 120) };
   }
 
-  private async draftCalendar(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
-    const evidence = await gatherEvidence(this.deps.knowledge, candidate, meeting);
+  private async draftCalendar(candidate: CandidateAction, meeting: MeetingState, extra: Evidence[]): Promise<RawDraft> {
+    const evidence = withExtra(await gatherEvidence(this.deps.knowledge, candidate, meeting), extra);
     const reply = await this.deps.model.json<unknown>({
       task: "calendar draft",
       system: [
@@ -299,6 +457,7 @@ export class ActionDrafter {
         "attendees are the names or emails actually mentioned. durationMinutes defaults to 30 when the meeting did not say.",
         "proposedStart is an ISO 8601 time with its offset (for example 2026-10-06T10:00:00+08:00), worked out from meetingDate and the meeting's own words such as \"next Tuesday at 10am\"; times are Singapore time (+08:00) unless the meeting says otherwise. Leave it empty when the meeting named no day.",
         'Reply as {"title": string, "attendees": string[], "proposedStart": string, "durationMinutes": number, "notes": string}. Leave proposedStart or notes as an empty string when unknown.',
+        MISSING_RULE,
       ].join("\n"),
       input: {
         commitment: candidate.summary,
@@ -306,12 +465,18 @@ export class ActionDrafter {
         triggerQuote: candidate.trigger.quote,
         speaker: candidate.trigger.speaker,
         meetingDate: meetingDate(meeting),
+        meetingExcerpt: heardUpTo(meeting, candidate),
         evidence: evidenceForModel(evidence),
       },
     });
     const record = isRecord(reply) ? reply : {};
+    // The employee sends the invite, so they are the organiser, not a guest.
+    const organiser = meeting.employeeId.toLowerCase();
     const attendees = Array.isArray(record.attendees)
-      ? record.attendees.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+      ? record.attendees.filter(
+          (entry): entry is string =>
+            typeof entry === "string" && entry.trim().length > 0 && entry.trim().toLowerCase() !== organiser,
+        )
       : [];
     const duration = Number(record.durationMinutes);
     const title = text(record.title) || candidate.summary.slice(0, 78);
@@ -322,11 +487,11 @@ export class ActionDrafter {
       ...(isIsoTime(text(record.proposedStart)) ? { proposedStart: text(record.proposedStart) } : {}),
       ...(text(record.notes) ? { notes: text(record.notes) } : {}),
     };
-    return { payload, evidence, title: `Calendar: ${title}`.slice(0, 120) };
+    return { payload, evidence, gaps: gapsIn(record), title: `Calendar: ${title}`.slice(0, 120) };
   }
 
-  private async draftMessage(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
-    const evidence = await gatherEvidence(this.deps.knowledge, candidate, meeting);
+  private async draftMessage(candidate: CandidateAction, meeting: MeetingState, extra: Evidence[]): Promise<RawDraft> {
+    const evidence = withExtra(await gatherEvidence(this.deps.knowledge, candidate, meeting), extra);
     const retrievedIds = new Set(evidence.map((item) => item.sourceId));
     const reply = await this.deps.model.json<unknown>({
       task: "chat message draft",
@@ -338,6 +503,7 @@ export class ActionDrafter {
         "recipient is the person or group the message is for, as named in the meeting.",
         "address is a phone number or email for the recipient only when one literally appears in the meeting excerpt or the evidence below; otherwise an empty string. Never invent or guess one.",
         'Reply as {"recipient": string, "address": string, "text": string}.',
+        MISSING_RULE,
       ].join("\n"),
       input: {
         commitment: candidate.summary,
@@ -362,11 +528,11 @@ export class ActionDrafter {
       address,
       text: stripUnknownCitations(text(record.text) || candidate.summary, retrievedIds),
     };
-    return { payload, evidence, title: `Message${recipient ? ` to ${recipient}` : ""}: ${candidate.summary}`.slice(0, 120) };
+    return { payload, evidence, gaps: gapsIn(record), title: `Message${recipient ? ` to ${recipient}` : ""}: ${candidate.summary}`.slice(0, 120) };
   }
 
-  private async draftDoc(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
-    const evidence = await gatherEvidence(this.deps.knowledge, candidate, meeting);
+  private async draftDoc(candidate: CandidateAction, meeting: MeetingState, extra: Evidence[]): Promise<RawDraft> {
+    const evidence = withExtra(await gatherEvidence(this.deps.knowledge, candidate, meeting), extra);
     const retrievedIds = new Set(evidence.map((item) => item.sourceId));
     const reply = await this.deps.model.json<unknown>({
       task: "document draft",
@@ -375,6 +541,7 @@ export class ActionDrafter {
         "Use only facts from the commitment, the meeting excerpt, and the retrieved Company Evidence below. Cite every factual claim that comes from evidence with [source:ID], using only the IDs given; never cite an ID that is not listed. Mark anything the meeting left open as TODO rather than filling it in.",
         "Keep it to what the meeting actually covered: headings and short bullets, at most about 400 words.",
         'Reply as {"title": string, "body": string}. body is Markdown and does not repeat the title.',
+        MISSING_RULE,
       ].join("\n"),
       input: {
         commitment: candidate.summary,
@@ -391,17 +558,18 @@ export class ActionDrafter {
       title,
       body: stripUnknownCitations(text(record.body) || candidate.summary, retrievedIds),
     };
-    return { payload, evidence, title: `Document: ${title}`.slice(0, 120) };
+    return { payload, evidence, gaps: gapsIn(record), title: `Document: ${title}`.slice(0, 120) };
   }
 
-  private async draftSheet(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
-    const evidence = await gatherEvidence(this.deps.knowledge, candidate, meeting);
+  private async draftSheet(candidate: CandidateAction, meeting: MeetingState, extra: Evidence[]): Promise<RawDraft> {
+    const evidence = withExtra(await gatherEvidence(this.deps.knowledge, candidate, meeting), extra);
     const reply = await this.deps.model.json<unknown>({
       task: "spreadsheet draft",
       system: [
         "Build the first version of the table someone promised in a meeting, for the employee to review and paste into a blank spreadsheet.",
         "rows[0] is the header. Fill cells only with values from the meeting excerpt or the Company Evidence below; leave a cell empty when it is unknown rather than guessing. At most 12 columns and 50 rows.",
         'Reply as {"title": string, "rows": string[][]}.',
+        MISSING_RULE,
       ].join("\n"),
       input: {
         commitment: candidate.summary,
@@ -419,7 +587,7 @@ export class ActionDrafter {
       .map((row) => row.slice(0, 12).map((cell) => (cell === null || cell === undefined ? "" : String(cell))));
     const title = text(record.title) || candidate.summary.slice(0, 78);
     const payload: SheetPayload = { title, rows: rows.length > 0 ? rows : [[candidate.summary]] };
-    return { payload, evidence, title: `Spreadsheet: ${title}`.slice(0, 120) };
+    return { payload, evidence, gaps: gapsIn(record), title: `Spreadsheet: ${title}`.slice(0, 120) };
   }
 
   private async draftEscalation(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {

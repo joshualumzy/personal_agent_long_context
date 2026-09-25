@@ -395,6 +395,17 @@ function renderCard(action) {
   const canEdit = EDITABLE_FIELDS[action.kind] && action.tier === "approval" && action.status === "proposed";
   card.append(canEdit ? renderEditableFields(action) : renderReadonlyFields(action));
 
+  if (action.missing?.length && (action.status === "proposed" || action.status === "escalated")) {
+    card.append(
+      h(
+        "div",
+        { class: "missing" },
+        h("p", { class: "missing-head" }, "Still needed from you (the agent looked and could not find it):"),
+        h("ul", {}, action.missing.map((need) => h("li", {}, need))),
+      ),
+    );
+  }
+
   if (action.tier === "escalate" && action.payload.requiredApprover) {
     card.append(h("p", { class: "required-approver" }, `Needs approval from: ${action.payload.requiredApprover}`));
   }
