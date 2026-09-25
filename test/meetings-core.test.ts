@@ -136,6 +136,28 @@ function fakeModel(): JsonModel & { calls: string[] } {
                 details: { query: "vendor shipment delay" },
               });
             }
+            if (t.includes("I'll write up the written follow-up for the vendor")) {
+              candidates.push({
+                kind: "doc_draft",
+                segmentIndex: segment.index,
+                speaker: segment.speaker,
+                quote: "I'll write up the written follow-up for the vendor",
+                summary: "Written follow-up for the vendor",
+                dedupeKey: "followup:vendor",
+                details: {},
+              });
+            }
+            if (t.includes("I'll send that vendor follow-up as an email")) {
+              candidates.push({
+                kind: "email_draft",
+                segmentIndex: segment.index,
+                speaker: segment.speaker,
+                quote: "I'll send that vendor follow-up as an email",
+                summary: "Email the vendor follow-up",
+                dedupeKey: "followup:vendor",
+                details: {},
+              });
+            }
             if (t.includes("What is our on-call rotation for the infra team")) {
               candidates.push({
                 kind: "answer_question",
@@ -186,6 +208,8 @@ function fakeModel(): JsonModel & { calls: string[] } {
             subject: "Shipment delay follow-up",
             body: `Following up on the shipment delay. [source:${data.evidence[0]?.sourceId ?? "missing"}]`,
           } as T;
+        case "document draft":
+          return { title: "Vendor follow-up", body: "- Shipment delayed" } as T;
         case "escalation draft":
           return {
             subject: `Approve: ${data.commitment}`,
@@ -446,6 +470,21 @@ describe("meeting actions", () => {
     assert.equal(matches.length, 1, "the second mention must not create a duplicate action");
     assert.equal(matches[0]!.id, first!.id);
     assert.equal(matches[0]!.version, 2, "the repeated mention should update, bumping the version");
+    assert.equal(errors.length, 0);
+  });
+
+  test("dedupe: a later mention that settles the kind changes the action's kind with its payload", async () => {
+    const { service, errors } = setup();
+    const meeting = await service.start({ title: "Vendor check-in 3", employeeId: "emp-1" });
+    await service.append(meeting.meetingId, [{ speaker: "Dana", text: "I'll write up the written follow-up for the vendor." }]);
+    await service.idle(meeting.meetingId);
+    assert.equal((await actionFor(service, meeting.meetingId, "followup:vendor"))!.kind, "doc_draft");
+
+    await service.append(meeting.meetingId, [{ speaker: "Dana", text: "I'll send that vendor follow-up as an email." }]);
+    await service.idle(meeting.meetingId);
+    const updated = (await actionFor(service, meeting.meetingId, "followup:vendor"))!;
+    assert.equal(updated.kind, "email_draft", "the kind follows the payload, or approval would run the wrong action");
+    assert.ok("subject" in updated.payload);
     assert.equal(errors.length, 0);
   });
 

@@ -493,6 +493,10 @@ export class MeetingService implements MeetingActions {
       }
       const { action, trace } = await this.mutate(meetingId, (state) => {
         const target = state.actions.find((entry) => entry.id === existing.id)!;
+        // A later mention can settle what the commitment is ("a written
+        // follow-up", then "the follow-up email"): the payload is drafted for
+        // the new kind, so the kind must follow or it would execute wrongly.
+        target.kind = candidate.kind;
         target.payload = draft.payload;
         target.evidence = draft.evidence;
         if (draft.missing && draft.missing.length > 0) target.missing = draft.missing;
