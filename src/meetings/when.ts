@@ -153,9 +153,9 @@ export function formQuestions(): Record<string, { instructions: string; criteria
     kind: {
       instructions: "How does the text say when something will happen?",
       criteria: {
-        weekday: "names a day of the week, such as Wednesday or 周三",
+        weekday: "names a day of the week, with or without which week: Wednesday, next Friday, the Wednesday after next, 周三, 下周五, 下下周五",
         date: "names a calendar date, such as 20 October or 10月20日",
-        relative: "counts from today, such as tomorrow, 明天, or in three weeks",
+        relative: "counts days or weeks from today and names no day of the week: tomorrow, the day after tomorrow, in three weeks, 明天, 后天, 三周后",
         none: "gives no day at all, or only a vague one such as sometime next week or end of the month",
       },
     },
@@ -200,7 +200,7 @@ export function formQuestions(): Record<string, { instructions: string; criteria
       },
     },
     offset: {
-      instructions: "If the text counts days or weeks from today, how many?",
+      instructions: "If the text counts days or weeks from today without naming a day of the week, how many? A named weekday (next Friday, 下周五) is none here.",
       criteria: { none: "it does not count from today", ...Object.fromEntries(Object.keys(OFFSETS).map((key) => [key, offsetDescription(key)])) },
     },
     time: {
@@ -248,22 +248,33 @@ export class JevWhenReader implements WhenReader {
     private readonly apiKey: string,
     private readonly threshold = 0.6,
     private readonly fetchImpl: typeof fetch = fetch,
+    /** Retries after a 503 or 429, waiting 300 ms, then 600 ms. */
+    private readonly retries = 2,
   ) {}
 
   async read(said: string, meetingDay: string): Promise<WhenForm> {
     const questions = Object.fromEntries(
       Object.entries(formQuestions()).map(([id, question]) => [id, { type: "choice", ...question }]),
     );
-    const response = await this.fetchImpl("https://ai-gateway.vercel.sh/v1/evaluate", {
-      method: "POST",
-      headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json" },
-      body: JSON.stringify({
-        model: "typesafe-ai/jev",
-        state: { said, meetingDay },
-        questions,
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
+    const request = () =>
+      this.fetchImpl("https://ai-gateway.vercel.sh/v1/evaluate", {
+        method: "POST",
+        headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({
+          model: "typesafe-ai/jev",
+          state: { said, meetingDay },
+          questions,
+        }),
+        signal: AbortSignal.timeout(15_000),
+      });
+    // On the free tier, bursts of requests start failing with 503 (or 429)
+    // after about ten; a couple of short retries recover most of them, and
+    // FallbackWhenReader covers the rest without an unbounded wait.
+    let response = await request();
+    for (let attempt = 0; attempt < this.retries && (response.status === 503 || response.status === 429); attempt += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 300 * 2 ** attempt));
+      response = await request();
+    }
     const body = (await response.json()) as {
       answers?: Record<string, { choice?: string; probabilities?: Record<string, number> }>;
       error?: { message?: string };
@@ -312,5 +323,27 @@ export class ModelWhenReader implements WhenReader {
       ? reply.unsure.filter((entry): entry is string => typeof entry === "string").map((id) => FIELD_OF_QUESTION[id] ?? id)
       : [];
     return formFromChoices(choices, unsure);
+  }
+}
+
+/** Asks the first reader and, when its request fails, the second: a fast reader with a dependable fallback. */
+export class FallbackWhenReader implements WhenReader {
+  readonly name: string;
+
+  constructor(
+    private readonly first: WhenReader,
+    private readonly second: WhenReader,
+    private readonly onFallback: (error: unknown) => void = () => {},
+  ) {
+    this.name = `${first.name}→${second.name}`;
+  }
+
+  async read(said: string, meetingDay: string): Promise<WhenForm> {
+    try {
+      return await this.first.read(said, meetingDay);
+    } catch (error) {
+      this.onFallback(error);
+      return this.second.read(said, meetingDay);
+    }
   }
 }

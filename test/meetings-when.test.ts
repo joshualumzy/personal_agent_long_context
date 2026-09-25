@@ -91,3 +91,16 @@ describe("when readers", () => {
     assert.equal(formFromChoices({ kind: "relative", offset: "w3" }, []).offsetDays, 21);
   });
 });
+
+describe("fallback reader", () => {
+  test("uses the second reader only when the first fails", async () => {
+    const { FallbackWhenReader } = await import("../src/meetings/when.js");
+    const good = { name: "fast", read: async () => ({ kind: "none" as const, unsure: [] }) };
+    const bad = { name: "fast", read: async () => Promise.reject(new Error("503")) };
+    const backup = { name: "model", read: async () => ({ kind: "relative" as const, offsetDays: 1, unsure: [] }) };
+    const failures: unknown[] = [];
+    assert.equal((await new FallbackWhenReader(good, backup).read("x", "Friday")).kind, "none");
+    assert.equal((await new FallbackWhenReader(bad, backup, (error) => failures.push(error)).read("x", "Friday")).kind, "relative");
+    assert.equal(failures.length, 1);
+  });
+});

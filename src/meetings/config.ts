@@ -6,6 +6,7 @@ import { OpenAiCompatibleModel, type JsonModel } from "../recruiting/llm.js";
 import { ActionDrafter } from "./drafter.js";
 import type { AvailabilityChecker, ContactDirectory, HiringHandoff, QuestionAnswerer } from "./domain.js";
 import { companyContactDirectory } from "./contacts.js";
+import { FallbackWhenReader, JevWhenReader, ModelWhenReader } from "./when.js";
 import type { GoogleStatus } from "./routes.js";
 import { DispatchingExecutor } from "./executor.js";
 import { ModelCommitmentExtractor } from "./extractor.js";
@@ -86,6 +87,14 @@ export function meetingsFromEnvironment(environment: Environment, deps: MeetingD
       contacts: deps.contacts ?? null,
       records: companyContactDirectory(deps.pool),
       availability: deps.availability ?? null,
+      // Jev reads meeting times faster; the meeting model answers whenever Jev's request fails.
+      ...(environment.MEETINGS_WHEN_READER === "jev" && environment.AI_GATEWAY_API_KEY
+        ? {
+            when: new FallbackWhenReader(new JevWhenReader(environment.AI_GATEWAY_API_KEY), new ModelWhenReader(model), (error) =>
+              deps.log("Jev could not read a meeting time; used the meeting model", error),
+            ),
+          }
+        : {}),
     }),
     executor: new DispatchingExecutor({
       hiring: deps.hiring ?? null,

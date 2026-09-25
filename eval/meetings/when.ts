@@ -7,7 +7,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { OpenAiCompatibleModel, type JsonModel } from "../../src/recruiting/llm.js";
-import { JevWhenReader, ModelWhenReader, resolveWhen, type WhenReader } from "../../src/meetings/when.js";
+import { FallbackWhenReader, JevWhenReader, ModelWhenReader, resolveWhen, type WhenReader } from "../../src/meetings/when.js";
 
 interface Case {
   said: string;
@@ -32,6 +32,16 @@ function readers(names: string[]): WhenReader[] {
     chosen.push(new ModelWhenReader(model));
   }
   if (names.includes("jev")) chosen.push(new JevWhenReader(process.env.AI_GATEWAY_API_KEY!));
+  if (names.includes("jev+qwen")) {
+    const base = new OpenAiCompatibleModel({
+      baseUrl: process.env.SOCLAAS_BASE_URL!,
+      apiKey: process.env.SOCLAAS_API_KEY!,
+      model: process.env.MEETINGS_MODEL ?? "qwen3.8:27b",
+      timeoutMs: 90_000,
+    });
+    const model: JsonModel = { json: (request) => base.json({ ...request, fast: true }) };
+    chosen.push(new FallbackWhenReader(new JevWhenReader(process.env.AI_GATEWAY_API_KEY!), new ModelWhenReader(model)));
+  }
   return chosen;
 }
 
