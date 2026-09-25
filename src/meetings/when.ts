@@ -1,4 +1,5 @@
 import type { JsonModel } from "../recruiting/llm.js";
+import { askJev } from "./jev.js";
 
 /**
  * "When" in a meeting, read in two steps. A reader (a model) fills a small
@@ -294,40 +295,14 @@ export class JevWhenReader implements WhenReader {
 
   async read(said: string, meetingDay: string): Promise<WhenForm> {
     const questions = Object.fromEntries(
-      Object.entries(formQuestions()).map(([id, question]) => [id, { type: "choice", ...question }]),
+      Object.entries(formQuestions()).map(([id, question]) => [id, { type: "choice" as const, ...question }]),
     );
-    const request = () =>
-      this.fetchImpl("https://ai-gateway.vercel.sh/v1/evaluate", {
-        method: "POST",
-        headers: { authorization: `Bearer ${this.apiKey}`, "content-type": "application/json" },
-        body: JSON.stringify({
-          model: "typesafe-ai/jev",
-          state: { said, meetingDay },
-          questions,
-        }),
-        signal: AbortSignal.timeout(15_000),
-      });
-    // The service returns an occasional 503, sometimes in runs. Measured on
-    // 25 back-to-back requests, an immediate retry succeeded every time, and
-    // waiting between tries only added delay, so retries do not wait;
-    // FallbackWhenReader covers a run of failures.
-    let response = await request();
-    for (let attempt = 0; attempt < this.retries && (response.status === 503 || response.status === 429); attempt += 1) {
-      response = await request();
-    }
-    const body = (await response.json()) as {
-      answers?: Record<string, { choice?: string; probabilities?: Record<string, number> }>;
-      error?: { message?: string };
-    };
-    if (!response.ok || !body.answers) {
-      throw new Error(`Jev request failed (HTTP ${response.status}): ${body.error?.message ?? "no answers"}`);
-    }
+    const answers = await askJev(this.apiKey, { said, meetingDay }, questions, { fetchImpl: this.fetchImpl, retries: this.retries });
     const choices: Record<string, string | undefined> = {};
     const unsure: string[] = [];
-    for (const [id, answer] of Object.entries(body.answers)) {
+    for (const [id, answer] of Object.entries(answers)) {
       choices[id] = answer.choice;
-      const probability = answer.choice ? answer.probabilities?.[answer.choice] ?? 0 : 0;
-      if (answer.choice && answer.choice !== "none" && probability < this.threshold) unsure.push(FIELD_OF_QUESTION[id] ?? id);
+      if (answer.choice && answer.choice !== "none" && answer.probability < this.threshold) unsure.push(FIELD_OF_QUESTION[id] ?? id);
     }
     return formFromChoices(choices, unsure);
   }

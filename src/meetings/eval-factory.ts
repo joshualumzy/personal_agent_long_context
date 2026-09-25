@@ -2,7 +2,8 @@ import { loadEnvFile } from "node:process";
 import { PostgresCompanyKnowledge } from "../adapters/postgres-company-knowledge.js";
 import { OpenAiCompatibleModel, type JsonModel } from "../recruiting/llm.js";
 import { SoCLaaSCompanyAgent } from "../soclaas-company-agent.js";
-import { ActionDrafter } from "./drafter.js";
+import { ActionDrafter, checkConflicts } from "./drafter.js";
+import { jevConflictChecker, type ConflictChecker } from "./jev.js";
 import type { MeetingActions } from "./domain.js";
 import { DispatchingExecutor } from "./executor.js";
 import { ModelCommitmentExtractor } from "./extractor.js";
@@ -35,7 +36,25 @@ export default function createMeetingActions(): MeetingActions {
     apiKey: SOCLAAS_API_KEY,
     ...(SOCLAAS_BASE_URL ? { baseUrl: SOCLAAS_BASE_URL } : {}),
   });
+  // MEETINGS_JUDGE=jev evaluates the Jev conflict check, logging who decided each decision.
+  let conflictChecker: ConflictChecker | undefined;
+  if (process.env.MEETINGS_JUDGE === "jev" && process.env.AI_GATEWAY_API_KEY) {
+    const byModel: ConflictChecker = async (decision, priors, k) => {
+      console.error(`[judge] meeting model checked: ${decision.text.slice(0, 60)}`);
+      return checkConflicts(model, decision, priors, k);
+    };
+    const jev = jevConflictChecker(process.env.AI_GATEWAY_API_KEY, byModel, {
+      onFallback: (reason) => console.error(`[judge] Jev fell back: ${reason.slice(0, 80)}`),
+    });
+    conflictChecker = async (decision, priors, k) => {
+      const started = Date.now();
+      const result = await jev(decision, priors, k);
+      console.error(`[judge] conflict check ${Date.now() - started} ms -> ${result ? result.explanation.slice(0, 90) : "no conflict"}`);
+      return result;
+    };
+  }
   return new MeetingService({
+    ...(conflictChecker ? { conflictChecker } : {}),
     store: new InMemoryMeetingStore(),
     extractor: new ModelCommitmentExtractor(model),
     drafter: new ActionDrafter({ model, knowledge, answerer }),

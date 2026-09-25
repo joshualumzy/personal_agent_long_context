@@ -7,6 +7,8 @@ import { ActionDrafter } from "./drafter.js";
 import type { AvailabilityChecker, ContactDirectory, HiringHandoff, QuestionAnswerer } from "./domain.js";
 import { companyContactDirectory } from "./contacts.js";
 import { FallbackWhenReader, JevWhenReader, ModelWhenReader } from "./when.js";
+import { checkConflicts } from "./drafter.js";
+import { jevConflictChecker } from "./jev.js";
 import type { GoogleStatus } from "./routes.js";
 import { DispatchingExecutor } from "./executor.js";
 import { ModelCommitmentExtractor } from "./extractor.js";
@@ -105,6 +107,17 @@ export function meetingsFromEnvironment(environment: Environment, deps: MeetingD
     knowledge: deps.knowledge,
     model,
     onError: deps.log,
+    // MEETINGS_JUDGE=jev: Jev decides whether a decision contradicts an earlier
+    // one when it is at least 60% sure; otherwise the meeting model checks.
+    ...(environment.MEETINGS_JUDGE === "jev" && environment.AI_GATEWAY_API_KEY
+      ? {
+          conflictChecker: jevConflictChecker(
+            environment.AI_GATEWAY_API_KEY,
+            (decision, priors, knowledge) => checkConflicts(model, decision, priors, knowledge),
+            { onFallback: (reason) => deps.log("Conflict check fell back to the meeting model", new Error(reason)) },
+          ),
+        }
+      : {}),
   });
 
   const recordings = postgresReplaySource(deps.pool);

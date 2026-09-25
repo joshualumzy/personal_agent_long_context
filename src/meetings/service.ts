@@ -3,6 +3,7 @@ import type { CompanyKnowledge } from "../company-domain.js";
 import { detectProhibitedData } from "../prohibited-data.js";
 import type { JsonModel } from "../recruiting/llm.js";
 import { checkConflicts, type DraftResult } from "./drafter.js";
+import type { ConflictChecker } from "./jev.js";
 import {
   hashPayload,
   MeetingError,
@@ -46,6 +47,8 @@ export interface MeetingServiceDependencies {
   clock?: () => Date;
   id?: () => string;
   onError?: (context: string, error: unknown) => void;
+  /** Checks a new decision against earlier ones; defaults to the meeting model (checkConflicts). */
+  conflictChecker?: ConflictChecker;
 }
 
 /** Statuses a repeated mention of the same commitment should never touch
@@ -585,7 +588,9 @@ export class MeetingService implements MeetingActions {
     }));
     const priorAcrossMeetings = await this.deps.store.priorDecisions(meetingId, 20);
     const priors = [...priorAcrossMeetings, ...priorInMeeting];
-    const conflict = await checkConflicts(this.deps.model, decision, priors, this.deps.knowledge);
+    const conflict = this.deps.conflictChecker
+      ? await this.deps.conflictChecker(decision, priors, this.deps.knowledge)
+      : await checkConflicts(this.deps.model, decision, priors, this.deps.knowledge);
     const segment = meeting.segments.find((entry) => entry.index === decision.segmentIndex);
 
     let createdAction: ProposedAction | null = null;
