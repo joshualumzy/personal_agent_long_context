@@ -320,12 +320,37 @@ function appendAssistantMessage(data) {
   scrollToBottom();
 }
 
+function formatRuntime(durationMs, ttftMs) {
+  if (typeof durationMs !== "number" || isNaN(durationMs)) return null;
+  const totalStr = durationMs < 1000 ? `${durationMs}ms` : `${(durationMs / 1000).toFixed(1)}s`;
+  if (typeof ttftMs === "number" && !isNaN(ttftMs) && ttftMs > 0 && ttftMs <= durationMs) {
+    const ttftStr = ttftMs < 1000 ? `${ttftMs}ms` : `${(ttftMs / 1000).toFixed(1)}s`;
+    return {
+      label: `⏱️ ${totalStr} (TTFT ${ttftStr})`,
+      tooltip: `Total runtime: ${totalStr} · Time to first token: ${ttftStr}`,
+    };
+  }
+  return {
+    label: `⏱️ ${totalStr}`,
+    tooltip: `Total runtime: ${totalStr} (${durationMs}ms)`,
+  };
+}
+
 function attachAssistantMeta(bubble, data) {
   const meta = document.createElement("div");
   meta.className = "message-meta";
 
   const contextTags = document.createElement("div");
   contextTags.className = "context-tags";
+
+  const runtime = formatRuntime(data.durationMs, data.ttftMs);
+  if (runtime) {
+    const tag = document.createElement("span");
+    tag.className = "context-tag runtime";
+    tag.textContent = runtime.label;
+    tag.title = runtime.tooltip;
+    contextTags.appendChild(tag);
+  }
 
   if (data.personalMemory) {
     if (data.personalMemory.memoryUpdated) {
@@ -471,6 +496,7 @@ async function selectConversation(conversationId, title) {
             answer: msg.content,
             sources: msg.metadata?.sources,
             personalMemory: msg.metadata?.personalMemory,
+            durationMs: typeof msg.metadata?.durationMs === "number" ? msg.metadata.durationMs : undefined,
           });
         }
       }
@@ -518,6 +544,9 @@ chatForm.addEventListener("submit", async (e) => {
   startWaitingAnimation();
   scrollToBottom();
 
+  const requestStartTime = performance.now();
+  let ttftMs = null;
+
   try {
     const payload = {
       userId: "jax",
@@ -550,6 +579,8 @@ chatForm.addEventListener("submit", async (e) => {
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("text/event-stream") || !response.body) {
       const data = await response.json();
+      const clientDurationMs = Math.round(performance.now() - requestStartTime);
+      data.durationMs = typeof data.durationMs === "number" ? data.durationMs : clientDurationMs;
       if (data.conversationId) {
         activeConversationId = data.conversationId;
         loadConversations();
@@ -596,6 +627,9 @@ chatForm.addEventListener("submit", async (e) => {
               waitingStatusText.textContent = parsed.phrase;
             }
           } else if (currentEvent === "token") {
+            if (ttftMs === null) {
+              ttftMs = Math.round(performance.now() - requestStartTime);
+            }
             if (!assistantRow) {
               stopWaitingAnimation();
               assistantRow = document.createElement("div");
@@ -626,11 +660,14 @@ chatForm.addEventListener("submit", async (e) => {
       }
     }
 
+    const clientDurationMs = Math.round(performance.now() - requestStartTime);
     if (finalPayload) {
       if (finalPayload.conversationId) {
         activeConversationId = finalPayload.conversationId;
         loadConversations();
       }
+      finalPayload.durationMs = typeof finalPayload.durationMs === "number" ? finalPayload.durationMs : clientDurationMs;
+      finalPayload.ttftMs = ttftMs;
       if (bubble) {
         attachAssistantMeta(bubble, finalPayload);
       } else {

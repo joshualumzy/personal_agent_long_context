@@ -101,6 +101,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     reply: FastifyReply,
     requestedConversationId?: string,
   ) => {
+    const turnStartTime = Date.now();
     const isStream =
       Boolean(request.headers?.accept?.includes("text/event-stream")) ||
       Boolean((request.body as Record<string, unknown> | undefined)?.stream);
@@ -210,6 +211,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           : undefined,
       );
 
+      const durationMs = Date.now() - turnStartTime;
+
       if (options.conversationStore && conversationId) {
         await options.conversationStore.appendMessage({
           conversationId,
@@ -224,6 +227,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
             },
             runId: companyAnswer.runId,
             toolCalls: companyAnswer.toolCalls,
+            durationMs,
           },
         });
       }
@@ -236,6 +240,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           sources: memorySources,
           memoryUpdated,
         },
+        durationMs,
       };
 
       if (isStream) {

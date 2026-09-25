@@ -647,6 +647,14 @@ body {
   color: #725816;
 }
 
+.context-tag.runtime {
+  background: #f1f3f5;
+  color: #495057;
+  border: 1px solid #e2e8f0;
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
 .sources-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
