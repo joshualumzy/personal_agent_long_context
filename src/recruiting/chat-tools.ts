@@ -234,6 +234,7 @@ export function statusForModel(snapshot: Snapshot) {
         name: candidate.profile.name,
         headline: candidate.profile.headline,
         tier: candidate.tier,
+        ring: candidate.tier === 100 ? "centre" : candidate.tier === 75 ? "middle" : candidate.tier === 50 ? "outer" : "not placed yet",
         stage: candidate.stage,
         kept: candidate.kept,
         email: candidate.contact ? candidate.contact.status : "none",
@@ -368,8 +369,13 @@ async function runTool(
       const redrafted = await service.setSender({ ...(name ? { name } : {}), ...(company ? { company } : {}) });
       return { content: await status({ result: `Outreach is now from ${name || "the same person"}${company ? `, ${company}` : ""}. Redrafted ${redrafted} waiting ${redrafted === 1 ? "message" : "messages"}.` }) };
     }
-    case "recruiting_find_more":
-      return { content: await status({ result: await service.findMore() }) };
+    case "recruiting_find_more": {
+      const found = await service.findMore();
+      const message = found.added
+        ? `Added ${found.added} new people; they are being scored now.`
+        : "No new people were found with new search angles. Nothing is still running; suggest relaxing a criterion.";
+      return { content: await status({ result: { ...found, message } }) };
+    }
     case "recruiting_import_profiles": {
       const urls = Array.isArray(args.urls) ? args.urls.filter((url): url is string => typeof url === "string") : [];
       return { content: await status({ result: await service.importProfiles(urls) }) };

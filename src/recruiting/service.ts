@@ -705,7 +705,15 @@ export class RecruitingService {
         at,
       });
       if (decision === "pass") this.closeCandidate(latest, target, "passed");
-      else target.kept = true;
+      else {
+        target.kept = true;
+        // Keeping someone the founder passed on is changing their mind: they come back.
+        if (target.stage === "closed" && target.closedReason === "passed") {
+          target.stage = "scored";
+          delete target.closedReason;
+          delete target.closedAt;
+        }
+      }
       this.record(
         latest,
         "candidate_feedback",

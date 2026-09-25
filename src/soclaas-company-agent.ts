@@ -37,6 +37,58 @@ export interface SoCLaaSCompanyAgentOptions {
   skills?: Skill[];
   /** Tools that become available once the model loads the matching skill. */
   extensions?: AgentExtension[];
+  /** First pause before retrying a rate-limited or failed call; doubles each time. */
+  retryBaseMs?: number;
+}
+
+/**
+ * Retries a model call that was rate limited (429), timed out, hit a server
+ * error, or never reached the server, backing off and honouring Retry-After.
+ * One busy moment should not fail a whole chat turn.
+ */
+function retrying(request: typeof globalThis.fetch, baseMs: number): typeof globalThis.fetch {
+  return (async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+    for (let attempt = 0; ; attempt += 1) {
+      let response: Response | undefined;
+      try {
+        response = await request(input, init);
+      } catch (error) {
+        if (attempt >= 3) throw error;
+      }
+      if (response && !(response.status === 429 || response.status === 408 || response.status >= 500)) return response;
+      if (response && attempt >= 3) return response;
+      const asked = Number(response?.headers.get("retry-after")) * 1000;
+      const backoff = baseMs * 2 ** attempt * (1 + Math.random() * 0.5);
+      await new Promise((resolve) => setTimeout(resolve, Math.min(Math.max(backoff, asked || 0), 30_000)));
+    }
+  }) as typeof globalThis.fetch;
+}
+
+const CJK = /[\u3400-\u9fff]/g;
+/** Mostly Chinese (or Japanese) text. */
+function isCjk(text: string): boolean {
+  const letters = text.replace(/[\s\d\p{P}\p{S}]/gu, "");
+  return letters.length > 0 && (text.match(CJK)?.length ?? 0) / letters.length > 0.3;
+}
+
+/** Collapses a reply the model wrote twice, and repeated paragraphs. */
+function withoutRepeats(text: string): string {
+  const trimmed = text.trim();
+  const half = trimmed.length / 2;
+  for (let cut = Math.floor(half) - 2; cut <= Math.ceil(half) + 2; cut += 1) {
+    const first = trimmed.slice(0, cut).trim();
+    if (first.length > 20 && first === trimmed.slice(cut).trim()) return first;
+  }
+  const seen = new Set<string>();
+  return trimmed
+    .split(/\n{2,}/)
+    .filter((paragraph) => {
+      const key = paragraph.replace(/\s+/g, " ").trim().toLowerCase();
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .join("\n\n");
 }
 
 const companyTools = [
@@ -118,6 +170,9 @@ function compactEvidence(items: Evidence[]): string {
 function citedIds(answer: string): string[] {
   return [...answer.matchAll(/\[source:([^\]\s]+)\]/gi)].map((match) => match[1]!);
 }
+
+const INSUFFICIENT_EVIDENCE_ANSWER_ZH =
+  "证据不足：我没有找到能可靠支持这个回答的公司资料。";
 
 const INSUFFICIENT_EVIDENCE_ANSWER =
   "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.";
@@ -247,7 +302,7 @@ export class SoCLaaSCompanyAgent {
     this.baseUrl = (options.baseUrl ?? "https://soclaas-api.comp.nus.edu.sg/v1").replace(/\/$/, "");
     this.model = options.model ?? "qwen3.8:27b";
     this.maxSteps = options.maxSteps ?? (options.extensions?.length ? 8 : 4);
-    this.request = options.fetch ?? globalThis.fetch;
+    this.request = retrying(options.fetch ?? globalThis.fetch, options.retryBaseMs ?? 1000);
   }
 
   /**
@@ -272,6 +327,8 @@ export class SoCLaaSCompanyAgent {
     const loadedSkills = new Set<string>();
     const blocks: ChatBlock[] = [];
     let extensionRan = false;
+    // What the model wrote alongside tool calls; often the real answer comes with the last panel call.
+    const spoken: string[] = [];
     const offeredTools = (): readonly unknown[] => [
       ...companyTools,
       ...(skills.length ? [loadSkillTool] : []),
@@ -431,12 +488,16 @@ export class SoCLaaSCompanyAgent {
           );
         }
         if (calls.length > 0) {
+          // A short preamble ("Let me check") is not part of the answer; a real paragraph is.
+          const said = rawContent?.trim();
+          if (said && said.length >= 60) spoken.push(said);
           if (isStreaming) {
             callbacks?.onResetTokens?.();
             callbacks?.onStatus?.("Investigating additional company evidence…");
           }
         } else {
           let answer = rawContent?.trim();
+          if (answer || spoken.length) answer = withoutRepeats([...spoken, answer ?? ""].join("\n\n"));
           if (!answer && !mustAnswer) {
             messages.push({ role: "user", content: "You returned nothing. Reply to the user now in plain text." });
             continue;
@@ -453,7 +514,9 @@ export class SoCLaaSCompanyAgent {
           const hasPersonalContext = Boolean(input.personalMemory && input.personalMemory.trim().length > 0);
           // A skill answers from its own state (or asks a question); company evidence, once
           // retrieved, still needs citing.
-          const groundedElsewhere = (loadedSkills.size > 0 || extensionRan) && retrieved.size === 0;
+          // Once a skill's tool ran, the answer is about that skill's state even if a company
+          // search happened earlier in the turn.
+          const groundedElsewhere = extensionRan || (loadedSkills.size > 0 && retrieved.size === 0);
           let citationCheck = validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere);
           if (citationCheck.problem) {
             if (isStreaming) {
@@ -496,14 +559,30 @@ export class SoCLaaSCompanyAgent {
             citationCheck = answer
               ? validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere, true)
               : { citedSourceIds: [], problem: "empty repair" };
+            // A repair that talks about the check itself is not an answer for the user.
+            if (answer && /citation check|source-citation/i.test(answer)) citationCheck = { citedSourceIds: [], problem: "meta" };
             if (citationCheck.problem || !answer) {
               return {
-                answer: INSUFFICIENT_EVIDENCE_ANSWER,
+                answer: isCjk(input.question) ? INSUFFICIENT_EVIDENCE_ANSWER_ZH : INSUFFICIENT_EVIDENCE_ANSWER,
                 sources: [],
                 runId,
                 toolCalls,
                 ...(blocks.length ? { blocks } : {}),
               };
+            }
+          }
+          // The system prompt asks for the user's language; when the model still answers a
+          // Chinese question in English, ask once more.
+          if (isCjk(input.question) && !/[\u3400-\u9fff]/.test(answer)) {
+            messages.push({ role: "user", content: "Reply to the user again, in the language of their message (Chinese). Same content, nothing added." });
+            const again = await this.request(`${this.baseUrl}/chat/completions`, {
+              method: "POST",
+              headers: { authorization: `Bearer ${this.options.apiKey}`, "content-type": "application/json" },
+              body: JSON.stringify({ model: this.model, messages, tools: offeredTools(), tool_choice: "none", ...this.noThinking, max_tokens: 1800 }),
+            });
+            if (again.ok) {
+              const translated = ((await again.json()) as CompletionResponse).choices?.[0]?.message?.content?.trim();
+              if (translated && (translated.match(CJK)?.length ?? 0) > 0) answer = translated;
             }
           }
           return {
