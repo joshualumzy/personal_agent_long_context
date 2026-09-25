@@ -104,3 +104,38 @@ describe("calendar availability", () => {
     assert.equal(fake.asked.length, 0);
   });
 });
+
+describe("calendar drafting guards", () => {
+  test("a start on the wrong weekday is dropped", async () => {
+    const { startMatchesNamedDay } = await import("../src/meetings/drafter.js");
+    // 2026-10-01 is a Thursday in Singapore.
+    assert.equal(startMatchesNamedDay("2026-10-01T15:00:00+08:00", "Let us review next Wednesday at 3pm."), false);
+    assert.equal(startMatchesNamedDay("2026-09-30T15:00:00+08:00", "Let us review next Wednesday at 3pm."), true);
+    assert.equal(startMatchesNamedDay("2026-09-30T15:00:00+08:00", "Let us review at 3pm."), true, "no day named, nothing to check");
+  });
+
+  test("an attendee's name becomes their address when the evidence has it", async () => {
+    const { resolveAttendees } = await import("../src/meetings/drafter.js");
+    const evidence = [{ sourceId: "e1", sourceType: "email", title: "t", excerpt: "Mona Li Technical Account Manager, Kafka mona.li@kafka.com" }];
+    assert.deepEqual(resolveAttendees(["Mona Li", "Priya", "a@b.test"], evidence), ["mona.li@kafka.com", "Priya", "a@b.test"]);
+  });
+});
+
+describe("missing-information wording", () => {
+  test("the day and time are asked for once, however the model words it", async () => {
+    const { ActionDrafter } = await import("../src/meetings/drafter.js");
+    const model: JsonModel = {
+      json: async <T>() => ({ title: "Sync", attendees: [], proposedStart: "", durationMinutes: 30, notes: "", missing: [{ need: "specific date and time", search: "", person: "" }] }) as T,
+    };
+    const knowledge: CompanyKnowledge = {
+      employee: async (employeeId) => ({ employeeId, displayName: "E", currentAssignments: [] }),
+      search: async () => [],
+      related: async () => [],
+      sources: async () => [],
+    };
+    const meeting = { meetingId: "m1", title: "t", employeeId: "jax", status: "live", startedAt: NOW.toISOString(), segments: [{ index: 0, speaker: "Jax", text: "Let's sync next week." }], decisions: [], actions: [], trace: [] } as unknown as MeetingState;
+    const candidate: CandidateAction = { kind: "calendar_draft", trigger: { segmentIndex: 0, speaker: "Jax", quote: "Let's sync next week." }, summary: "Sync next week", dedupeKey: "calendar_draft:sync", details: {} };
+    const result = await new ActionDrafter({ model, knowledge }).draft(candidate, meeting);
+    assert.deepEqual(result.missing, ["Day and time for the meeting"]);
+  });
+});

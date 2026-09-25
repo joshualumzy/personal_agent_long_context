@@ -139,6 +139,46 @@ function meetingDate(meeting: MeetingState): string {
   return `${weekday} ${local.toISOString().slice(0, 10)} (Singapore)`;
 }
 
+const SGT_MS = 8 * 3_600_000;
+const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+/** The next two weeks as "Wednesday 2026-09-30", so the model reads dates off a list instead of counting. */
+function upcomingDays(meeting: MeetingState): string[] {
+  const start = new Date(meeting.startedAt);
+  if (Number.isNaN(start.getTime())) return [];
+  return Array.from({ length: 14 }, (_, offset) => {
+    const local = new Date(start.getTime() + SGT_MS + (offset + 1) * 86_400_000);
+    return `${WEEKDAYS[local.getUTCDay()]![0]!.toUpperCase()}${WEEKDAYS[local.getUTCDay()]!.slice(1)} ${local.toISOString().slice(0, 10)}`;
+  });
+}
+
+/**
+ * The weekday a proposed start falls on must be the one the meeting named:
+ * a model that turns "next Wednesday" into a Thursday is caught here, and the
+ * time is left for the employee instead.
+ */
+export function startMatchesNamedDay(start: string, heard: string): boolean {
+  const named = WEEKDAYS.filter((day) => new RegExp(`\\b${day}\\b`, "i").test(heard));
+  if (named.length !== 1) return true;
+  const local = new Date(new Date(start).getTime() + SGT_MS);
+  return WEEKDAYS[local.getUTCDay()] === named[0];
+}
+
+/**
+ * Replaces an attendee's name with their address when the evidence holds an
+ * address whose local part carries that name (lena.gomez@… for "Lena Gomez").
+ */
+export function resolveAttendees(attendees: string[], evidence: Evidence[]): string[] {
+  const addresses = [...new Set(evidence.flatMap((item) => [...item.excerpt.matchAll(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g)].map((m) => m[0].toLowerCase())))];
+  return attendees.map((attendee) => {
+    if (/@/.test(attendee)) return attendee;
+    const words = attendee.toLowerCase().split(/\s+/).filter((word) => word.length >= 3);
+    if (words.length === 0) return attendee;
+    const match = addresses.find((address) => words.every((word) => address.split("@")[0]!.includes(word)));
+    return match ?? attendee;
+  });
+}
+
 /** Only a real date-time is kept; "next Tuesday at 10am" is left for the employee to fill in. */
 function isIsoTime(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(value) && !Number.isNaN(new Date(value).getTime());
@@ -233,13 +273,15 @@ function structuralGaps(kind: CandidateAction["kind"], payload: ActionPayload, c
   }
 }
 
-/** Two gaps are the same when they name the same need or person, or both ask for a contact detail and one names no one. */
+/** Two gaps are the same when they name the same need or person, both ask for a contact detail and one names no one, or both ask when. */
 function sameNeed(a: Gap, b: Gap): boolean {
   const contact = (gap: Gap) => /\b(e-?mail|phone|number|whatsapp|contact)\b/i.test(gap.need);
+  const when = (gap: Gap) => /\b(date|day|time|when)\b/i.test(gap.need) && !contact(gap);
   return (
     a.need.toLowerCase() === b.need.toLowerCase() ||
     (a.person !== "" && a.person.toLowerCase() === b.person.toLowerCase()) ||
-    (contact(a) && contact(b) && (a.person === "" || b.person === ""))
+    (contact(a) && contact(b) && (a.person === "" || b.person === "")) ||
+    (when(a) && when(b))
   );
 }
 
@@ -486,7 +528,8 @@ export class ActionDrafter {
       system: [
         "Write a calendar invite for a meeting commitment heard in a meeting.",
         "attendees are the names or emails actually mentioned. durationMinutes defaults to 30 when the meeting did not say.",
-        "proposedStart is an ISO 8601 time with its offset (for example 2026-10-06T10:00:00+08:00), worked out from meetingDate and the meeting's own words such as \"next Tuesday at 10am\"; times are Singapore time (+08:00) unless the meeting says otherwise. Leave it empty when the meeting named no day.",
+        "proposedStart is an ISO 8601 time with its offset (for example 2026-10-06T10:00:00+08:00), worked out from meetingDate and the meeting's own words such as \"next Tuesday at 10am\"; take the date from upcomingDays, where each date is listed with its weekday, rather than counting days. Times are Singapore time (+08:00) unless the meeting says otherwise. Leave it empty when the meeting named no day.",
+        "When the evidence gives an attendee's email address, list the address instead of the name.",
         'Reply as {"title": string, "attendees": string[], "proposedStart": string, "durationMinutes": number, "notes": string}. Leave proposedStart or notes as an empty string when unknown.',
         MISSING_RULE,
       ].join("\n"),
@@ -496,6 +539,7 @@ export class ActionDrafter {
         triggerQuote: candidate.trigger.quote,
         speaker: candidate.trigger.speaker,
         meetingDate: meetingDate(meeting),
+        upcomingDays: upcomingDays(meeting),
         meetingExcerpt: heardUpTo(meeting, candidate),
         evidence: evidenceForModel(evidence),
       },
@@ -511,11 +555,13 @@ export class ActionDrafter {
       : [];
     const duration = Number(record.durationMinutes);
     const title = text(record.title) || candidate.summary.slice(0, 78);
+    const proposedStart = text(record.proposedStart);
+    const heard = `${candidate.trigger.quote} ${candidate.summary}`;
     const payload: CalendarPayload = {
       title,
-      attendees,
+      attendees: resolveAttendees(attendees, evidence),
       durationMinutes: Number.isFinite(duration) && duration > 0 ? duration : 30,
-      ...(isIsoTime(text(record.proposedStart)) ? { proposedStart: text(record.proposedStart) } : {}),
+      ...(isIsoTime(proposedStart) && startMatchesNamedDay(proposedStart, heard) ? { proposedStart } : {}),
       ...(text(record.notes) ? { notes: text(record.notes) } : {}),
     };
     return { payload, evidence, gaps: gapsIn(record), title: `Calendar: ${title}`.slice(0, 120) };
