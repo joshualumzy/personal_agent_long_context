@@ -9,6 +9,7 @@ import { PostgresCompanyKnowledge } from "./adapters/postgres-company-knowledge.
 import { PostgresConversationStore } from "./adapters/postgres-conversations.js";
 import { SoCLaaSCompanyAgent } from "./soclaas-company-agent.js";
 import { embeddingProviderFromEnvironment } from "./embeddings.js";
+import { meetingsFromEnvironment } from "./meetings/config.js";
 
 try {
   loadEnvFile();
@@ -47,6 +48,15 @@ let logRecruitingFailure: (context: string, error: unknown) => void = () => {};
 const recruiting = recruitingFromEnvironment(process.env, memory, (context, error) =>
   logRecruitingFailure(context, error),
 );
+let logMeetingFailure: (context: string, error: unknown) => void = () => {};
+const meetings = meetingsFromEnvironment(process.env, {
+  pool: companyKnowledge.pool,
+  knowledge: companyKnowledge,
+  answerer: companyAgent,
+  email: recruiting?.gmail ?? null,
+  hiring: recruiting?.service ?? null,
+  log: (context, error) => logMeetingFailure(context, error),
+});
 const app = buildApp({
   memory,
   companyAgent,
@@ -54,7 +64,13 @@ const app = buildApp({
   conversationStore,
   logger: true,
   ...(recruiting ? { recruiting } : {}),
+  ...(meetings ? { meetings } : {}),
 });
+logMeetingFailure = (context, error) =>
+  app.log.error(
+    { context, reason: error instanceof Error ? error.message : String(error) },
+    "Meeting actions failure",
+  );
 logRecruitingFailure = (context, error) =>
   app.log.error(
     { context, reason: error instanceof Error ? error.message : String(error) },
