@@ -296,6 +296,11 @@ export class SoCLaaSCompanyAgent {
         );
         if (calls.length === 0) {
           let answer = rawContent?.trim();
+          if (!answer && !mustAnswer) {
+            // qwen occasionally ends a turn with reasoning only; drop the empty turn and ask again.
+            messages.pop();
+            continue;
+          }
           if (!answer) throw new Error("SoCLaaS returned an empty answer.");
           const hasPersonalContext = Boolean(input.personalMemory && input.personalMemory.trim().length > 0);
           let citationCheck = validateCitations(answer, retrieved, hasPersonalContext);

@@ -154,6 +154,10 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(1.7re
 .field-row { display: grid; gap: 3px; }
 .field-row label { font-size: .75rem; color: var(--muted); }
 .field-row .value { color: var(--ink); white-space: pre-wrap; line-height: 1.45; font-size: .92rem; }
+.field-row .value.markdown { white-space: normal; }
+.field-row .value.markdown p, .field-row .value.markdown ul { margin: .35rem 0; }
+.field-row .value.markdown ul { padding-left: 1.1rem; }
+.field-row .value.markdown h1, .field-row .value.markdown h2, .field-row .value.markdown h3 { font-size: .95rem; margin: .6rem 0 .2rem; }
 .field-row input, .field-row textarea { font-size: .9rem; padding: 7px 9px; }
 .field-row textarea { min-height: 64px; }
 .required-approver { font-size: .85rem; color: var(--escalate-text); font-weight: 600; }

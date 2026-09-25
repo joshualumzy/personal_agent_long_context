@@ -421,9 +421,23 @@ function renderReadonlyFields(action) {
   for (const [key, label] of spec) {
     const value = action.payload[key];
     if (value === undefined) continue;
-    wrap.append(h("div", { class: "field-row" }, h("label", {}, label), h("p", { class: "value" }, String(value))));
+    wrap.append(h("div", { class: "field-row" }, h("label", {}, label), renderValue(key, String(value))));
   }
   return wrap;
+}
+
+/**
+ * The S1 answer is Markdown. It is parsed with marked and then sanitised by
+ * DOMPurify, the same pair the main assistant page uses; everything else stays
+ * plain text, because transcript-derived text may carry injection attempts.
+ */
+function renderValue(key, value) {
+  if (key === "answer" && window.marked && window.DOMPurify) {
+    const block = h("div", { class: "value markdown" });
+    block.innerHTML = window.DOMPurify.sanitize(window.marked.parse(value));
+    return block;
+  }
+  return h("p", { class: "value" }, value);
 }
 
 function renderEditableFields(action) {

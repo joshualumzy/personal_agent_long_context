@@ -114,6 +114,17 @@ function fakeModel(): JsonModel & { calls: string[] } {
           const decisions: unknown[] = [];
           for (const segment of data.newSegments as Array<{ index: number; speaker: string; text: string }>) {
             const t = segment.text;
+            if (t.includes("Flag it to security")) {
+              candidates.push({
+                kind: "escalation",
+                segmentIndex: segment.index,
+                speaker: segment.speaker,
+                quote: "Flag it to security",
+                summary: "Flag the odd chat message to security",
+                dedupeKey: "escalation:security-flag",
+                details: {},
+              });
+            }
             if (t.includes("I'll email the vendor about the shipment delay")) {
               candidates.push({
                 kind: "email_draft",
@@ -331,6 +342,18 @@ describe("meeting actions", () => {
     assert.equal(errors.length, 0);
   });
 
+  test("an escalation the model proposes without money or contract language is dropped", async () => {
+    const { service, errors } = setup();
+    const meeting = await service.start({ title: "Team sync", employeeId: "emp-1" });
+    await service.append(meeting.meetingId, [{ speaker: "Jax", text: "Flag it to security, please." }]);
+    await service.idle(meeting.meetingId);
+
+    const state = await service.get(meeting.meetingId);
+    assert.equal(state!.actions.length, 0);
+    assert.ok(state!.trace.some((entry) => entry.detail.startsWith("Not escalated")));
+    assert.equal(errors.length, 0);
+  });
+
   test("escalation override: money language forces escalation regardless of the proposed kind", async () => {
     const { service, errors } = setup();
     const meeting = await service.start({ title: "Client call", employeeId: "emp-1" });
@@ -538,5 +561,33 @@ describe("meeting actions", () => {
       (error: unknown) => error instanceof MeetingError && error.code === "invalid_state",
     );
     assert.equal(errors.length, 0);
+  });
+});
+
+describe("explicit decision backstop", () => {
+  test("a plainly stated decision is kept even when the model misses it, and a question is not", async () => {
+    const silent: JsonModel = { json: async <T>() => ({ candidates: [], decisions: [] }) as T };
+    const extractor = new ModelCommitmentExtractor(silent);
+    const segments = [
+      { index: 0, speaker: "Morgan", text: "Decision: as agreed, we go with approach A." },
+      { index: 1, speaker: "Priya", text: "Should we go with approach B instead?" },
+      { index: 2, speaker: "Jax", text: "Let's go with 5 retries." },
+    ];
+    const meeting = {
+      meetingId: "m",
+      title: "t",
+      employeeId: "jax",
+      status: "live" as const,
+      startedAt: "2026-09-25T00:00:00.000Z",
+      segments,
+      decisions: [],
+      actions: [],
+      trace: [],
+    };
+    const result = await extractor.extract({ meeting, newSegments: segments });
+    assert.deepEqual(
+      result.decisions.map((decision) => decision.segmentIndex),
+      [0, 2],
+    );
   });
 });

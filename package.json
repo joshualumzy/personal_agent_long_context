@@ -26,7 +26,9 @@
     "linkedin:login": "node --env-file-if-exists=.env --import tsx scripts/linkedin-inbox.ts --login",
     "linkedin:sync": "node --env-file-if-exists=.env --import tsx scripts/linkedin-inbox.ts",
     "eval:recruiting:template": "node --import tsx eval/recruiting/run.ts --template",
-    "eval:recruiting": "node --env-file=.env --import tsx eval/recruiting/run.ts"
+    "eval:recruiting": "node --env-file=.env --import tsx eval/recruiting/run.ts",
+    "eval:meetings": "node --env-file=.env --import tsx eval/meetings/run.ts src/meetings/eval-factory.ts",
+    "eval:meetings:dry": "node --import tsx eval/meetings/run.ts --dry"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1139.0",

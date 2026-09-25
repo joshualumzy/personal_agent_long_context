@@ -35,6 +35,50 @@ function detailText(details: Record<string, unknown>, key: string): string {
   return text(details[key]);
 }
 
+const STOPWORDS = new Set(
+  "about after again also because been before being between both could does doing down during each from further have having here into itself just more most other over same should some such than that their them then there these they this those through under until very what when where which while will with would your yours we'll i'll let's going want need make sure today tomorrow next week meeting".split(" "),
+);
+
+/**
+ * Search terms for one action. Postgres keyword search ANDs every word, so a
+ * whole sentence rarely matches anything; instead, record IDs said in the
+ * meeting (ENG-210, ZD-101) are searched first as exact hits, then a few
+ * distinctive words joined with OR fill the rest.
+ */
+export function evidenceQueries(focus: string, meetingText: string): string[] {
+  const ids = [...new Set(`${focus} ${meetingText}`.match(/\b[A-Z]{2,}-\d+\b/g) ?? [])].slice(0, 6);
+  const words = [
+    ...new Set(
+      focus
+        .toLowerCase()
+        .match(/[a-z][a-z-]{3,}/g)
+        ?.filter((word) => !STOPWORDS.has(word)) ?? [],
+    ),
+  ].slice(0, 6);
+  return [ids.join(" or "), words.join(" or ")].filter(Boolean);
+}
+
+async function gatherEvidence(
+  knowledge: CompanyKnowledge,
+  candidate: CandidateAction,
+  meeting: MeetingState,
+  limit = 5,
+): Promise<Evidence[]> {
+  const focus = [candidate.summary, candidate.trigger.quote, detailText(candidate.details, "query")].join(" ");
+  const heard = meeting.segments
+    .filter((segment) => segment.index <= candidate.trigger.segmentIndex)
+    .map((segment) => segment.text)
+    .join(" ");
+  const found = new Map<string, Evidence>();
+  for (const query of evidenceQueries(focus, heard)) {
+    for (const item of await knowledge.search(query, limit)) {
+      if (!found.has(item.sourceId)) found.set(item.sourceId, item);
+    }
+    if (found.size >= limit) break;
+  }
+  return [...found.values()].slice(0, limit);
+}
+
 function evidenceForModel(items: Evidence[]) {
   return items.map((item) => ({ sourceId: item.sourceId, title: item.title, excerpt: item.excerpt.slice(0, 600) }));
 }
@@ -81,11 +125,11 @@ export class ActionDrafter {
       case "email_draft":
         return this.draftEmail(candidate, meeting);
       case "ticket_draft":
-        return this.draftTicket(candidate);
+        return this.draftTicket(candidate, meeting);
       case "calendar_draft":
-        return this.draftCalendar(candidate);
+        return this.draftCalendar(candidate, meeting);
       case "escalation":
-        return this.draftEscalation(candidate);
+        return this.draftEscalation(candidate, meeting);
       case "hiring_request":
         return this.draftHiring(candidate);
       case "flag_conflict":
@@ -140,8 +184,7 @@ export class ActionDrafter {
   }
 
   private async draftEmail(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
-    const query = detailText(candidate.details, "query") || candidate.summary;
-    const evidence = await this.deps.knowledge.search(query, 5);
+    const evidence = await gatherEvidence(this.deps.knowledge, candidate, meeting);
     const retrievedIds = new Set(evidence.map((item) => item.sourceId));
     const reply = await this.deps.model.json<unknown>({
       task: "email draft",
@@ -172,9 +215,8 @@ export class ActionDrafter {
     };
   }
 
-  private async draftTicket(candidate: CandidateAction): Promise<DraftResult> {
-    const query = detailText(candidate.details, "query") || candidate.summary;
-    const evidence = await this.deps.knowledge.search(query, 5);
+  private async draftTicket(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
+    const evidence = await gatherEvidence(this.deps.knowledge, candidate, meeting);
     const retrievedIds = new Set(evidence.map((item) => item.sourceId));
     const reply = await this.deps.model.json<unknown>({
       task: "ticket draft",
@@ -204,9 +246,8 @@ export class ActionDrafter {
     return { payload, evidence, title: `Ticket: ${title}`.slice(0, 120) };
   }
 
-  private async draftCalendar(candidate: CandidateAction): Promise<DraftResult> {
-    const query = detailText(candidate.details, "query") || candidate.summary;
-    const evidence = await this.deps.knowledge.search(query, 5);
+  private async draftCalendar(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
+    const evidence = await gatherEvidence(this.deps.knowledge, candidate, meeting);
     const reply = await this.deps.model.json<unknown>({
       task: "calendar draft",
       system: [
@@ -238,9 +279,8 @@ export class ActionDrafter {
     return { payload, evidence, title: `Calendar: ${title}`.slice(0, 120) };
   }
 
-  private async draftEscalation(candidate: CandidateAction): Promise<DraftResult> {
-    const query = detailText(candidate.details, "query") || candidate.summary;
-    const evidence = await this.deps.knowledge.search(query, 5);
+  private async draftEscalation(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
+    const evidence = await gatherEvidence(this.deps.knowledge, candidate, meeting);
     const retrievedIds = new Set(evidence.map((item) => item.sourceId));
     const reply = await this.deps.model.json<unknown>({
       task: "escalation draft",

@@ -389,7 +389,15 @@ export class MeetingService implements MeetingActions {
 
   private autoResult(kind: ActionKind, payload: ActionPayload): ActionResult {
     if (kind === "answer_question") {
-      return { summary: (payload as AnswerPayload).answer.slice(0, 240), simulated: false };
+      // The answer itself is on the card; the result only says what backs it.
+      const answer = payload as AnswerPayload;
+      const cited = answer.citedSourceIds.length;
+      return {
+        summary: answer.answer.startsWith("Insufficient Evidence")
+          ? "Not enough evidence to answer; closest records attached."
+          : `Answered with ${cited} cited source${cited === 1 ? "" : "s"}.`,
+        simulated: false,
+      };
     }
     if (kind === "flag_conflict") {
       return {
@@ -422,7 +430,20 @@ export class MeetingService implements MeetingActions {
   }
 
   private async processCandidate(meetingId: string, raw: CandidateAction): Promise<void> {
-    const escalateReason = mustEscalate(raw);
+    const escalateReason = mustEscalate({ summary: `${raw.summary} ${raw.trigger.quote}`, details: raw.details });
+    // Escalation is policy's call, not the model's: without money or contract
+    // language there is nobody above the employee to route it to, so it is
+    // dropped rather than parked in a queue no one owns.
+    if (raw.kind === "escalation" && !escalateReason) {
+      await this.traceOnly(
+        meetingId,
+        "tiered",
+        undefined,
+        raw.trigger.segmentIndex,
+        `Not escalated: "${raw.summary}" names no money or contract commitment.`.slice(0, 300),
+      );
+      return;
+    }
     const candidate: CandidateAction = escalateReason
       ? { ...raw, kind: "escalation", details: { ...raw.details, escalationReason: escalateReason } }
       : raw;

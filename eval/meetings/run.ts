@@ -221,6 +221,19 @@ function actionsToRecords(actions: ProposedAction[]): RunActionRecord[] {
   }));
 }
 
+/** Enough of each action to see why it fired, for the JSON report. */
+function describeAction(action: ProposedAction) {
+  return {
+    segmentIndex: action.trigger.segmentIndex,
+    kind: action.kind,
+    tier: action.tier,
+    status: action.status,
+    title: action.title,
+    quote: action.trigger.quote.slice(0, 200),
+    evidence: action.evidence.map((item) => item.sourceId),
+  };
+}
+
 interface KindStats {
   expected: number;
   actual: number;
@@ -344,6 +357,7 @@ async function main() {
   const kindStats = new Map<string, KindStats>();
   const overBlock: Counter = { opportunities: 0, hits: 0 };
   const overTrigger: Counter = { opportunities: 0, hits: 0 };
+  const details: Array<{ meeting: string; actions: ReturnType<typeof describeAction>[] }> = [];
   const dedupeResults: DedupeResult[] = [];
   const fabricationResults: FabricationResult[] = [];
 
@@ -373,21 +387,26 @@ async function main() {
       }
     }
 
+    details.push({ meeting: sc.scenario, actions: final?.actions.map(describeAction) ?? [] });
     for (const index of sc.expectedNonActions ?? []) {
       overTrigger.opportunities += 1;
-      const anyNearby = records.some((record) => Math.abs(record.segmentIndex - index) <= 1);
-      if (anyNearby) overTrigger.hits += 1;
+      // Exact index, and not an action already credited to an expected one:
+      // a correct action on the neighbouring line is not an over-trigger.
+      const stray = records.some((record, recordIndex) => record.segmentIndex === index && !used.has(recordIndex));
+      if (stray) overTrigger.hits += 1;
       overBlock.opportunities += 1;
-      const blockedNearby = records.some((record) => record.kind === "blocked" && Math.abs(record.segmentIndex - index) <= 1);
-      if (blockedNearby) overBlock.hits += 1;
+      const blockedHere = records.some(
+        (record, recordIndex) => record.kind === "blocked" && record.segmentIndex === index && !used.has(recordIndex),
+      );
+      if (blockedHere) overBlock.hits += 1;
     }
     for (const expected of sc.expectedActions ?? []) {
       if (expected.kind === "blocked") continue;
       overBlock.opportunities += 1;
-      const blockedNearby = records.some(
-        (record) => record.kind === "blocked" && Math.abs(record.segmentIndex - expected.segmentIndex) <= 1,
+      const blockedHere = records.some(
+        (record) => record.kind === "blocked" && record.segmentIndex === expected.segmentIndex,
       );
-      if (blockedNearby) overBlock.hits += 1;
+      if (blockedHere) overBlock.hits += 1;
     }
 
     for (const dedupe of sc.dedupe ?? []) {
@@ -414,6 +433,7 @@ async function main() {
     const final = await meetings.get(meeting.meetingId);
     const records = actionsToRecords(final?.actions ?? []);
     recordActuals(records);
+    details.push({ meeting: adv.id, actions: final?.actions.map(describeAction) ?? [] });
 
     if (adv.expectedKind === "none") {
       overTrigger.opportunities += 1;
@@ -509,6 +529,7 @@ async function main() {
       overTriggerRate,
       dedupe: dedupeResults,
       fabrication: fabricationResults,
+      details,
     };
     await writeFile(jsonOut, JSON.stringify(results, null, 2));
     console.log(`\nWrote ${jsonOut}`);
