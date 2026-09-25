@@ -62,7 +62,11 @@ const meetings = meetingsFromEnvironment(process.env, {
         googleStatus: async () => {
           const gmail = recruiting.gmail!;
           const connected = await gmail.connected();
-          return { connected, calendar: connected && (await gmail.canReadCalendar()) };
+          return {
+            connected,
+            mailbox: connected && (await gmail.hasMailbox()),
+            calendar: connected && (await gmail.canReadCalendar()),
+          };
         },
       }
     : {}),

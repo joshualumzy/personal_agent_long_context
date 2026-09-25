@@ -158,6 +158,21 @@ export class GmailClient {
     this.remember(token);
   }
 
+  /**
+   * True only when the connected account has a Gmail mailbox. A grant from a
+   * Google account without Gmail is "connected" yet cannot read mail, and the
+   * pages must ask for a different account rather than report it as working.
+   */
+  async hasMailbox(): Promise<boolean> {
+    if (!(await this.connected())) return false;
+    try {
+      await this.address();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async address(): Promise<string> {
     if (this.ownAddress) return this.ownAddress;
     const profile = (await this.api("users/me/profile")) as { emailAddress: string };

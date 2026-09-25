@@ -290,6 +290,7 @@ describe("recruiting flow", () => {
     const asked: Array<[string, string]> = [];
     const gmail = {
       connected: async () => true,
+      hasMailbox: async () => true,
       repliesFrom: async (address: string, since: string) => {
         asked.push([address, since]);
         return [{ from: `Bea <${address}>`, at: "2026-09-24T02:00:00.000Z", text: "Sounds good, free Tuesday afternoon" }];

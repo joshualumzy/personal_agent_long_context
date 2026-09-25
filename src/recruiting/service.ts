@@ -1012,7 +1012,7 @@ export class RecruitingService {
       integrations: {
         source: this.deps.source.name,
         contactFinders: this.deps.contactFinders.map((finder) => finder.provider),
-        gmail: this.deps.gmail ? await this.deps.gmail.connected() : null,
+        gmail: this.deps.gmail ? await this.deps.gmail.hasMailbox() : null,
       },
     };
   }

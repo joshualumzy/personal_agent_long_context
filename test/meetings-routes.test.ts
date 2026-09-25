@@ -434,12 +434,12 @@ describe("meeting routes: SSE", () => {
 
 describe("meeting routes: integrations", () => {
   test("reports the Google connection and where to connect, returning to this page", async () => {
-    const app = buildTestApp(new FakeMeetings(), { googleStatus: async () => ({ connected: true, calendar: false }) });
+    const app = buildTestApp(new FakeMeetings(), { googleStatus: async () => ({ connected: true, mailbox: true, calendar: false }) });
     after(() => app.close());
     const response = await app.inject({ method: "GET", url: "/api/v1/meetings/integrations" });
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.json(), {
-      google: { connected: true, calendar: false, connectUrl: "/api/recruiting/gmail/connect?return=/meetings" },
+      google: { connected: true, mailbox: true, calendar: false, connectUrl: "/api/recruiting/gmail/connect?return=/meetings" },
     });
   });
 

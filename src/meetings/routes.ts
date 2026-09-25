@@ -4,6 +4,8 @@ import { MeetingError } from "./domain.js";
 
 export interface GoogleStatus {
   connected: boolean;
+  /** The connected account has a Gmail mailbox (replies, contact lookups). */
+  mailbox: boolean;
   /** Calendar free/busy granted, so invites can be checked. */
   calendar: boolean;
 }
