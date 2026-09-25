@@ -261,7 +261,6 @@ export class JevWhenReader implements WhenReader {
         model: "typesafe-ai/jev",
         state: { said, meetingDay },
         questions,
-        providerOptions: { gateway: { zeroDataRetention: true } },
       }),
       signal: AbortSignal.timeout(15_000),
     });

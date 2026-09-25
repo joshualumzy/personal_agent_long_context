@@ -35,7 +35,7 @@ function readers(names: string[]): WhenReader[] {
   return chosen;
 }
 
-type Verdict = "right" | "blank" | "wrong";
+type Verdict = "right" | "blank" | "wrong" | "error";
 
 function score(expected: Case, day: string | null, time: string | null): Verdict {
   const fields: Array<[string | null, string | null]> = [
@@ -49,7 +49,7 @@ function score(expected: Case, day: string | null, time: string | null): Verdict
 
 const names = process.argv.slice(2).length ? process.argv.slice(2) : ["qwen", "jev"];
 for (const reader of readers(names)) {
-  const tally: Record<Verdict, number> = { right: 0, blank: 0, wrong: 0 };
+  const tally: Record<Verdict, number> = { right: 0, blank: 0, wrong: 0, error: 0 };
   const latencies: number[] = [];
   console.log(`\n## ${reader.name}\n`);
   console.log("| said | expected | got | verdict | ms |\n|---|---|---|---|---:|");
@@ -57,21 +57,23 @@ for (const reader of readers(names)) {
     const started = performance.now();
     let got = { day: null as string | null, time: null as string | null };
     let note = "";
+    let failed = false;
     try {
       const form = await reader.read(item.said, meetingDay);
       const reading = resolveWhen(form, meetingAt);
       got = { day: reading.date ?? null, time: reading.start?.slice(11, 16) ?? null };
       if (form.unsure.length) note = ` (unsure: ${form.unsure.join(", ")})`;
     } catch (error) {
+      failed = true;
       note = ` (error: ${error instanceof Error ? error.message.slice(0, 80) : String(error)})`;
     }
     const ms = Math.round(performance.now() - started);
     latencies.push(ms);
-    const verdict = score(item, got.day, got.time);
+    const verdict: Verdict = failed ? "error" : score(item, got.day, got.time);
     tally[verdict] += 1;
     console.log(`| ${item.said} | ${item.day ?? "—"} ${item.time ?? ""} | ${got.day ?? "—"} ${got.time ?? ""}${note} | ${verdict} | ${ms} |`);
   }
   latencies.sort((a, b) => a - b);
-  console.log(`\n${reader.name}: right ${tally.right}, left blank ${tally.blank}, WRONG ${tally.wrong} of ${file.cases.length}; median ${latencies[Math.floor(latencies.length / 2)]} ms`);
+  console.log(`\n${reader.name}: right ${tally.right}, left blank ${tally.blank}, WRONG ${tally.wrong}, errors ${tally.error} of ${file.cases.length}; median ${latencies[Math.floor(latencies.length / 2)]} ms`);
 }
 
