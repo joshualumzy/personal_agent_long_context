@@ -376,6 +376,10 @@ describe("recruiting routes", () => {
     const app = buildApp({ memory: new DeterministicMemoryProvider(), recruiting: { service, gmail: null } });
     const page = await app.inject({ method: "GET", url: "/recruiting" });
     assert.equal(page.statusCode, 200);
+    for (const asset of ["/recruiting/app.js", "/recruiting/styles.css"]) {
+      assert.ok(page.body.includes(asset));
+      assert.equal((await app.inject({ method: "GET", url: asset })).statusCode, 200);
+    }
 
     const early = await app.inject({ method: "POST", url: "/api/recruiting/confirm", payload: {} });
     assert.equal(early.statusCode, 409);

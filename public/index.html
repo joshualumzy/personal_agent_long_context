@@ -5,155 +5,168 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Deliberately submit a Transcript and inspect the Memory retained by your Personal Context Agent."
+      content="Read-only workplace assistant for SME employees, grounded in verified OrgForge evidence and Letta working context."
     />
-    <title>Personal Context Agent</title>
+    <title>SME Employee Assistant</title>
     <link rel="stylesheet" href="/styles.css" />
+    <script src="/vendor/marked.js" defer></script>
+    <script src="/vendor/dompurify.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
   <body>
-    <main>
-      <header class="hero">
-        <p class="eyebrow">Personal Context Agent</p>
-        <h1>Carry the useful context forward.</h1>
-        <p>
-          Submit a dated Transcript so the agent can retain useful personal context for later
-          assistance. This prototype processes only material you deliberately provide; it is not
-          for ambient, covert, or unknown-speaker recordings.
-        </p>
-      </header>
+    <div class="app-layout">
+      <!-- Left Sidebar for Chat History -->
+      <aside class="chat-sidebar" id="sidebar">
+        <div class="sidebar-header">
+          <div class="sidebar-brand">
+            <span class="sidebar-brand-icon">🏢</span>
+            <span class="sidebar-brand-name">SME Assistant</span>
+          </div>
+          <button type="button" id="collapse-sidebar-btn" class="sidebar-action-btn" title="Minimize sidebar (⌘B)" aria-label="Minimize sidebar">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect width="18" height="18" x="3" y="3" rx="2" />
+              <path d="M9 3v18" />
+              <path d="m14 9-3 3 3 3" />
+            </svg>
+          </button>
+        </div>
 
-      <section class="panel" aria-labelledby="submit-heading">
-        <div class="section-heading">
-          <span>01</span>
+        <div class="sidebar-new-chat-wrapper">
+          <button type="button" id="new-chat-btn" class="new-chat-btn" title="Start a new chat">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>New Chat</span>
+          </button>
+        </div>
+
+        <div class="sidebar-history">
+          <div class="sidebar-label">Recent Conversations</div>
+          <div class="conversations-list" id="conversations-list">
+            <div class="conversations-empty">No saved chats yet</div>
+          </div>
+        </div>
+
+        <div class="sidebar-footer">
+          <div class="sidebar-user">
+            <div class="avatar" aria-hidden="true">J</div>
+            <div class="user-meta">
+              <strong>Jax</strong>
+              <small>Backend Engineer</small>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Sidebar backdrop overlay on mobile -->
+      <div id="sidebar-overlay" class="sidebar-overlay" hidden></div>
+
+      <!-- Main Chat Area -->
+      <div class="chat-panel">
+        <header class="app-header">
+          <div class="header-content">
+            <div class="brand">
+              <button type="button" id="toggle-sidebar-btn" class="sidebar-toggle-btn" aria-label="Toggle sidebar" title="Toggle sidebar (⌘B)">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <rect width="18" height="18" x="3" y="3" rx="2" />
+                  <path d="M9 3v18" />
+                </svg>
+              </button>
+              <div class="header-titles">
+                <span class="eyebrow">Workplace Context Agent</span>
+                <h1 id="current-chat-title">SME Assistant</h1>
+              </div>
+            </div>
+            <div class="employee-badge">
+              <button type="button" id="inspect-memory-btn" class="pill-btn" title="Inspect what Letta remembers about your working context">
+                🧠 Working Context
+              </button>
+            </div>
+          </div>
+        </header>
+
+        <main class="chat-main">
+          <div id="messages-container" class="messages-container">
+            <div id="empty-state" class="empty-state">
+              <div class="empty-icon">🏢</div>
+              <h2>How can I help you today, Jax?</h2>
+              <p>
+                I answer questions grounded in verified OrgForge company evidence, and remember your working context across sessions.
+              </p>
+              <div class="suggestion-chips">
+                <button type="button" class="chip">What is Project Titan?</button>
+                <button type="button" class="chip">What is our policy on production deployment freeze?</button>
+                <button type="button" class="chip">I am working on the telemetry migration service.</button>
+                <button type="button" class="chip">What projects or focus areas am I working on?</button>
+              </div>
+            </div>
+            <div id="chat-messages" class="chat-messages"></div>
+            <div id="status-indicator" class="status-indicator" hidden>
+              <span class="spinner" aria-hidden="true"></span>
+              <span id="status-text">Investigating company evidence…</span>
+            </div>
+          </div>
+
+          <div class="input-container">
+            <form id="chat-form" class="chat-form">
+              <div class="input-wrapper">
+                <textarea
+                  id="message-input"
+                  name="message"
+                  placeholder="Ask about company knowledge or share a working update… (Enter to send, Shift+Enter for newline)"
+                  rows="1"
+                  required
+                  aria-label="Message for workplace assistant"
+                ></textarea>
+                <button type="submit" id="send-button" class="send-btn" aria-label="Send message">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <line x1="22" y1="2" x2="11" y2="13"></line>
+                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                  </svg>
+                </button>
+              </div>
+              <div class="input-footer">
+                <p class="privacy-note">
+                  🔒 Evidence-grounded & read-only. Basic prohibited-data filtering automatically blocks credentials, API tokens, and sensitive personal identifiers.
+                </p>
+              </div>
+            </form>
+          </div>
+        </main>
+      </div>
+
+      <!-- Source Inspection Dialog -->
+      <dialog id="source-dialog" aria-labelledby="source-title">
+        <div class="dialog-header">
           <div>
-            <h2 id="submit-heading">Submit a Transcript</h2>
-            <p>Your text is sent to the server-side adapter, then to your user-scoped Letta agent.</p>
+            <span id="source-type" class="source-tag"></span>
+            <h2 id="source-title"></h2>
+            <p id="source-meta" class="source-meta"></p>
           </div>
+          <button type="button" id="close-source" class="close-btn" aria-label="Close source view">✕</button>
         </div>
+        <div class="dialog-body">
+          <pre id="source-body"></pre>
+        </div>
+      </dialog>
 
-        <form id="transcript-form" novalidate>
-          <div class="field-grid">
-            <label>
-              User identifier
-              <input id="user-id" name="userId" value="demo-user" required maxlength="128" />
-            </label>
-            <label>
-              Source identifier
-              <input
-                id="source-id"
-                name="sourceId"
-                placeholder="voice-note-001"
-                required
-                maxlength="128"
-              />
-            </label>
-          </div>
-
-          <label>
-            Recorded time
-            <input id="recorded-at" name="recordedAt" type="datetime-local" required />
-            <small>This is kept separate from the time the server receives your submission.</small>
-          </label>
-
-          <label>
-            Transcript
-            <textarea
-              id="transcript"
-              name="transcript"
-              rows="8"
-              maxlength="50000"
-              placeholder="Today I decided…"
-              required
-            ></textarea>
-          </label>
-
-          <fieldset>
-            <legend>Consent Attestation <span aria-hidden="true">*</span></legend>
-            <p class="field-help">
-              Confirm one statement before processing. This is your attestation, not technical or
-              legal verification of consent.
-            </p>
-            <label class="choice">
-              <input
-                type="radio"
-                name="attestation"
-                value="uploader_only_identifiable_speaker"
-              />
-              <span>I am the only identifiable speaker.</span>
-            </label>
-            <label class="choice">
-              <input
-                type="radio"
-                name="attestation"
-                value="all_identifiable_speakers_agreed"
-              />
-              <span
-                >Every identifiable speaker agreed to the relevant recording or creation,
-                transcription, and memory processing.</span
-              >
-            </label>
-          </fieldset>
-
-          <div class="form-footer">
-            <p>
-              Do not submit credentials, authentication secrets, payment or bank details, private
-              keys, or government identifiers. The server applies basic prohibited-data filtering
-              to catch obvious cases before anything reaches your agent. It is a narrow safety
-              gate, not full detection of every kind of personal data.
-            </p>
-            <button id="submit-button" type="submit" disabled>Submit Transcript</button>
-          </div>
-          <output id="submission-result" class="result" aria-live="polite"></output>
-        </form>
-      </section>
-
-      <section class="panel" aria-labelledby="question-heading">
-        <div class="section-heading">
-          <span>02</span>
+      <!-- Memory Inspection Dialog -->
+      <dialog id="memory-dialog" aria-labelledby="memory-title">
+        <div class="dialog-header">
           <div>
-            <h2 id="question-heading">Ask about retained Memory</h2>
-            <p>
-              Your question goes to the same server-side adapter, which routes it to your
-              user-scoped Letta agent. The answer uses the Memory that agent retained.
-            </p>
+            <span class="source-tag">Letta Working Context</span>
+            <h2 id="memory-title">Jax's Active Working Memory</h2>
+            <p class="source-meta">Durable context retained across sessions</p>
+          </div>
+          <button type="button" id="close-memory" class="close-btn" aria-label="Close memory view">✕</button>
+        </div>
+        <div class="dialog-body">
+          <div id="memory-items-list" class="memory-items-list">
+            <p class="loading-text">Loading retained context…</p>
           </div>
         </div>
-
-        <form id="question-form" novalidate>
-          <label>
-            Question
-            <textarea
-              id="question"
-              name="question"
-              rows="3"
-              maxlength="2000"
-              placeholder="When do I plan my week?"
-              required
-            ></textarea>
-          </label>
-          <div class="form-footer">
-            <p>Answers are grounded in retained Memory, not in this page.</p>
-            <button id="ask-button" type="submit">Ask</button>
-          </div>
-          <output id="answer-result" class="result" aria-live="polite"></output>
-          <div id="answer" class="answer" aria-live="polite"></div>
-        </form>
-      </section>
-
-      <section class="panel" aria-labelledby="memory-heading">
-        <div class="section-heading">
-          <span>03</span>
-          <div>
-            <h2 id="memory-heading">Inspect retained Memory</h2>
-            <p>Review the Memory Letta currently exposes for this user.</p>
-          </div>
-        </div>
-        <button id="refresh-memory" class="secondary" type="button">Refresh Memory</button>
-        <div id="memory-list" class="memory-list" aria-live="polite">
-          <p class="empty">Submit a Transcript or refresh to inspect Memory.</p>
-        </div>
-      </section>
-    </main>
+      </dialog>
+    </div>
   </body>
 </html>

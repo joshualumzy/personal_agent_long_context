@@ -55,10 +55,20 @@ export interface MemoryAnswer {
   runRef?: string;
 }
 
+export interface WorkingContextResult {
+  contextConsidered: string;
+  memoryUpdated: boolean;
+  sources: SourceReference[];
+}
+
 export interface MemoryProvider {
   ingest(transcript: AcceptedTranscript): Promise<{ agentRef: string }>;
   inspect(userId: string): Promise<MemoryInspection>;
   ask(question: AcceptedQuestion): Promise<MemoryAnswer>;
+  processWorkingContext?(input: {
+    userId: string;
+    message: string;
+  }): Promise<WorkingContextResult>;
   close?(): Promise<void>;
 }
 

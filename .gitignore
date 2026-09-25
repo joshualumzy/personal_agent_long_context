@@ -1,9 +1,12 @@
 # Dependencies and generated output
 node_modules/
+.venv/
 coverage/
 dist/
 *.tsbuildinfo
 *.log
+__pycache__/
+*.py[cod]
 
 # Local environment and credential files
 .env
@@ -18,6 +21,10 @@ credentials.json
 credentials.*.json
 secrets.json
 secrets.*.json
+
+# Local PostgreSQL state and generated ingestion files
+.postgres-data/
+tmp/orgforge/
 
 # Local Letta agents, provider configuration, transcripts, and Memory
 .letta/
