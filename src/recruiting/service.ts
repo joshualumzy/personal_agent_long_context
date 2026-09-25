@@ -31,7 +31,6 @@ import {
   type RecruitingState,
   type Tier,
 } from "./domain.js";
-import { protectedCharacteristic } from "./fairness.js";
 import type { GmailClient } from "./gmail.js";
 import type { IntentMemory } from "./intent-memory.js";
 import type { JsonModel } from "./llm.js";
@@ -267,12 +266,6 @@ export class RecruitingService {
     return state.criteria.filter((criterion) => criterion.active);
   }
 
-  private fairnessCheck(texts: string[]) {
-    return texts
-      .map((text) => ({ text, characteristic: protectedCharacteristic(text) }))
-      .filter((entry): entry is { text: string; characteristic: string } => entry.characteristic !== null);
-  }
-
   // ------------------------------------------------------------------ role
 
   /** Turns the founder's requirement into proposed criteria awaiting confirmation. */
@@ -282,11 +275,7 @@ export class RecruitingService {
       throw new RecruitingError("invalid_request", "Describe the role in a sentence or more.");
     }
     const brief = await extractBrief(this.deps.model, trimmed);
-    const caught = this.fairnessCheck(brief.criteria.map((criterion) => criterion.text));
-    const kept = brief.criteria.filter(
-      (criterion) => !caught.some((entry) => entry.text === criterion.text),
-    );
-    const refused = [...brief.excluded, ...caught];
+    const kept = brief.criteria;
     return this.mutate((state) => {
       const at = this.now(state).toISOString();
       Object.assign(state, emptyState(), { clockOffsetDays: state.clockOffsetDays });
@@ -303,20 +292,12 @@ export class RecruitingService {
       return {
         intent: "start",
         message: `Proposed ${kept.length} criteria for ${brief.title}. Check them, then confirm.`,
-        ...(refused.length ? { refused } : {}),
       };
     });
   }
 
   /** The founder edits the proposed criteria once before confirming. */
   async reviseDraft(criteria: { id?: string; text: string; kind: CriterionKind }[]) {
-    const refused = this.fairnessCheck(criteria.map((criterion) => criterion.text));
-    if (refused.length) {
-      throw new RecruitingError(
-        "protected_characteristic",
-        `"${refused[0]!.text}" selects on ${refused[0]!.characteristic}, which hiring criteria may not do.`,
-      );
-    }
     return this.mutate((state) => {
       if (!state.role || state.role.confirmed) {
         throw new RecruitingError("invalid_state", "There are no draft criteria to revise.", 409);
@@ -610,16 +591,7 @@ export class RecruitingService {
     if (operations.length === 0) {
       return { intent: "criteria", message: "I understood a change to the criteria but not what to change." };
     }
-    const refused = this.fairnessCheck(
-      operations.flatMap((operation) =>
-        operation.op === "add" || operation.op === "edit" ? [operation.text] : [],
-      ),
-    );
-    const allowed = operations.filter(
-      (operation) =>
-        !((operation.op === "add" || operation.op === "edit") &&
-          refused.some((entry) => entry.text === operation.text)),
-    );
+    const allowed = operations;
     const result = await this.mutate((state) => {
       this.requireRole(state);
       const summary = this.applyOperations(state, allowed, "stated");
@@ -640,7 +612,6 @@ export class RecruitingService {
     return {
       intent: "criteria",
       message: result.length ? `Updated: ${result.join("; ")}.` : "Nothing changed.",
-      ...(refused.length ? { refused } : {}),
     };
   }
 
@@ -652,8 +623,6 @@ export class RecruitingService {
     const at = this.now(state).toISOString();
     const summary: string[] = [];
     for (const operation of operations) {
-      // Every path that changes criteria passes here; none may select on a protected characteristic.
-      if ((operation.op === "add" || operation.op === "edit") && protectedCharacteristic(operation.text)) continue;
       if (operation.op === "add") {
         const id = randomUUID().slice(0, 8);
         state.criteria.push({ id, text: operation.text, kind: operation.kind, origin, active: true, createdAt: at });
@@ -781,7 +750,7 @@ export class RecruitingService {
       state.criteria,
       this.settings.preferenceThreshold,
     );
-    if (!finding || protectedCharacteristic(finding.text)) return;
+    if (!finding) return;
 
     await this.mutate((latest) => {
       if (latest.proposals.some((proposal) => proposal.type === "criterion" && proposal.status === "pending")) {

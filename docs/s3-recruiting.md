@@ -13,7 +13,7 @@ A small-company founder states a hiring need by voice, typing, or file; the agen
 | Relationship to the product | Same Letta memory base. The founder's hiring intent is Memory; candidate records are not. |
 | Who is the user | A founder hiring for their own small company. One open role at a time. |
 | Requirement input | Typed, dictated (the laptop's own dictation tool), or an uploaded file (txt, md, pdf, docx). All become text. The founder can also paste LinkedIn links of people already in mind; they join the pool and are scored like everyone else. |
-| Criteria | The agent splits the requirement into 3–6 criteria, each `must` or `nice`. The founder confirms once. Discriminatory criteria (age, gender, race, religion, marital or family status, pregnancy, disability, nationality) are refused. |
+| Criteria | The agent splits the requirement into 3–6 criteria, each `must` or `nice`. The founder confirms once. |
 | Candidate source | Exa Search with `category: "people"` (free tier: $20 once plus $10 a month, about 2,800 searches). Websets are not used: their API needs a paid plan. |
 | Scoring | Our own LLM judges each criterion `yes` / `no` / `unclear` with a reason, in the shape Exa Websets uses. Verdicts are cached per candidate and criterion, so a new criterion only costs one judgement per candidate. |
 | Tiers | 100%: every criterion `yes`. 75%: every must `yes`, some nice missing. 50%: exactly one must `no` or `unclear`. Anything worse leaves the pool. |

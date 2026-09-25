@@ -5,7 +5,6 @@ import { buildApp } from "../src/http-app.js";
 import { privateRemarksIn } from "../src/recruiting/agent.js";
 import type { ContactFinder } from "../src/recruiting/contacts.js";
 import type { Candidate, CandidateProfile, Criterion } from "../src/recruiting/domain.js";
-import { protectedCharacteristic } from "../src/recruiting/fairness.js";
 import { LocalIntentMemory } from "../src/recruiting/intent-memory.js";
 import type { JsonModel } from "../src/recruiting/llm.js";
 import { RecruitingService } from "../src/recruiting/service.js";
@@ -73,7 +72,6 @@ function fakeModel(): JsonModel & { calls: string[] } {
               { text: "typescript", kind: "must" },
               { text: "startup", kind: "must" },
               { text: "rust", kind: "nice" },
-              { text: "under 30", kind: "must" },
             ],
             query: "typescript startup engineer singapore",
           } as T;
@@ -220,22 +218,10 @@ describe("tiers", () => {
   });
 });
 
-describe("fairness", () => {
-  test("refuses criteria on protected characteristics and keeps job-relevant ones", () => {
-    for (const text of ["under 30", "Must be male", "Singaporeans only", "no kids", "年轻"]) {
-      assert.notEqual(protectedCharacteristic(text), null, text);
-    }
-    for (const text of ["Over 10 years of experience", "Fluent in Chinese", "Built single-page apps", "Serves Indian market"]) {
-      assert.equal(protectedCharacteristic(text), null, text);
-    }
-  });
-});
-
 describe("recruiting flow", () => {
-  test("proposes criteria without the protected one and reports the refusal", async () => {
+  test("proposes criteria for review before searching", async () => {
     const { service } = setup();
-    const result = await service.start("We need a founding backend engineer in Singapore who knows TypeScript.");
-    assert.deepEqual(result.refused, [{ text: "under 30", characteristic: "age" }]);
+    await service.start("We need a founding backend engineer in Singapore who knows TypeScript.");
     const snapshot = await service.snapshot();
     assert.deepEqual(snapshot.criteria.map((c) => c.text), ["typescript", "startup", "rust"]);
     assert.equal(snapshot.role?.confirmed, false);
@@ -249,16 +235,12 @@ describe("recruiting flow", () => {
     assert.equal(memory.events[0]?.kind, "criteria_confirmed");
   });
 
-  test("a spoken criteria change rescores and refuses discriminatory additions", async () => {
+  test("a spoken criteria change rescores", async () => {
     const { service } = await confirmed();
     const changed = await service.say("Actually Rust is required");
     assert.equal(changed.intent, "criteria");
     await service.settle();
     assert.equal((await tiers(service)).b, 50);
-
-    const refused = await service.say("Only women please");
-    assert.deepEqual(refused.refused, [{ text: "women only", characteristic: "sex or gender" }]);
-    assert.equal((await service.snapshot()).criteria.some((c) => c.text === "women only"), false);
   });
 
   test("two passes for the same reason become a proposal that only applies once accepted", async () => {

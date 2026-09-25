@@ -244,3 +244,17 @@ after.
   also clears it on the server.
 Still deferred (layout): `h09` panel height, `h23` two proposals in a small
 embedded panel.
+
+## Fairness check removed (2026-09-26, owner's decision)
+
+The owner removed the check that refused criteria on protected
+characteristics. It blocked real, lawful requirements ("新加坡人优先",
+"SC/PR": Singapore's Workplace Fairness Act, s 22, lets employers prefer
+citizens and PRs) and served nothing the product needs. Removed with it:
+`src/recruiting/fairness.ts`, the refusals in the service, the "never write"
+lines in the model prompts, the rule in the skill, and the promise in the
+design doc and README. Tests that asserted refusals were deleted
+(`r2-backend-fairness.test.ts`, whose two model-output parsing tests moved
+to `r2-backend-parsing.test.ts`; one test in `r2-backend-nonbugs.test.ts`;
+the fairness tests in `test/recruiting.test.ts`); the fake model in
+`test/recruiting.test.ts` no longer proposes an "under 30" criterion.

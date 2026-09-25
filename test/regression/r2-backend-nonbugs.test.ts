@@ -273,14 +273,6 @@ describe("r2 non-bugs", () => {
     assert.equal((await service.snapshot()).criteria.length, ids.length);
   });
 
-  test("an edit that turns a criterion into a protected one is refused", async () => {
-    const { service } = await confirmed();
-    const [first] = (await service.snapshot()).criteria;
-    const result = await service.changeCriteria([{ op: "edit", id: first!.id, text: "Singapore citizen" }], "x");
-    assert.ok(result.refused?.length);
-    assert.equal((await service.snapshot()).criteria[0]!.text, first!.text);
-  });
-
   test("closing drops the draft; a closed candidate cannot be sent to", async () => {
     const { service } = await confirmed();
     await service.prepareOutreach("a");

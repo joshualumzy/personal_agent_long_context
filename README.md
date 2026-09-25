@@ -103,7 +103,7 @@ One founder, hiring for one or more open roles. Each role keeps its own criteria
 
 ### What it does
 
-1. **State the need.** Type it, dictate it, upload a job description (txt, md, pdf, docx), or paste LinkedIn links of people already in mind. The agent turns the need into 3 to 6 criteria, each a must or a nice-to-have, and the founder confirms them once. Criteria that select on age, sex, race, religion, family status, disability, or nationality are refused, and the founder is told why.
+1. **State the need.** Type it, dictate it, upload a job description (txt, md, pdf, docx), or paste LinkedIn links of people already in mind. The agent turns the need into 3 to 6 criteria, each a must or a nice-to-have, and the founder confirms them once.
 2. **Find people.** Exa people search returns about 20 public professional profiles. The model judges every criterion for every person as yes, no, or unclear, with a one-line reason from the profile.
 3. **See the pool at a glance.** Candidates sit on an orbit: meets everything at the centre, misses a nice-to-have in the middle ring, misses one must in the outer ring. Clicking a person opens a drawer with why they fit, their career, and outreach.
 4. **Give feedback in plain words.** "Remote is fine after all", "pass on Ben, too corporate", "why do we need this?". Criteria changes rescore the pool at once and the role is renamed to match.

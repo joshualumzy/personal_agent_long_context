@@ -78,7 +78,7 @@ const QUERY_RULES = [
   "Each query is one plain English sentence of at most 20 words describing a person the way their profile reads: job title, company, and location, plus at most one concrete detail.",
   "A concrete detail is a word that literally appears on profiles: a degree field (\"bachelor's degree in economics\"), a technology, a past employer, a program (\"coding bootcamp\", \"Master of Computing\").",
   "Never use abstract labels such as \"career switcher\", \"non-CS background\", \"strong\", \"passionate\", or \"ideal candidate\". Never say the same thing twice in one query.",
-  "Keep the location in every query when there is one. Do not mention age, sex, race, religion, family status, disability, or nationality.",
+  "Keep the location in every query when there is one.",
 ].join("\n");
 
 function queriesFrom(reply: unknown, previous: readonly string[] = []): string[] {
@@ -107,7 +107,6 @@ export async function extractBrief(model: JsonModel, requirement: string): Promi
       "Split the founder's hiring requirement into 3 to 6 criteria that can be checked against a public professional profile (work history, education, headline, location).",
       "Mark each criterion must (a dealbreaker) or nice (a plus). When the founder does not say, prefer must for the core skill and nice for the rest.",
       "Write each criterion as a short checkable phrase in the founder's language, for example \"3+ years building production backends\".",
-      "Never write a criterion about age, sex, race, religion, marital or family status, pregnancy, disability, or nationality. If the founder asks for one, list it under excluded with the characteristic it selects on, instead of under criteria.",
       "Also write 3 or 4 people-search queries. They share the core (title, company, location) and each adds a different concrete detail aimed at the must criterion hardest to find. When no criterion needs that, vary the skill or seniority instead.",
       QUERY_RULES,
       'Reply as {"title": string, "criteria": [{"text": string, "kind": "must"|"nice"}], "excluded": [{"text": string, "characteristic": string}], "queries": [string]}.',
@@ -335,7 +334,7 @@ export async function inferReason(
     system: [
       `The founder chose to ${decision} this candidate.`,
       "State in at most 10 words the profile trait that most plausibly drove the decision, phrased as a reusable trait (for example \"only consulting experience, no product work\").",
-      "If the founder gave a reason, restate it as such a trait. Never name a protected characteristic such as age, sex, race, religion, family status, disability, or nationality.",
+      "If the founder gave a reason, restate it as such a trait.",
       'Reply as {"reason": string}.',
     ].join("\n"),
     input: {
@@ -368,7 +367,6 @@ export async function findPattern(
       decision === "pass"
         ? "If found, propose a new criterion that would have screened them out, phrased positively as what the founder wants (for example \"has shipped a product, not only consulting\")."
         : "If found, propose a new nice-to-have criterion that captures what they share.",
-      "Never propose a criterion about age, sex, race, religion, family status, disability, or nationality.",
       'Reply as {"found": boolean, "text": string, "kind": "must"|"nice", "rationale": string, "supportingCandidateIds": [string]}. rationale is one sentence for the founder.',
     ].join("\n"),
     input: {
