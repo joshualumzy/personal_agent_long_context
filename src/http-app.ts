@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import Fastify, {
   type FastifyInstance,
   type FastifyReply,
+  type FastifyRequest,
   type FastifyServerOptions,
 } from "fastify";
 import { PersonalContextApplication, type ApplicationOptions } from "./application.js";
@@ -96,22 +97,53 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     userId: string,
     employeeId: string,
     message: string,
-    request: { log: FastifyInstance["log"] },
+    request: FastifyRequest,
     reply: FastifyReply,
     requestedConversationId?: string,
   ) => {
+    const isStream =
+      Boolean(request.headers?.accept?.includes("text/event-stream")) ||
+      Boolean((request.body as Record<string, unknown> | undefined)?.stream);
+
+    if (isStream) {
+      reply.raw.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache, no-transform",
+        "Connection": "keep-alive",
+        "X-Accel-Buffering": "no",
+      });
+    }
+
+    const sendEvent = (event: string, data: unknown) => {
+      if (isStream) {
+        reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      }
+    };
+
     if (!options.companyAgent) {
-      return reply.code(503).send({ message: "The company context agent is not configured." });
+      const payload = { message: "The company context agent is not configured." };
+      if (isStream) {
+        sendEvent("error", payload);
+        reply.raw.end();
+        return;
+      }
+      return reply.code(503).send(payload);
     }
 
     const prohibited = detectProhibitedData(message);
     if (prohibited) {
-      return reply.code(400).send({
+      const payload = {
         status: "rejected",
         code: "prohibited_data",
         category: prohibited.category,
         message: `Your message was blocked because it appears to contain ${/^[aeiou]/i.test(prohibited.category) ? "an" : "a"} ${prohibited.category}. Remove credentials or sensitive numbers before continuing.`,
-      });
+      };
+      if (isStream) {
+        sendEvent("error", payload);
+        reply.raw.end();
+        return;
+      }
+      return reply.code(400).send(payload);
     }
 
     let conversationId = requestedConversationId;
@@ -134,6 +166,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         content: message,
       });
     }
+
+    sendEvent("status", { phrase: "Reviewing working context…" });
 
     let contextConsidered = "";
     let memoryUpdated = false;
@@ -162,11 +196,19 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
 
     try {
-      const companyAnswer = await options.companyAgent.answer({
-        employeeId,
-        question: message,
-        ...(contextConsidered ? { personalMemory: contextConsidered } : {}),
-      });
+      const companyAnswer = await options.companyAgent.answer(
+        {
+          employeeId,
+          question: message,
+          ...(contextConsidered ? { personalMemory: contextConsidered } : {}),
+        },
+        isStream
+          ? {
+              onStatus: (phrase) => sendEvent("status", { phrase }),
+              onToken: (delta) => sendEvent("token", { delta }),
+            }
+          : undefined,
+      );
 
       if (options.conversationStore && conversationId) {
         await options.conversationStore.appendMessage({
@@ -186,7 +228,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         });
       }
 
-      return reply.send({
+      const responsePayload = {
         ...companyAnswer,
         ...(conversationId ? { conversationId } : {}),
         personalMemory: {
@@ -194,12 +236,27 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           sources: memorySources,
           memoryUpdated,
         },
-      });
+      };
+
+      if (isStream) {
+        sendEvent("done", responsePayload);
+        reply.raw.end();
+        return;
+      }
+
+      return reply.send(responsePayload);
     } catch (error) {
       request.log.error(
         { employeeId, reason: error instanceof Error ? error.message : "Unknown failure." },
         "Unified agent turn failed",
       );
+      if (isStream) {
+        sendEvent("error", {
+          message: "The agent could not complete this question. Please try again.",
+        });
+        reply.raw.end();
+        return;
+      }
       return reply.code(502).send({
         message: "The agent could not complete this question. Please try again.",
       });

@@ -313,8 +313,14 @@ function appendAssistantMessage(data) {
   });
 
   bubble.appendChild(textContainer);
+  attachAssistantMeta(bubble, data);
 
-  // Meta & context tags
+  row.appendChild(bubble);
+  chatMessages.appendChild(row);
+  scrollToBottom();
+}
+
+function attachAssistantMeta(bubble, data) {
   const meta = document.createElement("div");
   meta.className = "message-meta";
 
@@ -364,10 +370,6 @@ function appendAssistantMessage(data) {
   if (meta.children.length > 0) {
     bubble.appendChild(meta);
   }
-
-  row.appendChild(bubble);
-  chatMessages.appendChild(row);
-  scrollToBottom();
 }
 
 function appendErrorMessage(message) {
@@ -521,6 +523,7 @@ chatForm.addEventListener("submit", async (e) => {
       userId: "jax",
       employeeId: "jax",
       message,
+      stream: true,
     };
     if (activeConversationId) {
       payload.conversationId = activeConversationId;
@@ -528,21 +531,112 @@ chatForm.addEventListener("submit", async (e) => {
 
     const response = await fetch("/api/v1/agent/chat", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "accept": "text/event-stream, application/json",
+        "content-type": "application/json",
+      },
       body: JSON.stringify(payload),
     });
 
-    const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.message || `Request failed with code ${response.status}`);
+      let errMessage = `Request failed with code ${response.status}`;
+      try {
+        const errData = await response.json();
+        if (errData.message) errMessage = errData.message;
+      } catch (_) {}
+      throw new Error(errMessage);
     }
 
-    if (data.conversationId) {
-      activeConversationId = data.conversationId;
-      loadConversations();
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("text/event-stream") || !response.body) {
+      const data = await response.json();
+      if (data.conversationId) {
+        activeConversationId = data.conversationId;
+        loadConversations();
+      }
+      appendAssistantMessage(data);
+      return;
     }
 
-    appendAssistantMessage(data);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let assistantRow = null;
+    let bubble = null;
+    let textContainer = null;
+    let accumulatedContent = "";
+    let finalPayload = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+
+      let currentEvent = "message";
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line) continue;
+        if (line.startsWith("event:")) {
+          currentEvent = line.slice(6).trim();
+          continue;
+        }
+        if (line.startsWith("data:")) {
+          const dataStr = line.slice(5).trim();
+          let parsed = null;
+          try {
+            parsed = JSON.parse(dataStr);
+          } catch (_) {
+            parsed = dataStr;
+          }
+
+          if (currentEvent === "status") {
+            if (waitingStatusText && parsed?.phrase) {
+              waitingStatusText.textContent = parsed.phrase;
+            }
+          } else if (currentEvent === "token") {
+            if (!assistantRow) {
+              stopWaitingAnimation();
+              assistantRow = document.createElement("div");
+              assistantRow.className = "message-row assistant";
+              bubble = document.createElement("div");
+              bubble.className = "message-bubble";
+              textContainer = document.createElement("div");
+              textContainer.className = "message-text";
+              bubble.appendChild(textContainer);
+              assistantRow.appendChild(bubble);
+              chatMessages.appendChild(assistantRow);
+            }
+            accumulatedContent += (parsed.delta || "");
+            const normalized = normalizeModelMarkdown(accumulatedContent);
+            const rawHtml = marked.parse(normalized, { gfm: true, breaks: false });
+            const sanitized = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } });
+            textContainer.innerHTML = linkifyCitations(sanitized);
+            textContainer.querySelectorAll(".inline-citation").forEach((btn) => {
+              btn.addEventListener("click", () => showSource(btn.getAttribute("data-source-id")));
+            });
+            scrollToBottom();
+          } else if (currentEvent === "done") {
+            finalPayload = parsed;
+          } else if (currentEvent === "error") {
+            throw new Error(parsed?.message || "Agent request failed.");
+          }
+        }
+      }
+    }
+
+    if (finalPayload) {
+      if (finalPayload.conversationId) {
+        activeConversationId = finalPayload.conversationId;
+        loadConversations();
+      }
+      if (bubble) {
+        attachAssistantMeta(bubble, finalPayload);
+      } else {
+        appendAssistantMessage(finalPayload);
+      }
+    }
   } catch (err) {
     appendErrorMessage(err instanceof Error ? err.message : "The request failed.");
   } finally {

@@ -118,6 +118,76 @@ function validateCitations(
   return { citedSourceIds };
 }
 
+export interface CompanyAgentCallbacks {
+  onStatus?: (status: string) => void;
+  onToken?: (token: string) => void;
+}
+
+async function streamChatCompletion(
+  response: Response,
+  onToken?: (delta: string) => void,
+): Promise<{ content: string; tool_calls?: ToolCall[] }> {
+  if (!response.body) {
+    throw new Error("Response body is not readable.");
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let fullContent = "";
+  const toolCallsMap = new Map<number, ToolCall>();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line.startsWith("data:")) continue;
+      const dataStr = line.slice(5).trim();
+      if (!dataStr || dataStr === "[DONE]") continue;
+
+      try {
+        const parsed = JSON.parse(dataStr);
+        const choice = parsed.choices?.[0];
+        if (!choice) continue;
+
+        if (choice.delta?.content) {
+          fullContent += choice.delta.content;
+          onToken?.(choice.delta.content);
+        }
+
+        if (choice.delta?.tool_calls) {
+          for (const tc of choice.delta.tool_calls) {
+            const idx = tc.index ?? 0;
+            if (!toolCallsMap.has(idx)) {
+              toolCallsMap.set(idx, {
+                id: tc.id || "",
+                type: "function",
+                function: { name: tc.function?.name || "", arguments: "" },
+              });
+            }
+            const existing = toolCallsMap.get(idx)!;
+            if (tc.id) existing.id = tc.id;
+            if (tc.function?.name) existing.function.name = tc.function.name;
+            if (tc.function?.arguments) existing.function.arguments += tc.function.arguments;
+          }
+        }
+      } catch {
+        // ignore parse errors for partial chunks
+      }
+    }
+  }
+
+  const tool_calls = Array.from(toolCallsMap.values()).filter((t) => t.id && t.function.name);
+  return {
+    content: fullContent,
+    tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
+  };
+}
+
 export class SoCLaaSCompanyAgent {
   private readonly baseUrl: string;
   private readonly model: string;
@@ -135,7 +205,7 @@ export class SoCLaaSCompanyAgent {
     this.request = options.fetch ?? globalThis.fetch;
   }
 
-  async answer(input: CompanyQuestion): Promise<CompanyAnswer> {
+  async answer(input: CompanyQuestion, callbacks?: CompanyAgentCallbacks): Promise<CompanyAnswer> {
     const employee = await this.knowledge.employee(input.employeeId);
     if (!employee) throw new Error("Unknown employee.");
 
@@ -174,6 +244,14 @@ export class SoCLaaSCompanyAgent {
 
     for (let step = 0; step < this.maxSteps; step += 1) {
         const mustAnswer = step === this.maxSteps - 1;
+        const isStreaming = Boolean(callbacks?.onToken && step > 0);
+
+        if (step === 0) {
+          callbacks?.onStatus?.("Consulting company knowledge base…");
+        } else if (callbacks?.onToken) {
+          callbacks?.onStatus?.("Synthesizing answer…");
+        }
+
         const response = await this.request(`${this.baseUrl}/chat/completions`, {
           method: "POST",
           headers: {
@@ -187,25 +265,37 @@ export class SoCLaaSCompanyAgent {
             tool_choice: mustAnswer ? "none" : step === 0 ? "required" : "auto",
             thinking: { type: "disabled" },
             max_tokens: 1800,
+            ...(isStreaming ? { stream: true } : {}),
           }),
         });
         if (!response.ok) {
           const detail = await response.text();
           throw new Error(`SoCLaaS request failed (${response.status}): ${detail.slice(0, 500)}`);
         }
-        const completion = (await response.json()) as CompletionResponse;
-        const choice = completion.choices?.[0];
-        const message = choice?.message;
-        if (!message) throw new Error("SoCLaaS returned no message.");
 
-        const calls = message.tool_calls ?? [];
+        let calls: ToolCall[] = [];
+        let rawContent: string | null = null;
+
+        if (isStreaming) {
+          const streamResult = await streamChatCompletion(response, callbacks?.onToken);
+          calls = streamResult.tool_calls ?? [];
+          rawContent = streamResult.content;
+        } else {
+          const completion = (await response.json()) as CompletionResponse;
+          const choice = completion.choices?.[0];
+          const message = choice?.message;
+          if (!message) throw new Error("SoCLaaS returned no message.");
+          calls = message.tool_calls ?? [];
+          rawContent = message.content ?? null;
+        }
+
         messages.push(
           calls.length > 0
-            ? { role: "assistant", content: message.content ?? null, tool_calls: calls }
-            : { role: "assistant", content: message.content ?? null },
+            ? { role: "assistant", content: rawContent, tool_calls: calls }
+            : { role: "assistant", content: rawContent },
         );
         if (calls.length === 0) {
-          let answer = message.content?.trim();
+          let answer = rawContent?.trim();
           if (!answer) throw new Error("SoCLaaS returned an empty answer.");
           const hasPersonalContext = Boolean(input.personalMemory && input.personalMemory.trim().length > 0);
           let citationCheck = validateCitations(answer, retrieved, hasPersonalContext);
