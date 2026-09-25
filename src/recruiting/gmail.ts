@@ -1,14 +1,23 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 /**
- * Sends from, and reads replies in, the founder's own Gmail. The OAuth app
- * stays in Google's testing mode with the team as test users, so no review is
- * needed. Only two scopes: send, and read-only to see replies.
+ * Sends from, and reads replies in, the founder's own Gmail, and reads when
+ * they are busy. The OAuth app stays in Google's testing mode with the team as
+ * test users, so no review is needed. Three scopes: send, read-only to see
+ * replies, and free/busy, which shows when someone is busy but never what the
+ * event is.
  */
+const CALENDAR_FREEBUSY = "https://www.googleapis.com/auth/calendar.freebusy";
 const SCOPES = [
   "https://www.googleapis.com/auth/gmail.send",
   "https://www.googleapis.com/auth/gmail.readonly",
+  CALENDAR_FREEBUSY,
 ];
+
+export interface BusyPeriod {
+  start: string;
+  end: string;
+}
 
 export interface GmailOptions {
   clientId: string;
@@ -101,6 +110,7 @@ export class GmailClient {
   private readonly fetch: typeof fetch;
   private accessToken: { value: string; expiresAt: number } | null = null;
   private ownAddress: string | null = null;
+  private grantedScopes: Set<string> | null = null;
 
   constructor(private readonly options: GmailOptions) {
     this.fetch = options.fetch ?? globalThis.fetch;
@@ -220,6 +230,41 @@ export class GmailClient {
     return contactsMatching(headerValues, name, own).slice(0, limit);
   }
 
+  /** False when the stored grant predates the free/busy scope: reconnect to add it. */
+  async canReadCalendar(): Promise<boolean> {
+    if (!(await this.connected())) return false;
+    try {
+      await this.bearer();
+    } catch {
+      return false;
+    }
+    return this.grantedScopes?.has(CALENDAR_FREEBUSY) ?? false;
+  }
+
+  /**
+   * Busy periods between `from` and `to` for each calendar: "primary" is the
+   * mailbox owner's own. A calendar the owner cannot see (most people outside
+   * their Google Workspace) comes back as null, meaning unknown, not free.
+   */
+  async busy(calendars: string[], from: string, to: string): Promise<Map<string, BusyPeriod[] | null>> {
+    const response = await this.fetch("https://www.googleapis.com/calendar/v3/freeBusy", {
+      method: "POST",
+      headers: { authorization: `Bearer ${await this.bearer()}`, "content-type": "application/json" },
+      body: JSON.stringify({ timeMin: from, timeMax: to, items: calendars.map((id) => ({ id })) }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw new Error(`Calendar free/busy request failed with HTTP ${response.status}.`);
+    const body = (await response.json()) as {
+      calendars?: Record<string, { busy?: BusyPeriod[]; errors?: unknown[] }>;
+    };
+    const result = new Map<string, BusyPeriod[] | null>();
+    for (const id of calendars) {
+      const entry = body.calendars?.[id];
+      result.set(id, !entry || (entry.errors && entry.errors.length > 0) ? null : entry.busy ?? []);
+    }
+    return result;
+  }
+
   private async refreshToken(): Promise<string | null> {
     try {
       const stored = JSON.parse(await readFile(this.options.tokenPath, "utf8")) as {
@@ -231,11 +276,12 @@ export class GmailClient {
     }
   }
 
-  private remember(token: { access_token: string; expires_in: number }) {
+  private remember(token: { access_token: string; expires_in: number; scope?: string }) {
     this.accessToken = {
       value: token.access_token,
       expiresAt: Date.now() + (token.expires_in - 60) * 1000,
     };
+    if (token.scope) this.grantedScopes = new Set(token.scope.split(" "));
   }
 
   private async tokenRequest(fields: Record<string, string>) {
@@ -253,6 +299,7 @@ export class GmailClient {
       access_token: string;
       expires_in: number;
       refresh_token?: string;
+      scope?: string;
     };
   }
 

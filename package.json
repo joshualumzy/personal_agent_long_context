@@ -28,7 +28,8 @@
     "eval:recruiting:template": "node --import tsx eval/recruiting/run.ts --template",
     "eval:recruiting": "node --env-file=.env --import tsx eval/recruiting/run.ts",
     "eval:meetings": "node --env-file=.env --import tsx eval/meetings/run.ts src/meetings/eval-factory.ts",
-    "eval:meetings:dry": "node --import tsx eval/meetings/run.ts --dry"
+    "eval:meetings:dry": "node --import tsx eval/meetings/run.ts --dry",
+    "google:check": "node --env-file=.env --import tsx scripts/google-check.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1139.0",

@@ -142,6 +142,10 @@ Reading is automatic; writing waits for the employee. When a draft lacks somethi
 
 What turns up becomes cited evidence and the action is drafted once more. Whatever is still missing is listed on the card as "Still needed from you" instead of being guessed, and every lookup appears in the trace. Code, not the model, also checks for an empty recipient or start time, so those are always looked for and reported.
 
+Every calendar invite is also checked against the employee's Google Calendar free/busy when it is connected: at a proposed time, who is free, busy, or not visible; with no time set, the first free working-hour weekday slots. Free/busy shows when someone is busy, never what the event is. The check is listed on the card under "Checked for you"; the invite itself is not changed.
+
+Google access (Gmail send, Gmail read-only, calendar free/busy) is one grant, made from Recruiting's Connect Gmail. `npm run google:check` shows which mailbox is connected, what it granted, and whether free/busy answers. While the OAuth app is in testing mode, a grant expires after 7 days; reconnect before a demo.
+
 ### Evaluate
 
 ```bash

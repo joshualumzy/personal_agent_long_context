@@ -395,6 +395,17 @@ function renderCard(action) {
   const canEdit = EDITABLE_FIELDS[action.kind] && action.tier === "approval" && action.status === "proposed";
   card.append(canEdit ? renderEditableFields(action) : renderReadonlyFields(action));
 
+  if (action.notes?.length && action.status === "proposed") {
+    card.append(
+      h(
+        "div",
+        { class: "checked-notes" },
+        h("p", { class: "missing-head" }, "Checked for you:"),
+        h("ul", {}, action.notes.map((note) => h("li", {}, note))),
+      ),
+    );
+  }
+
   if (action.missing?.length && (action.status === "proposed" || action.status === "escalated")) {
     card.append(
       h(

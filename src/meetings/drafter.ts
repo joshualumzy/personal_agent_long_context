@@ -4,6 +4,7 @@ import type {
   ActionPayload,
   AnswerPayload,
   CalendarPayload,
+  AvailabilityChecker,
   CandidateAction,
   ConflictPayload,
   ContactDirectory,
@@ -18,6 +19,7 @@ import type {
   SheetPayload,
   TicketPayload,
 } from "./domain.js";
+import { checkAvailability } from "./availability.js";
 
 /**
  * Turns a candidate commitment into the payload an employee (or, for an
@@ -150,6 +152,10 @@ export interface ActionDrafterDeps {
   contacts?: ContactDirectory | null;
   /** Company records searched for a person's address (signatures, contact tables). */
   records?: ContactDirectory | null;
+  /** The employee's calendar free/busy, read-only, checked for every invite. */
+  availability?: AvailabilityChecker | null;
+  /** For tests; defaults to the real time. */
+  now?: () => Date;
 }
 
 export interface DraftResult {
@@ -160,6 +166,8 @@ export interface DraftResult {
   missing?: string[];
   /** One line per lookup made to fill a gap, for the trace. */
   lookups?: string[];
+  /** What was checked on the employee's behalf, shown on the card. */
+  notes?: string[];
 }
 
 /** Something a draft needed but did not have, and where to look for it. */
@@ -259,6 +267,29 @@ export class ActionDrafter {
    * guessed.
    */
   async draft(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
+    const result = await this.draftWithLookups(candidate, meeting);
+    if (candidate.kind !== "calendar_draft") return result;
+    const notes = await this.calendarNotes(result.payload as CalendarPayload);
+    if (notes.length === 0) return result;
+    return {
+      ...result,
+      notes,
+      lookups: [...(result.lookups ?? []), `Checked calendar free/busy: ${notes.join(" ")}`.slice(0, 300)],
+    };
+  }
+
+  /** Free/busy only: never what anyone's events are. Nothing when the calendar is not connected. */
+  private async calendarNotes(invite: CalendarPayload): Promise<string[]> {
+    const checker = this.deps.availability;
+    if (!checker || !(await checker.connected().catch(() => false))) return [];
+    try {
+      return await checkAvailability(checker, invite, this.deps.now?.() ?? new Date());
+    } catch {
+      return ["Could not reach the calendar to check availability."];
+    }
+  }
+
+  private async draftWithLookups(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
     const first = await this.draftOnce(candidate, meeting, []);
     const gaps = mergeGaps(structuralGaps(candidate.kind, first.payload, candidate), first.gaps ?? []);
     if (gaps.length === 0) return { payload: first.payload, evidence: first.evidence, title: first.title };

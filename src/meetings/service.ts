@@ -424,6 +424,7 @@ export class MeetingService implements MeetingActions {
       version: 1,
       evidence: draft.evidence,
       ...(draft.missing && draft.missing.length > 0 ? { missing: draft.missing } : {}),
+      ...(draft.notes && draft.notes.length > 0 ? { notes: draft.notes } : {}),
       dedupeKey: candidate.dedupeKey,
       createdAt,
       ...(status === "executed" ? { decidedAt: createdAt, result: this.autoResult(candidate.kind, draft.payload) } : {}),
@@ -496,6 +497,8 @@ export class MeetingService implements MeetingActions {
         target.evidence = draft.evidence;
         if (draft.missing && draft.missing.length > 0) target.missing = draft.missing;
         else delete target.missing;
+        if (draft.notes && draft.notes.length > 0) target.notes = draft.notes;
+        else delete target.notes;
         target.title = draft.title;
         target.tier = tier;
         target.payloadHash = hashPayload(draft.payload);

@@ -212,6 +212,8 @@ export interface ProposedAction {
   evidence: Evidence[];
   /** What the agent still could not find after looking, for the employee to fill in. */
   missing?: string[];
+  /** What the agent checked on the employee's behalf, such as calendar availability. */
+  notes?: string[];
   /** Same commitment mentioned again maps to the same key and updates, not duplicates. */
   dedupeKey: string;
   createdAt: string;
@@ -306,6 +308,22 @@ export interface EmailSender {
 export interface ContactDirectory {
   connected(): Promise<boolean>;
   lookup(name: string): Promise<Evidence[]>;
+}
+
+export interface BusySlot {
+  start: Date;
+  end: Date;
+}
+
+/**
+ * Read-only free/busy for the employee's calendar and any calendar they can
+ * see. Never returns what an event is, only when someone is busy. A calendar
+ * that cannot be seen maps to null: unknown, not free.
+ */
+export interface AvailabilityChecker {
+  connected(): Promise<boolean>;
+  /** "me" is the employee's own calendar. */
+  busy(people: string[], from: Date, to: Date): Promise<Map<string, BusySlot[] | null>>;
 }
 
 export interface ActionExecutor {
