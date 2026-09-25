@@ -128,6 +128,8 @@ export interface CalendarPayload {
   attendees: string[];
   /** ISO start when the meeting named one; otherwise the employee picks. */
   proposedStart?: string;
+  /** Candidate starts (or dates) when the words fit more than one day; the employee picks one. */
+  startOptions?: string[];
   durationMinutes: number;
   notes?: string;
 }

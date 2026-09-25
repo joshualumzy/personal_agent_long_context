@@ -305,7 +305,15 @@ export class ActionDrafter {
     const checker = this.deps.availability;
     if (!checker || !(await checker.connected().catch(() => false))) return [];
     try {
-      return await checkAvailability(checker, invite, this.deps.now?.() ?? new Date());
+      const now = this.deps.now?.() ?? new Date();
+      // With candidate days to choose from, check each so the choice is informed.
+      const timed = (invite.startOptions ?? []).filter((option) => option.includes("T"));
+      if (!invite.proposedStart && timed.length > 1) {
+        const lines: string[] = [];
+        for (const option of timed) lines.push(...(await checkAvailability(checker, { ...invite, proposedStart: option }, now)));
+        return [...new Set(lines)];
+      }
+      return await checkAvailability(checker, invite, now);
     } catch {
       return ["Could not reach the calendar to check availability."];
     }
@@ -540,13 +548,14 @@ export class ActionDrafter {
     // and resolveWhen turns it into a date, so no model ever counts days.
     const said = text(record.when).trim();
     const reading = said
-      ? resolveWhen(await this.whenReader.read(said, meetingDate(meeting)), new Date(meeting.startedAt))
+      ? resolveWhen(await this.whenReader.read(said, meetingDate(meeting)), new Date(meeting.startedAt), said)
       : null;
     const payload: CalendarPayload = {
       title,
       attendees: resolveAttendees(attendees, evidence),
       durationMinutes: Number.isFinite(duration) && duration > 0 ? duration : 30,
       ...(reading?.start ? { proposedStart: reading.start } : {}),
+      ...(reading?.options ? { startOptions: reading.options.map((option) => option.start ?? option.date) } : {}),
       ...(text(record.notes) ? { notes: text(record.notes) } : {}),
     };
     const whenGaps: Gap[] = (reading ? reading.missing : ["Day and time for the meeting"]).map((need) => ({
@@ -558,7 +567,7 @@ export class ActionDrafter {
       payload,
       evidence,
       gaps: mergeGaps(whenGaps, gapsIn(record)),
-      ...(reading ? { notes: [`"${said}": ${reading.explanation}`] } : {}),
+      ...(reading ? { notes: [reading.options ? reading.explanation : `"${said}": ${reading.explanation}`] } : {}),
       title: `Calendar: ${title}`.slice(0, 120),
     };
   }

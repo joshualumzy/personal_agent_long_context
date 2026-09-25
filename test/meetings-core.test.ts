@@ -402,6 +402,7 @@ describe("meeting actions", () => {
       subject: "Updated: shipment delay follow-up",
     });
     assert.equal(edited.version, 2);
+    assert.equal(edited.missing, undefined, "once the employee edits, the agent's missing list is dropped");
     assert.notEqual(edited.payloadHash, proposed!.payloadHash);
     assert.equal(edited.status, "proposed");
 

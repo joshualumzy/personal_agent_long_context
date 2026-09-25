@@ -396,6 +396,15 @@ function renderCard(action) {
   const canEdit = EDITABLE_FIELDS[action.kind] && action.tier === "approval" && action.status === "proposed";
   card.append(canEdit ? renderEditableFields(action) : renderReadonlyFields(action));
 
+  if (
+    action.kind === "calendar_draft" &&
+    action.status === "proposed" &&
+    !action.payload.proposedStart &&
+    action.payload.startOptions?.length > 1
+  ) {
+    card.append(renderStartOptions(action));
+  }
+
   if (action.notes?.length && action.status === "proposed") {
     card.append(
       h(
@@ -560,6 +569,49 @@ function icsDataUrl(payload) {
   }
   lines.push("END:VEVENT", "END:VCALENDAR");
   return `data:text/calendar;charset=utf-8,${encodeURIComponent(lines.join("\r\n"))}`;
+}
+
+/**
+ * The words fitted more than one day, so the agent did not pick: one button
+ * per candidate. A candidate with a time becomes the invite's start (a new
+ * version, approved as usual); a date alone goes into the start field for
+ * the employee to add the time.
+ */
+function renderStartOptions(action) {
+  const label = (option) => {
+    const date = new Date(`${option.slice(0, 10)}T00:00:00Z`);
+    const day = date.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+    return option.includes("T") ? `${day}, ${option.slice(11, 16)}` : day;
+  };
+  const pick = async (option) => {
+    const { startOptions: _unused, ...rest } = action.payload;
+    if (!option.includes("T")) {
+      const draft = currentDraft(action);
+      draft.values = { ...draft.values, proposedStart: `${option}T` };
+      draft.dirty = true;
+      renderActions();
+      return;
+    }
+    try {
+      const updated = await postJSON(`/api/v1/meetings/${state.current.meetingId}/actions/${action.id}/edit`, {
+        payload: { ...rest, proposedStart: option },
+      });
+      upsertAction(updated);
+      renderActions();
+    } catch (error) {
+      showError(error.message);
+    }
+  };
+  return h(
+    "div",
+    { class: "start-options" },
+    h("p", { class: "missing-head" }, "Which day did they mean?"),
+    h(
+      "div",
+      { class: "row" },
+      action.payload.startOptions.map((option) => h("button", { type: "button", class: "quiet", onclick: () => pick(option) }, label(option))),
+    ),
+  );
 }
 
 function renderReadonlyFields(action) {

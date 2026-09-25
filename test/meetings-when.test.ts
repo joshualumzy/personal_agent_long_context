@@ -104,3 +104,37 @@ describe("fallback reader", () => {
     assert.equal(failures.length, 1);
   });
 });
+
+describe("ambiguous next weekday", () => {
+  /** Saturday 26 Sep 2026, 11:00 in Singapore. */
+  const SATURDAY = new Date("2026-09-26T03:00:00Z");
+  const nextWed = form({ kind: "weekday", weekday: "wed", week: "next", time: "15:00" });
+
+  test("English 'next Wednesday' on a Saturday offers 30 Sep and 7 Oct and fills in neither", () => {
+    const reading = resolveWhen(nextWed, SATURDAY, "next Wednesday at 3pm");
+    assert.equal(reading.start, undefined);
+    assert.deepEqual(reading.options?.map((option) => option.start), ["2026-09-30T15:00:00+08:00", "2026-10-07T15:00:00+08:00"]);
+    assert.deepEqual(reading.missing, ["Which day: Wed 30 Sept or Wed 7 Oct"]);
+  });
+
+  test("on a Monday the same words also split between this week's and next week's", () => {
+    assert.deepEqual(resolveWhen(nextWed, MONDAY, "next Wednesday at 3pm").options?.map((option) => option.date), ["2026-09-30", "2026-10-07"]);
+  });
+
+  test("Chinese 下周三 means next calendar week, so it is filled in", () => {
+    const reading = resolveWhen(nextWed, SATURDAY, "下周三下午三点");
+    assert.equal(reading.start, "2026-09-30T15:00:00+08:00");
+    assert.equal(reading.options, undefined);
+  });
+
+  test("a bare weekday is not ambiguous", () => {
+    const reading = resolveWhen(form({ kind: "weekday", weekday: "wed", time: "15:00" }), SATURDAY, "Wednesday at 3pm");
+    assert.equal(reading.start, "2026-09-30T15:00:00+08:00");
+  });
+
+  test("with no time said, the options are dates and the time is asked for too", () => {
+    const reading = resolveWhen(form({ kind: "weekday", weekday: "fri", week: "next" }), FRIDAY, "next Friday afternoon");
+    assert.deepEqual(reading.options?.map((option) => option.start ?? option.date), ["2026-10-02", "2026-10-09"]);
+    assert.deepEqual(reading.missing, ["Which day: Fri 2 Oct or Fri 9 Oct", "Time of day for the meeting"]);
+  });
+});

@@ -13,6 +13,8 @@ interface Case {
   said: string;
   day: string | null;
   time: string | null;
+  /** Candidate dates when the words fit more than one day. */
+  options?: string[];
 }
 
 const file = JSON.parse(await readFile(new URL("./when-cases.json", import.meta.url), "utf8")) as { meetingAt: string; cases: Case[] };
@@ -65,13 +67,13 @@ for (const reader of readers(names)) {
   console.log("| said | expected | got | verdict | ms |\n|---|---|---|---|---:|");
   for (const item of file.cases) {
     const started = performance.now();
-    let got = { day: null as string | null, time: null as string | null };
+    let got = { day: null as string | null, time: null as string | null, options: [] as string[] };
     let note = "";
     let failed = false;
     try {
       const form = await reader.read(item.said, meetingDay);
-      const reading = resolveWhen(form, meetingAt);
-      got = { day: reading.date ?? null, time: reading.start?.slice(11, 16) ?? null };
+      const reading = resolveWhen(form, meetingAt, item.said);
+      got = { day: reading.date ?? null, time: reading.start?.slice(11, 16) ?? null, options: reading.options?.map((option) => option.date) ?? [] };
       if (form.unsure.length) note = ` (unsure: ${form.unsure.join(", ")})`;
     } catch (error) {
       failed = true;
@@ -79,9 +81,10 @@ for (const reader of readers(names)) {
     }
     const ms = Math.round(performance.now() - started);
     latencies.push(ms);
-    const verdict: Verdict = failed ? "error" : score(item, got.day, got.time);
+    const optionsMatch = JSON.stringify(item.options ?? []) === JSON.stringify(got.options);
+    const verdict: Verdict = failed ? "error" : !optionsMatch ? (got.options.length ? "wrong" : "blank") : score(item, got.day, got.time);
     tally[verdict] += 1;
-    console.log(`| ${item.said} | ${item.day ?? "—"} ${item.time ?? ""} | ${got.day ?? "—"} ${got.time ?? ""}${note} | ${verdict} | ${ms} |`);
+    console.log(`| ${item.said} | ${item.options ? `pick: ${item.options.join(" / ")}` : `${item.day ?? "—"} ${item.time ?? ""}`} | ${got.options.length ? `pick: ${got.options.join(" / ")}` : `${got.day ?? "—"} ${got.time ?? ""}`}${note} | ${verdict} | ${ms} |`);
   }
   latencies.sort((a, b) => a - b);
   console.log(`\n${reader.name}: right ${tally.right}, left blank ${tally.blank}, WRONG ${tally.wrong}, errors ${tally.error} of ${file.cases.length}; median ${latencies[Math.floor(latencies.length / 2)]} ms`);

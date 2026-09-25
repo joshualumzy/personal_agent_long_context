@@ -699,6 +699,9 @@ export class MeetingService implements MeetingActions {
       action.payload = payload;
       action.payloadHash = hashPayload(payload);
       action.version += 1;
+      // The employee has now filled in or changed the draft themselves, so the
+      // agent's list of what was missing no longer describes it.
+      delete action.missing;
       const trace = this.pushTrace(state, "edited", action.id, action.trigger.segmentIndex, `Edited (version ${action.version}).`);
       return { action, trace };
     });

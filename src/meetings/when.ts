@@ -39,6 +39,11 @@ export interface WhenReading {
   date?: string;
   /** One line for the card, saying how the words were read. */
   explanation: string;
+  /**
+   * Set when the words fit more than one day (English "next Wednesday"): each
+   * candidate, for the employee to pick. No start is filled in then.
+   */
+  options?: Array<{ date: string; day: string; start?: string }>;
   /** What is still missing, for the employee to fill in. */
   missing: string[];
 }
@@ -72,9 +77,24 @@ function addDays(day: Date, days: number): Date {
  * - "after next": the week after that;
  * - a date without a year: the next time it comes round.
  */
-export function resolveWhen(form: WhenForm, meetingAt: Date): WhenReading {
+export function resolveWhen(form: WhenForm, meetingAt: Date, said = ""): WhenReading {
   const today = sgtDay(meetingAt);
   const unsure = new Set(form.unsure);
+  const time = form.time && !unsure.has("time") && /^([01]\d|2[0-3]):[0-5]\d$/.test(form.time) ? form.time : undefined;
+
+  const options = nextWeekdayOptions(form, today, said);
+  if (options.length > 1) {
+    const labels = options.map((option) => dayLabel(option));
+    const words = said.trim() || "next " + form.weekday;
+    return {
+      options: options.map((option) => {
+        const date = option.toISOString().slice(0, 10);
+        return { date, day: dayLabel(option), ...(time ? { start: `${date}T${time}:00+08:00` } : {}) };
+      }),
+      explanation: `"${words}" can mean ${labels.join(" or ")}; people use it both ways, so it was not filled in.`,
+      missing: [`Which day: ${labels.join(" or ")}`, ...(time ? [] : ["Time of day for the meeting"])],
+    };
+  }
   let day: Date | null = null;
   let how = "";
 
@@ -108,7 +128,6 @@ export function resolveWhen(form: WhenForm, meetingAt: Date): WhenReading {
     how = `${form.offsetDays} day(s) after the meeting`;
   }
 
-  const time = form.time && !unsure.has("time") && /^([01]\d|2[0-3]):[0-5]\d$/.test(form.time) ? form.time : undefined;
   const missing = !day && !time ? ["Day and time for the meeting"] : !day ? ["Day for the meeting"] : !time ? ["Time of day for the meeting"] : [];
 
   if (!day) {
@@ -123,6 +142,27 @@ export function resolveWhen(form: WhenForm, meetingAt: Date): WhenReading {
     explanation: `Read as ${label}${time ? `, ${time}` : ", time not said"} (${how}).`,
     missing,
   };
+}
+
+/**
+ * English "next Wednesday" is read three ways: the coming Wednesday, the
+ * Wednesday of next calendar week, or the one after the coming one. When
+ * those land on different days the words alone cannot settle it, so every
+ * distinct day is returned. Chinese 下周三 always means next calendar week,
+ * so only the English wording is checked.
+ */
+function nextWeekdayOptions(form: WhenForm, today: Date, said: string): Date[] {
+  if (form.kind !== "weekday" || form.week !== "next" || !form.weekday) return [];
+  if (form.unsure.includes("weekday") || form.unsure.includes("week")) return [];
+  if (!/\bnext\s+(mon|tue|wed|thu|fri|sat|sun)/i.test(said)) return [];
+  const target = WEEKDAYS.indexOf(form.weekday);
+  const todayIndex = weekdayIndex(today);
+  const coming = addDays(today, ((target - todayIndex + 7) % 7) || 7);
+  const nextCalendarWeek = addDays(addDays(today, 7 - todayIndex), target);
+  const afterComing = addDays(coming, 7);
+  const distinct = new Map<number, Date>();
+  for (const day of [coming, nextCalendarWeek, afterComing]) distinct.set(day.getTime(), day);
+  return [...distinct.values()].sort((a, b) => a.getTime() - b.getTime());
 }
 
 // ------------------------------------------------------------------ readers
