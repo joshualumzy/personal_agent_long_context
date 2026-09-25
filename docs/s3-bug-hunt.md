@@ -383,3 +383,44 @@ Agent loop and HTTP (22):
   gets one repair asked to cite company facts and leave the skill's facts
   alone. If the repair fails or the call errors, the skill's answer stands,
   so recruiting answers are never replaced by "Insufficient evidence".
+
+## Round 4 (2026-09-26)
+
+Three fresh hunters: backend, chat agent and HTTP, and front-end logic. 38
+confirmed bugs, each with a failing check (`r4-backend.test.ts`,
+`r4-agent.test.ts`, `ui/r4/`). All fixed; all 34 held-out tests still pass.
+
+Backend (15): accepting a proposal now gives people whose scoring kept
+failing a fresh start; a blank reply is refused and a long one capped at
+8000; a reply drops a waiting cold intro so a scheduling answer is drafted;
+Gmail syncs run one at a time; prepare-outreach never replaces a reply
+already drafted, and drafts a follow-up or scheduling message by stage;
+an email needs a subject (a LinkedIn draft has none); editing a criterion
+into another's words merges the two; the draft review drops duplicates; a
+null kind from the model counts as none; inbox matching uses whole words
+("An" no longer matches "can"); one unreadable LinkedIn conversation is
+reported without failing the others, and the reader retries only that one;
+one failing search query no longer fails the round; LinkedIn share links
+with tracking parameters are accepted; a pass never rewrites a hire.
+
+Chat agent and HTTP (13): replies with nothing to cite (a greeting, what
+the agent can do, a question back) are no longer replaced by "Insufficient
+evidence"; they must hold no figures and every sentence must be a question,
+a greeting or about the agent. "请用英文回答" is respected. A tool call with
+no name is dropped; list-shaped content and object arguments are read; a
+200 with an unreadable body is asked for again; streamed calls without an
+index are split by id; a repeated panel shows once, with its text once; the
+same call twice in one reply runs once; conversation routes answer 400-free
+defaults instead of 500 for odd types; titles are cut by code point.
+
+Front end (10): a poll that started before an action no longer paints over
+its result; a failed confirm keeps the draft criteria; both send buttons lock
+from the save to the answer; a proposal being decided cannot be decided
+again; a failed delete shows an error; the drawer rebuilds when a criterion's
+kind changes; in the chat, switching conversations while an answer streams
+no longer draws it in, or sends the next message to, the wrong one; late
+history is dropped; a stream cut before its end says so; conversation titles
+are escaped inside attributes.
+
+Found by the round 3 fix itself: the panel saves the draft before every
+send, so "editing releases an unconfirmed send" had to mean a real change.

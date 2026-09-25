@@ -189,7 +189,10 @@ async function call(path, body, button) {
       showError(data.message ?? "Something went wrong.");
       return undefined;
     }
-    if (data.state) render(data.state);
+    if (data.state) {
+      actionsRendered += 1;
+      render(data.state);
+    }
     return data.result;
   } catch {
     showError("The server did not answer. Is it running?");
@@ -199,9 +202,13 @@ async function call(path, body, button) {
   }
 }
 
+// Counts action answers painted; a refresh asked for before one of them is older than the screen.
+let actionsRendered = 0;
+
 async function refresh() {
   try {
     const listedFor = view;
+    const paintedBefore = actionsRendered;
     const listed = await fetch("/api/recruiting/roles");
     if (listed.ok) roles = (await listed.json()).roles;
     if (listedFor !== view) return;
@@ -225,7 +232,7 @@ async function refresh() {
     }
     if (response.ok) {
       const next = await response.json();
-      if (asked === view) render(next);
+      if (asked === view && paintedBefore === actionsRendered) render(next);
     }
   } catch {
     // The next poll tries again.
@@ -553,12 +560,24 @@ function renderOrbit() {
 
 // --------------------------------------------------------------- proposals
 
+// Proposals with a decision on its way; a refresh meanwhile must not offer them again.
+const deciding = new Set();
+
 function renderProposals() {
   $("#proposals").replaceChildren(
     ...state.proposals.map((proposal) => {
       const isCriterion = proposal.type === "criterion";
-      const decide = (accept) => (event) =>
-        call(api(`/proposals/${proposal.id}`), { accept }, event.currentTarget);
+      const busy = deciding.has(proposal.id) ? true : undefined;
+      const decide = (accept) => async (event) => {
+        if (deciding.has(proposal.id)) return;
+        deciding.add(proposal.id);
+        try {
+          await call(api(`/proposals/${proposal.id}`), { accept }, event.currentTarget);
+        } finally {
+          deciding.delete(proposal.id);
+          if (state) renderProposals();
+        }
+      };
       return h(
         "article",
         { class: "proposal" },
@@ -570,8 +589,8 @@ function renderProposals() {
         h(
           "div",
           { class: "actions" },
-          h("button", { type: "button", class: "primary", onclick: decide(true) }, isCriterion ? "Add criterion" : "Widen the search"),
-          h("button", { type: "button", class: "quiet", onclick: decide(false) }, "Not now"),
+          h("button", { type: "button", class: "primary", disabled: busy, onclick: decide(true) }, isCriterion ? "Add criterion" : "Widen the search"),
+          h("button", { type: "button", class: "quiet", disabled: busy, onclick: decide(false) }, "Not now"),
         ),
       );
     }),
@@ -620,8 +639,11 @@ function signature(candidate) {
     candidate.contact,
     candidate.draft?.createdAt,
     candidate.draft?.warnings,
+    candidate.draft?.unconfirmed,
     candidate.messages.length,
     candidate.verdicts,
+    // "Why they fit" names each criterion and its kind.
+    state.criteria.map((criterion) => [criterion.id, criterion.text, criterion.kind]),
   ]);
 }
 
@@ -831,10 +853,20 @@ function outreachPanel(candidate) {
         body: body.value,
         ...(email.value && email.value !== candidate.contact?.email ? { email: email.value } : {}),
       })) !== undefined;
+    // Both send buttons stay locked from the save until the send answers: one press, one send.
+    let sending = false;
     const sendAfterSave = (manual) => async (event) => {
       const button = event.currentTarget;
-      if (!(await save())) return;
-      await call(api(`/candidates/${candidate.id}/send`), manual ? { manual: true } : {}, button);
+      if (sending) return;
+      sending = true;
+      button.disabled = true;
+      try {
+        if (!(await save())) return;
+        await call(api(`/candidates/${candidate.id}/send`), manual ? { manual: true } : {}, button);
+      } finally {
+        sending = false;
+        button.disabled = false;
+      }
     };
     const source = {
       hunter: "Found by Hunter",
@@ -968,8 +1000,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const revised = await call(api("/criteria/draft"), { criteria: draftCriteria }, button);
     if (revised === undefined) return;
     button.textContent = "Searching…";
-    await call(api("/confirm"), {}, button);
+    const confirmed = await call(api("/confirm"), {}, button);
     button.textContent = "Confirm and search";
+    // A failed confirm leaves the draft as it was, so it can be edited and confirmed again.
+    if (confirmed === undefined) return;
     draftCriteria = null;
     showRefused([]);
     schedulePoll();
@@ -1056,9 +1090,14 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     event.currentTarget.dataset.armed = "";
     event.currentTarget.textContent = "Delete this role";
-    const response = await fetch(api(""), { method: "DELETE" });
-    if (!response.ok) {
-      showError("Could not delete the role.");
+    try {
+      const response = await fetch(api(""), { method: "DELETE" });
+      if (!response.ok) {
+        showError("Could not delete the role.");
+        return;
+      }
+    } catch {
+      showError("The server did not answer, so the role was not deleted.");
       return;
     }
     switchRole(null);

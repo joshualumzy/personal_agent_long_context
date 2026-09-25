@@ -272,6 +272,7 @@ export function registerRecruitingRoutes(
         .filter(Boolean);
       const matched = new Set<string>();
       const results = [];
+      const failed: string[] = [];
       for (const { service } of await board.all()) {
         const unclaimed = texts.filter((text) => !matched.has(text));
         if (unclaimed.length === 0) break;
@@ -279,10 +280,16 @@ export function registerRecruitingRoutes(
           // One conversation belongs to one role: the first (newest) that contacted the person.
           if (matched.has(text)) continue;
           matched.add(text);
-          results.push(await service.reply(text, null, "linkedin"));
+          // One conversation that cannot be read is reported; the others are still recorded, once.
+          try {
+            results.push(await service.reply(text, null, "linkedin"));
+          } catch (error) {
+            failed.push(text);
+            results.push({ intent: "reply", message: `Could not read one conversation: ${error instanceof Error ? error.message : String(error)}` });
+          }
         }
       }
-      return reply.send({ result: { read: texts.length, ignored: texts.length - matched.size, results } });
+      return reply.send({ result: { read: texts.length, ignored: texts.length - matched.size, results, ...(failed.length ? { failed } : {}) } });
     } catch (error) {
       return fail(reply, error);
     }

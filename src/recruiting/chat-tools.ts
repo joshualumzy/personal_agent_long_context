@@ -346,7 +346,8 @@ async function runTool(
       for (const change of args.changes) {
         if (typeof change !== "object" || change === null) throw new RecruitingError("invalid_request", "Each change must be an object.");
         const entry = change as Record<string, unknown>;
-        if ((entry.op === "add" || entry.op === "set_kind") && entry.kind !== undefined) kindOf(entry.kind);
+        // A kind of null means none given; remove and edit take no kind at all.
+        if ((entry.op === "add" || entry.op === "set_kind") && entry.kind != null) kindOf(entry.kind);
         if (entry.op !== "add" && !criteria.some((criterion) => criterion.id === entry.id)) {
           throw new RecruitingError("invalid_request", `No criterion with id ${String(entry.id)}; read recruiting_status for the ids.`);
         }
@@ -354,7 +355,8 @@ async function runTool(
       const operations = parseOperations(
         args.changes.map((change) => {
           const entry = change as Record<string, unknown>;
-          return entry.kind === undefined ? entry : { ...entry, kind: kindOf(entry.kind) };
+          if (entry.op !== "add" && entry.op !== "set_kind") return { ...entry, kind: undefined };
+          return entry.kind == null ? { ...entry, kind: undefined } : { ...entry, kind: kindOf(entry.kind) };
         }),
         criteria as never,
       );

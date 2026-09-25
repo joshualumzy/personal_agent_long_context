@@ -64,7 +64,14 @@ function clipped(content: string): string {
 }
 
 function titleFrom(message: string): string {
-  return message.length > 50 ? `${message.slice(0, 47).trim()}…` : message;
+  // By code points, so an emoji is never cut in half.
+  const points = Array.from(message);
+  return points.length > 50 ? `${points.slice(0, 47).join("").trim()}…` : message;
+}
+
+/** A string field or query value, trimmed; anything else (a number, a list, a repeated parameter) counts as absent. */
+function stringOf(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 export function buildApp(options: BuildAppOptions): FastifyInstance {
@@ -410,7 +417,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       return reply.send([]);
     }
     const query = (request.query ?? {}) as Record<string, string>;
-    const userId = query.userId?.trim() || "jax";
+    const userId = stringOf(query.userId) || "jax";
     const list = await options.conversationStore.list(userId);
     return reply.send(list);
   });
@@ -419,9 +426,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     if (!options.conversationStore) {
       return reply.code(503).send({ message: "Conversation store is not configured." });
     }
-    const body = (request.body ?? {}) as Record<string, string>;
-    const userId = body.userId?.trim() || "jax";
-    const title = body.title?.trim();
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    const userId = stringOf(body.userId) || "jax";
+    const title = stringOf(body.title) || undefined;
     const created = await options.conversationStore.create(userId, title);
     return reply.code(201).send(created);
   });
@@ -432,7 +439,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       if (!options.conversationStore) {
         return reply.code(503).send({ message: "Conversation store is not configured." });
       }
-      const userId = request.query?.userId?.trim() || "jax";
+      const userId = stringOf(request.query?.userId) || "jax";
       const detail = await options.conversationStore.get(request.params.conversationId, userId);
       if (!detail) {
         return reply.code(404).send({ message: "Conversation not found." });
@@ -447,7 +454,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       if (!options.conversationStore) {
         return reply.code(503).send({ message: "Conversation store is not configured." });
       }
-      const userId = request.query?.userId?.trim() || "jax";
+      const userId = stringOf(request.query?.userId) || "jax";
       const deleted = await options.conversationStore.delete(request.params.conversationId, userId);
       if (!deleted) {
         return reply.code(404).send({ message: "Conversation not found." });

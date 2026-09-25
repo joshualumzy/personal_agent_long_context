@@ -81,7 +81,7 @@ try {
         body: JSON.stringify({ threads: fresh }),
       });
       const body = (await response.json()) as {
-        result?: { ignored?: number; results?: { message: string }[] };
+        result?: { ignored?: number; results?: { message: string }[]; failed?: string[] };
         message?: string;
       };
       if (!response.ok) throw new Error(body.message ?? `HTTP ${response.status}`);
@@ -89,6 +89,8 @@ try {
         `Read ${fresh.length} conversations; ${body.result?.ignored ?? 0} did not mention anyone you contacted and were ignored.`,
       );
       for (const result of body.result?.results ?? []) console.log(`- ${result.message}`);
+      // A conversation the app could not read is tried again next time.
+      for (const text of body.result?.failed ?? []) seen.delete(fingerprint(text));
       await writeFile(SEEN_PATH, JSON.stringify([...seen]));
     }
   }

@@ -34,6 +34,9 @@ const modelDotIcon = document.querySelector("#model-dot-icon");
 let activeModel = localStorage.getItem("sme_selected_model") || "soclaas";
 
 let activeConversationId = null;
+// Bumped whenever another conversation is put on screen; an answer or history asked for
+// before that is not about what is shown and must not be drawn or change the active one.
+let chatEpoch = 0;
 
 function scrollToBottom() {
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -42,7 +45,8 @@ function scrollToBottom() {
 function escapeHtml(text) {
   const div = document.createElement("div");
   div.textContent = text;
-  return div.innerHTML;
+  // Quotes too: the result also goes inside attribute values.
+  return div.innerHTML.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function formatRelativeTime(dateString) {
@@ -282,6 +286,7 @@ if (modelSelectorBtn && modelDropdownMenu) {
 
 // Start New Chat
 function startNewChat() {
+  chatEpoch += 1;
   activeConversationId = null;
   chatMessages.innerHTML = "";
   if (emptyState) emptyState.style.display = "block";
@@ -644,6 +649,7 @@ async function loadConversations() {
 }
 
 async function selectConversation(conversationId, title) {
+  const asked = ++chatEpoch;
   try {
     activeConversationId = conversationId;
     if (currentChatTitle) currentChatTitle.textContent = title || "SME Assistant";
@@ -663,6 +669,8 @@ async function selectConversation(conversationId, title) {
     const response = await fetch(`/api/v1/conversations/${encodeURIComponent(conversationId)}?userId=jax`);
     if (!response.ok) throw new Error("Failed to load conversation");
     const detail = await response.json();
+    // Another conversation was opened while this one loaded.
+    if (asked !== chatEpoch) return;
 
     chatMessages.innerHTML = "";
     if (detail.messages && detail.messages.length > 0) {
@@ -686,7 +694,7 @@ async function selectConversation(conversationId, title) {
       if (emptyState) emptyState.style.display = "block";
     }
   } catch (err) {
-    appendErrorMessage("Could not load conversation history.");
+    if (asked === chatEpoch) appendErrorMessage("Could not load conversation history.");
   } finally {
     statusIndicator.hidden = true;
     scrollToBottom();
@@ -728,6 +736,8 @@ chatForm.addEventListener("submit", async (e) => {
 
   const requestStartTime = performance.now();
   let ttftMs = null;
+  const epoch = chatEpoch;
+  const stillHere = () => epoch === chatEpoch;
 
   try {
     const payload = {
@@ -764,6 +774,10 @@ chatForm.addEventListener("submit", async (e) => {
       const data = await response.json();
       const clientDurationMs = Math.round(performance.now() - requestStartTime);
       data.durationMs = typeof data.durationMs === "number" ? data.durationMs : clientDurationMs;
+      if (!stillHere()) {
+        loadConversations();
+        return;
+      }
       if (data.conversationId) {
         activeConversationId = data.conversationId;
         loadConversations();
@@ -810,7 +824,9 @@ chatForm.addEventListener("submit", async (e) => {
             parsed = dataStr;
           }
 
-          if (currentEvent === "status") {
+          if (!stillHere() && currentEvent !== "done" && currentEvent !== "error") {
+            // The user opened another conversation: keep reading, draw nothing.
+          } else if (currentEvent === "status") {
             if (parsed?.phrase) {
               statusText.textContent = parsed.phrase;
             }
@@ -860,6 +876,12 @@ chatForm.addEventListener("submit", async (e) => {
       }
     }
 
+    if (!stillHere()) {
+      // The answer is saved in its own conversation; the sidebar shows it moved.
+      loadConversations();
+      return;
+    }
+    if (!finalPayload) throw new Error("The answer was cut off before it finished. Please try again.");
     const clientDurationMs = Math.round(performance.now() - requestStartTime);
     if (finalPayload) {
       if (finalPayload.conversationId) {
@@ -884,7 +906,7 @@ chatForm.addEventListener("submit", async (e) => {
       }
     }
   } catch (err) {
-    appendErrorMessage(err instanceof Error ? err.message : "The request failed.");
+    if (stillHere()) appendErrorMessage(err instanceof Error ? err.message : "The request failed.");
   } finally {
     stopWaitingAnimation();
     messageInput.disabled = false;

@@ -325,8 +325,15 @@ export class RecruitingService {
       const at = this.now(state).toISOString();
       const known = new Set(state.criteria.map((criterion) => criterion.id));
       const used = new Set<string>();
+      // The same criterion twice would count twice in every tier.
+      const texts = new Set<string>();
       state.criteria = criteria
-        .filter((criterion) => criterion.text.trim())
+        .filter((criterion) => {
+          const key = criterion.text.trim().toLowerCase();
+          if (!key || texts.has(key)) return false;
+          texts.add(key);
+          return true;
+        })
         .map((criterion) => ({
           // Ids are ours: a client may keep an existing one once, never invent one.
           id: criterion.id && known.has(criterion.id) && !used.has(criterion.id)
@@ -377,9 +384,14 @@ export class RecruitingService {
    * costs nothing, while the search results are already paid for.
    */
   private async searchRound(state: RecruitingState, queries: string[]): Promise<number> {
-    const results = await Promise.all(
+    // One query failing (a timeout) does not throw away what the others found.
+    const settled = await Promise.allSettled(
       queries.map((query) => this.deps.source.search(query, this.settings.resultsPerQuery)),
     );
+    const failures = settled.flatMap((outcome) => (outcome.status === "rejected" ? [outcome.reason] : []));
+    if (failures.length === settled.length && failures.length > 0) throw failures[0];
+    if (failures.length) this.fail("Searching", failures[0]);
+    const results = settled.flatMap((outcome) => (outcome.status === "fulfilled" ? [outcome.value] : []));
     const found: CandidateProfile[] = [];
     const seen = new Set(Object.values(state.candidates).map((candidate) => personKey(candidate.profile)));
     for (let index = 0; results.some((list) => index < list.length); index += 1) {
@@ -436,7 +448,8 @@ export class RecruitingService {
   async importProfiles(urls: string[]): Promise<SayResult> {
     const state = await this.current();
     this.requireRole(state);
-    const clean = [...new Set(urls.map((url) => url.trim()).filter(Boolean))];
+    // Share links from the LinkedIn app carry tracking parameters; the profile is the path.
+    const clean = [...new Set(urls.map((url) => url.trim().replace(/[?#].*$/, "")).filter(Boolean))];
     if (clean.length === 0 || clean.length > 10) {
       throw new RecruitingError("invalid_request", "Paste between 1 and 10 LinkedIn profile links.");
     }
@@ -671,6 +684,15 @@ export class RecruitingService {
         if (origin === "relaxed") criterion.origin = "relaxed";
         summary.push(`"${criterion.text}" is now ${operation.kind}`);
       } else if (operation.op === "edit" && criterion.text !== operation.text) {
+        const clash = this.active(state).find(
+          (other) => other.id !== criterion.id && other.text.trim().toLowerCase() === operation.text.trim().toLowerCase(),
+        );
+        // Edited into another's words, the two are one criterion: this one is merged away.
+        if (clash) {
+          criterion.active = false;
+          summary.push(`"${criterion.text}" merged into "${clash.text}"`);
+          continue;
+        }
         // History stays in Memory; the projection keeps only the current text.
         summary.push(`"${criterion.text}" became "${operation.text}"`);
         criterion.text = operation.text;
@@ -737,7 +759,10 @@ export class RecruitingService {
         inferredReason,
         at,
       });
-      if (decision === "pass") this.closeCandidate(latest, target, "passed");
+      // A pass on someone already closed (hired, declined) leaves that outcome as it is.
+      if (decision === "pass") {
+        if (target.stage !== "closed") this.closeCandidate(latest, target, "passed");
+      }
       else {
         target.kept = true;
         // Keeping someone the founder passed on is changing their mind: they come back.
@@ -849,6 +874,8 @@ export class RecruitingService {
         this.record(state, "expansion_declined", `The founder declined to "${proposal.stepName}".`);
       }
     });
+    // New criteria give everyone whose scoring kept failing a fresh start.
+    if (accept) this.scoringFailures.clear();
     this.settle();
     await this.retitleRole();
     const approved = expansion as { query: string } | null;
@@ -919,10 +946,16 @@ export class RecruitingService {
       throw new RecruitingError("invalid_state", "This candidate is closed.", 409);
     }
     if (candidate.draft?.sending) throw beingSent();
+    // Once they are in a conversation, the next message answers them; it is never a cold intro.
+    if (candidate.draft && candidate.draft.kind !== "intro") {
+      throw new RecruitingError("invalid_state", "A reply to this person is already drafted. Edit it in the outreach tab.", 409);
+    }
+    const kind: Draft["kind"] =
+      candidate.stage === "replied" || candidate.stage === "scheduling" ? "scheduling" : candidate.stage === "contacted" ? "follow_up" : "intro";
     const contact =
       candidate.contact ??
       (await findContact(this.deps.contactFinders, candidate.profile));
-    const draft = await this.makeDraft(state, contact ? { ...candidate, contact } : candidate, "intro");
+    const draft = await this.makeDraft(state, contact ? { ...candidate, contact } : candidate, kind);
     await this.mutate((latest) => {
       const target = this.candidate(latest, candidateId);
       // They may have been closed while the draft was being written.
@@ -930,6 +963,9 @@ export class RecruitingService {
         throw new RecruitingError("candidate_closed", "This candidate was closed, so the draft was dropped.", 409);
       }
       if (target.draft?.sending) throw beingSent();
+      if (target.draft && target.draft.kind !== "intro") {
+        throw new RecruitingError("invalid_state", "A reply to this person is already drafted. Edit it in the outreach tab.", 409);
+      }
       if (contact) target.contact = contact;
       target.draft = draft;
       if (target.stage === "discovered" || target.stage === "scored") target.stage = "drafted";
@@ -1038,6 +1074,10 @@ export class RecruitingService {
       if (!manual && !target.contact) {
         throw new RecruitingError("no_email", "There is no email address for this person.", 409);
       }
+      // A draft written as a LinkedIn message has no subject; an email needs one.
+      if (!manual && !draft.subject.trim()) {
+        throw new RecruitingError("no_subject", "Add a subject line before sending this as an email.", 409);
+      }
       draft.sending = true;
       return {
         draft: { ...draft },
@@ -1145,6 +1185,8 @@ export class RecruitingService {
     channel: Message["channel"],
     at?: string,
   ): Promise<SayResult> {
+    text = typeof text === "string" ? text.trim().slice(0, MAX_REQUIREMENT) : "";
+    if (!text) throw new RecruitingError("invalid_request", "The reply is empty.");
     const state = await this.current();
     // An unattributed message can only be from someone the founder wrote to;
     // matching it against the whole pool would pin strangers' messages on people.
@@ -1173,8 +1215,10 @@ export class RecruitingService {
         realAt: at ?? this.realNow(),
         text,
       });
-      // They answered, so "just checking in" no longer fits.
-      if (candidate.draft?.kind === "follow_up" && !candidate.draft.sending) delete candidate.draft;
+      // They answered, so "just checking in", or a cold first message, no longer fits.
+      if ((candidate.draft?.kind === "follow_up" || candidate.draft?.kind === "intro") && !candidate.draft.sending) {
+        delete candidate.draft;
+      }
       // A closed person stays closed (hired stays hired); the message is kept on record.
       if (candidate.stage === "closed") return candidate.closedReason ?? "closed";
       if (reading.interested === false) {
@@ -1224,14 +1268,30 @@ export class RecruitingService {
     const names = Object.values(state.candidates)
       .filter((candidate) => candidate.messages.some((message) => message.direction === "outbound"))
       .map((candidate) => candidate.profile.name.toLowerCase());
+    // Whole words only: "An" must not match "can".
+    const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const patterns = names.flatMap((name) => {
+      const first = name.split(/\s+/)[0]!;
+      return [name, first].filter(Boolean).map((part) => new RegExp(`(^|[^\\p{L}\\p{N}])${escape(part)}(?=$|[^\\p{L}\\p{N}])`, "u"));
+    });
     return texts.filter((text) => {
       const lower = text.toLowerCase();
-      return names.some((name) => lower.includes(name) || lower.includes(name.split(/\s+/)[0]! + " "));
+      return patterns.some((pattern) => pattern.test(lower));
     });
   }
 
   /** Reads new replies in every Gmail thread the founder started from here. */
-  async syncGmail(): Promise<number> {
+  syncGmail(): Promise<number> {
+    // One sync at a time: two at once would read the same reply twice.
+    this.syncing ??= this.syncGmailOnce().finally(() => {
+      this.syncing = null;
+    });
+    return this.syncing;
+  }
+
+  private syncing: Promise<number> | null = null;
+
+  private async syncGmailOnce(): Promise<number> {
     if (!this.deps.gmail || !(await this.deps.gmail.connected())) return 0;
     const state = await this.current();
     let count = 0;

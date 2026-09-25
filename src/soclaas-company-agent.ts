@@ -171,8 +171,11 @@ const loadSkillTool: ToolDefinition = {
   },
 };
 
-function parseArguments(value: string): Record<string, unknown> {
-  if (!value.trim()) return {};
+function parseArguments(value: unknown): Record<string, unknown> {
+  // Some gateways send the arguments already parsed.
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) return value as Record<string, unknown>;
+  if (value === undefined || value === null || (typeof value === "string" && !value.trim())) return {};
+  if (typeof value !== "string") throw new Error("The tool arguments were not a JSON object.");
   let parsed: unknown;
   try {
     parsed = JSON.parse(value);
@@ -183,6 +186,47 @@ function parseArguments(value: string): Record<string, unknown> {
     throw new Error("SoCLaaS returned non-object tool arguments.");
   }
   return parsed as Record<string, unknown>;
+}
+
+/** Message content as text: some gateways send a list of parts instead of a string. */
+function textOf(content: unknown): string | null {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const text = content
+      .map((part) => (typeof part === "string" ? part : typeof part?.text === "string" ? part.text : ""))
+      .join("");
+    return text || null;
+  }
+  return null;
+}
+
+/** A search limit the knowledge base can use: a whole number from 1 to 10. */
+function limitOf(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.min(Math.max(Math.round(value), 1), 10) : 6;
+}
+
+/** The user said which language to answer in ("请用英文回答", "in English"); that wins over theirs. */
+function asksForLanguage(question: string): boolean {
+  return /(用|以)(英文|英语|日文|日语|韩文|韩语|法语|德语|西班牙语)|(英文|英语)(回答|回复|写|说)|\b(in|into) (english|japanese|korean|french|german|spanish)\b/i.test(question);
+}
+
+/**
+ * A reply with nothing to cite: greetings, what the agent can do, and questions back to the user.
+ * Every sentence is a question, a greeting, or about the agent itself, and it holds no figures.
+ */
+function statesNoFacts(answer: string): boolean {
+  const text = answer.trim();
+  if (!text || text.length > 400 || /\d|\[source:/.test(text)) return false;
+  const sentences = text.split(/(?<=[.!?。！？])\s*/).map((sentence) => sentence.trim()).filter(Boolean);
+  const last = sentences[sentences.length - 1] ?? "";
+  if (!/[?？]$/.test(last)) return false;
+  return sentences.every(
+    (sentence) =>
+      /[?？]$/.test(sentence) ||
+      /^(hi|hello|hey|thanks|thank you|sure|of course|good (morning|afternoon|evening)|你好|您好|嗨|好的|谢谢)\b/i.test(sentence) ||
+      /^(hi|hello|hey|你好|您好|嗨)[\s,，]/i.test(sentence) ||
+      /^(I can|I'm here to|I am here to|I help|I could|我可以|我能|我会帮)/i.test(sentence),
+  );
 }
 
 function compactEvidence(items: Evidence[]): string {
@@ -263,6 +307,7 @@ async function streamChatCompletion(
   let buffer = "";
   let fullContent = "";
   const toolCallsMap = new Map<number, ToolCall>();
+  let lastIndex = 0;
 
   const handle = (rawLine: string) => {
       const line = rawLine.trim();
@@ -282,7 +327,12 @@ async function streamChatCompletion(
 
         if (choice.delta?.tool_calls) {
           for (const tc of choice.delta.tool_calls) {
-            const idx = tc.index ?? 0;
+            // Without an index, a chunk bringing a new id starts a new call.
+            let idx: number = typeof tc.index === "number" ? tc.index : lastIndex;
+            if (typeof tc.index !== "number" && tc.id && toolCallsMap.get(idx)?.id && toolCallsMap.get(idx)!.id !== tc.id) {
+              idx = Math.max(-1, ...toolCallsMap.keys()) + 1;
+            }
+            lastIndex = idx;
             if (!toolCallsMap.has(idx)) {
               toolCallsMap.set(idx, {
                 id: tc.id || "",
@@ -390,7 +440,10 @@ export class SoCLaaSCompanyAgent {
         callbacks?.onStatus?.("Working on it…");
         const outcome = await extension.run(call.function.name, args);
         extensionRan = true;
-        if (outcome.block) blocks.push(outcome.block);
+        // The same panel twice is shown once.
+        if (outcome.block && !blocks.some((block) => JSON.stringify(block) === JSON.stringify(outcome.block))) {
+          blocks.push(outcome.block);
+        }
         return outcome.content;
       }
       const unloaded = (this.options.extensions ?? []).find((entry) =>
@@ -402,13 +455,13 @@ export class SoCLaaSCompanyAgent {
         if (typeof args.query !== "string" || !args.query.trim()) {
           throw new Error("search_company_knowledge requires a non-empty query.");
         }
-        result = await this.knowledge.search(args.query.trim(), typeof args.limit === "number" ? args.limit : 6);
+        result = await this.knowledge.search(args.query.trim(), limitOf(args.limit));
       } else if (call.function.name === "get_related_sources") {
         if (!Array.isArray(args.source_ids) || !args.source_ids.every((id) => typeof id === "string")) {
           throw new Error("get_related_sources requires source_ids.");
         }
         const allowedSeeds = args.source_ids.filter((id) => retrieved.has(id));
-        result = await this.knowledge.related(allowedSeeds, typeof args.limit === "number" ? args.limit : 6);
+        result = await this.knowledge.related(allowedSeeds, limitOf(args.limit));
       } else {
         throw new Error(`There is no tool named ${call.function.name}.`);
       }
@@ -465,42 +518,48 @@ export class SoCLaaSCompanyAgent {
           callbacks?.onStatus?.("Synthesizing answer…");
         }
 
-        const response = await this.request(`${this.baseUrl}/chat/completions`, {
-          method: "POST",
-          headers: {
-            authorization: `Bearer ${this.options.apiKey}`,
-            "content-type": "application/json",
-          },
-          body: JSON.stringify({
-            model: this.model,
-            messages,
-            tools: offeredTools(),
-            tool_choice: mustAnswer ? "none" : step === 0 ? "required" : "auto",
-            ...this.noThinking,
-            max_tokens: 1800,
-            ...(isStreaming ? { stream: true } : {}),
-          }),
-        });
-        if (!response.ok) {
-          const detail = await response.text();
-          throw new Error(`SoCLaaS request failed (${response.status}): ${detail.slice(0, 500)}`);
-        }
-
         let calls: ToolCall[] = [];
         let rawContent: string | null = null;
-
-        if (isStreaming) {
-          const streamResult = await streamChatCompletion(response, callbacks?.onToken);
-          calls = streamResult.tool_calls ?? [];
-          rawContent = streamResult.content;
-        } else {
-          const completion = (await response.json()) as CompletionResponse;
-          const choice = completion.choices?.[0];
-          const message = choice?.message;
-          if (!message) throw new Error("SoCLaaS returned no message.");
-          calls = message.tool_calls ?? [];
-          rawContent = message.content ?? null;
+        // A 200 whose body is not a completion (a proxy's error page) is asked for again, twice at most.
+        for (let read = 0; ; read += 1) {
+          const response = await this.request(`${this.baseUrl}/chat/completions`, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${this.options.apiKey}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({
+              model: this.model,
+              messages,
+              tools: offeredTools(),
+              tool_choice: mustAnswer ? "none" : step === 0 ? "required" : "auto",
+              ...this.noThinking,
+              max_tokens: 1800,
+              ...(isStreaming ? { stream: true } : {}),
+            }),
+          });
+          if (!response.ok) {
+            const detail = await response.text();
+            throw new Error(`SoCLaaS request failed (${response.status}): ${detail.slice(0, 500)}`);
+          }
+          if (isStreaming) {
+            const streamResult = await streamChatCompletion(response, callbacks?.onToken);
+            calls = streamResult.tool_calls ?? [];
+            rawContent = streamResult.content;
+            break;
+          }
+          const completion = (await response.json().catch(() => null)) as CompletionResponse | null;
+          const message = completion?.choices?.[0]?.message;
+          if (!message) {
+            if (read < 2) continue;
+            throw new Error("SoCLaaS returned no message.");
+          }
+          calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+          rawContent = textOf(message.content);
+          break;
         }
+        // A call without a name cannot be run or answered; it is dropped.
+        calls = calls.filter((call) => typeof call?.function?.name === "string" && call.function.name.length > 0);
 
         // On the last step there is no room for tools; take whatever it said.
         if (mustAnswer) calls = [];
@@ -524,7 +583,9 @@ export class SoCLaaSCompanyAgent {
           // call is a preamble or a draft the model may correct once the results are in.
           const said = rawContent?.trim();
           const panelOnly = calls.every((call) => call.function.name === "show_recruiting_panel");
-          if (said && said.length >= 60 && panelOnly) spoken.push(said);
+          if (said && said.length >= 60 && panelOnly && !spoken.some((earlier) => gist(earlier) === gist(said))) {
+            spoken.push(said);
+          }
           if (isStreaming) {
             callbacks?.onResetTokens?.();
             callbacks?.onStatus?.("Investigating additional company evidence…");
@@ -552,6 +613,8 @@ export class SoCLaaSCompanyAgent {
           // search happened earlier in the turn.
           const groundedElsewhere = extensionRan || (loadedSkills.size > 0 && retrieved.size === 0);
           let citationCheck = validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere);
+          // A greeting, a list of what the agent can do, or a question back holds nothing to cite.
+          if (citationCheck.problem && statesNoFacts(answer)) citationCheck = { citedSourceIds: [] };
           // A skill's answer that also used company evidence without citing any gets one chance to
           // add the citations. If that fails the skill's answer stands, since its facts came from the skill.
           const softCheck = !citationCheck.problem && extensionRan && retrieved.size > 0 && citationCheck.citedSourceIds.length === 0;
@@ -635,7 +698,7 @@ export class SoCLaaSCompanyAgent {
           // The system prompt asks for the user's language; when the model still answers a
           // Chinese question in another language, ask once more. The translation must pass the
           // same citation check; if it does not, or the call fails, the checked answer stands.
-          if (isChinese(input.question) && !isChinese(answer)) {
+          if (isChinese(input.question) && !isChinese(answer) && !asksForLanguage(input.question)) {
             const last = messages[messages.length - 1];
             if (last?.role === "assistant" && !last.tool_calls) last.content = answer;
             else messages.push({ role: "assistant", content: answer });
@@ -670,17 +733,24 @@ export class SoCLaaSCompanyAgent {
           };
         }
 
+        // The same call twice in one reply runs once: twice would open two roles or draft twice.
+        const answered = new Map<string, string>();
         for (const call of calls) {
-          // Each call stands alone: a bad call becomes an error the model can read and recover from.
-          try {
-            messages.push({ role: "tool", tool_call_id: call.id, content: await runTool(call) });
-          } catch (error) {
-            messages.push({
-              role: "tool",
-              tool_call_id: call.id,
-              content: `Error: ${error instanceof Error ? error.message : String(error)} Fix the arguments or choose another tool.`,
-            });
+          const key = `${call.function.name}\u0000${typeof call.function.arguments === "string" ? call.function.arguments : JSON.stringify(call.function.arguments ?? null)}`;
+          const earlier = answered.get(key);
+          if (earlier !== undefined) {
+            messages.push({ role: "tool", tool_call_id: call.id, content: `Same call as the one before; it ran once. ${earlier}` });
+            continue;
           }
+          // Each call stands alone: a bad call becomes an error the model can read and recover from.
+          let content: string;
+          try {
+            content = await runTool(call);
+          } catch (error) {
+            content = `Error: ${error instanceof Error ? error.message : String(error)} Fix the arguments or choose another tool.`;
+          }
+          answered.set(key, content);
+          messages.push({ role: "tool", tool_call_id: call.id, content });
         }
       }
 
