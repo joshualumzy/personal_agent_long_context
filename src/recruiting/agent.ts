@@ -24,8 +24,17 @@ function text(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() : fallback;
 }
 
+/** must or nice, from the ways a model writes them; null when it is neither. */
+function kindOrNull(value: unknown): CriterionKind | null {
+  const said = typeof value === "string" ? value.trim().toLowerCase().replace(/[\s_]+/g, "-") : "";
+  if (["must", "must-have", "required", "requirement", "hard"].includes(said)) return "must";
+  if (["nice", "nice-to-have", "optional", "bonus", "plus", "preferred", "soft"].includes(said)) return "nice";
+  return null;
+}
+
+/** For new criteria a missing kind defaults to must, the core-skill reading. */
 function kind(value: unknown): CriterionKind {
-  return value === "nice" ? "nice" : "must";
+  return kindOrNull(value) ?? "must";
 }
 
 function verdictValue(value: unknown): VerdictValue {
@@ -194,7 +203,8 @@ export async function judge(
   const entries = isRecord(reply) && Array.isArray(reply.verdicts) ? reply.verdicts : [];
   const byId = new Map<string, Verdict>();
   for (const entry of entries.filter(isRecord)) {
-    const criterionId = text(entry.criterionId);
+    // Ids can be all digits, and a model may send them back as numbers.
+    const criterionId = typeof entry.criterionId === "number" ? String(entry.criterionId) : text(entry.criterionId);
     if (!criteria.some((criterion) => criterion.id === criterionId)) continue;
     byId.set(criterionId, {
       criterionId,
@@ -302,7 +312,9 @@ export function parseOperations(
     } else if (entry.op === "remove" && known.has(id)) {
       operations.push({ op: "remove", id });
     } else if (entry.op === "set_kind" && known.has(id)) {
-      operations.push({ op: "set_kind", id, kind: kind(entry.kind) });
+      // Changing a kind needs a kind we understood; a guess could flip nice to must.
+      const understood = kindOrNull(entry.kind);
+      if (understood) operations.push({ op: "set_kind", id, kind: understood });
     } else if (entry.op === "edit" && known.has(id) && text(entry.text)) {
       operations.push({ op: "edit", id, text: text(entry.text) });
     }

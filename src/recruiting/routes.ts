@@ -116,7 +116,13 @@ export function registerRecruitingRoutes(
       try {
         const requirement = await requirementFrom(request.body);
         const { id, service } = board.create();
-        const result = await service.start(requirement);
+        let result;
+        try {
+          result = await service.start(requirement);
+        } catch (error) {
+          board.forget(id);
+          throw error;
+        }
         return reply.send({ roleId: id, result, state: await service.snapshot() });
       } catch (error) {
         return fail(reply, error);
@@ -233,7 +239,13 @@ export function registerRecruitingRoutes(
   app.post(
     role("/proposals/:id"),
     handle(async (body, params, service) =>
-      service.resolveProposal(params.id!, isRecord(body) && body.accept === true),
+      {
+        // Declining skips a widening step for good, so it takes an explicit no.
+        if (!isRecord(body) || typeof body.accept !== "boolean") {
+          throw new RecruitingError("invalid_request", "\"accept\" must be true or false.");
+        }
+        return service.resolveProposal(params.id!, body.accept);
+      },
     ),
   );
 

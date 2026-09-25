@@ -136,3 +136,77 @@ Other:
 - An embedded panel for a deleted or unknown role shows an empty shell or a
   stale board (`h07`, `h16`).
 - A background error banner cannot be dismissed (`h20`).
+
+## Round 2, backend (2026-09-26)
+
+Two fresh hunters looked at what the round 1 fixes broke or missed. 43 bugs
+confirmed (chat agent 17, backend 26), all fixed. Regression files:
+`test/regression/r2-*.test.ts`.
+
+Chat agent (`r2-agent-*.test.ts`)
+- Tool calls without an id, with a duplicated id, or streamed without an id
+  were answered without a matching id or dropped. Fix: every call gets a
+  unique id.
+- An empty model reply was echoed back as an empty assistant message, which
+  servers reject. Fix: not echoed.
+- Citation repair asked for "Insufficient evidence ..." and then rejected it.
+  Fix: the repair answer may say evidence is missing if it names what is
+  missing and asserts nothing else. A teammate's existing test caught a first
+  version that also let "Insufficient evidence, but X" through.
+- If saving the answer failed, the user got an error although the tools had
+  already acted (a retry would repeat them). Fix: the answer is delivered;
+  the failed save is logged.
+- `{message: 5, question: "hi"}` gave a 500; a blank userId made an unreadable
+  conversation; a replaced conversation lost its title; the company-question
+  route skipped the prohibited-data gate. Fix: all four.
+- `recruiting_revise_criteria` still wiped the draft for a list of strings, an
+  empty list, or blank texts; unknown kinds became must; a refused start left
+  an orphan service. Fix: refused with the draft unchanged; kinds read
+  strictly; failed starts are forgotten.
+- SKILL.md: multi-line values, escapes and comments were misread; symlinked
+  skill folders were ignored; duplicate names both loaded. Fix: YAML parser
+  with a lenient fallback for hand-written files; symlinks followed;
+  duplicates skipped.
+
+Backend (`r2-backend-*.test.ts`)
+- A candidate id of `__proto__` in a URL closed Object.prototype, i.e. every
+  object in the process. Fix: own-key lookup for candidates.
+- A load that failed once (busy file) broke the role until restart. Fix:
+  retried.
+- An email sent by Gmail followed by a failed save was sent again on retry.
+  Fix: send is claim (saved), send, record; a claimed draft cannot be sent
+  or edited again.
+- Follow-up and intro drafts landed on people who replied or were closed
+  meanwhile; a reply reopened a closed (even hired) candidate; a failed
+  scheduling draft lost the reply itself. Fix: stage re-checked inside the
+  change; closed stays closed; the reply is saved first.
+- Memory heard about changes that were then rolled back. Fix: events reach
+  Memory only after the save.
+- Candidate headlines were written into events, outliving the 30-day
+  erasure. Fix: no profile text in events.
+- Damaged files with partial candidates or a role without createdAt broke
+  the role or the list. Fix: normalized on load.
+- A request arriving during deletion brought the role back. Fix: a deleted
+  id is never opened again.
+- The LinkedIn inbox gave a shared conversation to the oldest role. Fix:
+  newest first.
+- The proposal route declined when `accept` was missing. Fix: must be a
+  boolean.
+- After fast-forward, Gmail replies were missed (simulated vs real clock);
+  one failing thread stopped the sync. Fix: messages keep real time too;
+  threads are isolated.
+- A broken `%` escape in a profile URL crashed a search round; chat text to a
+  confirmed role was not capped; importing two links to one person reported
+  it twice; a deleted role's scoring reported errors. Fix: all four.
+- Fairness check: it refused legitimate criteria ("business-level Chinese",
+  "Traditional Chinese Medicine", "p99 under 50 ms", "women's health
+  products", "citizen developer", "Singaporean SMEs", ...) and missed real
+  discrimination ("aged 25-35", "born after 1995", "90后", "限男", "ladies
+  preferred", "新加坡人优先", "SC/PR", "passport holder", "local candidates
+  only", "must be a mother", ...). Fix: job-related contexts (languages as
+  skills, markets, products, units) are removed first, then broader
+  protected patterns apply. Checked on 29 discriminatory and 43 legitimate
+  phrasings, including every criterion the real model produced earlier.
+- Model output: an unrecognised kind in set_kind flipped nice to must; a
+  numeric criterion id discarded the verdict. Fix: strict kinds; numeric ids
+  read.

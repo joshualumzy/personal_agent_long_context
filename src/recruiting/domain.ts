@@ -84,12 +84,17 @@ export interface Draft {
   createdAt: string;
   /** Present when the draft mentions something the founder said privately. */
   warnings: string[];
+  /** Set while it is being sent; a draft that is sending cannot be sent again or edited. */
+  sending?: boolean;
 }
 
 export interface Message {
   direction: "outbound" | "inbound";
   channel: "email" | "linkedin" | "pasted";
+  /** On the simulated clock, which the fast-forward control moves. */
   at: string;
+  /** On the real clock, which outside services such as Gmail use. */
+  realAt?: string;
   text: string;
 }
 

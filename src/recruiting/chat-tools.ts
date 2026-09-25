@@ -117,6 +117,14 @@ const tools: ToolDefinition[] = [
   ),
 ];
 
+/** must or nice, from the ways a model writes them; anything else is refused, not guessed. */
+function kindOf(value: unknown): CriterionKind {
+  const said = typeof value === "string" ? value.trim().toLowerCase().replace(/[\s_]+/g, "-") : "";
+  if (["must", "must-have", "required", "requirement", "hard"].includes(said)) return "must";
+  if (["nice", "nice-to-have", "optional", "bonus", "plus", "preferred", "soft"].includes(said)) return "nice";
+  throw new RecruitingError("invalid_request", `kind must be "must" or "nice", not ${JSON.stringify(value)}.`);
+}
+
 /** A real yes or no. Accepting or declining changes the search, so a guess is not good enough. */
 function yesOrNo(value: unknown): boolean {
   if (value === true || value === "true") return true;
@@ -218,8 +226,16 @@ async function runTool(
     };
   }
   if (name === "recruiting_start") {
+    const requirement = text(args, "requirement");
     const { id, service } = board.create();
-    const result = await service.start(text(args, "requirement"));
+    let result;
+    try {
+      result = await service.start(requirement);
+    } catch (error) {
+      // A start that failed leaves no role behind, not even in memory.
+      board.forget(id);
+      throw error;
+    }
     return { content: JSON.stringify({ role_id: id, result, status: statusForModel(await service.snapshot()) }) };
   }
 
@@ -233,21 +249,21 @@ async function runTool(
       if (!Array.isArray(args.criteria)) {
         throw new RecruitingError("invalid_request", "criteria must be a list of {text, kind}.");
       }
-      const criteria = args.criteria;
-      await service.reviseDraft(
-        criteria
-          .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
-          .map((entry) => {
-            if (typeof entry.text !== "string") {
-              throw new RecruitingError("invalid_request", "Each criterion needs text.");
-            }
-            return {
-              ...(typeof entry.id === "string" ? { id: entry.id } : {}),
-              text: entry.text,
-              kind: (entry.kind === "nice" ? "nice" : "must") as CriterionKind,
-            };
-          }),
-      );
+      const criteria = args.criteria.map((entry) => {
+        if (typeof entry !== "object" || entry === null || typeof (entry as Record<string, unknown>).text !== "string") {
+          throw new RecruitingError("invalid_request", "Each criterion must be an object with text and kind.");
+        }
+        const record = entry as Record<string, unknown>;
+        return {
+          ...(typeof record.id === "string" ? { id: record.id } : {}),
+          text: record.text as string,
+          kind: kindOf(record.kind),
+        };
+      });
+      if (!criteria.some((criterion) => criterion.text.trim())) {
+        throw new RecruitingError("invalid_request", "Keep at least one criterion; the draft was not changed.");
+      }
+      await service.reviseDraft(criteria);
       return { content: await status() };
     }
     case "recruiting_confirm":

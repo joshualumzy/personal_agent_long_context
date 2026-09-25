@@ -105,6 +105,8 @@ export interface RoleSummary {
 /** Every open role, each with its own recruiting service over its own state. */
 export class RoleBoard {
   private readonly services = new Map<string, RecruitingService>();
+  /** Roles being or already deleted: never opened again, even by a request already in flight. */
+  private readonly removed = new Set<string>();
 
   constructor(
     private readonly repository: RoleRepository,
@@ -113,11 +115,13 @@ export class RoleBoard {
   ) {}
 
   async get(roleId: string): Promise<RecruitingService> {
+    if (this.removed.has(roleId)) throw new RecruitingError("unknown_role", "No such role.", 404);
     const cached = this.services.get(roleId);
     if (cached) return cached;
     if (!(await this.repository.list()).includes(roleId)) {
       throw new RecruitingError("unknown_role", "No such role.", 404);
     }
+    if (this.removed.has(roleId)) throw new RecruitingError("unknown_role", "No such role.", 404);
     // Another request may have opened it while we listed; one service per role.
     return this.services.get(roleId) ?? this.open(roleId);
   }
@@ -128,27 +132,35 @@ export class RoleBoard {
     return { id, service: this.open(id) };
   }
 
+  /** Drops a role that was created but never saved (its start failed). */
+  forget(roleId: string): void {
+    this.services.delete(roleId);
+  }
+
   async remove(roleId: string): Promise<void> {
     const service = await this.get(roleId);
+    this.removed.add(roleId);
     this.services.delete(roleId);
     // Stop the role first, so its background work cannot write the file back.
     await service.dispose();
     await this.repository.remove(roleId);
   }
 
-  /** Every role that can be read. One damaged file never takes the others down. */
+  /** Every role that can be read, newest first. One damaged file never takes the others down. */
   async all(): Promise<Array<{ id: string; service: RecruitingService }>> {
-    const readable = [];
+    const readable: Array<{ id: string; service: RecruitingService; createdAt: string }> = [];
     for (const id of await this.repository.list()) {
       try {
         const service = await this.get(id);
-        await service.snapshot();
-        readable.push({ id, service });
+        const snapshot = await service.snapshot();
+        readable.push({ id, service, createdAt: snapshot.role?.createdAt ?? "" });
       } catch (error) {
         this.onUnreadable?.(id, error);
       }
     }
-    return readable;
+    return readable
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map(({ id, service }) => ({ id, service }));
   }
 
   /** Newest first. */

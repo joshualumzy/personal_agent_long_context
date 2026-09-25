@@ -122,11 +122,19 @@ function citedIds(answer: string): string[] {
 const INSUFFICIENT_EVIDENCE_ANSWER =
   "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.";
 
+function honestlyInsufficient(answer: string): boolean {
+  const match = /^\W*insufficient evidence\b[\s:.,-]*([\s\S]*)$/i.exec(answer.trim());
+  if (!match) return false;
+  const rest = match[1]!.trim();
+  return rest.length >= 12 && !/\b(but|however|although|though|still|nevertheless)\b/i.test(rest);
+}
+
 function validateCitations(
   answer: string,
   retrieved: ReadonlyMap<string, Evidence>,
   hasPersonalContext = false,
   groundedElsewhere = false,
+  acceptsInsufficient = false,
 ): { citedSourceIds: string[]; problem?: string } {
   const citedSourceIds = [...new Set(citedIds(answer))];
   const invalid = citedSourceIds.filter((id) => !retrieved.has(id));
@@ -138,6 +146,9 @@ function validateCitations(
   }
   // A skill's tools ground the answer in their own state, not in company artifacts.
   if (groundedElsewhere) return { citedSourceIds };
+  // The repair may answer that evidence is missing, as it is asked to. That needs no citation,
+  // but only when it names what is missing and asserts nothing else ("..., but X is true").
+  if (acceptsInsufficient && citedSourceIds.length === 0 && honestlyInsufficient(answer)) return { citedSourceIds };
   if (citedSourceIds.length === 0 && retrieved.size > 0) {
     return { citedSourceIds, problem: "SoCLaaS returned an uncited factual answer." };
   }
@@ -214,7 +225,8 @@ async function streamChatCompletion(
   // The last event may arrive without a trailing newline.
   handle(buffer + decoder.decode());
 
-  const tool_calls = Array.from(toolCallsMap.values()).filter((t) => t.id && t.function.name);
+  // A call streamed without an id still counts; ids are assigned by the caller.
+  const tool_calls = Array.from(toolCallsMap.values()).filter((t) => t.function.name);
   return {
     content: fullContent,
     tool_calls: tool_calls.length > 0 ? tool_calls : undefined,
@@ -403,11 +415,21 @@ export class SoCLaaSCompanyAgent {
 
         // On the last step there is no room for tools; take whatever it said.
         if (mustAnswer) calls = [];
-        messages.push(
-          calls.length > 0
-            ? { role: "assistant", content: rawContent, tool_calls: calls }
-            : { role: "assistant", content: rawContent },
-        );
+        // Every reply to a call must name it, so each call gets a unique id.
+        const usedIds = new Set<string>();
+        calls = calls.map((call, index) => {
+          const id = call.id && !usedIds.has(call.id) ? call.id : `call_${step}_${index}`;
+          usedIds.add(id);
+          return { ...call, id };
+        });
+        // An empty reply is not echoed back: servers reject an assistant message with nothing in it.
+        if (calls.length > 0 || rawContent?.trim()) {
+          messages.push(
+            calls.length > 0
+              ? { role: "assistant", content: rawContent, tool_calls: calls }
+              : { role: "assistant", content: rawContent },
+          );
+        }
         if (calls.length > 0) {
           if (isStreaming) {
             callbacks?.onResetTokens?.();
@@ -472,7 +494,7 @@ export class SoCLaaSCompanyAgent {
             const repairCompletion = (await repairResponse.json()) as CompletionResponse;
             answer = repairCompletion.choices?.[0]?.message?.content?.trim();
             citationCheck = answer
-              ? validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere)
+              ? validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere, true)
               : { citedSourceIds: [], problem: "empty repair" };
             if (citationCheck.problem || !answer) {
               return {

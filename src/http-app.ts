@@ -50,6 +50,10 @@ const securityHeaders = {
 
 const HISTORY_TURNS = 6;
 
+function titleFrom(message: string): string {
+  return message.length > 50 ? `${message.slice(0, 47).trim()}…` : message;
+}
+
 export function buildApp(options: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     logger: options.logger ?? false,
@@ -107,6 +111,16 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     const question = (body as Record<string, string>).question.trim();
     if (!employeeId || !question || question.length > 2_000) {
       return reply.code(400).send({ message: "Provide a valid employeeId and question." });
+    }
+    // The same gate as the chat: secrets never reach the model.
+    const prohibited = detectProhibitedData(question);
+    if (prohibited) {
+      return reply.code(400).send({
+        status: "rejected",
+        code: "prohibited_data",
+        category: prohibited.category,
+        message: `Your question was blocked because it appears to contain ${/^[aeiou]/i.test(prohibited.category) ? "an" : "a"} ${prohibited.category}. Remove credentials or sensitive numbers before continuing.`,
+      });
     }
     try {
       return await options.companyAgent.answer({ employeeId, question });
@@ -219,12 +233,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           .slice(-HISTORY_TURNS)
           .map(({ role, content }) => ({ role, content: content.slice(0, 1500) }));
         if (!existing) {
-          const conv = await options.conversationStore.create(userId);
+          const conv = await options.conversationStore.create(userId, titleFrom(message));
           conversationId = conv.conversationId;
         }
       } else {
-        const title = message.length > 50 ? `${message.slice(0, 47).trim()}…` : message;
-        const conv = await options.conversationStore.create(userId, title);
+        const conv = await options.conversationStore.create(userId, titleFrom(message));
         conversationId = conv.conversationId;
       }
 
@@ -282,6 +295,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
       const durationMs = Date.now() - turnStartTime;
 
+      // The answer is the user's either way: a failed save is logged, never a lost answer
+      // (the tools behind it may already have acted, so "try again" would repeat them).
       if (options.conversationStore && conversationId) {
         await options.conversationStore.appendMessage({
           conversationId,
@@ -300,7 +315,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
             durationMs,
             model: modelUsed,
           },
-        });
+        }).catch((error: unknown) =>
+          request.log.error(
+            { conversationId, reason: error instanceof Error ? error.message : String(error) },
+            "Saving the answer failed",
+          ),
+        );
       }
 
       const responsePayload = {
@@ -352,18 +372,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     ) {
       return reply.code(400).send({ message: "message is required." });
     }
-    const userId =
-      typeof (body as Record<string, unknown>).userId === "string"
-        ? (body as Record<string, string>).userId.trim()
-        : "jax";
-    const employeeId =
-      typeof (body as Record<string, unknown>).employeeId === "string"
-        ? (body as Record<string, string>).employeeId.trim()
-        : "jax";
-    const message = (
-      (body as Record<string, string>).message ??
-      (body as Record<string, string>).question
-    ).trim();
+    const fields = body as Record<string, unknown>;
+    // A blank id means the default, as on every other route.
+    const idOr = (value: unknown) => (typeof value === "string" && value.trim() ? value.trim() : "jax");
+    const userId = idOr(fields.userId);
+    const employeeId = idOr(fields.employeeId);
+    const message = (typeof fields.message === "string" ? fields.message : String(fields.question)).trim();
 
     if (!message || message.length > 2_000) {
       return reply.code(400).send({ message: "Provide a valid message (up to 2000 characters)." });

@@ -25,6 +25,7 @@ import {
   type Criterion,
   type CriterionKind,
   type Draft,
+  type HiringEvent,
   type Message,
   type Proposal,
   type RecruitingState,
@@ -164,7 +165,11 @@ export class RecruitingService {
   private async current(): Promise<RecruitingState> {
     if (this.state) return this.state;
     // Concurrent first callers share one load, so an older copy can never land last.
-    this.loading ??= this.load();
+    this.loading ??= this.load().catch((error: unknown) => {
+      // A load that failed (a busy or damaged file) is tried again next time.
+      this.loading = null;
+      throw error;
+    });
     return this.loading;
   }
 
@@ -197,21 +202,32 @@ export class RecruitingService {
   private mutate<T>(change: (state: RecruitingState) => Promise<T> | T): Promise<T> {
     const run = this.chain.then(async () => {
       if (this.disposed) throw new RecruitingError("unknown_role", "No such role.", 404);
+      this.uncommitted = [];
       const draft = structuredClone(await this.current());
       const result = await change(draft);
       if (this.disposed) return result;
       await this.deps.store.save(draft);
       this.state = draft;
+      const events = this.uncommitted;
+      this.uncommitted = [];
+      for (const event of events) this.deps.memory.record(event);
       return result;
     });
     this.chain = run.catch(() => undefined);
     return run;
   }
 
+  /** Events recorded by the change in progress; Memory hears them only once it is saved. */
+  private uncommitted: HiringEvent[] = [];
+
   private record(state: RecruitingState, kind: string, summary: string): void {
     const event = { at: this.now(state).toISOString(), kind, summary };
     state.events.push(event);
-    this.deps.memory.record(event);
+    this.uncommitted.push(event);
+  }
+
+  private realNow(): string {
+    return (this.deps.clock ?? (() => new Date()))().toISOString();
   }
 
   private fail(context: string, error: unknown): void {
@@ -229,7 +245,8 @@ export class RecruitingService {
   }
 
   private candidate(state: RecruitingState, id: string): Candidate {
-    const found = state.candidates[id];
+    // Own keys only: an id like "__proto__" must never reach Object.prototype.
+    const found = Object.hasOwn(state.candidates, id) ? state.candidates[id] : undefined;
     if (!found) throw new RecruitingError("unknown_candidate", "That candidate is not in the pool.", 404);
     return found;
   }
@@ -431,6 +448,7 @@ export class RecruitingService {
       const known = new Set(Object.values(latest.candidates).map((candidate) => personKey(candidate.profile)));
       for (const profile of profiles) {
         if (known.has(personKey(profile))) continue;
+        known.add(personKey(profile));
         latest.candidates[profile.id] = {
           profile,
           poolRound: Math.max(latest.rounds.length, 1),
@@ -522,6 +540,7 @@ export class RecruitingService {
           });
         } catch (error) {
           failed.add(id);
+          if (this.disposed) return; // the role was deleted; nothing to report
           this.fail(`Scoring ${job.candidate.profile.name}`, error);
         } finally {
           claimed.delete(id);
@@ -536,7 +555,7 @@ export class RecruitingService {
 
   /** One entry point for anything the founder types or dictates. */
   async say(text: string): Promise<SayResult> {
-    const said = text.trim();
+    const said = text.trim().slice(0, MAX_REQUIREMENT);
     if (!said) throw new RecruitingError("invalid_request", "Say something first.");
     const state = await this.current();
     if (!state.role) return this.start(said);
@@ -704,7 +723,8 @@ export class RecruitingService {
       this.record(
         latest,
         "candidate_feedback",
-        `The founder chose to ${decision} a candidate (${target.profile.headline || "profile"}). Reason: ${
+        // No profile text here: events outlive the 30-day erasure of the person.
+        `The founder chose to ${decision} a candidate. Reason: ${
           statedReason ? `"${statedReason}"` : `not stated; inferred as "${inferredReason}"`
         }.`,
       );
@@ -867,6 +887,10 @@ export class RecruitingService {
     const draft = await this.makeDraft(state, contact ? { ...candidate, contact } : candidate, "intro");
     await this.mutate((latest) => {
       const target = this.candidate(latest, candidateId);
+      // They may have been closed while the draft was being written.
+      if (target.stage === "closed") {
+        throw new RecruitingError("candidate_closed", "This candidate was closed, so the draft was dropped.", 409);
+      }
       if (contact) target.contact = contact;
       target.draft = draft;
       if (target.stage === "discovered" || target.stage === "scored") target.stage = "drafted";
@@ -877,6 +901,9 @@ export class RecruitingService {
     await this.mutate((state) => {
       const candidate = this.candidate(state, candidateId);
       if (!candidate.draft) throw new RecruitingError("no_draft", "There is no draft to edit.", 409);
+      if (candidate.draft.sending) {
+        throw new RecruitingError("already_sending", "This message is being sent and can no longer be edited.", 409);
+      }
       if (edit.subject !== undefined) candidate.draft.subject = edit.subject;
       if (edit.body !== undefined) candidate.draft.body = edit.body;
       if (edit.email !== undefined) {
@@ -898,36 +925,62 @@ export class RecruitingService {
    * themselves (for example as a LinkedIn message).
    */
   async send(candidateId: string, manual: boolean): Promise<void> {
-    // Checked and sent inside one serialized change, so a double press sends once.
-    await this.mutate(async (latest) => {
+    // 1. Claim the draft and save the claim. A second press, or a retry after a
+    //    failed save below, finds it claimed and cannot send it again.
+    const claimed = await this.mutate((latest) => {
       const target = this.candidate(latest, candidateId);
       if (target.stage === "closed") {
         throw new RecruitingError("candidate_closed", "This candidate is closed, so nothing more is sent.", 409);
       }
       const draft = target.draft;
       if (!draft) throw new RecruitingError("no_draft", "There is no draft to send.", 409);
+      if (draft.sending) {
+        throw new RecruitingError("already_sending", "This message is already being sent. Check your sent mail before trying again.", 409);
+      }
       if (draft.warnings.length) {
         throw new RecruitingError("draft_has_warnings", draft.warnings[0]!, 409);
       }
-      let threadId = target.gmailThreadId;
-      if (!manual) {
+      if (!manual && !target.contact) {
+        throw new RecruitingError("no_email", "There is no email address for this person.", 409);
+      }
+      draft.sending = true;
+      return { draft: { ...draft }, contact: target.contact, threadId: target.gmailThreadId };
+    });
+
+    // 2. The one irreversible step, outside any change that could be rolled back.
+    let threadId = claimed.threadId;
+    if (!manual) {
+      try {
         if (!this.deps.gmail || !(await this.deps.gmail.connected())) {
           throw new RecruitingError("gmail_not_connected", "Connect Gmail first, or mark it as sent by hand.", 409);
         }
-        if (!target.contact) throw new RecruitingError("no_email", "There is no email address for this person.", 409);
         const sent = await this.deps.gmail.send({
-          to: target.contact.email,
-          subject: draft.subject,
-          body: draft.body,
+          to: claimed.contact!.email,
+          subject: claimed.draft.subject,
+          body: claimed.draft.body,
           ...(threadId ? { threadId } : {}),
         });
         threadId = sent.threadId;
+      } catch (error) {
+        // Nothing went out: release the claim so the founder can try again.
+        await this.mutate((latest) => {
+          const target = latest.candidates[candidateId];
+          if (target?.draft) delete target.draft.sending;
+        });
+        throw error;
       }
+    }
+
+    // 3. Record it.
+    const draft = claimed.draft;
+    await this.mutate((latest) => {
+      const target = this.candidate(latest, candidateId);
       const at = this.now(latest).toISOString();
       target.messages.push({
         direction: "outbound",
         channel: manual ? "linkedin" : "email",
         at,
+        realAt: this.realNow(),
         text: `${draft.subject}\n\n${draft.body}`,
       });
       if (threadId) target.gmailThreadId = threadId;
@@ -964,27 +1017,54 @@ export class RecruitingService {
       return { intent: "reply", message: "I could not tell which candidate this reply is from." };
     }
     const id = reading.candidateId;
-    await this.mutate(async (latest) => {
+    // 1. The reply itself is saved first; nothing after this can lose it.
+    const closedAs = await this.mutate((latest) => {
       const candidate = this.candidate(latest, id);
-      candidate.messages.push({ direction: "inbound", channel, at: at ?? this.now(latest).toISOString(), text });
+      candidate.messages.push({
+        direction: "inbound",
+        channel,
+        at: at ?? this.now(latest).toISOString(),
+        realAt: at ?? this.realNow(),
+        text,
+      });
       // They answered, so "just checking in" no longer fits.
-      if (candidate.draft?.kind === "follow_up") delete candidate.draft;
+      if (candidate.draft?.kind === "follow_up" && !candidate.draft.sending) delete candidate.draft;
+      // A closed person stays closed (hired stays hired); the message is kept on record.
+      if (candidate.stage === "closed") return candidate.closedReason ?? "closed";
       if (reading.interested === false) {
         this.closeCandidate(latest, candidate, "declined");
-        return;
+        return null;
       }
       candidate.stage = "replied";
-      if (reading.interested || reading.wantsToSchedule) {
-        candidate.draft = await this.makeDraft(latest, candidate, "scheduling");
-      }
+      return null;
     });
     const name = state.candidates[id]?.profile.name ?? "The candidate";
+    if (closedAs) return { intent: "reply", message: `${name} is closed (${closedAs}). Their message is saved.` };
+    if (reading.interested === false) return { intent: "reply", message: `${name} declined. Closed.` };
+
+    // 2. A scheduling answer, if they want to talk. Failing here keeps the reply.
+    let drafted = false;
+    if (reading.interested || reading.wantsToSchedule) {
+      try {
+        const latest = await this.current();
+        const candidate = latest.candidates[id];
+        if (candidate) {
+          const draft = await this.makeDraft(latest, candidate, "scheduling");
+          await this.mutate((next) => {
+            const target = next.candidates[id];
+            if (target?.stage === "replied" && !target.draft) {
+              target.draft = draft;
+              drafted = true;
+            }
+          });
+        }
+      } catch (error) {
+        this.fail(`Drafting a reply to ${name}`, error);
+      }
+    }
     return {
       intent: "reply",
-      message:
-        reading.interested === false
-          ? `${name} declined. Closed.`
-          : `${name}: ${reading.summary}${reading.interested || reading.wantsToSchedule ? " A scheduling reply is drafted." : ""}`,
+      message: `${name}: ${reading.summary}${drafted ? " A scheduling reply is drafted." : ""}`,
     };
   }
 
@@ -1011,11 +1091,18 @@ export class RecruitingService {
     let count = 0;
     for (const candidate of Object.values(state.candidates)) {
       if (!candidate.gmailThreadId || candidate.stage === "closed") continue;
-      const lastSeen = candidate.messages.at(-1)?.at ?? candidate.discoveredAt;
-      const replies = await this.deps.gmail.repliesIn(candidate.gmailThreadId, lastSeen);
-      for (const message of replies) {
-        await this.reply(message.text, candidate.profile.id, "email", message.at);
-        count += 1;
+      // Gmail keeps real time, so the cut-off must too (fast-forward moves only the simulated clock).
+      const last = candidate.messages.at(-1);
+      const lastSeen = last?.realAt ?? last?.at ?? candidate.discoveredAt;
+      // One thread that fails is reported; the others are still read.
+      try {
+        const replies = await this.deps.gmail.repliesIn(candidate.gmailThreadId, lastSeen);
+        for (const message of replies) {
+          await this.reply(message.text, candidate.profile.id, "email", message.at);
+          count += 1;
+        }
+      } catch (error) {
+        this.fail(`Reading Gmail replies from ${candidate.profile.name}`, error);
       }
     }
     return count;
@@ -1053,7 +1140,8 @@ export class RecruitingService {
           const draft = await this.makeDraft(state, candidate, "follow_up");
           await this.mutate((latest) => {
             const target = latest.candidates[candidate.profile.id];
-            if (target && !target.draft) target.draft = draft;
+            // Only for someone still waiting on us: not replied, not closed since the tick began.
+            if (target && !target.draft && target.stage === "contacted") target.draft = draft;
           });
         } catch (error) {
           this.fail(`Drafting a follow-up to ${candidate.profile.name}`, error);

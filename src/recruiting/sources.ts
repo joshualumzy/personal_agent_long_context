@@ -23,7 +23,15 @@ function str(value: unknown): string {
  */
 export function canonicalProfileUrl(url: string): string {
   const linkedIn = /^https?:\/\/(?:[a-z]{2,3}\.|www\.)*linkedin\.com\/in\/([^/?#\s]+)/i.exec(url.trim());
-  if (linkedIn) return `linkedin.com/in/${decodeURIComponent(linkedIn[1]!).toLowerCase()}`;
+  if (linkedIn) {
+    let slug = linkedIn[1]!;
+    try {
+      slug = decodeURIComponent(slug);
+    } catch {
+      // A broken escape is compared as written rather than failing the whole search.
+    }
+    return `linkedin.com/in/${slug.toLowerCase()}`;
+  }
   return url.trim().replace(/^https?:\/\/(www\.)?/i, "").replace(/\/+$/, "").toLowerCase();
 }
 
