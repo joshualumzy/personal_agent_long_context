@@ -27,6 +27,14 @@ const embedded = params.get("embed") === "1" && window.top !== window;
 let pendingCandidate = embedded ? params.get("candidate") : null;
 let roleId = params.get("role");
 let roles = [];
+/** Bumped on every role switch: an answer that arrives for an earlier view is dropped. */
+let view = 0;
+/** The founder has edited the draft criteria, so polling must not overwrite them. */
+let draftDirty = false;
+/** A background error the founder dismissed; it is not shown again. */
+let dismissedError = null;
+/** Set while the composer's request is in flight. */
+let saying = false;
 
 /** Every role-scoped call goes under the open role. */
 function api(path) {
@@ -43,14 +51,32 @@ function rememberRole() {
 /** Opens another role, or the intake when id is null. */
 function switchRole(id) {
   roleId = id;
+  view += 1;
   selectedId = null;
+  closeDrawer();
+  disarmDelete();
   draftCriteria = null;
+  draftDirty = false;
+  dismissedError = null;
   lastRoundCount = 0;
   for (const node of nodes.values()) node.remove();
   nodes.clear();
   rememberRole();
   showError("");
   refresh();
+}
+
+function closeDrawer() {
+  const drawer = $("#drawer");
+  drawer.hidden = true;
+  drawer.replaceChildren();
+  detailSignature = "";
+}
+
+function disarmDelete() {
+  const button = $("#reset");
+  button.dataset.armed = "";
+  button.textContent = "Delete this role";
 }
 
 function h(tag, attributes = {}, ...children) {
@@ -95,10 +121,26 @@ function initials(name) {
 
 // ------------------------------------------------------------------ network
 
-function showError(message) {
+function showError(message, fromServer = false) {
   const banner = $("#error");
-  banner.textContent = message;
+  banner.replaceChildren();
   banner.hidden = !message;
+  if (!message) return;
+  banner.append(message);
+  if (fromServer) {
+    // A background error stays until dismissed; dismissing tells the server too.
+    banner.append(
+      h("button", {
+        type: "button",
+        class: "link dismiss",
+        onclick: async () => {
+          dismissedError = message;
+          showError("");
+          if (roleId) await fetch(api("/dismiss-error"), { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).catch(() => {});
+        },
+      }, "Dismiss"),
+    );
+  }
 }
 
 /** Opens a new role from words or an uploaded file. */
@@ -133,6 +175,7 @@ async function createRole(body, button) {
 async function call(path, body, button) {
   if (button) button.disabled = true;
   showError("");
+  const asked = view;
   try {
     const response = await fetch(path, {
       method: "POST",
@@ -140,6 +183,8 @@ async function call(path, body, button) {
       body: JSON.stringify(body ?? {}),
     });
     const data = await response.json();
+    // The founder moved to another role meanwhile: this answer is not about what is on screen.
+    if (asked !== view) return undefined;
     if (!response.ok) {
       showError(data.message ?? "Something went wrong.");
       return undefined;
@@ -156,8 +201,10 @@ async function call(path, body, button) {
 
 async function refresh() {
   try {
+    const listedFor = view;
     const listed = await fetch("/api/recruiting/roles");
     if (listed.ok) roles = (await listed.json()).roles;
+    if (listedFor !== view) return;
     // Without a role in the link, open the newest one. Panels saved before roles existed name none.
     if (!roleId && roles.length && !startingNew) {
       roleId = roles[0].id;
@@ -168,18 +215,37 @@ async function refresh() {
       render(null);
       return;
     }
+    const asked = view;
     const response = await fetch(api("/state"));
-    if (response.status === 404 && !embedded) {
-      switchRole(null);
+    if (asked !== view) return;
+    if (response.status === 404) {
+      if (embedded) showGone();
+      else switchRole(null);
       return;
     }
-    if (response.ok) render(await response.json());
+    if (response.ok) {
+      const next = await response.json();
+      if (asked === view) render(next);
+    }
   } catch {
     // The next poll tries again.
   }
 }
 
 let startingNew = false;
+
+/** In the chat, a panel whose role was deleted says so instead of showing a stale board. */
+function showGone() {
+  state = null;
+  closeDrawer();
+  $("#intake").hidden = true;
+  $("#review").hidden = true;
+  $("#board").hidden = true;
+  $("#top-actions").hidden = true;
+  $("#role-title").textContent = "This role is no longer here";
+  $("#status-line").textContent = "Open the full page to see your roles.";
+  showError("This role does not exist any more. It was deleted, or the link is wrong.");
+}
 
 function renderRoles() {
   const select = $("#role-select");
@@ -209,6 +275,11 @@ function schedulePoll() {
 
 function render(next) {
   state = next;
+  if (!state || !state.role?.confirmed) {
+    // The drawer belongs to the board; it must not outlive it.
+    selectedId = null;
+    closeDrawer();
+  }
   if (!state) {
     $("#intake").hidden = false;
     $("#review").hidden = true;
@@ -225,9 +296,20 @@ function render(next) {
   $("#top-actions").hidden = !role;
   $("#role-title").textContent = role ? role.title : "Who do you need?";
 
-  if (state.lastError && !$("#error").textContent) showError(state.lastError);
+  if (state.lastError && state.lastError !== dismissedError && !$("#error").textContent) {
+    showError(state.lastError, true);
+  }
 
-  if (role && !role.confirmed) renderReview();
+  if (role && !role.confirmed) {
+    // Keep what the founder is typing: polling refreshes the draft only while it is untouched.
+    const editing = draftDirty || $("#review").contains(document.activeElement);
+    if (!editing) {
+      draftCriteria = null;
+      renderReview();
+    } else if (!draftCriteria) {
+      renderReview();
+    }
+  }
   if (role?.confirmed) {
     if (pendingCandidate) {
       const named = state.candidates.find((candidate) => candidate.id === pendingCandidate);
@@ -297,6 +379,7 @@ function renderReview() {
             title: "Must or nice to have",
             onclick: () => {
               criterion.kind = criterion.kind === "must" ? "nice" : "must";
+              draftDirty = true;
               renderReview();
             },
           },
@@ -308,6 +391,7 @@ function renderReview() {
           "aria-label": `Criterion ${index + 1}`,
           oninput: (event) => {
             criterion.text = event.target.value;
+            draftDirty = true;
           },
         }),
         h(
@@ -318,6 +402,7 @@ function renderReview() {
             "aria-label": "Remove",
             onclick: () => {
               draftCriteria.splice(index, 1);
+              draftDirty = true;
               renderReview();
             },
           },
@@ -512,6 +597,11 @@ function renderCriteria() {
 let activeTab = "fit";
 
 function select(id) {
+  if (!state?.role?.confirmed) {
+    selectedId = null;
+    closeDrawer();
+    return;
+  }
   const next = selectedId === id ? null : id;
   if (next !== selectedId) activeTab = "fit";
   selectedId = next;
@@ -734,17 +824,28 @@ function outreachPanel(candidate) {
     const email = h("input", { type: "email", value: candidate.contact?.email ?? "", placeholder: "Email address", "aria-label": "To" });
     const subject = h("input", { type: "text", value: draft.subject, "aria-label": "Subject", placeholder: "Subject (emails only)" });
     const body = h("textarea", { "aria-label": "Message" }, draft.body);
-    const save = () =>
-      call(api(`/candidates/${candidate.id}/draft`), {
+    // call() answers undefined on failure (and shows why); a send only follows a save that worked.
+    const save = async () =>
+      (await call(api(`/candidates/${candidate.id}/draft`), {
         subject: subject.value,
         body: body.value,
         ...(email.value && email.value !== candidate.contact?.email ? { email: email.value } : {}),
-      });
+      })) !== undefined;
+    const sendAfterSave = (manual) => async (event) => {
+      const button = event.currentTarget;
+      if (!(await save())) return;
+      await call(api(`/candidates/${candidate.id}/send`), manual ? { manual: true } : {}, button);
+    };
     const source = {
       hunter: "Found by Hunter",
       prospeo: "Found by Prospeo",
       founder: "Entered by you",
     }[candidate.contact?.provider];
+    const gmailButton = h("button", { type: "button", class: "primary", disabled: !candidate.contact && !email.value ? true : undefined, title: candidate.contact ? undefined : "Add an email address first", onclick: sendAfterSave(false) }, "Send from Gmail");
+    // Typing an address makes Gmail sending possible right away.
+    email.addEventListener("input", () => {
+      gmailButton.disabled = !candidate.contact && !email.value.trim();
+    });
     const status = candidate.contact
       ? h(
           "p",
@@ -768,9 +869,9 @@ function outreachPanel(candidate) {
           "div",
           { class: "row sticky-actions" },
           state.integrations?.gmail
-            ? h("button", { type: "button", class: "primary", disabled: !candidate.contact && !email.value ? true : undefined, title: candidate.contact ? undefined : "Add an email address first", onclick: async (event) => { await save(); await call(api(`/candidates/${candidate.id}/send`), {}, event.currentTarget); } }, "Send from Gmail")
+            ? gmailButton
             : null,
-          h("button", { type: "button", class: "quiet", onclick: async (event) => { await save(); await call(api(`/candidates/${candidate.id}/send`), { manual: true }, event.currentTarget); } }, "I sent it myself"),
+          h("button", { type: "button", class: "quiet", onclick: sendAfterSave(true) }, "I sent it myself"),
           h("button", { type: "button", class: "quiet", onclick: save }, "Save edits"),
         ),
       ),
@@ -877,7 +978,7 @@ document.addEventListener("DOMContentLoaded", () => {
     say.style.height = "auto";
     // A hidden textarea measures 0; leave it to CSS until it is on screen.
     if (say.scrollHeight > 0) say.style.height = `${Math.min(say.scrollHeight, 180)}px`;
-    sendButton.disabled = !say.value.trim();
+    sendButton.disabled = saying || !say.value.trim();
   };
   say.addEventListener("input", fit);
   fit();
@@ -885,13 +986,22 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#say-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const text = say.value.trim();
-    if (!text) return;
+    // One instruction at a time: Enter or a re-enabled button must not send it twice.
+    if (!text || saying) return;
+    saying = true;
+    fit();
     $("#agent-reply").textContent = "…";
     // Pasted LinkedIn profile links add those people; anything else goes to the agent.
     const links = text.match(/https:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\/in\/[^\s,]+/gi);
-    const result = links
-      ? await call(api("/candidates/import"), { urls: links }, sendButton)
-      : await call(api("/say"), { text }, sendButton);
+    let result;
+    try {
+      result = links
+        ? await call(api("/candidates/import"), { urls: links })
+        : await call(api("/say"), { text });
+    } finally {
+      saying = false;
+      fit();
+    }
     if (result) {
       say.value = "";
       fit();

@@ -780,6 +780,8 @@ chatForm.addEventListener("submit", async (e) => {
     let textContainer = null;
     let accumulatedContent = "";
     let finalPayload = null;
+    // Kept across reads: an event line and its data line can arrive in different chunks.
+    let currentEvent = "message";
 
     while (true) {
       const { done, value } = await reader.read();
@@ -788,10 +790,13 @@ chatForm.addEventListener("submit", async (e) => {
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
 
-      let currentEvent = "message";
       for (const rawLine of lines) {
         const line = rawLine.trim();
-        if (!line) continue;
+        if (!line) {
+          // A blank line ends an event; the next one starts as a plain message.
+          currentEvent = "message";
+          continue;
+        }
         if (line.startsWith("event:")) {
           currentEvent = line.slice(6).trim();
           continue;

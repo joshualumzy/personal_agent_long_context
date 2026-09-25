@@ -219,3 +219,28 @@ Found while setting up the frontend checks (`r2-own-rate-limit.test.ts`)
   Retry-After honoured) and only for 429, 408, 5xx, network errors and
   malformed replies; at most 6 model calls in flight across all roles;
   failed scoring is retried after 30 s, up to 3 times.
+
+## Frontend logic, fixed (2026-09-26)
+
+The owner asked to fix now the frontend logic that any future UI will keep,
+and leave only layout for the redesign. Checks moved to
+`test/regression/ui/` (see its README); each failed before the fix and passes
+after.
+- Delete stayed armed across role switches (`h03`); the drawer outlived the
+  board and acted on another role (`h15`); late answers painted the previous
+  role (`h04`, `h05`). Fix: every answer is tied to the view it was asked
+  for; switching roles closes the drawer and disarms Delete.
+- Draft criteria lost focus and edits on each poll (`h02`). Fix: polling
+  refreshes the draft only while it is untouched.
+- The composer could send twice (`h17`, `h17b`). Fix: one request at a time.
+- "I sent it myself" went ahead after a failed save (`h21`). Fix: sending
+  follows only a save that worked.
+- "Send from Gmail" ignored a typed address (`h12`). Fix: follows the field.
+- A split SSE event lost its type (`h08`). Fix: the type persists across
+  reads and resets on a blank line.
+- An embedded panel for a missing role showed an empty shell or a stale
+  board (`h07`, `h16`). Fix: it says the role is gone.
+- A background error could not be dismissed (`h20`). Fix: Dismiss, which
+  also clears it on the server.
+Still deferred (layout): `h09` panel height, `h23` two proposals in a small
+embedded panel.
