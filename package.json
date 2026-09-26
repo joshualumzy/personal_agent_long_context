@@ -13,7 +13,7 @@
     "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts test/regression/*.test.ts",
     "test:smoke": "RUN_REAL_LETTA=1 node --env-file=.env --import tsx --test test/letta.smoke.test.ts",
     "letta:server": "letta server --backend local --listen ws://127.0.0.1:4500",
-    "test:browser": "node --import tsx --test test/browser.test.ts",
+    "test:browser": "node --import tsx --test test/sme-browser.test.ts",
     "demo:scenario": "node --env-file=.env --import tsx scripts/demo-scenario.ts",
     "eval:memora": "node --env-file=.env --import tsx eval/memora/run.ts",
     "eval:memora:report": "node --env-file=.env --import tsx eval/memora/report.ts",
@@ -30,8 +30,9 @@
     "test:holdout": "node --import tsx --test --test-concurrency=1 test/holdout/*.test.ts",
     "test:lock": "shasum -a 256 -c test/regression/LOCK.sha256",
     "eval:meetings": "node --env-file=.env --import tsx eval/meetings/run.ts src/meetings/eval-factory.ts",
-    "eval:meetings:dry": "node --import tsx eval/meetings/run.ts --dry",
-    "google:check": "node --env-file=.env --import tsx scripts/google-check.ts"
+    "eval:meetings:dry": "node --env-file=.env --import tsx eval/meetings/run.ts --dry",
+    "google:check": "node --env-file=.env --import tsx scripts/google-check.ts",
+    "eval:orgforge": "node --env-file=.env --import tsx eval/orgforge/run.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1139.0",

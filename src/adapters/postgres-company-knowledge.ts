@@ -1,7 +1,8 @@
 import pg from "pg";
-import type { CompanyKnowledge, EmployeeContext, Evidence } from "../company-domain.js";
+import type { CompanyKnowledge, EmployeeContext, EmployeePersona, Evidence } from "../company-domain.js";
 import type { EmbeddingProvider } from "../embeddings.js";
 import { pgVector } from "../embeddings.js";
+import { verifyPassword } from "../auth.js";
 
 type EvidenceRow = {
   source_id: string;
@@ -55,8 +56,9 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
       role: string | null;
       department: string | null;
       current_assignments: unknown;
+      avatar?: string | null;
     }>(
-      `SELECT employee_id, display_name, role, department, current_assignments
+      `SELECT employee_id, display_name, role, department, current_assignments, avatar
        FROM employees WHERE employee_id = $1`,
       [employeeId],
     );
@@ -67,9 +69,88 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
       displayName: row.display_name,
       ...(row.role ? { role: row.role } : {}),
       ...(row.department ? { department: row.department } : {}),
+      avatar: row.avatar ?? "👤",
       currentAssignments: Array.isArray(row.current_assignments)
         ? row.current_assignments.filter((value): value is string => typeof value === "string")
         : [],
+    };
+  }
+
+  async listEmployees(): Promise<EmployeePersona[]> {
+    try {
+      const result = await this.pool.query<{
+        employee_id: string;
+        display_name: string;
+        role: string | null;
+        department: string | null;
+        avatar: string | null;
+      }>(
+        `SELECT employee_id, display_name, role, department, avatar
+         FROM employees
+         ORDER BY
+           CASE employee_id
+             WHEN 'jax' THEN 1
+             WHEN 'priya' THEN 2
+             WHEN 'chloe' THEN 3
+             WHEN 'marcus' THEN 4
+             WHEN 'deepa' THEN 5
+             ELSE 6
+           END, display_name ASC`,
+      );
+      return result.rows.map((row) => ({
+        employeeId: row.employee_id,
+        displayName: row.display_name,
+        ...(row.role ? { role: row.role } : {}),
+        ...(row.department ? { department: row.department } : {}),
+        avatar: row.avatar ?? "👤",
+      }));
+    } catch {
+      const result = await this.pool.query<{
+        employee_id: string;
+        display_name: string;
+        role: string | null;
+        department: string | null;
+      }>(
+        `SELECT employee_id, display_name, role, department
+         FROM employees ORDER BY display_name ASC`,
+      );
+      return result.rows.map((row) => ({
+        employeeId: row.employee_id,
+        displayName: row.display_name,
+        ...(row.role ? { role: row.role } : {}),
+        ...(row.department ? { department: row.department } : {}),
+        avatar: "👤",
+      }));
+    }
+  }
+
+  async verifyEmployeePassword(employeeId: string, password: string): Promise<EmployeePersona | null> {
+    if (!password || typeof password !== "string" || !password.trim()) {
+      return null;
+    }
+    const result = await this.pool.query<{
+      employee_id: string;
+      display_name: string;
+      role: string | null;
+      department: string | null;
+      avatar: string | null;
+      password_hash: string | null;
+    }>(
+      `SELECT employee_id, display_name, role, department, avatar, password_hash
+       FROM employees WHERE employee_id = $1`,
+      [employeeId.trim().toLowerCase()],
+    );
+    const row = result.rows[0];
+    if (!row || !row.password_hash) return null;
+    if (!verifyPassword(password, row.password_hash)) {
+      return null;
+    }
+    return {
+      employeeId: row.employee_id,
+      displayName: row.display_name,
+      ...(row.role ? { role: row.role } : {}),
+      ...(row.department ? { department: row.department } : {}),
+      avatar: row.avatar ?? "👤",
     };
   }
 

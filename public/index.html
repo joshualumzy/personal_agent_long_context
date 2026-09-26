@@ -8,10 +8,10 @@
       content="Read-only workplace assistant for SME employees, grounded in verified OrgForge evidence and Letta working context."
     />
     <title>SME Employee Assistant</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles.css?v=4" />
     <script src="/vendor/marked.js" defer></script>
     <script src="/vendor/dompurify.js" defer></script>
-    <script src="/app.js" defer></script>
+    <script src="/app.js?v=4" defer></script>
   </head>
   <body>
     <div class="app-layout">
@@ -42,18 +42,32 @@
         </div>
 
         <div class="sidebar-history">
-          <div class="sidebar-label">Recent Conversations</div>
+          <div class="sidebar-label-row">
+            <span class="sidebar-label">Recent Conversations</span>
+            <button type="button" id="clear-all-conversations-btn" class="clear-all-btn" title="Clear all recent conversations" hidden>Clear all</button>
+          </div>
           <div class="conversations-list" id="conversations-list">
             <div class="conversations-empty">No saved chats yet</div>
           </div>
         </div>
 
         <div class="sidebar-footer">
-          <div class="sidebar-user">
-            <div class="avatar" aria-hidden="true">J</div>
-            <div class="user-meta">
-              <strong>Jax</strong>
-              <small>Backend Engineer</small>
+          <div class="sidebar-user" id="sidebar-user-container" title="Switch employee persona (click to open directory)" role="button" tabindex="0">
+            <div class="sidebar-user-info">
+              <div class="avatar" id="sidebar-user-avatar" aria-hidden="true">👨‍💻</div>
+              <div class="user-meta">
+                <strong id="sidebar-user-name">Jax</strong>
+                <small id="sidebar-user-role">Backend Engineer</small>
+              </div>
+            </div>
+            <div class="sidebar-user-actions">
+              <button type="button" id="logout-btn" class="sidebar-action-btn logout-btn" title="Log out" aria-label="Log out">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+                  <polyline points="16 17 21 12 16 7"></polyline>
+                  <line x1="21" y1="12" x2="9" y2="12"></line>
+                </svg>
+              </button>
             </div>
           </div>
         </div>
@@ -78,46 +92,6 @@
                 <h1 id="current-chat-title">SME Assistant</h1>
               </div>
             </div>
-            <div class="header-actions">
-              <!-- Model Selector (Claude / Codex style) -->
-              <div class="model-selector-container" id="model-selector-container">
-                <button type="button" id="model-selector-btn" class="model-selector-btn" aria-haspopup="listbox" aria-expanded="false" title="Switch AI model">
-                  <span class="model-dot-icon" id="model-dot-icon"></span>
-                  <span id="selected-model-name">Qwen 2.5 32B (SoCLaaS)</span>
-                  <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="m6 9 6 6 6-6"/>
-                  </svg>
-                </button>
-                <div id="model-dropdown-menu" class="model-dropdown-menu" hidden>
-                  <div class="model-option active" data-model="soclaas">
-                    <div class="model-opt-main">
-                      <div class="model-opt-title">
-                        <strong>Qwen 2.5 32B</strong>
-                        <span class="opt-tag default-tag">Default</span>
-                      </div>
-                      <small class="model-opt-desc">NUS SoCLaaS cluster · High capacity</small>
-                    </div>
-                    <span class="opt-check" aria-hidden="true">✓</span>
-                  </div>
-                  <div class="model-option" data-model="sonnet">
-                    <div class="model-opt-main">
-                      <div class="model-opt-title">
-                        <strong>Claude 3.5 Sonnet</strong>
-                        <span class="opt-tag bedrock-tag">AWS Bedrock</span>
-                      </div>
-                      <small class="model-opt-desc">Fast synthesis via Bedrock gateway</small>
-                    </div>
-                    <span class="opt-check" aria-hidden="true">✓</span>
-                  </div>
-                </div>
-              </div>
-
-              <div class="employee-badge">
-                <button type="button" id="inspect-memory-btn" class="pill-btn" title="Inspect what Letta remembers about your working context">
-                  🧠 Working Context
-                </button>
-              </div>
-            </div>
           </div>
         </header>
 
@@ -125,15 +99,15 @@
           <div id="messages-container" class="messages-container">
             <div id="empty-state" class="empty-state">
               <div class="empty-icon">🏢</div>
-              <h2>How can I help you today, Jax?</h2>
+              <h2 id="empty-state-title">How can I help you today, Jax?</h2>
               <p>
                 I answer questions grounded in verified OrgForge company evidence, and remember your working context across sessions.
               </p>
-              <div class="suggestion-chips">
-                <button type="button" class="chip">What is Project Titan?</button>
-                <button type="button" class="chip">What is our policy on production deployment freeze?</button>
-                <button type="button" class="chip">I am working on the telemetry migration service.</button>
-                <button type="button" class="chip">What projects or focus areas am I working on?</button>
+              <div class="suggestion-chips" id="suggestion-chips">
+                <button type="button" class="chip">What is Project Titan and what architecture decisions are recorded for it?</button>
+                <button type="button" class="chip">What is our current team policy on production deployment freeze?</button>
+                <button type="button" class="chip">Who are the primary code owners and maintainers for our backend services?</button>
+                <button type="button" class="chip">What active engineering tasks or focus areas are currently assigned to me?</button>
               </div>
             </div>
             <div id="chat-messages" class="chat-messages"></div>
@@ -150,16 +124,46 @@
                   id="message-input"
                   name="message"
                   placeholder="Ask about company knowledge or share a working update… (Enter to send, Shift+Enter for newline)"
-                  rows="1"
+                  rows="2"
                   required
                   aria-label="Message for workplace assistant"
                 ></textarea>
-                <button type="submit" id="send-button" class="send-btn" aria-label="Send message">
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <line x1="22" y1="2" x2="11" y2="13"></line>
-                    <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-                  </svg>
-                </button>
+                <div class="composer-toolbar">
+                  <!-- Model Selector (Claude style) -->
+                  <div class="model-selector-container" id="model-selector-container">
+                    <button type="button" id="model-selector-btn" class="model-selector-btn" aria-haspopup="listbox" aria-expanded="false" title="Switch AI model">
+                      <span class="model-dot-icon" id="model-dot-icon"></span>
+                      <span id="selected-model-name">Qwen 2.5 32B</span>
+                      <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m6 9 6 6 6-6"/>
+                      </svg>
+                    </button>
+                    <div id="model-dropdown-menu" class="model-dropdown-menu" hidden>
+                      <div class="model-option active" data-model="soclaas">
+                        <span class="model-opt-title">Qwen 2.5 32B</span>
+                        <span class="opt-check" aria-hidden="true">✓</span>
+                      </div>
+                      <div class="model-option" data-model="sonnet">
+                        <span class="model-opt-title">Claude 3.5 Sonnet</span>
+                        <span class="opt-check" aria-hidden="true">✓</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="composer-actions">
+                    <button type="submit" id="send-button" class="send-btn" aria-label="Send message">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <line x1="22" y1="2" x2="11" y2="13"></line>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                      </svg>
+                    </button>
+                    <button type="button" id="stop-button" class="stop-btn" aria-label="Stop generating" hidden>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <rect x="4" y="4" width="16" height="16" rx="3" ry="3"></rect>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
               </div>
               <div class="input-footer">
                 <p class="privacy-note">
@@ -186,20 +190,59 @@
         </div>
       </dialog>
 
-      <!-- Memory Inspection Dialog -->
-      <dialog id="memory-dialog" aria-labelledby="memory-title">
-        <div class="dialog-header">
-          <div>
-            <span class="source-tag">Letta Working Context</span>
-            <h2 id="memory-title">Jax's Active Working Memory</h2>
-            <p class="source-meta">Durable context retained across sessions</p>
+      <!-- Employee Login Dialog -->
+      <dialog id="login-dialog" class="auth-dialog" aria-labelledby="login-title">
+        <div class="auth-modal-card">
+          <button type="button" id="close-login-dialog" class="close-btn login-close-btn" aria-label="Close sign-in" title="Close (Esc)">✕</button>
+          <div class="auth-header">
+            <div class="auth-brand-row">
+              <span class="auth-brand-badge">🏢 OrgForge Enterprise Workspace</span>
+            </div>
+            <h2 id="login-title">Employee Sign-In</h2>
+            <p class="auth-subtitle">Select your account from the 51-employee company directory.</p>
           </div>
-          <button type="button" id="close-memory" class="close-btn" aria-label="Close memory view">✕</button>
-        </div>
-        <div class="dialog-body">
-          <div id="memory-items-list" class="memory-items-list">
-            <p class="loading-text">Loading retained context…</p>
+
+          <div class="persona-selector">
+            <div class="persona-filter-row">
+              <label class="persona-section-label" id="persona-count-label">Company Directory (51 Employees)</label>
+              <div class="persona-search-wrapper">
+                <input
+                  type="search"
+                  id="persona-search-input"
+                  class="persona-search-input"
+                  placeholder="🔍 Filter by name, role, or department..."
+                  autocomplete="off"
+                />
+              </div>
+            </div>
+            <div class="persona-grid" id="persona-grid">
+              <!-- Populated dynamically by app.js -->
+            </div>
           </div>
+
+          <form id="login-form" class="auth-form">
+            <div class="form-group">
+              <label for="login-password">Password</label>
+              <input
+                type="password"
+                id="login-password"
+                name="password"
+                value="password"
+                required
+                autocomplete="current-password"
+                placeholder="Enter password (default: password)"
+              />
+              <span class="form-hint">💡 Default company password is <code>password</code></span>
+            </div>
+
+            <div id="login-error-msg" class="auth-error-banner" hidden></div>
+
+            <div class="auth-actions">
+              <button type="submit" id="login-submit-btn" class="auth-submit-btn">
+                <span>Sign In as Jax</span>
+              </button>
+            </div>
+          </form>
         </div>
       </dialog>
     </div>

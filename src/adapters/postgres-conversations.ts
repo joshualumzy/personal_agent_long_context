@@ -1,5 +1,7 @@
 import pg from "pg";
 import type {
+  AppendTurnParams,
+  AppendTurnResult,
   ConversationDetail,
   ConversationMessage,
   ConversationStore,
@@ -152,6 +154,42 @@ export class PostgresConversationStore implements ConversationStore {
     return messageFromRow(result.rows[0]);
   }
 
+  async appendTurn(params: AppendTurnParams): Promise<AppendTurnResult> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const userRes = await client.query<MessageRow>(
+        `INSERT INTO conversation_messages (conversation_id, role, content, metadata)
+         VALUES ($1, 'user', $2, '{}'::jsonb)
+         RETURNING message_id, conversation_id, role, content, metadata, created_at`,
+        [params.conversationId, params.userMessage],
+      );
+      const assistantMetadataJson = JSON.stringify(params.assistantMetadata ?? {});
+      const assistantRes = await client.query<MessageRow>(
+        `INSERT INTO conversation_messages (conversation_id, role, content, metadata)
+         VALUES ($1, 'assistant', $2, $3::jsonb)
+         RETURNING message_id, conversation_id, role, content, metadata, created_at`,
+        [params.conversationId, params.assistantMessage, assistantMetadataJson],
+      );
+      await client.query(
+        `UPDATE conversations
+         SET updated_at = now()
+         WHERE conversation_id = $1 AND user_id = $2`,
+        [params.conversationId, params.userId],
+      );
+      await client.query("COMMIT");
+      return {
+        userMessage: messageFromRow(userRes.rows[0]),
+        assistantMessage: messageFromRow(assistantRes.rows[0]),
+      };
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+
   async updateTitle(conversationId: string, userId: string, title: string): Promise<boolean> {
     if (!UUID.test(conversationId)) return false;
     const result = await this.pool.query(
@@ -171,6 +209,15 @@ export class PostgresConversationStore implements ConversationStore {
       [conversationId, userId],
     );
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async deleteAll(userId: string): Promise<number> {
+    const result = await this.pool.query(
+      `DELETE FROM conversations
+       WHERE user_id = $1`,
+      [userId],
+    );
+    return result.rowCount ?? 0;
   }
 
   async close(): Promise<void> {
@@ -248,6 +295,38 @@ export class InMemoryConversationStore implements ConversationStore {
     return msg;
   }
 
+  async appendTurn(params: AppendTurnParams): Promise<AppendTurnResult> {
+    const conv = this.conversations.get(params.conversationId);
+    if (!conv || conv.userId !== params.userId) {
+      throw new Error(`Conversation not found: ${params.conversationId}`);
+    }
+    const now = new Date().toISOString();
+    conv.updatedAt = now;
+
+    const userMsg: ConversationMessage = {
+      messageId: `msg-${Math.random().toString(36).slice(2, 10)}`,
+      conversationId: params.conversationId,
+      role: "user",
+      content: params.userMessage,
+      metadata: {},
+      createdAt: now,
+    };
+    const assistantMsg: ConversationMessage = {
+      messageId: `msg-${Math.random().toString(36).slice(2, 10)}`,
+      conversationId: params.conversationId,
+      role: "assistant",
+      content: params.assistantMessage,
+      metadata: params.assistantMetadata ?? {},
+      createdAt: now,
+    };
+
+    const list = this.messages.get(params.conversationId) ?? [];
+    list.push(userMsg, assistantMsg);
+    this.messages.set(params.conversationId, list);
+
+    return { userMessage: userMsg, assistantMessage: assistantMsg };
+  }
+
   async updateTitle(conversationId: string, userId: string, title: string): Promise<boolean> {
     const conv = this.conversations.get(conversationId);
     if (!conv || conv.userId !== userId) return false;
@@ -262,5 +341,17 @@ export class InMemoryConversationStore implements ConversationStore {
     this.conversations.delete(conversationId);
     this.messages.delete(conversationId);
     return true;
+  }
+
+  async deleteAll(userId: string): Promise<number> {
+    let count = 0;
+    for (const [id, conv] of this.conversations.entries()) {
+      if (conv.userId === userId) {
+        this.conversations.delete(id);
+        this.messages.delete(id);
+        count++;
+      }
+    }
+    return count;
   }
 }

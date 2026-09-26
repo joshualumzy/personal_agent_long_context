@@ -15,6 +15,8 @@ import { meetingsFromEnvironment } from "./meetings/config.js";
 import { googleAvailability } from "./meetings/availability.js";
 import { gmailContactDirectory } from "./meetings/contacts.js";
 
+import { validateAuthConfig } from "./auth.js";
+
 try {
   loadEnvFile();
 } catch (error) {
@@ -22,6 +24,12 @@ try {
     throw error;
   }
 }
+
+const sessionConfig = validateAuthConfig({
+  SESSION_SECRET: process.env.SESSION_SECRET || process.env.AUTH_SECRET,
+  SESSION_COOKIE_NAME: process.env.SESSION_COOKIE_NAME,
+  SESSION_MAX_AGE_SECONDS: process.env.SESSION_MAX_AGE_SECONDS,
+});
 
 function memoryProviderFromEnvironment(): MemoryProvider {
   if (process.env.MEMORY_ADAPTER === "deterministic") {
@@ -77,10 +85,18 @@ const sonnetAgent =
       })
     : null;
 
+import { createDefaultModelRegistry } from "./model-registry.js";
+
 const companyAgents: Record<string, SoCLaaSCompanyAgent> = {
   soclaas: companyAgent,
   ...(sonnetAgent ? { sonnet: sonnetAgent } : {}),
 };
+
+const modelRegistry = createDefaultModelRegistry({
+  companyAgent,
+  companyAgents,
+  env: process.env,
+});
 
 let logMeetingFailure: (context: string, error: unknown) => void = () => {};
 const meetings = meetingsFromEnvironment(process.env, {
@@ -119,9 +135,11 @@ const meetings = meetingsFromEnvironment(process.env, {
   log: (context, error) => logMeetingFailure(context, error),
 });
 const app = buildApp({
+  sessionConfig,
   memory,
   companyAgent,
   companyAgents,
+  modelRegistry,
   companyKnowledge,
   conversationStore,
   logger: true,

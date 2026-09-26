@@ -9,7 +9,10 @@ import {
   type MemoryInspection,
   type MemoryProvider,
 } from "../src/domain.js";
+import { createSessionToken } from "../src/auth.js";
 import { buildApp } from "../src/http-app.js";
+
+const TEST_SECRET = "test-auth-session-secret-key-32chars-min";
 
 /**
  * A Memory provider whose answers are scripted from a recorded real-Letta
@@ -108,7 +111,7 @@ const inspectionWithHistory: MemoryInspection = {
 
 function testApp(answers: MemoryAnswer[]) {
   const memory = new ScriptedMemoryProvider(answers, inspectionWithHistory);
-  return { memory, app: buildApp({ memory }) };
+  return { memory, app: buildApp({ sessionConfig: { secret: TEST_SECRET }, memory }) };
 }
 
 async function submitChain(
@@ -215,6 +218,7 @@ describe("Memory Updates and Semantic Invalidation", () => {
     const response = await app.inject({
       method: "GET",
       url: "/api/v1/users/demo-chain-1/memory",
+      headers: { cookie: `sme_session=${createSessionToken("demo-chain-1", TEST_SECRET)}` },
     });
 
     assert.equal(response.statusCode, 200);
