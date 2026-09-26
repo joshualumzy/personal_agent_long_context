@@ -9,6 +9,7 @@ import type {
   VerdictValue,
 } from "./domain.js";
 import type { JsonModel } from "./llm.js";
+import { RecruitingError } from "./domain.js";
 
 /**
  * Every model task the recruiting agent performs. Each one validates the reply
@@ -109,9 +110,13 @@ export async function extractBrief(model: JsonModel, requirement: string): Promi
       QUERY_RULES,
       "The title is a short job title of 2 to 5 words in the founder's language (for example \"Backend Engineer\" or \"产品经理\"), never the whole requirement.",
       'Reply as {"title": string, "criteria": [{"text": string, "kind": "must"|"nice"}], "queries": [string]}.',
+      'If the text does not describe anyone to hire (code, a test string, a greeting, a question), reply {"notARole": true} instead of inventing a role.',
     ].join("\n"),
     input: { requirement },
   });
+  if (isRecord(reply) && reply.notARole === true) {
+    throw new RecruitingError("not_a_role", "That does not describe a role to hire for. Nothing was opened; ask the founder what they want to hire for.");
+  }
   if (!isRecord(reply) || !Array.isArray(reply.criteria)) {
     throw new Error("The model did not return criteria.");
   }

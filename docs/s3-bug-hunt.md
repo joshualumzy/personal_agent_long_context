@@ -586,3 +586,15 @@ one accepted below.
 Accepted (one test skipped): a stream that closes cleanly with neither
 [DONE] nor a finish_reason counts as complete. Locked tests rely on such
 streams; vLLM always sends [DONE].
+
+Live run on round 8 code (156 conversations): 5 flagged. Three were the
+eval's own false positives ("None of them have been sent yet", "你按一下就
+发出去了" read as claims of sending); the detector now treats "none", "yet"
+and press-then conditionals as negations. One ("what can you do?" after an
+HTML payload) was a hallucinated citation beside a skill, already handled
+by round 9. One was real: "'; DROP TABLE roles; --" opened a "Database
+Engineer" role while the agent said it had not. Criteria extraction may
+now answer "not a role", and starting then fails with an error the agent
+reads (`r9-chaos-followups.test.ts`). The skill also now says how a
+LinkedIn draft is sent (by the founder on LinkedIn, then "I sent it
+myself"), since the agent told founders a button would send it.

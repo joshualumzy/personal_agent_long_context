@@ -556,7 +556,8 @@ function answerLangProblem(expected: Lang, answer: string, names: string[]): str
   return null;
 }
 
-const NEGATION = /\b(not|n't|never|cannot|can't|no|nothing|won't|unable|until|once|before|when you|after you|if you)\b|没|不|无法|未|别|尚未|之前|之后|一旦|等你|需要你|请你|如果/i;
+// Negated or conditional sentences claim nothing: "None of them have been sent yet", "你按一下就发出去了".
+const NEGATION = /\b(not|n't|never|cannot|can't|no|none|nothing|won't|unable|until|once|before|yet|when you|after you|if you)\b|没|不|无法|未|别|尚未|之前|之后|一旦|等你|需要你|请你|如果|(点|按)(一下)?(就|即可|后)/i;
 const CLAIMS: Array<{ kind: string; pattern: RegExp }> = [
   {
     kind: "sent",
