@@ -163,12 +163,13 @@ async function createRole(body, button) {
       showError(data.message ?? "Something went wrong.");
       return undefined;
     }
-    startingNew = false;
-    // The founder opened another role meanwhile: the new role is listed, not forced on screen.
+    // The founder opened another role (or a fresh intake) meanwhile: the new role is listed,
+    // not forced on screen, and a fresh intake they are filling in stays open.
     if (asked !== view) {
       refresh();
       return undefined;
     }
+    startingNew = false;
     roleId = data.roleId;
     // Anything still in flight was asked about the intake, not this role.
     view += 1;
@@ -863,7 +864,10 @@ function outreachPanel(candidate) {
   if (candidate.draft) {
     const draft = candidate.draft;
     // What the founder typed survives a rebuild of the drawer until it is saved.
-    const typedKey = `${candidate.id}:${draft.createdAt}`;
+    // Keyed by role too: the same person can be a candidate for two roles.
+    const typedKey = `${roleId}:${candidate.id}:${draft.createdAt}`;
+    const sendKey = `${roleId}:${candidate.id}`;
+    const sendRole = roleId;
     const typed = typedDrafts.get(typedKey) ?? {};
     const email = h("input", { type: "email", value: typed.email ?? candidate.contact?.email ?? "", placeholder: "Email address", "aria-label": "To" });
     const subject = h("input", { type: "text", value: typed.subject ?? draft.subject, "aria-label": "Subject", placeholder: "Subject (emails only)" });
@@ -875,33 +879,40 @@ function outreachPanel(candidate) {
     }
     // call() answers undefined on failure (and shows why); a send only follows a save that worked.
     const save = async () => {
+      const sent = { subject: subject.value, body: body.value, email: email.value };
       const saved =
         (await call(api(`/candidates/${candidate.id}/draft`), {
-          subject: subject.value,
-          body: body.value,
-          ...(email.value && email.value !== candidate.contact?.email ? { email: email.value } : {}),
+          subject: sent.subject,
+          body: sent.body,
+          ...(sent.email && sent.email !== candidate.contact?.email ? { email: sent.email } : {}),
         })) !== undefined;
-      if (saved) typedDrafts.delete(typedKey);
+      // Forget the typed text only if nothing was typed after it went out.
+      const now = typedDrafts.get(typedKey);
+      const unchanged = !now || ["subject", "body", "email"].every((field) => now[field] === undefined || now[field] === sent[field]);
+      if (saved && unchanged) typedDrafts.delete(typedKey);
       return saved;
     };
     // Both send buttons stay locked from the save until the send answers: one press, one send.
     // The lock is per person, not per drawer build, so a rebuild meanwhile keeps it.
     const sendAfterSave = (manual) => async (event) => {
       const button = event.currentTarget;
-      if (sendingFor.has(candidate.id)) return;
-      sendingFor.add(candidate.id);
+      if (sendingFor.has(sendKey)) return;
+      sendingFor.add(sendKey);
       button.disabled = true;
       try {
         if (!(await save())) return;
         await call(api(`/candidates/${candidate.id}/send`), manual ? { manual: true } : {}, button);
       } finally {
-        sendingFor.delete(candidate.id);
+        sendingFor.delete(sendKey);
         button.disabled = false;
-        detailSignature = "";
-        if (state) renderDetail();
+        // Unlock this person's drawer; another person's open drawer keeps what is typed in it.
+        if (state && selectedId === candidate.id && roleId === sendRole) {
+          detailSignature = "";
+          renderDetail();
+        }
       }
     };
-    const locked = sendingFor.has(candidate.id) ? true : undefined;
+    const locked = sendingFor.has(sendKey) ? true : undefined;
     const source = {
       hunter: "Found by Hunter",
       prospeo: "Found by Prospeo",
@@ -910,7 +921,7 @@ function outreachPanel(candidate) {
     const gmailButton = h("button", { type: "button", class: "primary", disabled: locked ?? (!candidate.contact && !email.value ? true : undefined), title: candidate.contact ? undefined : "Add an email address first", onclick: sendAfterSave(false) }, "Send from Gmail");
     // Typing an address makes Gmail sending possible right away.
     email.addEventListener("input", () => {
-      gmailButton.disabled = sendingFor.has(candidate.id) || (!candidate.contact && !email.value.trim());
+      gmailButton.disabled = sendingFor.has(sendKey) || (!candidate.contact && !email.value.trim());
     });
     const status = candidate.contact
       ? h(
@@ -1128,6 +1139,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     event.currentTarget.dataset.armed = "";
     event.currentTarget.textContent = "Delete this role";
+    const asked = view;
     try {
       const response = await fetch(api(""), { method: "DELETE" });
       if (!response.ok) {
@@ -1136,6 +1148,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } catch {
       showError("The server did not answer, so the role was not deleted.");
+      return;
+    }
+    // The founder picked another role while it was deleted: stay there.
+    if (asked !== view) {
+      refresh();
       return;
     }
     switchRole(null);

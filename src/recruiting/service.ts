@@ -1347,8 +1347,10 @@ export class RecruitingService {
     for (const candidate of Object.values(state.candidates)) {
       if (!candidate.gmailThreadId || candidate.stage === "closed") continue;
       // Gmail keeps real time, so the cut-off must too (fast-forward moves only the simulated clock).
-      const last = candidate.messages.at(-1);
-      const lastSeen = last?.realAt ?? last?.at ?? candidate.discoveredAt;
+      // The latest time on record, not the last message's: a send recorded late is dated earlier
+      // than a reply already read, and must not move the cut-off back to before that reply.
+      const times = candidate.messages.map((message) => message.realAt ?? message.at).filter(Boolean);
+      const lastSeen = times.length ? times.reduce((a, b) => (Date.parse(b) > Date.parse(a) ? b : a)) : candidate.discoveredAt;
       // One thread that fails is reported; the others are still read.
       try {
         const replies = await this.deps.gmail.repliesIn(candidate.gmailThreadId, lastSeen);

@@ -41,6 +41,12 @@ let chatEpoch = 0;
 let asking = false;
 /** Numbers sidebar list requests; only the latest one is drawn. */
 let listRequest = 0;
+/** The conversation whose history is being fetched, if any. */
+let historyLoading = null;
+/** The last answer drawn from a loaded history, so an answer arriving after it is not drawn twice. */
+let drawnLastAnswer = null;
+/** Answers that finished while their conversation's history was loading, by conversation. */
+const finishedAnswers = new Map();
 
 function scrollToBottom() {
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -316,6 +322,7 @@ if (modelSelectorBtn && modelDropdownMenu) {
 // Start New Chat
 function startNewChat() {
   chatEpoch += 1;
+  historyLoading = null;
   activeConversationId = null;
   chatMessages.innerHTML = "";
   if (emptyState) emptyState.style.display = "block";
@@ -697,6 +704,7 @@ async function selectConversation(conversationId, title) {
 
     statusIndicator.hidden = false;
     statusText.textContent = "Loading conversation…";
+    historyLoading = conversationId;
 
     const response = await fetch(`/api/v1/conversations/${encodeURIComponent(conversationId)}?userId=jax`);
     if (!response.ok) throw new Error("Failed to load conversation");
@@ -725,8 +733,21 @@ async function selectConversation(conversationId, title) {
     } else {
       if (emptyState) emptyState.style.display = "block";
     }
+    historyLoading = null;
+    // An answer that finished while this history was loading, and is not in it yet.
+    const pending = finishedAnswers.get(conversationId);
+    finishedAnswers.delete(conversationId);
+    const lastAnswer = [...(detail.messages ?? [])].reverse().find((msg) => msg.role === "assistant")?.content;
+    drawnLastAnswer = { conversationId, answer: lastAnswer };
+    if (pending && pending.answer !== lastAnswer) {
+      appendAssistantMessage(pending);
+      drawnLastAnswer = { conversationId, answer: pending.answer };
+    }
   } catch (err) {
     if (asked === chatEpoch) {
+      historyLoading = null;
+      if (currentChatTitle) currentChatTitle.textContent = "SME Assistant";
+      document.querySelectorAll(".conversation-item.active").forEach((el) => el.classList.remove("active"));
       // Nothing of the conversation that was open before may stay under this one's title,
       // and the next message must not go to a conversation that could not be read.
       activeConversationId = null;
@@ -923,7 +944,13 @@ chatForm.addEventListener("submit", async (e) => {
       const id = finalPayload?.conversationId;
       if (finalPayload && id && id === activeConversationId) {
         finalPayload.durationMs = typeof finalPayload.durationMs === "number" ? finalPayload.durationMs : Math.round(performance.now() - requestStartTime);
-        appendAssistantMessage(finalPayload);
+        if (historyLoading === id) {
+          // Its history is still on its way: that load draws it if the history lacks it.
+          finishedAnswers.set(id, finalPayload);
+        } else if (!(drawnLastAnswer?.conversationId === id && drawnLastAnswer.answer === finalPayload.answer)) {
+          appendAssistantMessage(finalPayload);
+          drawnLastAnswer = { conversationId: id, answer: finalPayload.answer };
+        }
       }
       loadConversations();
       return;

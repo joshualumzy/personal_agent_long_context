@@ -273,6 +273,7 @@ export function registerRecruitingRoutes(
       const matched = new Set<string>();
       const results = [];
       const failed: string[] = [];
+      const unplaced = new Map<string, { intent: string; message: string }>();
       for (const { service } of await board.all()) {
         const unclaimed = texts.filter((text) => !matched.has(text));
         if (unclaimed.length === 0) break;
@@ -283,7 +284,10 @@ export function registerRecruitingRoutes(
           try {
             const result = await service.reply(text, null, "linkedin");
             // A role that could not place it (a shared first name) leaves it to the next role.
-            if (!result.recorded) continue;
+            if (!result.recorded) {
+              unplaced.set(text, result);
+              continue;
+            }
             matched.add(text);
             results.push(result);
           } catch (error) {
@@ -292,6 +296,12 @@ export function registerRecruitingRoutes(
             results.push({ intent: "reply", message: `Could not read one conversation: ${error instanceof Error ? error.message : String(error)}` });
           }
         }
+      }
+      // Named someone the founder wrote to, yet no role could tell who: say so, never "ignored".
+      for (const [text, result] of unplaced) {
+        if (matched.has(text)) continue;
+        matched.add(text);
+        results.push(result);
       }
       return reply.send({ result: { read: texts.length, ignored: texts.length - matched.size, results, ...(failed.length ? { failed } : {}) } });
     } catch (error) {

@@ -464,3 +464,31 @@ out on a role the founder left is cleared from the box.
 One hunter check (r07) required a specific remedy (the new role must take
 over the screen). It was widened to accept either remedy and still fails on
 the old code.
+
+## Round 6 (2026-09-26)
+
+18 confirmed bugs, down from 34: backend 2, chat agent 9, front end 7. Five
+came from round 5 fixes. All fixed (`r6-*.test.ts`, `ui/r6/`).
+
+- Backend: the Gmail sync cut-off is the latest time on record, not the last
+  message's (a send recorded late no longer rereads a reply). An inbox
+  conversation that names a contacted person but that no role can place is
+  reported, not silently "ignored".
+- Chat agent: greetings with a phrase ("Hi there, Jax!") and whole-sentence
+  acknowledgements before a question ("Got it.", "明白了。") are exempt again;
+  "用英文说", "In English please." and "翻译成英文" count as language requests;
+  an accepted "insufficient evidence" can be translated; a vLLM error event
+  mid-stream counts as a cut stream; a gateway that ignores stream:true is
+  read as a plain completion.
+- Front end: an answer that finishes while its conversation's history loads
+  is drawn once, after the history; a failed history load also resets the
+  title and highlight; a finished send rebuilds only its own drawer; text
+  typed while a save is in flight survives; a delete that answers after a
+  role switch stays on the picked role; a stale role creation no longer
+  closes a fresh intake; draft and send-lock keys include the role.
+
+Live off-script run on the round 4 code (156 conversations): 2 violations.
+The model once answered the Chinese retry with nothing; the retry is now
+asked once more (`r6-chaos-followups.test.ts`). The model once asked "which
+one?" and acted in the same turn; the skill now forbids changing anything
+in a turn that asks a question.

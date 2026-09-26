@@ -210,8 +210,13 @@ function asksForLanguage(question: string): boolean {
   const zh = "(英文|英语|日文|日语|韩文|韩语|法语|德语|西班牙语)";
   return (
     // "请用英文回答", "用英语写": a language followed by a reply verb.
-    new RegExp(`(用|以)${zh}(来)?(回答|回复|作答|写|答)`).test(question) ||
+    new RegExp(`(用|以)${zh}(来)?(回答|回复|作答|写|答|说|讲|解释|介绍)`).test(question) ||
     new RegExp(`${zh}(回答|回复|作答)`).test(question) ||
+    // "翻译成英文": the answer is meant to be in that language.
+    new RegExp(`(翻译成|翻译为|译成|翻成|换成|改成)${zh}`).test(question) ||
+    /\btranslate\b[^.?!]{0,60}\b(in|into|to) (english|japanese|korean|french|german|spanish)\b/i.test(question) ||
+    // "…? In English please." at the end.
+    /\bin (english|japanese|korean|french|german|spanish)\b[\s,]*(please|pls|thanks)?[\s.!。！]*$/i.test(question) ||
     /\b(answer|reply|respond|write|explain|say it|tell me)\b[^.?!]{0,30}\b(in|into) (english|japanese|korean|french|german|spanish)\b/i.test(question) ||
     /^\s*in (english|japanese|korean|french|german|spanish)\b/i.test(question)
   );
@@ -235,7 +240,9 @@ function statesNoFacts(answer: string): boolean {
     (sentence) =>
       /[?？]$/.test(sentence) ||
       // The whole sentence is a greeting, perhaps with a name: "Hi Jax!", "你好！".
-      /^(hi|hello|hey|thanks|thank you|sure|of course|good (morning|afternoon|evening)|你好|您好|嗨|好的|谢谢)([\s,，]+[\p{L}]+)?[\s!！.。,，~]*$/iu.test(sentence) ||
+      /^(hi|hello|hey|thanks|thank you|sure|of course|good (morning|afternoon|evening)|你好|您好|嗨|好的|谢谢)( there| again)?([\s,，]+[\p{L}]+)?[\s!！.。,，~]*$/iu.test(sentence) ||
+      // A whole-sentence acknowledgement before a question back: "Got it.", "明白了。".
+      /^(got it|sure thing|understood|okay|ok|alright|all right|i see|明白了|明白|好的|收到|了解|懂了)[\s!！.。,，~]*$/iu.test(sentence) ||
       // What the agent can do for the user, never what it can confirm or tell.
       /^(I can (also )?(help|answer|look up|search|draft|find)|I'm here to help|I am here to help|我(也)?(可以|能)(帮|替)(你|您))/i.test(sentence),
   );
@@ -322,6 +329,9 @@ async function streamChatCompletion(
   let lastIndex = 0;
   // Whether anything in the body was a stream event: a proxy's error page has none.
   let sawData = false;
+  let failed = false;
+  // The body as text, while short: a gateway that ignores stream:true sends a plain completion.
+  let raw = "";
 
   const handle = (rawLine: string) => {
       const line = rawLine.trim();
@@ -333,6 +343,8 @@ async function streamChatCompletion(
       try {
         const parsed = JSON.parse(dataStr);
         sawData = true;
+        // vLLM reports a failure mid-answer as an error event, then [DONE]: the answer is cut.
+        if (parsed?.error || parsed?.object === "error") failed = true;
         const choice = parsed.choices?.[0];
         if (!choice) return;
 
@@ -370,13 +382,34 @@ async function streamChatCompletion(
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
+    const text = decoder.decode(value, { stream: true });
+    if (!sawData && raw.length < 1_000_000) raw += text;
+    buffer += text;
     const lines = buffer.split("\n");
     buffer = lines.pop() || "";
     for (const line of lines) handle(line);
   }
   // The last event may arrive without a trailing newline.
-  handle(buffer + decoder.decode());
+  const rest = decoder.decode();
+  if (!sawData) raw += rest;
+  handle(buffer + rest);
+  if (failed) throw new Error("The stream reported an error mid-answer.");
+  if (!sawData) {
+    // Not a stream at all; perhaps an ordinary completion.
+    let completion: CompletionResponse | null = null;
+    try {
+      completion = JSON.parse(raw) as CompletionResponse;
+    } catch {
+      completion = null;
+    }
+    const message = completion?.choices?.[0]?.message;
+    if (message) {
+      const content = textOf(message.content) ?? "";
+      if (content) onToken?.(content);
+      const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+      return { content, tool_calls: calls.length ? calls : undefined, sawData: true };
+    }
+  }
 
   // A call streamed without an id still counts; ids are assigned by the caller.
   const tool_calls = Array.from(toolCallsMap.values()).filter((t) => t.function.name);
@@ -734,16 +767,25 @@ export class SoCLaaSCompanyAgent {
             showAnswer(answer);
             messages.push({ role: "user", content: "Reply to the user again, in the language of their message (Chinese). Same content and the same [source:ID] citations, nothing added." });
             try {
-              const again = await this.request(`${this.baseUrl}/chat/completions`, {
-                method: "POST",
-                headers: { authorization: `Bearer ${this.options.apiKey}`, "content-type": "application/json" },
-                body: JSON.stringify({ model: this.model, messages, tools: offeredTools(), tool_choice: "none", ...this.noThinking, max_tokens: 1800 }),
-              });
-              if (again.ok) {
+              // The model now and then answers this with nothing; one more ask usually works.
+              let translated: string | undefined;
+              for (let attempt = 0; attempt < 2 && !translated; attempt += 1) {
+                const again = await this.request(`${this.baseUrl}/chat/completions`, {
+                  method: "POST",
+                  headers: { authorization: `Bearer ${this.options.apiKey}`, "content-type": "application/json" },
+                  body: JSON.stringify({ model: this.model, messages, tools: offeredTools(), tool_choice: "none", ...this.noThinking, max_tokens: 1800 }),
+                });
+                if (!again.ok) {
+                  await again.body?.cancel().catch(() => undefined);
+                  break;
+                }
                 const reply = (await again.json().catch(() => null)) as CompletionResponse | null;
-                const translated = textOf(reply?.choices?.[0]?.message?.content)?.trim();
+                translated = textOf(reply?.choices?.[0]?.message?.content)?.trim();
+              }
+              {
                 if (translated && isChinese(translated)) {
-                  let check = validateCitations(translated, retrieved, hasPersonalContext, groundedElsewhere);
+                  // An honest "insufficient evidence" in hand may come back as "证据不足" the same way.
+                  let check = validateCitations(translated, retrieved, hasPersonalContext, groundedElsewhere, honestlyInsufficient(answer));
                   // A greeting or a question back stays exempt in Chinese too.
                   if (check.problem && citationCheck.citedSourceIds.length === 0 && statesNoFacts(translated)) check = { citedSourceIds: [] };
                   const keepsCitations = citationCheck.citedSourceIds.length === 0 || check.citedSourceIds.length > 0;
