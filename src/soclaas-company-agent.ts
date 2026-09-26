@@ -216,32 +216,47 @@ function asksForLanguage(question: string): boolean {
     // "把这段翻译成英文": the answer is meant to be in that language.
     new RegExp(`(翻译成|翻译为|译成|翻成)${zh}`).test(question) ||
     /\btranslate\b[^.?!]{0,60}\b(in|into|to) (english|japanese|korean|french|german|spanish)\b/i.test(question) ||
-    /\b(answer|reply|respond|write|explain|say it|tell me)\b[^.?!]{0,30}\b(in|into) (english|japanese|korean|french|german|spanish)\b/i.test(question) ||
+    /\b(please|pls|can you|could you|would you)\b[^.?!]{0,20}\b(answer|reply|respond|write|explain|say|tell me)\b[^.?!]{0,20}\b(in|into) (english|japanese|korean|french|german|spanish)\b/i.test(question) ||
+    /(^|[.?!。？！]\s*)(please\s+)?(answer|reply|respond|explain|tell me)( to)?( me| this| that| it)?\s+in (english|japanese|korean|french|german|spanish)\b/i.test(question) ||
     /^\s*in (english|japanese|korean|french|german|spanish)\b/i.test(question) ||
-    // "…? In English please." at the end.
-    /\bin (english|japanese|korean|french|german|spanish)\b[\s,]*(please|pls|thanks)?[\s.!。！]*$/i.test(question)
+    // "…? In English please." at the end, as its own request.
+    /(^|[.?!。？！]\s*)in (english|japanese|korean|french|german|spanish)[\s,]*(please|pls|thanks)?[\s.!。！]*$/i.test(question) ||
+    /\bin (english|japanese|korean|french|german|spanish),? (please|pls)\b/i.test(question)
   );
 }
 
-/** The user asked for the answer in Chinese, whatever language the rest of the message is in. */
+/**
+ * The user asked for the answer in Chinese, whatever language the rest of the message is in.
+ * Only requests aimed at the agent: "fluent in Mandarin" (a criterion) and "did Wei reply in
+ * Chinese?" (about someone else) are not.
+ */
 function asksForChinese(question: string): boolean {
   return (
     /(用|以)(中文|汉语|普通话)(来)?(回答|回复|作答|说|讲|解释|介绍|答)(?!的)/.test(question) ||
     /(中文|汉语)(回答|回复|作答)[\s。.!！]*$/.test(question) ||
     /(翻译成|翻译为|译成|翻成)(中文|汉语)/.test(question) ||
-    /\b(answer|reply|respond|write|explain)\b[^.?!]{0,30}\bin (chinese|mandarin)\b/i.test(question) ||
-    /\bin (chinese|mandarin)\b[\s,]*(please|pls|thanks)?[\s.!。！]*$/i.test(question)
+    /\b(please|pls|can you|could you|would you)\b[^.?!]{0,20}\b(answer|reply|respond|explain|write|say)\b[^.?!]{0,20}\bin (chinese|mandarin)\b/i.test(question) ||
+    /(^|[.?!]\s*)(please\s+)?(answer|reply|respond|explain)( to)?( me| this| that| it)?\s+in (chinese|mandarin)\b/i.test(question) ||
+    /\bin (chinese|mandarin),? (please|pls)\b/i.test(question)
   );
 }
 
+/** Pictographs and the joiners that build them: "How can I help? 😊" still ends in a question. */
+const EMOJI = /[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}]/gu;
+
 /**
- * A reply with nothing to cite: a greeting, a short acknowledgement, what the agent can help
- * with, and short questions back. Kept deliberately narrow, because anything it lets through
- * skips the citation check: no figures, no colons, no premise clauses, short sentences, and a
- * greeting may name one person at most.
+ * A reply with nothing to cite: a greeting, a short acknowledgement, who the agent is and what it
+ * can help with, and short questions back. Deliberately narrow, because anything it lets through
+ * skips the citation check: no figures, no colons (after an optional "Just to clarify:"), no
+ * premise clauses, and every clause before a question must itself be a greeting, an
+ * acknowledgement, or part of the question. Known limits (docs/s3-bug-hunt.md, round 8): a claim
+ * inside one short question can pass; a capability list with bullets is not recognised.
  */
 function statesNoFacts(answer: string): boolean {
-  const text = answer.trim();
+  const text = answer
+    .replace(EMOJI, "")
+    .replace(/^\s*(just to clarify|quick question|to confirm|确认一下|想确认一下|请问)\s*[:：]\s*/i, "")
+    .trim();
   if (!text || text.length > 300 || /\d|\[source:|[:：;；]/.test(text)) return false;
   // Lines count as sentences too, so a bullet list cannot hide inside the closing question.
   const sentences = text
@@ -250,12 +265,15 @@ function statesNoFacts(answer: string): boolean {
     .filter(Boolean);
   const last = sentences[sentences.length - 1] ?? "";
   if (!/[?？]$/.test(last)) return false;
-  const name = String.raw`(\s*[,，]?\s*([A-Z][a-z]+( [A-Z][a-z]+)?|\p{Script=Han}{1,4}))?`;
+  // A greeting may name the person: a Latin name, or (only after 你好/您好/嗨) a short Chinese one.
+  const latinName = String.raw`(\s*[,，]?\s*[A-Z][a-z]+( [A-Z][a-z]+)?)?`;
   const greeting = new RegExp(
-    String.raw`^(hi|hello|hey|thanks|thank you|sure|of course|good (morning|afternoon|evening)|你好|您好|嗨|好的|谢谢)( there| again)?${name}[\s!！.。,，~]*$`,
+    String.raw`^((hi|hello|hey|thanks|thank you|sure|of course|happy to help|glad to help|nice to meet you|good to see you( again)?|good (morning|afternoon|evening)|好的|谢谢|很高兴(为你服务|为您服务|见到你|帮忙))( there| again)?${latinName}|(你好|您好|嗨)(\s*[,，]?\s*([A-Z][a-z]+|\p{Script=Han}{1,3}))?)[\s!！.。,，~]*$`,
     "iu",
   );
   const acknowledgement = /^(got it|sure thing|understood|okay|ok|alright|all right|i see|明白了|明白|好的|收到|了解|懂了)[\s!！.。,，~]*$/iu;
+  // Who the agent is: "I'm your Technical Chief of Staff." Nothing after the role.
+  const persona = /^(I'm|I am) (your|the) [A-Za-z][\w\s'-]{0,40}[.!]?$|^我是(你|您)的\p{Script=Han}{1,10}[。！!]?$/iu;
   // Every clause says what the agent can help with, briefly.
   const capability = (sentence: string) => {
     const clauses = sentence.replace(/[.!。！]+$/, "").split(/[,，]\s*/);
@@ -264,18 +282,26 @@ function statesNoFacts(answer: string): boolean {
       clauses.every(
         (clause) =>
           /^((and|or) )?(I )?(can |could |am here to |'m here to )?(also )?(help|answer|look up|search|draft|find)\b[\w\s'-]{0,60}$/i.test(clause) ||
-          /^(我)?(也|还|或者)?(可以|能)(帮|替)(你|您)\p{Script=Han}{0,12}$/u.test(clause),
+          // No 的-clause: "帮你联系负责支付服务的张三" names who owns what.
+          /^(我)?(也|还|或者)?(可以|能)(帮|替)(你|您)[^\P{Script=Han}的]{0,12}$/u.test(clause),
       )
     );
   };
-  // A short question with no premise ("Since X, do you want…?" slips X in uncited).
-  const question = (sentence: string) =>
-    /[?？]$/.test(sentence) &&
-    sentence.length <= 120 &&
-    !/\b(since|because|given|now that|as you know|so)\b|由于|因为|既然|鉴于|所以|已经/i.test(sentence) &&
-    !/，.*，/.test(sentence);
+  // A short question with no premise clause. Clauses before its last one must be a greeting,
+  // an acknowledgement, or the question's own start ("你是想了解X，还是Y？"): a statement joined
+  // on with a comma ("X下个月关停，要我…吗？") is a claim.
+  const opener = /^(你|您|请问|是不是|是否|要不要|需要|想|do|does|did|are|is|would|should|shall|can|could|which|what|who|when|where|how|want)\b|^(你|您|请问|是不是|是否|要不要|需要|想)/iu;
+  const question = (sentence: string) => {
+    if (!/[?？]$/.test(sentence) || sentence.length > 120) return false;
+    if (/\b(since|because|given that|now that|as you know)\b|由于|因为|既然|鉴于/i.test(sentence)) return false;
+    const clauses = sentence.split(/[,，]\s*/);
+    return clauses.slice(0, -1).every(
+      (clause) => greeting.test(clause) || acknowledgement.test(clause) || opener.test(clause.trim()),
+    );
+  };
   return sentences.every(
-    (sentence) => question(sentence) || greeting.test(sentence) || acknowledgement.test(sentence) || capability(sentence),
+    (sentence) =>
+      question(sentence) || greeting.test(sentence) || acknowledgement.test(sentence) || persona.test(sentence) || capability(sentence),
   );
 }
 
@@ -797,11 +823,12 @@ export class SoCLaaSCompanyAgent {
           const wantsChinese = asksForChinese(input.question) || (isChinese(input.question) && !asksForLanguage(input.question));
           if (wantsChinese && !isChinese(answer)) {
             showAnswer(answer);
-            messages.push({ role: "user", content: "Reply to the user again, in the language of their message (Chinese). Same content and the same [source:ID] citations, nothing added." });
+            // Asked in Chinese: the model follows a Chinese instruction to write Chinese far more often.
+            messages.push({ role: "user", content: "请用中文把上面的回答重新写一遍给用户：内容不变，保留所有 [source:ID] 引用，不要添加任何内容。(Reply again in Chinese: same content, same [source:ID] citations, nothing added.)" });
             try {
-              // The model now and then answers this with nothing; one more ask usually works.
+              // The model now and then answers this with nothing, or in English again; one more ask usually works.
               let translated: string | undefined;
-              for (let attempt = 0; attempt < 2 && !translated; attempt += 1) {
+              for (let attempt = 0; attempt < 2 && !(translated && isChinese(translated)); attempt += 1) {
                 const again = await this.request(`${this.baseUrl}/chat/completions`, {
                   method: "POST",
                   headers: { authorization: `Bearer ${this.options.apiKey}`, "content-type": "application/json" },

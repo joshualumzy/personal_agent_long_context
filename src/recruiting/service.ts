@@ -158,7 +158,11 @@ function sameRelayedText(a: string, b: string): boolean {
       .join(" ")
       .replace(/\s+/g, " ")
       .toLowerCase();
-  return plain(a) === plain(b);
+  const left = plain(a);
+  const right = plain(b);
+  // A message that is only a day or a time ("Thursday", "10:30 am") is compared as it is.
+  if (!left || !right) return a.replace(/\s+/g, " ").trim().toLowerCase() === b.replace(/\s+/g, " ").trim().toLowerCase();
+  return left === right;
 }
 
 const TIME_LABEL =
@@ -702,10 +706,17 @@ export class RecruitingService {
       }
       const criterion = state.criteria.find((entry) => entry.id === operation.id && entry.active);
       if (!criterion) continue;
-      // A pending widening planned against this criterion as it was; that part of it no longer applies.
-      for (const proposal of state.proposals) {
-        if (proposal.type !== "expansion" || proposal.status !== "pending") continue;
-        proposal.operations = proposal.operations.filter((planned) => planned.op === "add" || planned.id !== criterion.id);
+      // A pending widening planned against this criterion as it was no longer applies to it,
+      // once the criterion really changes.
+      const changes =
+        operation.op === "remove" ||
+        (operation.op === "set_kind" && criterion.kind !== operation.kind) ||
+        (operation.op === "edit" && criterion.text !== operation.text);
+      if (changes && origin !== "relaxed") {
+        for (const proposal of state.proposals) {
+          if (proposal.type !== "expansion" || proposal.status !== "pending") continue;
+          proposal.operations = proposal.operations.filter((planned) => planned.op === "add" || planned.id !== criterion.id);
+        }
       }
       if (operation.op === "remove") {
         criterion.active = false;
@@ -812,6 +823,9 @@ export class RecruitingService {
           target.stage = heard ? "replied" : wrote ? "contacted" : "scored";
           delete target.closedReason;
           delete target.closedAt;
+          delete target.closedBy;
+          // A fresh start: the next quiet week brings a follow-up, not an instant "cold".
+          target.followUps = 0;
           reopened = true;
         }
       }
@@ -933,12 +947,13 @@ export class RecruitingService {
     }
   }
 
-  private closeCandidate(state: RecruitingState, candidate: Candidate, reason: ClosedReason) {
+  private closeCandidate(state: RecruitingState, candidate: Candidate, reason: ClosedReason, by: "founder" | "system" = "founder") {
     // Nothing more goes to someone who is closed.
     delete candidate.draft;
     candidate.stage = "closed";
     candidate.closedReason = reason;
     candidate.closedAt = this.now(state).toISOString();
+    candidate.closedBy = by;
   }
 
   async close(candidateId: string, reason: ClosedReason): Promise<void> {
@@ -1282,14 +1297,25 @@ export class RecruitingService {
     }
     const id = reading.candidateId;
     // 1. The reply itself is saved first; nothing after this can lose it.
+    let reopenedByReply = false;
     const closedAs = await this.mutate((latest) => {
       const candidate = this.candidate(latest, id);
       // The same message relayed again (a LinkedIn preview whose time label changed, a sync
       // run twice) is already on record.
-      const same = (message: Message) =>
+      // Only since the founder last wrote: the same words after a new message of theirs ("Sounds
+      // good" twice) are a new answer. A reply pasted by hand and then read from Gmail is one reply.
+      const lastOut = candidate.messages.map((message) => message.direction).lastIndexOf("outbound");
+      const since = candidate.messages.slice(lastOut + 1);
+      const relayedAgain = (message: Message) => message.direction === "inbound" && sameRelayedText(message.text, text);
+      // An email is known exactly by its time: the same email again, or the founder's paste of it
+      // (same words, pasted after the email arrived), wherever it sits in the thread.
+      const emailAgain = (message: Message) =>
         message.direction === "inbound" &&
-        (channel === "email" ? message.text === text && message.realAt === at : sameRelayedText(message.text, text));
-      if (candidate.messages.some(same)) return "duplicate";
+        ((message.channel === "email" && message.text === text && message.realAt === at) ||
+          (message.channel !== "email" &&
+            sameRelayedText(message.text, text) &&
+            Boolean(at && message.realAt && Date.parse(message.realAt) >= Date.parse(at))));
+      if (channel === "email" ? candidate.messages.some(emailAgain) : since.some(relayedAgain)) return "duplicate";
       candidate.messages.push({
         direction: "inbound",
         channel,
@@ -1304,19 +1330,25 @@ export class RecruitingService {
       // A closed person stays closed (hired stays hired); the message is kept on record. Only a
       // closure the system made on silence or a misread ("cold", "declined") gives way to a yes.
       if (candidate.stage === "closed") {
-        const reopenable = candidate.closedReason === "cold" || candidate.closedReason === "declined";
+        // Older files have no closedBy; a "cold" there was always the system's.
+        const bySystem = candidate.closedBy === "system" || (candidate.closedBy === undefined && candidate.closedReason === "cold");
+        const reopenable = bySystem && (candidate.closedReason === "cold" || candidate.closedReason === "declined");
         if (!(reopenable && reading.interested === true)) return candidate.closedReason ?? "closed";
         delete candidate.closedReason;
         delete candidate.closedAt;
+        delete candidate.closedBy;
+        reopenedByReply = true;
       }
       if (reading.interested === false) {
-        this.closeCandidate(latest, candidate, "declined");
+        this.closeCandidate(latest, candidate, "declined", "system");
         return null;
       }
       candidate.stage = "replied";
       return null;
     });
     const name = state.candidates[id]?.profile.name ?? "The candidate";
+    // Criteria added while they were closed still need a verdict.
+    if (reopenedByReply) this.settle();
     if (closedAs === "duplicate") return { intent: "reply", recorded: true, message: `${name}: that message is already on record.` };
     if (closedAs) return { intent: "reply", recorded: true, message: `${name} is closed (${closedAs}). Their message is saved.` };
     if (reading.interested === false) return { intent: "reply", recorded: true, message: `${name} declined. Closed.` };
@@ -1460,7 +1492,7 @@ export class RecruitingService {
       } else if (candidate.followUps > 0 && waited >= this.settings.coldAfterDays) {
         await this.mutate((latest) => {
           const target = latest.candidates[candidate.profile.id];
-          if (target?.stage === "contacted") this.closeCandidate(latest, target, "cold");
+          if (target?.stage === "contacted") this.closeCandidate(latest, target, "cold", "system");
         });
       }
     }

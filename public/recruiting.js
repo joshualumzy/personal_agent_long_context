@@ -726,7 +726,9 @@ function renderDetail() {
   const decision = (value) => (event) => {
     const button = event.currentTarget;
     return act(candidate.id, async () => {
-      const done = await call(api(`/candidates/${candidate.id}/feedback`), { decision: value, reason: reasonInput.value }, button);
+      // Done for a role no longer on screen still counts as done: the reason was used.
+      const onStale = (ok) => ok && typedFields.delete(reasonKey);
+      const done = await call(api(`/candidates/${candidate.id}/feedback`), { decision: value, reason: reasonInput.value }, button, { onStale });
       if (done !== undefined) typedFields.delete(reasonKey);
     });
   };
@@ -750,6 +752,12 @@ function renderDetail() {
     );
 
   const body = { fit: fitPanel, career: careerPanel, outreach: outreachPanel }[activeTab](candidate);
+
+  // A rebuild while the founder types keeps their place: the same box gets focus and caret back.
+  const focused = drawer.contains(document.activeElement) ? document.activeElement : null;
+  const focusKey = focused && ["INPUT", "TEXTAREA"].includes(focused.tagName)
+    ? { tag: focused.tagName, label: focused.getAttribute("aria-label"), placeholder: focused.getAttribute("placeholder"), start: focused.selectionStart, end: focused.selectionEnd }
+    : null;
 
   drawer.replaceChildren(
     h(
@@ -789,6 +797,19 @@ function renderDetail() {
     ),
     h("div", { class: "drawer-body", role: "tabpanel" }, body),
   );
+  if (focusKey) {
+    const again = [...drawer.querySelectorAll(focusKey.tag.toLowerCase())].find(
+      (element) => element.getAttribute("aria-label") === focusKey.label && element.getAttribute("placeholder") === focusKey.placeholder,
+    );
+    if (again) {
+      again.focus();
+      try {
+        again.setSelectionRange(focusKey.start, focusKey.end);
+      } catch {
+        // email inputs have no caret position
+      }
+    }
+  }
 }
 
 function fitPanel(candidate) {
@@ -1019,7 +1040,8 @@ function outreachPanel(candidate) {
           h("button", { type: "button", class: "quiet", disabled: acting, onclick: (event) => {
             const button = event.currentTarget;
             return act(candidate.id, async () => {
-              const result = await call(api(`/candidates/${candidate.id}/reply`), { text: reply.value }, button);
+              const onStale = (ok) => ok && typedFields.delete(replyKey);
+              const result = await call(api(`/candidates/${candidate.id}/reply`), { text: reply.value }, button, { onStale });
               if (result !== undefined) typedFields.delete(replyKey);
               if (result) $("#agent-reply").textContent = result.message;
             });

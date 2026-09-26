@@ -519,3 +519,41 @@ in a turn that asks a question.
   citations inside links stay text; a failed answer is reported after the
   user returns to its conversation; a pasted reply and a pass reason survive
   drawer rebuilds; drawer actions lock per person, not per button.
+
+## Round 8 (2026-09-26)
+
+24 confirmed bugs (backend 7, chat agent 13, front end 4), plus one from the
+live run. Hunters now rate likelihood; most were medium or low.
+
+- Backend (5 of 7 from round 7 changes): a reply that reopens someone
+  rescores them; keep gives a fresh start (no instant "cold" on the next
+  tick); a time-only answer ("Thursday", "10:30 am") is not taken for a
+  duplicate; relayed messages are duplicates only since the founder last
+  wrote, and an email counts as already on record if the founder pasted the
+  same words after it arrived; only the system's own closures (marked
+  `closedBy`) give way to an interested reply; a no-op criteria change no
+  longer strips a pending widening.
+- Chat agent: the "nothing to cite" exemption and the language rules again.
+  Realistic replies were being refused (a trailing emoji, "你是想了解X，还是
+  Y？", "I'm your Technical Chief of Staff", "Happy to help!", "Just to
+  clarify: …?") and a comma-joined claim ("X下个月关停，要我…吗？") got
+  through. Clauses before a question must now be a greeting, an
+  acknowledgement or the question's own start; a Chinese name is accepted
+  only after 你好/您好/嗨; a Chinese capability clause may not carry a 的-clause.
+  "fluent in Mandarin" and "did Wei reply in Chinese?" are no longer language
+  requests; requests must be aimed at the agent.
+- Front end: a cut-off or failed answer is reported after returning to its
+  conversation, even while its history loads; a reply or pass reason used
+  for a role the founder left is cleared; a drawer rebuilt while the founder
+  types keeps focus and caret.
+- Live run (74 conversations on round 6 code): most failures were "fetch
+  failed" while the model endpoint was unreachable for a while (reachable
+  again after). One real finding: the model answered the Chinese retry in
+  English twice. The retry is now written in Chinese and asked again when
+  the reply is not Chinese (`r8-chaos-followups.test.ts`).
+
+Accepted limits of the exemption (not bugs from here on; one test skipped):
+a claim inside a single short question ("Do you mean the service Alice is
+shutting down?"), and a bulleted capability list after a company search.
+Both would need a model to judge "does this state a company fact", which
+is a design change for the owner to decide, not a patch.

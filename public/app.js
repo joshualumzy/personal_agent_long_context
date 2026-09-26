@@ -52,6 +52,8 @@ function alreadyDrawn(conversationId, question) {
 }
 /** Answers that finished while their conversation's history was loading, by conversation. */
 const finishedAnswers = new Map();
+/** Questions that failed while their conversation's history was loading, by conversation. */
+const failedQuestions = new Map();
 
 function scrollToBottom() {
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -756,6 +758,9 @@ async function selectConversation(conversationId, title) {
       appendAssistantMessage(pending.payload);
       drawnHistory = { conversationId, lastQuestion: pending.question, answered: true };
     }
+    const failed = failedQuestions.get(conversationId);
+    failedQuestions.delete(conversationId);
+    if (failed && !alreadyDrawn(conversationId, failed.question)) appendErrorMessage(failed.text);
   } catch (err) {
     if (asked === chatEpoch) {
       historyLoading = null;
@@ -972,6 +977,8 @@ chatForm.addEventListener("submit", async (e) => {
         }
       }
       loadConversations();
+      // Cut off with no answer: reported below if the user is back in this conversation.
+      if (!finalPayload) throw new Error("The answer was cut off before it finished. Please try again.");
       return;
     }
     if (!finalPayload) throw new Error("The answer was cut off before it finished. Please try again.");
@@ -1000,8 +1007,13 @@ chatForm.addEventListener("submit", async (e) => {
     }
   } catch (err) {
     // Also when the user left and came back to the conversation this question was asked in.
-    const backInIt = sentTo && sentTo === activeConversationId && !historyLoading;
-    if (stillHere() || backInIt) appendErrorMessage(err instanceof Error ? err.message : "The request failed.");
+    const text = err instanceof Error ? err.message : "The request failed.";
+    if (stillHere()) appendErrorMessage(text);
+    else if (sentTo && sentTo === activeConversationId) {
+      // Its history is still loading: that load shows the error after the history, if unanswered.
+      if (historyLoading === sentTo) failedQuestions.set(sentTo, { question: message, text });
+      else appendErrorMessage(text);
+    }
   } finally {
     asking = false;
     stopWaitingAnimation();

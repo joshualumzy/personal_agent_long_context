@@ -116,6 +116,8 @@ export interface Candidate {
   stage: Stage;
   closedReason?: ClosedReason;
   closedAt?: string;
+  /** Who closed them: the founder's decision stands; the system's (on silence, or a reply it read) can give way. */
+  closedBy?: "founder" | "system";
   /** Founder pinned this person with a keep verdict. */
   kept: boolean;
   verdicts: Record<string, Verdict>;
