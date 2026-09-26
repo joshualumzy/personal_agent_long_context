@@ -147,9 +147,6 @@ function mergeDuplicatePeople(state: RecruitingState): void {
   }
 }
 
-const UNCONFIRMED =
-  "Gmail did not confirm this email, so it may have gone out. Check your Sent folder: if it is there, mark it as sent by hand; if not, edit the draft and send it again.";
-
 /** Relayed text compared without time labels ("10:32 AM", "Tue", "Yesterday") or spacing. */
 function sameRelayedText(a: string, b: string, preview = true): boolean {
   if (!preview) return a.replace(/\s+/g, " ").trim().toLowerCase() === b.replace(/\s+/g, " ").trim().toLowerCase();
@@ -179,22 +176,6 @@ function rewritten(): RecruitingError {
 
 function beingSent(): RecruitingError {
   return new RecruitingError("already_sending", "The current draft is being sent, so it cannot be replaced.", 409);
-}
-
-/** Only a refusal (not connected, or Gmail answering with an error status) proves nothing went out. */
-function certainlyNotSent(error: unknown): boolean {
-  if (error instanceof RecruitingError) return true;
-  const message = error instanceof Error ? error.message : String(error);
-  // A reply Gmail sent but that could not be read (a proxy page) proves nothing either way.
-  return /HTTP \d{3}|not connected/i.test(message);
-}
-
-interface SentMessage {
-  draft: Draft;
-  threadId: string | undefined;
-  channel: "email" | "linkedin";
-  /** When it went out, if known; Gmail sync reads replies after this. */
-  realAt?: string;
 }
 
 export class RecruitingService {
@@ -1083,18 +1064,6 @@ export class RecruitingService {
     await this.mutate((state) => {
       const candidate = this.candidate(state, candidateId);
       if (!candidate.draft) throw new RecruitingError("no_draft", "There is no draft to edit.", 409);
-      if (this.unconfirmedClaim(candidateId, candidate.draft)) {
-        const changes =
-          (edit.subject !== undefined && edit.subject !== candidate.draft.subject) ||
-          (edit.body !== undefined && edit.body !== candidate.draft.body) ||
-          (edit.email !== undefined && edit.email !== candidate.contact?.email);
-        // Saving it unchanged (the panel saves before every send) settles nothing.
-        if (!changes) return;
-        // Changing a draft Gmail never confirmed means the founder found it was not sent.
-        delete candidate.draft.sending;
-        delete candidate.draft.unconfirmed;
-        delete candidate.draft.claimedAt;
-      }
       if (candidate.draft.sending) {
         throw new RecruitingError("already_sending", "This message is being sent and can no longer be edited.", 409);
       }
@@ -1120,175 +1089,56 @@ export class RecruitingService {
   }
 
   /**
-   * Sends the current draft. Only ever called from the founder's press of the
-   * send button. Without Gmail, `manual` records that the founder sent it
-   * themselves (for example as a LinkedIn message).
+   * Records that the founder sent the current draft from their own mailbox (the page opens it
+   * prefilled in Gmail) or, with `manual`, some other way such as a LinkedIn message. Nothing is
+   * sent from here: the founder's own send is the approval.
    */
   async send(candidateId: string, manual: boolean): Promise<void> {
-    // One send per person at a time, decided before anything is awaited.
+    // One record per press: a second press while the first is being saved is refused.
     if (this.inFlight.has(candidateId)) {
-      throw new RecruitingError("already_sending", "This message is already being sent. Check your sent mail before trying again.", 409);
+      throw new RecruitingError("already_sending", "This message is already being recorded.", 409);
     }
     this.inFlight.add(candidateId);
     try {
-      await this.sendOnce(candidateId, manual);
+      await this.mutate((latest) => {
+        const target = this.candidate(latest, candidateId);
+        if (target.stage === "closed") {
+          throw new RecruitingError("candidate_closed", "This candidate is closed, so nothing more is sent.", 409);
+        }
+        const draft = target.draft;
+        if (!draft) throw new RecruitingError("no_draft", "There is no draft to send.", 409);
+        // Also for "I sent it myself": the founder copies the draft, so the warning must be dealt with first.
+        if (draft.warnings.length) {
+          throw new RecruitingError("draft_has_warnings", draft.warnings[0]!, 409);
+        }
+        if (!manual && !target.contact) {
+          throw new RecruitingError("no_email", "There is no email address for this person.", 409);
+        }
+        // A draft written as a LinkedIn message has no subject; an email needs one.
+        if (!manual && !draft.subject.trim()) {
+          throw new RecruitingError("no_subject", "Add a subject line before sending this as an email.", 409);
+        }
+        const at = this.now(latest).toISOString();
+        target.messages.push({
+          direction: "outbound",
+          channel: manual ? "linkedin" : "email",
+          at,
+          realAt: this.realNow(),
+          text: `${draft.subject}\n\n${draft.body}`,
+        });
+        target.lastContactedAt = at;
+        if (draft.kind === "follow_up") target.followUps += 1;
+        if (draft.kind === "scheduling") target.stage = "scheduling";
+        else if (target.stage !== "replied" && target.stage !== "scheduling") target.stage = "contacted";
+        delete target.draft;
+      });
     } finally {
       this.inFlight.delete(candidateId);
     }
   }
 
-  private async sendOnce(candidateId: string, manual: boolean): Promise<void> {
-    // 0. Gmail already sent it but recording failed: record it now, never send it twice.
-    const pending = this.unrecorded.get(candidateId);
-    if (pending) {
-      await this.recordSent(candidateId, pending);
-      this.unrecorded.delete(candidateId);
-      return;
-    }
-
-    // 1. Claim the draft and save the claim. A retry after a failed save below finds it
-    //    claimed and cannot send it again.
-    const claimed = await this.mutate((latest) => {
-      const target = this.candidate(latest, candidateId);
-      if (target.stage === "closed") {
-        throw new RecruitingError("candidate_closed", "This candidate is closed, so nothing more is sent.", 409);
-      }
-      const draft = target.draft;
-      if (!draft) throw new RecruitingError("no_draft", "There is no draft to send.", 409);
-      // Claimed, yet nothing of ours is sending it: an earlier try never learned whether Gmail
-      // sent it (or the server stopped mid-send). Only the founder, having checked Sent, can say.
-      if (draft.sending) {
-        if (!manual) throw new RecruitingError("send_unconfirmed", UNCONFIRMED, 409);
-        return { draft: { ...draft }, contact: target.contact, threadId: target.gmailThreadId, confirmed: true, sender: null };
-      }
-      // Also for "I sent it myself": the founder copies the draft, so the warning must be dealt with first.
-      if (draft.warnings.length) {
-        throw new RecruitingError("draft_has_warnings", draft.warnings[0]!, 409);
-      }
-      if (!manual && !target.contact) {
-        throw new RecruitingError("no_email", "There is no email address for this person.", 409);
-      }
-      // A draft written as a LinkedIn message has no subject; an email needs one.
-      if (!manual && !draft.subject.trim()) {
-        throw new RecruitingError("no_subject", "Add a subject line before sending this as an email.", 409);
-      }
-      draft.sending = true;
-      draft.claimedAt = this.realNow();
-      return {
-        draft: { ...draft },
-        contact: target.contact,
-        threadId: target.gmailThreadId,
-        confirmed: false,
-        sender: JSON.stringify(latest.sender ?? null),
-      };
-    });
-    if (claimed.confirmed) {
-      // Stamped with the time it was claimed, so replies since then are still read.
-      await this.recordSent(candidateId, {
-        draft: claimed.draft,
-        threadId: claimed.threadId,
-        channel: "email",
-        ...(claimed.draft.claimedAt ? { realAt: claimed.draft.claimedAt } : {}),
-      });
-      return;
-    }
-
-    // 2. The one irreversible step, outside any change that could be rolled back.
-    let threadId = claimed.threadId;
-    if (!manual) {
-      try {
-        if (!this.deps.gmail || !(await this.deps.gmail.connected())) {
-          throw new RecruitingError("gmail_not_connected", "Connect Gmail first, or mark it as sent by hand.", 409);
-        }
-        const sent = await this.deps.gmail.send({
-          to: claimed.contact!.email,
-          subject: claimed.draft.subject,
-          body: claimed.draft.body,
-          ...(threadId ? { threadId } : {}),
-        });
-        threadId = sent.threadId;
-      } catch (error) {
-        if (!certainlyNotSent(error)) {
-          // The request may have reached Gmail. The claim stays, so a retry cannot send it twice.
-          // The flag only tells the panel; a claim with nothing sending counts as unconfirmed anyway.
-          await this.mutate((latest) => {
-            const target = latest.candidates[candidateId];
-            if (target?.draft?.sending) target.draft.unconfirmed = true;
-          }).catch(() => undefined);
-          throw new RecruitingError("send_unconfirmed", UNCONFIRMED, 502);
-        }
-        // Nothing went out: release the claim so the founder can try again.
-        await this.mutate((latest) => {
-          const target = latest.candidates[candidateId];
-          if (target?.draft) {
-            delete target.draft.sending;
-            delete target.draft.claimedAt;
-          }
-        });
-        await this.redraftIfSenderChanged(candidateId, claimed.draft, claimed.sender);
-        throw error;
-      }
-    }
-
-    // 3. Record it. If that fails, the send is remembered so the next press only records it.
-    const sent: SentMessage = { draft: claimed.draft, threadId, channel: manual ? "linkedin" : "email", realAt: this.realNow() };
-    this.unrecorded.set(candidateId, sent);
-    await this.recordSent(candidateId, sent);
-    this.unrecorded.delete(candidateId);
-  }
-
-  /** People whose send is running right now. */
+  /** People whose send is being recorded right now. */
   private readonly inFlight = new Set<string>();
-  /** Sends that went out but are not yet saved, by candidate. */
-  private readonly unrecorded = new Map<string, SentMessage>();
-
-  /** A claimed draft that nothing is sending and nothing waits to record: its fate is unknown. */
-  private unconfirmedClaim(candidateId: string, draft: Draft | undefined): boolean {
-    return Boolean(draft?.sending) && !this.inFlight.has(candidateId) && !this.unrecorded.has(candidateId);
-  }
-
-  private async recordSent(candidateId: string, sent: SentMessage): Promise<void> {
-    const { draft, threadId } = sent;
-    await this.mutate((latest) => {
-      const target = this.candidate(latest, candidateId);
-      const at = this.now(latest).toISOString();
-      target.messages.push({
-        direction: "outbound",
-        channel: sent.channel,
-        at,
-        realAt: sent.realAt ?? this.realNow(),
-        text: `${draft.subject}\n\n${draft.body}`,
-      });
-      if (threadId) target.gmailThreadId = threadId;
-      target.lastContactedAt = at;
-      if (draft.kind === "follow_up") target.followUps += 1;
-      // Closed while the email was going out (hired, or asked not to be contacted) stays closed.
-      if (target.stage === "closed") {
-        // nothing: the message is kept on record, the decision stands
-      } else if (draft.kind === "scheduling") target.stage = "scheduling";
-      else if (target.stage !== "replied" && target.stage !== "scheduling") target.stage = "contacted";
-      delete target.draft;
-    });
-  }
-
-  /** A draft released after a failed send is rewritten if the signature changed meanwhile. */
-  private async redraftIfSenderChanged(candidateId: string, sentDraft: Draft, senderAtClaim: string | null): Promise<void> {
-    try {
-      const state = await this.current();
-      const candidate = state.candidates[candidateId];
-      if (!candidate?.draft || senderAtClaim === null || JSON.stringify(state.sender ?? null) === senderAtClaim) return;
-      if (candidate.draft.editedByFounder || candidate.stage === "closed") return;
-      const draft = await this.makeDraft(state, candidate, candidate.draft.kind);
-      await this.mutate((latest) => {
-        const target = latest.candidates[candidateId];
-        if (target?.draft && !target.draft.sending && !target.draft.editedByFounder && target.draft.createdAt === sentDraft.createdAt) {
-          target.draft = draft;
-        }
-      });
-    } catch (error) {
-      this.fail("Updating the signature", error);
-    }
-  }
 
   /** A reply relayed by paste, dictation, Gmail, or the LinkedIn reader. */
   async reply(
@@ -1425,7 +1275,7 @@ export class RecruitingService {
     });
   }
 
-  /** Reads new replies in every Gmail thread the founder started from here. */
+  /** Reads new replies in Gmail from everyone the founder has emailed from here. */
   syncGmail(): Promise<number> {
     // One sync at a time: two at once would read the same reply twice.
     this.syncing ??= this.syncGmailOnce().finally(() => {
@@ -1441,9 +1291,10 @@ export class RecruitingService {
     const state = await this.current();
     let count = 0;
     for (const candidate of Object.values(state.candidates)) {
-      // Closed people are read too: a late yes to a "cold" closure reopens them, and any other
-      // message is kept on their record.
-      if (!candidate.gmailThreadId) continue;
+      // Replies are found by who sent them. Closed people are read too: a late yes to a "cold"
+      // closure reopens them, and any other message is kept on their record.
+      const emailedThem = candidate.messages.some((message) => message.direction === "outbound" && message.channel === "email");
+      if (!emailedThem || !candidate.contact) continue;
       // Gmail keeps real time, so the cut-off must too (fast-forward moves only the simulated clock).
       // The latest time on record, not the last message's: a send recorded late is dated earlier
       // than a reply already read, and must not move the cut-off back to before that reply.
@@ -1464,7 +1315,7 @@ export class RecruitingService {
       const lastSeen = latest(read) ?? earliest(emailed) ?? candidate.discoveredAt;
       // One thread that fails is reported; the others are still read.
       try {
-        const replies = await this.deps.gmail.repliesIn(candidate.gmailThreadId, lastSeen);
+        const replies = await this.deps.gmail.repliesFrom(candidate.contact.email, lastSeen);
         for (const message of replies) {
           const outcome = await this.reply(message.text, candidate.profile.id, "email", message.at);
           if (!outcome.duplicate) count += 1;
@@ -1633,7 +1484,10 @@ export class RecruitingService {
       integrations: {
         source: this.deps.source.name,
         contactFinders: this.deps.contactFinders.map((finder) => finder.provider),
-        gmail: this.deps.gmail ? await this.deps.gmail.connected() : null,
+        // Whether a mailbox is connected; a Gmail client without that check reports being connected.
+        gmail: this.deps.gmail
+          ? await (typeof this.deps.gmail.hasMailbox === "function" ? this.deps.gmail.hasMailbox() : this.deps.gmail.connected())
+          : null,
       },
     };
   }

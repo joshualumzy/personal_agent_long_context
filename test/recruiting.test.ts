@@ -5,6 +5,7 @@ import { buildApp } from "../src/http-app.js";
 import { privateRemarksIn } from "../src/recruiting/agent.js";
 import type { ContactFinder } from "../src/recruiting/contacts.js";
 import type { Candidate, CandidateProfile, Criterion } from "../src/recruiting/domain.js";
+import type { GmailClient } from "../src/recruiting/gmail.js";
 import { LocalIntentMemory } from "../src/recruiting/intent-memory.js";
 import type { JsonModel } from "../src/recruiting/llm.js";
 import { RecruitingService } from "../src/recruiting/service.js";
@@ -133,7 +134,7 @@ function fakeModel(): JsonModel & { calls: string[] } {
   };
 }
 
-function setup(options: { finders?: ContactFinder[] } = {}) {
+function setup(options: { finders?: ContactFinder[]; gmail?: GmailClient } = {}) {
   let now = new Date("2026-09-23T02:00:00.000Z");
   const model = fakeModel();
   const source = new FakeSource();
@@ -144,7 +145,7 @@ function setup(options: { finders?: ContactFinder[] } = {}) {
     store: new MemoryStore(),
     memory,
     contactFinders: options.finders ?? [],
-    gmail: null,
+    gmail: options.gmail ?? null,
     clock: () => now,
     settings: { resultsPerQuery: 6 },
   });
@@ -307,6 +308,36 @@ describe("recruiting flow", () => {
     a = (await service.snapshot()).candidates.find((c) => c.id === "a")!;
     assert.equal(a.stage, "closed");
     assert.equal(a.closedReason, "cold");
+  });
+
+  test("an email is recorded as sent by the founder, and their Gmail reply is found by sender", async () => {
+    const asked: Array<[string, string]> = [];
+    const gmail = {
+      connected: async () => true,
+      hasMailbox: async () => true,
+      repliesFrom: async (address: string, since: string) => {
+        asked.push([address, since]);
+        return [{ from: `Bea <${address}>`, at: "2026-09-24T02:00:00.000Z", text: "Sounds good, free Tuesday afternoon" }];
+      },
+    } as unknown as GmailClient;
+    const context = setup({ gmail });
+    await context.service.start("We need a founding backend engineer in Singapore who knows TypeScript.");
+    await context.service.confirm();
+    await context.service.settle();
+    const { service } = context;
+    await service.prepareOutreach("b");
+    await assert.rejects(service.send("b", false), /no email address/);
+    await service.editDraft("b", { email: "bea@example.com" });
+    await service.send("b", false);
+
+    let b = (await service.snapshot()).candidates.find((c) => c.id === "b")!;
+    assert.equal(b.stage, "contacted");
+    assert.equal(b.messages.at(-1)?.channel, "email");
+
+    assert.equal(await service.syncGmail(), 1);
+    assert.equal(asked[0]![0], "bea@example.com");
+    b = (await service.snapshot()).candidates.find((c) => c.id === "b")!;
+    assert.equal(b.stage, "replied");
   });
 
   test("a reply moves the candidate on and drafts a scheduling message", async () => {

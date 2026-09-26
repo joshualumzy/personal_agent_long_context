@@ -444,6 +444,14 @@ function renderStatus() {
   line.append(parts.join(", ") + (state.busy ? ". Thinking…" : "."));
 }
 
+/** Gmail's compose page, prefilled. Spaces stay %20: some mail apps show "+" literally. */
+function gmailCompose(to, subject, body) {
+  const query = [["view", "cm"], ["fs", "1"], ["to", to], ["su", subject], ["body", body]]
+    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+    .join("&");
+  return `https://mail.google.com/mail/?${query}`;
+}
+
 function renderTop() {
   const day = state.clockOffsetDays;
   $("#clock").textContent = day ? `${day} days later` : "Today";
@@ -731,7 +739,6 @@ function signature(candidate) {
     candidate.draft?.subject,
     candidate.draft?.body,
     candidate.draft?.warnings,
-    candidate.draft?.unconfirmed,
     candidate.messages.length,
     candidate.verdicts,
     // "Why they fit" names each criterion and its kind.
@@ -1026,10 +1033,53 @@ function outreachPanel(candidate) {
       prospeo: "Found by Prospeo",
       founder: "Entered by you",
     }[candidate.contact?.provider];
-    const gmailButton = h("button", { type: "button", class: "primary", disabled: locked ?? (!candidate.contact && !email.value.trim() ? true : undefined), title: candidate.contact ? undefined : "Add an email address first", onclick: sendAfterSave(false) }, "Send from Gmail");
-    // Typing an address makes Gmail sending possible right away.
+    // Opens the message ready to send in the founder's own Gmail; their Send there is what sends
+    // it, and this records it. The link is filled in at click time, so it carries the last edits.
+    const blocked = () => sendingFor.has(sendKey) || draft.warnings.length > 0 || !email.value.trim();
+    const gmailButton = h(
+      "a",
+      {
+        class: "button primary",
+        href: "#",
+        target: "_blank",
+        rel: "noopener",
+        "aria-disabled": blocked() ? "true" : undefined,
+        title: draft.warnings.length ? draft.warnings[0] : email.value.trim() ? "Opens in your Gmail, ready to send" : "Add an email address first",
+        onclick: (event) => {
+          const link = event.currentTarget;
+          if (blocked()) {
+            event.preventDefault();
+            if (!email.value.trim()) email.focus();
+            return;
+          }
+          // An email needs a subject; a draft written as a LinkedIn message has none.
+          if (!subject.value.trim()) {
+            event.preventDefault();
+            showError("Add a subject line before sending this as an email.");
+            subject.focus();
+            return;
+          }
+          link.href = gmailCompose(email.value.trim(), subject.value, body.value);
+          sendingFor.add(sendKey);
+          link.setAttribute("aria-disabled", "true");
+          void (async () => {
+            try {
+              if (await save()) await call(api(`/candidates/${candidate.id}/send`), {});
+            } finally {
+              sendingFor.delete(sendKey);
+              if (state && selectedId === candidate.id && roleId === sendRole) {
+                detailSignature = "";
+                renderDetail();
+              }
+            }
+          })();
+        },
+      },
+      "Open in Gmail to send",
+    );
+    // Typing an address makes it possible right away.
     email.addEventListener("input", () => {
-      gmailButton.disabled = sendingFor.has(sendKey) || (!candidate.contact && !email.value.trim());
+      gmailButton.setAttribute("aria-disabled", blocked() ? "true" : "false");
     });
     const status = candidate.contact
       ? h(
@@ -1050,15 +1100,10 @@ function outreachPanel(candidate) {
         subject,
         body,
         draft.warnings.map((warning) => h("p", { class: "banner note" }, warning)),
-        draft.unconfirmed
-          ? h("p", { class: "banner note" }, "Gmail did not confirm this email, so it may have gone out. Check your Sent folder: if it is there, press \"I sent it myself\"; if not, change the draft and send it again.")
-          : null,
         h(
           "div",
           { class: "row sticky-actions" },
-          state.integrations?.gmail
-            ? gmailButton
-            : null,
+          gmailButton,
           h("button", { type: "button", class: "quiet", disabled: locked, onclick: sendAfterSave(true) }, "I sent it myself"),
           h("button", { type: "button", class: "quiet", onclick: save }, "Save edits"),
         ),

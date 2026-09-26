@@ -106,7 +106,15 @@ async function gmailOver(own: string, messages: unknown[]): Promise<GmailClient>
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
     if (url.includes("oauth2.googleapis.com/token")) return json({ access_token: "a", expires_in: 3600 });
     if (url.endsWith("users/me/profile")) return json({ emailAddress: own });
-    if (url.includes("users/me/threads/")) return json({ messages });
+    // Replies are read by sender: a search lists the messages, then each is fetched.
+    // Like the real "from:<candidate>" search, the founder's own mail is never listed.
+    const fromHeader = (m: unknown) => String((m as { payload?: { headers?: { name: string; value: string }[] } }).payload?.headers?.find((h) => h.name === "From")?.value ?? "");
+    const addressOf = (from: string) => (/<([^>]+)>/.exec(from)?.[1] ?? from).trim().toLowerCase();
+    if (url.includes("users/me/messages?")) {
+      return json({ messages: messages.flatMap((m, i) => (addressOf(fromHeader(m)) === own.toLowerCase() ? [] : [{ id: String(i) }])) });
+    }
+    const one = /users\/me\/messages\/(\d+)/.exec(url);
+    if (one) return json(messages[Number(one[1])]);
     return new Response("not found", { status: 404 });
   }) as typeof fetch;
   return new GmailClient({ clientId: "c", clientSecret: "s", redirectUri: "http://x/cb", tokenPath, fetch: fakeFetch });
@@ -206,7 +214,7 @@ describe("BUG: an Outlook reply carries the founder's whole original email into 
       "Michael",
     ].join("\r\n");
     const gmail = await gmailOver("michael@acme.com", [gmailMessage("Alice Tan <alice@corp.com>", Date.parse("2026-09-22T00:00:00Z"), plainPart(body))]);
-    const replies = await gmail.repliesIn("t1", "2026-09-21T00:00:00Z");
+    const replies = await gmail.repliesFrom("alice@corp.com", "2026-09-21T00:00:00Z");
     assert.equal(replies.length, 1);
     assert.ok(replies[0]!.text.includes("Tuesday 3pm"));
     assert.ok(!replies[0]!.text.includes("offline sync"), `the founder's own email is part of the reply: ${JSON.stringify(replies[0]!.text)}`);
@@ -219,7 +227,7 @@ describe("BUG: a reply from an address that ends with the founder's address is t
       gmailMessage("Jax Tan <jaxtan@gmail.com>", Date.parse("2026-09-21T12:00:00Z"), plainPart("Hi, saw your work")),
       gmailMessage("A. Jaxtan <ajaxtan@gmail.com>", Date.parse("2026-09-22T00:00:00Z"), plainPart("Yes, keen to talk")),
     ]);
-    const replies = await gmail.repliesIn("t1", "2026-09-21T00:00:00Z");
+    const replies = await gmail.repliesFrom("alice@corp.com", "2026-09-21T00:00:00Z");
     assert.deepEqual(replies.map((reply) => reply.text), ["Yes, keen to talk"], "the candidate's reply is filtered out as the founder's own");
   });
 });
@@ -229,7 +237,7 @@ describe("BUG: a reply sent as HTML only is never read", () => {
     const gmail = await gmailOver("michael@acme.com", [
       gmailMessage("Alice <alice@corp.com>", Date.parse("2026-09-22T00:00:00Z"), { mimeType: "text/html", body: { data: b64("<div dir=\"ltr\">Yes, Tuesday works</div>") } }),
     ]);
-    const replies = await gmail.repliesIn("t1", "2026-09-21T00:00:00Z");
+    const replies = await gmail.repliesFrom("alice@corp.com", "2026-09-21T00:00:00Z");
     assert.equal(replies.length, 1, "the HTML-only reply was dropped");
     assert.ok(replies[0]!.text.includes("Tuesday works"));
   });
@@ -279,7 +287,7 @@ describe("NOT A BUG: checked and fine", () => {
       gmailMessage("Michael <michael@acme.com>", Date.parse("2026-09-21T12:00:00Z"), plainPart("Hi Alice")),
       gmailMessage("Alice <alice@corp.com>", Date.parse("2026-09-22T00:00:00Z"), plainPart("Yes please\n\nOn Mon, Sep 21, 2026 at 8:00 PM Michael <michael@acme.com> wrote:\n> Hi Alice")),
     ]);
-    const replies = await gmail.repliesIn("t1", "2026-09-21T00:00:00Z");
+    const replies = await gmail.repliesFrom("alice@corp.com", "2026-09-21T00:00:00Z");
     assert.deepEqual(replies.map((reply) => reply.text), ["Yes please"]);
   });
 
@@ -290,7 +298,7 @@ describe("NOT A BUG: checked and fine", () => {
         parts: [plainPart("Tuesday works"), { mimeType: "text/html", body: { data: b64("<p>Tuesday works</p>") } }],
       }),
     ]);
-    assert.deepEqual((await gmail.repliesIn("t1", "2026-09-21T00:00:00Z")).map((reply) => reply.text), ["Tuesday works"]);
+    assert.deepEqual((await gmail.repliesFrom("alice@corp.com", "2026-09-21T00:00:00Z")).map((reply) => reply.text), ["Tuesday works"]);
   });
 
   test("the chat status lists a ruled-in candidate among the first 15 with their id", async () => {

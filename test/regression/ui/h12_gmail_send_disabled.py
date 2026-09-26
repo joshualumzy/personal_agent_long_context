@@ -1,9 +1,10 @@
-"""Outreach draft with no email found: typing an address into 'To' must enable 'Send from Gmail'.
+"""Outreach draft with no email found: typing an address into 'To' must make 'Open in Gmail to send' usable.
+(Since the S2 merge the page opens the founder's own Gmail instead of sending from the server.)
 State is rewritten in the browser to say Gmail is connected and the candidate has a draft without contact."""
 import json
 from common import *
 
-r = Result("h12 Send from Gmail stays disabled after typing an email")
+r = Result("h12 the Gmail link stays disabled after typing an email")
 a = role_a()
 target = next(c for c in state(a)["candidates"] if c["tier"] == 100)
 
@@ -28,9 +29,9 @@ with browser_page() as (page, console):
     wait_board(page)
     page.click(f"#nodes .node[aria-label^='{target['profile']['name']},']")
     page.click("#drawer .tab:has-text('Outreach')")
-    send = page.locator("#drawer button:has-text('Send from Gmail')")
-    r.check(send.is_disabled(), "disabled while there is no address (expected)")
+    send = page.locator("#drawer a:has-text('Open in Gmail to send')")
+    r.check(send.get_attribute("aria-disabled") == "true", "disabled while there is no address (expected)")
     page.fill("#drawer input[aria-label='To']", "person@example.com")
     page.wait_for_timeout(200)
-    r.check(send.is_enabled(), "enabled after typing an address")
+    r.check(send.get_attribute("aria-disabled") != "true", "usable after typing an address")
 r.finish(console)

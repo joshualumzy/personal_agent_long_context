@@ -172,12 +172,13 @@ describe("BUG: Gmail sync", () => {
     const gmail = {
       async connected() { return true; },
       async send() { return { threadId: "t1" }; },
-      async repliesIn(_thread: string, since: string) {
+      async hasMailbox() { return true; },
+      async repliesFrom(_thread: string, since: string) {
         return Date.parse(replyAt) > Date.parse(since) ? [{ from: "a@x.com", at: replyAt, text: "Sounds good" }] : [];
       },
     };
     const store = await storeWith(seeded({
-      candidates: { a: candidate(POOL[0]!, { stage: "contacted", messages: [outbound()], lastContactedAt: AT, gmailThreadId: "t1", contact: { email: "a@x.com", status: "verified", provider: "founder" } }) },
+      candidates: { a: candidate(POOL[0]!, { stage: "contacted", messages: [outbound()], lastContactedAt: AT, contact: { email: "a@x.com", status: "verified", provider: "founder" } }) },
     }));
     const service = serviceOn(store, { gmail });
     await Promise.all([service.syncGmail(), service.syncGmail()]);
@@ -207,7 +208,8 @@ describe("BUG: outreach for someone already in conversation", () => {
     const gmail = {
       async connected() { return true; },
       async send(message: { subject: string }) { sent.push(message); return { threadId: "t1" }; },
-      async repliesIn() { return []; },
+      async hasMailbox() { return true; },
+      async repliesFrom() { return []; },
     };
     // For a LinkedIn message the prompt asks for subject "".
     const model = modelWith({
@@ -431,12 +433,14 @@ describe("NOT A BUG: checked and fine", () => {
     assert.equal((await find(service, "c")).settled, true);
   });
 
-  test("a follow-up is not drafted over a draft that is being sent", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("a follow-up is not drafted over a draft that is being sent", async () => {
     let letGo!: (value: { threadId: string }) => void;
     const gmail = {
       async connected() { return true; },
       send: () => new Promise<{ threadId: string }>((resolve) => { letGo = resolve; }),
-      async repliesIn() { return []; },
+      async hasMailbox() { return true; },
+      async repliesFrom() { return []; },
     };
     const store = await storeWith(seeded({
       candidates: { a: candidate(POOL[0]!, {

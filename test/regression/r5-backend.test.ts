@@ -121,7 +121,8 @@ const outboundCount = async (service: RecruitingService, id: string) =>
 // ======================================================================= bugs
 
 describe("BUG: Gmail send classified as 'certainly not sent'", () => {
-  test("B1 a 200 from Gmail with an unreadable body releases the claim, so the next press emails the person again", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("B1 a 200 from Gmail with an unreadable body releases the claim, so the next press emails the person again", async () => {
     // The real GmailClient over a fake network: Gmail accepts the message, but the body
     // that comes back is a proxy page, so response.json() throws "Unexpected token '<' ...".
     const dir = await mkdtemp(join(tmpdir(), "r5-gmail-"));
@@ -150,12 +151,14 @@ describe("BUG: Gmail send classified as 'certainly not sent'", () => {
 });
 
 describe("BUG: a claimed draft with nothing in flight", () => {
-  test("B2 Gmail's answer is lost and saving 'unconfirmed' fails: the draft stays 'being sent' for good, no action gets past it", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("B2 Gmail's answer is lost and saving 'unconfirmed' fails: the draft stays 'being sent' for good, no action gets past it", async () => {
     let flaky!: FlakyStore;
     const gmail = {
       async connected() { return true; },
       async send() { flaky.failNext = true; throw new TypeError("fetch failed"); },
-      async repliesIn() { return []; },
+      async hasMailbox() { return true; },
+      async repliesFrom() { return []; },
     };
     flaky = await flakyWith(seeded({ candidates: { a: candidate(POOL[0]!, { stage: "drafted", draft: intro(), ...withEmail }) } }));
     const service = serviceOn(flaky, { gmail });
@@ -171,18 +174,19 @@ describe("BUG: a claimed draft with nothing in flight", () => {
 });
 
 describe("BUG: recording a send twice", () => {
-  test("B3 after a failed record, two presses at once both record the one email (two outbound messages, two follow-ups counted)", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("B3 after a failed record, two presses at once both record the one email (two outbound messages, two follow-ups counted)", async () => {
     let flaky!: FlakyStore;
     let sent = 0;
     const gmail = {
       async connected() { return true; },
       async send() { sent += 1; flaky.failNext = true; return { threadId: "t1" }; },
-      async repliesIn() { return []; },
+      async hasMailbox() { return true; },
+      async repliesFrom() { return []; },
     };
     flaky = await flakyWith(seeded({
       candidates: { a: candidate(POOL[0]!, {
-        stage: "contacted", messages: [outbound()], lastContactedAt: AT, gmailThreadId: "t1",
-        draft: { kind: "follow_up", subject: "Re: Hi", body: "Nudge", createdAt: AT, warnings: [] }, ...withEmail,
+        stage: "contacted", messages: [outbound()], lastContactedAt: AT, draft: { kind: "follow_up", subject: "Re: Hi", body: "Nudge", createdAt: AT, warnings: [] }, ...withEmail,
       }) },
     }));
     const service = serviceOn(flaky, { gmail });
@@ -194,11 +198,13 @@ describe("BUG: recording a send twice", () => {
     assert.equal(a.followUps, 1, `followUps counted ${a.followUps} times`);
   });
 
-  test("B4 two 'I sent it myself' presses on an unconfirmed email both record it", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("B4 two 'I sent it myself' presses on an unconfirmed email both record it", async () => {
     const gmail = {
       async connected() { return true; },
       async send() { throw new TypeError("fetch failed"); },
-      async repliesIn() { return []; },
+      async hasMailbox() { return true; },
+      async repliesFrom() { return []; },
     };
     const store = await storeWith(seeded({ candidates: { a: candidate(POOL[0]!, { stage: "drafted", draft: intro(), ...withEmail }) } }));
     const service = serviceOn(store, { gmail });
@@ -209,7 +215,8 @@ describe("BUG: recording a send twice", () => {
 });
 
 describe("BUG: Gmail replies missed", () => {
-  test("B5 a send recorded late is stamped with the record time, so a reply that came in between is never read", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("B5 a send recorded late is stamped with the record time, so a reply that came in between is never read", async () => {
     const T0 = Date.parse("2026-09-23T02:00:00.000Z");
     let now = T0;
     let flaky!: FlakyStore;
@@ -217,7 +224,8 @@ describe("BUG: Gmail replies missed", () => {
     const gmail = {
       async connected() { return true; },
       async send() { flaky.failNext = true; return { threadId: "t1" }; },
-      async repliesIn(_thread: string, since: string) {
+      async hasMailbox() { return true; },
+      async repliesFrom(_thread: string, since: string) {
         return Date.parse(replyAt) > Date.parse(since) ? [{ from: "a@x.com", at: replyAt, text: "Sounds good, happy to chat" }] : [];
       },
     };
@@ -317,12 +325,14 @@ describe("NOT A BUG: checked and fine", () => {
     assert.deepEqual(criteria.map((c) => [c.id, c.text, c.kind]), [["c1", "typescript", "must"], ["c3", "rust", "must"]]);
   });
 
-  test("a Gmail HTTP 4xx releases the claim and the retry sends exactly once more", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("a Gmail HTTP 4xx releases the claim and the retry sends exactly once more", async () => {
     let calls = 0;
     const gmail = {
       async connected() { return true; },
       async send() { calls += 1; if (calls === 1) throw new Error("Gmail request failed with HTTP 400."); return { threadId: "t1" }; },
-      async repliesIn() { return []; },
+      async hasMailbox() { return true; },
+      async repliesFrom() { return []; },
     };
     const store = await storeWith(seeded({ candidates: { a: candidate(POOL[0]!, { stage: "drafted", draft: intro(), ...withEmail }) } }));
     const service = serviceOn(store, { gmail });
@@ -337,10 +347,11 @@ describe("NOT A BUG: checked and fine", () => {
     const gmail = {
       async connected() { return true; },
       async send() { return { threadId: "t1" }; },
-      async repliesIn(_t: string, since: string) { return replies.filter((r) => Date.parse(r.at) > Date.parse(since)); },
+      async hasMailbox() { return true; },
+      async repliesFrom(_t: string, since: string) { return replies.filter((r) => Date.parse(r.at) > Date.parse(since)); },
     };
     const store = await storeWith(seeded({
-      candidates: { a: candidate(POOL[0]!, { stage: "contacted", messages: [outbound()], lastContactedAt: AT, gmailThreadId: "t1", ...withEmail }) },
+      candidates: { a: candidate(POOL[0]!, { stage: "contacted", messages: [outbound()], lastContactedAt: AT, ...withEmail }) },
     }));
     const service = serviceOn(store, { gmail });
     assert.equal(await service.syncGmail(), 0);
@@ -363,17 +374,18 @@ describe("NOT A BUG: checked and fine", () => {
     assert.equal((await find(service, "b")).draft?.kind, "scheduling");
   });
 
-  test("a reply while a follow-up is being sent keeps that draft; the send then records it without reopening anything", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("a reply while a follow-up is being sent keeps that draft; the send then records it without reopening anything", async () => {
     let letGo!: (value: { threadId: string }) => void;
     const gmail = {
       async connected() { return true; },
       send: () => new Promise<{ threadId: string }>((resolve) => { letGo = resolve; }),
-      async repliesIn() { return []; },
+      async hasMailbox() { return true; },
+      async repliesFrom() { return []; },
     };
     const store = await storeWith(seeded({
       candidates: { a: candidate(POOL[0]!, {
-        stage: "contacted", messages: [outbound()], lastContactedAt: AT, gmailThreadId: "t1",
-        draft: { kind: "follow_up", subject: "Re", body: "Nudge", createdAt: AT, warnings: [] }, ...withEmail,
+        stage: "contacted", messages: [outbound()], lastContactedAt: AT, draft: { kind: "follow_up", subject: "Re", body: "Nudge", createdAt: AT, warnings: [] }, ...withEmail,
       }) },
     }));
     const service = serviceOn(store, { gmail });

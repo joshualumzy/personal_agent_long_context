@@ -90,7 +90,8 @@ function heldGmail() {
         was.resolve();
         return hold.promise;
       },
-      async repliesIn() { return []; },
+      async hasMailbox() { return true; },
+      async repliesFrom() { return []; },
     },
   };
 }
@@ -113,7 +114,8 @@ const find = async (service: RecruitingService, id: string) =>
 const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe("r3 service: send split", () => {
-  test("B1 prepareOutreach replaces a draft that is being sent, so the same intro can go out twice", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("B1 prepareOutreach replaces a draft that is being sent, so the same intro can go out twice", async () => {
     const mail = heldGmail();
     const service = await confirmed({ gmail: mail.gmail });
     await service.prepareOutreach("a");
@@ -131,7 +133,8 @@ describe("r3 service: send split", () => {
     assert.equal(mail.sent.length, 1, "only one intro email should have gone out");
   });
 
-  test("B2 closing a candidate while Gmail is sending is undone by the record step", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("B2 closing a candidate while Gmail is sending is undone by the record step", async () => {
     const mail = heldGmail();
     const service = await confirmed({ gmail: mail.gmail });
     await service.prepareOutreach("a");
@@ -145,7 +148,8 @@ describe("r3 service: send split", () => {
     assert.equal(a.stage, "closed", `a hired candidate became "${a.stage}" (closedReason ${a.closedReason})`);
   });
 
-  test("B3 a failed record after Gmail sent leaves the draft stuck in `sending` with the message and thread lost", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("B3 a failed record after Gmail sent leaves the draft stuck in `sending` with the message and thread lost", async () => {
     const mail = heldGmail();
     const store = new FlakyStore();
     const service = await confirmed({ gmail: mail.gmail, store });
@@ -166,7 +170,8 @@ describe("r3 service: send split", () => {
     );
   });
 
-  test("B4 Gmail that delivers and then errors (lost response) releases the claim, and a retry sends twice", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("B4 Gmail that delivers and then errors (lost response) releases the claim, and a retry sends twice", async () => {
     const sent: string[] = [];
     let first = true;
     const gmail = {
@@ -176,7 +181,8 @@ describe("r3 service: send split", () => {
         if (first) { first = false; throw new Error("socket hang up"); }
         return { threadId: "t" };
       },
-      async repliesIn() { return []; },
+      async hasMailbox() { return true; },
+      async repliesFrom() { return []; },
     };
     const service = await confirmed({ gmail });
     await service.prepareOutreach("a");
@@ -186,7 +192,8 @@ describe("r3 service: send split", () => {
     assert.equal(sent.length, 1, "an ambiguous Gmail failure must not allow a second send");
   });
 
-  test("B5 setSender during an in-flight send that then fails leaves the released draft on the old signature", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("B5 setSender during an in-flight send that then fails leaves the released draft on the old signature", async () => {
     const mail = heldGmail();
     const service = await confirmed({ gmail: mail.gmail });
     await service.prepareOutreach("a");

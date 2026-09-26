@@ -11,6 +11,9 @@ import { PostgresCompanyKnowledge } from "./adapters/postgres-company-knowledge.
 import { PostgresConversationStore } from "./adapters/postgres-conversations.js";
 import { SoCLaaSCompanyAgent } from "./soclaas-company-agent.js";
 import { embeddingProviderFromEnvironment } from "./embeddings.js";
+import { meetingsFromEnvironment } from "./meetings/config.js";
+import { googleAvailability } from "./meetings/availability.js";
+import { gmailContactDirectory } from "./meetings/contacts.js";
 
 try {
   loadEnvFile();
@@ -79,6 +82,42 @@ const companyAgents: Record<string, SoCLaaSCompanyAgent> = {
   ...(sonnetAgent ? { sonnet: sonnetAgent } : {}),
 };
 
+let logMeetingFailure: (context: string, error: unknown) => void = () => {};
+const meetings = meetingsFromEnvironment(process.env, {
+  pool: companyKnowledge.pool,
+  knowledge: companyKnowledge,
+  answerer: companyAgent,
+  contacts: recruiting?.gmail ? gmailContactDirectory(recruiting.gmail) : null,
+  availability: recruiting?.gmail ? googleAvailability(recruiting.gmail) : null,
+  ...(recruiting?.gmail
+    ? {
+        googleStatus: async () => {
+          const gmail = recruiting.gmail!;
+          const connected = await gmail.connected();
+          return {
+            connected,
+            mailbox: connected && (await gmail.hasMailbox()),
+            calendar: connected && (await gmail.canReadCalendar()),
+          };
+        },
+      }
+    : {}),
+  // A hiring need heard in a meeting opens a new role, as the chat does.
+  hiring: recruiting
+    ? {
+        async start(requirement: string) {
+          const { id, service } = recruiting.board.create();
+          try {
+            return await service.start(requirement);
+          } catch (error) {
+            recruiting.board.forget(id);
+            throw error;
+          }
+        },
+      }
+    : null,
+  log: (context, error) => logMeetingFailure(context, error),
+});
 const app = buildApp({
   memory,
   companyAgent,
@@ -87,7 +126,13 @@ const app = buildApp({
   conversationStore,
   logger: true,
   ...(recruiting ? { recruiting: { board: recruiting.board, gmail: recruiting.gmail } } : {}),
+  ...(meetings ? { meetings } : {}),
 });
+logMeetingFailure = (context, error) =>
+  app.log.error(
+    { context, reason: error instanceof Error ? error.message : String(error) },
+    "Meeting actions failure",
+  );
 logRecruitingFailure = (context, error) =>
   app.log.error(
     { context, reason: error instanceof Error ? error.message : String(error) },

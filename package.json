@@ -28,7 +28,10 @@
     "eval:recruiting:template": "node --import tsx eval/recruiting/run.ts --template",
     "eval:recruiting": "node --env-file=.env --import tsx eval/recruiting/run.ts",
     "test:holdout": "node --import tsx --test --test-concurrency=1 test/holdout/*.test.ts",
-    "test:lock": "shasum -a 256 -c test/regression/LOCK.sha256"
+    "test:lock": "shasum -a 256 -c test/regression/LOCK.sha256",
+    "eval:meetings": "node --env-file=.env --import tsx eval/meetings/run.ts src/meetings/eval-factory.ts",
+    "eval:meetings:dry": "node --import tsx eval/meetings/run.ts --dry",
+    "google:check": "node --env-file=.env --import tsx scripts/google-check.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1139.0",

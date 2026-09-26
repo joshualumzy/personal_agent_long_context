@@ -335,7 +335,7 @@ describe("non-bugs (expected to pass)", () => {
   });
 
   test("gmail inbox copes with an unconfirmed role", async () => {
-    const gmail = { connected: async () => true, repliesIn: async () => [] } as unknown as GmailClient;
+    const gmail = { connected: async () => true, hasMailbox: async () => true, repliesFrom: async () => [] } as unknown as GmailClient;
     const board = makeBoard(new MemoryRoleRepository(), fakeModel(), gmail);
     const app = appFor(board, gmail);
     await createRole(app);
@@ -370,6 +370,7 @@ describe("gmail oauth", () => {
       consentUrl: (state: string) => `https://accounts.google.com/o/oauth2/v2/auth?state=${state}`,
       exchangeCode: exchange,
       connected: async () => false,
+      storedAddress: async () => null,
     } as unknown as GmailClient;
   }
 

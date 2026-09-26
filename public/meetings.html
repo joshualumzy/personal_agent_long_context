@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Watch a meeting live and approve, edit, or reject the actions the agent proposes.">
+  <title>Meeting Actions</title>
+  <link rel="stylesheet" href="/meetings/styles.css">
+  <script src="/vendor/marked.js" defer></script>
+  <script src="/vendor/dompurify.js" defer></script>
+  <script src="/meetings/app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <h1>Meeting Actions</h1>
+      <p id="status-line" class="status-line">Pick a meeting, replay one, or start a new one.</p>
+    </div>
+    <nav class="app-switch" aria-label="Other agents">
+      <a href="/">SME Assistant</a>
+      <a href="/recruiting">Recruiting</a>
+    </nav>
+  </header>
+
+  <p id="error" class="banner error" role="alert" hidden></p>
+  <div id="google-banner" class="banner connect" hidden></div>
+
+  <section id="picker" class="picker">
+    <div class="picker-group">
+      <h2>Meetings</h2>
+      <ul id="meeting-list" class="meeting-list">
+        <li class="empty-note">No meetings yet.</li>
+      </ul>
+    </div>
+
+    <div class="picker-group">
+      <h2>Replay an OrgForge meeting</h2>
+      <div class="picker-row">
+        <select id="replay-select" aria-label="Choose an OrgForge meeting to replay">
+          <option value="">No replays found</option>
+        </select>
+        <button type="button" id="replay-btn" class="primary" disabled>Replay</button>
+      </div>
+    </div>
+
+    <div class="picker-group">
+      <h2>New live meeting</h2>
+      <form id="new-meeting-form" class="picker-row">
+        <input type="text" id="new-meeting-title" placeholder="Meeting title" required maxlength="200">
+        <button type="submit" class="primary">Start</button>
+      </form>
+    </div>
+  </section>
+
+  <main id="board" class="board" hidden>
+    <section class="col transcript-col" aria-label="Live transcript">
+      <div class="col-head">
+        <h2 id="meeting-title-heading">Live transcript</h2>
+        <span id="busy-indicator" class="busy" hidden><span class="busy-dot"></span>Agent thinking&hellip;</span>
+        <button type="button" id="end-meeting-btn" class="quiet warn">End meeting</button>
+      </div>
+      <ul id="transcript" class="transcript"></ul>
+      <form id="live-form" class="live-form">
+        <label for="live-input" class="visually-hidden">Type transcript lines as "Speaker: text", one per line</label>
+        <textarea id="live-input" rows="3" placeholder="Alice: Let's ship the export flow by Friday.&#10;Bob: Can someone confirm the SSO deadline?"></textarea>
+        <button type="submit" class="primary">Send</button>
+      </form>
+    </section>
+
+    <section class="col actions-col" aria-label="Approval queue">
+      <div class="col-head"><h2>Approval queue</h2></div>
+      <div class="queue">
+        <div class="tier-group" data-tier="auto">
+          <h3>Done for you</h3>
+          <div class="cards" id="cards-auto"></div>
+        </div>
+        <div class="tier-group" data-tier="approval">
+          <h3>Needs your approval</h3>
+          <div class="cards" id="cards-approval"></div>
+        </div>
+        <div class="tier-group" data-tier="escalate">
+          <h3>Needs someone else</h3>
+          <div class="cards" id="cards-escalate"></div>
+        </div>
+        <div class="tier-group" data-tier="blocked">
+          <h3>Blocked</h3>
+          <div class="cards" id="cards-blocked"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="col trace-col" aria-label="Trace timeline">
+      <div class="col-head">
+        <h2>Trace</h2>
+        <button type="button" id="trace-clear" class="quiet" hidden>Show all</button>
+      </div>
+      <ol id="trace-list" class="trace-list"></ol>
+    </section>
+  </main>
+</body>
+</html>

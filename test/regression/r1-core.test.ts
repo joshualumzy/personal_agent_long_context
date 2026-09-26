@@ -183,6 +183,7 @@ describe("core bugs: service state machine", () => {
     let sent = 0;
     const gmail = {
       connected: async () => true,
+      hasMailbox: async () => true,
       send: async () => {
         sent += 1;
         await new Promise((resolve) => setTimeout(resolve, 5));
@@ -196,8 +197,9 @@ describe("core bugs: service state machine", () => {
     const results = await Promise.allSettled([service.send("a", false), service.send("a", false)]);
     const snapshot = await service.snapshot();
     const a = snapshot.candidates.find((candidate) => candidate.id === "a")!;
-    assert.equal(sent, 1, `email sent ${sent} times; results: ${results.map((r) => r.status).join(",")}`);
-    assert.equal(a.messages.filter((m) => m.direction === "outbound").length, 1);
+    // Since the S2 merge the server records the send and Gmail is never called: one press, one record.
+    assert.equal(sent, 0);
+    assert.equal(a.messages.filter((m) => m.direction === "outbound").length, 1, `results: ${results.map((r) => r.status).join(",")}`);
   });
 
   test("sending a leftover draft does not reopen a closed candidate", async () => {

@@ -20,7 +20,15 @@ async function gmailOver(own: string, messages: unknown[]): Promise<GmailClient>
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
     if (url.includes("oauth2.googleapis.com/token")) return json({ access_token: "a", expires_in: 3600 });
     if (url.endsWith("users/me/profile")) return json({ emailAddress: own });
-    if (url.includes("users/me/threads/")) return json({ messages });
+    // Replies are read by sender: a search lists the messages, then each is fetched.
+    // Like the real "from:<candidate>" search, the founder's own mail is never listed.
+    const fromHeader = (m: unknown) => String((m as { payload?: { headers?: { name: string; value: string }[] } }).payload?.headers?.find((h) => h.name === "From")?.value ?? "");
+    const addressOf = (from: string) => (/<([^>]+)>/.exec(from)?.[1] ?? from).trim().toLowerCase();
+    if (url.includes("users/me/messages?")) {
+      return json({ messages: messages.flatMap((m, i) => (addressOf(fromHeader(m)) === own.toLowerCase() ? [] : [{ id: String(i) }])) });
+    }
+    const one = /users\/me\/messages\/(\d+)/.exec(url);
+    if (one) return json(messages[Number(one[1])]);
     return new Response("not found", { status: 404 });
   }) as typeof fetch;
   return new GmailClient({ clientId: "c", clientSecret: "s", redirectUri: "http://x/cb", tokenPath, fetch: fakeFetch });
@@ -38,7 +46,7 @@ const ATTRIBUTION = "On Mon, Sep 21, 2026 at 8:00 PM Michael Lee <michael@acme.c
 
 async function replyTexts(body: string): Promise<string[]> {
   const gmail = await gmailOver("michael@acme.com", [gmailMessage("Alice Tan <alice@corp.com>", REPLY_AT, plainPart(body))]);
-  return (await gmail.repliesIn("t1", SINCE)).map((reply) => reply.text);
+  return (await gmail.repliesFrom("alice@corp.com", SINCE)).map((reply) => reply.text);
 }
 
 // ======================================================================= bugs
@@ -87,7 +95,7 @@ describe("BUG: Chinese Gmail's wrapped '… 于<date>' / '<time>写道：' attri
       "> Hi Alice, saw you built the offline sync for the driver app.",
     ].join("\r\n");
     const gmail = await gmailOver("michael.leehartono@acme-robotics.com", [gmailMessage("Alice Tan <alice@corp.com>", REPLY_AT, plainPart(body))]);
-    const texts = (await gmail.repliesIn("t1", SINCE)).map((reply) => reply.text);
+    const texts = (await gmail.repliesFrom("alice@corp.com", SINCE)).map((reply) => reply.text);
     assert.equal(texts.length, 1);
     assert.ok(texts[0]!.includes("周二"));
     assert.ok(!texts[0]!.includes("acme-robotics.com"), `the quote attribution is part of the reply: ${JSON.stringify(texts[0])}`);

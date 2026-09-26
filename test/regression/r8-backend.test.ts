@@ -182,13 +182,14 @@ describe("BUG: a reply the founder pasted is recorded again by Gmail sync", () =
     const gmail = {
       async connected() { return true; },
       async send() { return { threadId: "t1" }; },
-      async repliesIn(_thread: string, since: string) {
+      async hasMailbox() { return true; },
+      async repliesFrom(_thread: string, since: string) {
         return [{ from: "a@x.com", at: replyAt, text: replyText }].filter((m) => Date.parse(m.at) > Date.parse(since));
       },
     };
     const store = await storeWith(seeded({
       candidates: { a: candidate(POOL[0]!, {
-        stage: "contacted", messages: [outbound()], lastContactedAt: AT, gmailThreadId: "t1", ...withEmail,
+        stage: "contacted", messages: [outbound()], lastContactedAt: AT, ...withEmail,
       }) },
     }));
     const service = serviceOn(store, { gmail, model: interestedModel });
@@ -255,10 +256,11 @@ describe("NOT A BUG: checked and fine", () => {
     const gmail = {
       async connected() { return true; },
       async send() { return { threadId: "t1" }; },
-      async repliesIn(_t: string, since: string) { return inbox.filter((m) => Date.parse(m.at) > Date.parse(since)); },
+      async hasMailbox() { return true; },
+      async repliesFrom(_t: string, since: string) { return inbox.filter((m) => Date.parse(m.at) > Date.parse(since)); },
     };
     const store = await storeWith(seeded({
-      candidates: { a: candidate(POOL[0]!, { stage: "contacted", messages: [outbound()], lastContactedAt: AT, gmailThreadId: "t1", ...withEmail }) },
+      candidates: { a: candidate(POOL[0]!, { stage: "contacted", messages: [outbound()], lastContactedAt: AT, ...withEmail }) },
     }));
     const service = serviceOn(store, { gmail, model: interestedModel, clock: () => new Date(now) });
     inbox.push({ from: "a@x.com", at: new Date(now - 1000).toISOString(), text: "Yes please" });

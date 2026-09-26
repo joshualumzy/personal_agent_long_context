@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { RecruitingError, type ClosedReason, type CriterionKind } from "./domain.js";
-import type { GmailClient } from "./gmail.js";
+import { NoGmailError, type GmailClient } from "./gmail.js";
 import type { RoleBoard } from "./roles.js";
 import type { RecruitingService } from "./service.js";
 
@@ -328,9 +328,12 @@ export function registerRecruitingRoutes(
 
   app.post(role("/dismiss-error"), handle(async (_body, _params, service) => service.clearError()));
 
-  // Gmail OAuth. The state value ties the callback to a consent this server started.
-  const oauthStates = new Set<string>();
-  app.get("/api/recruiting/gmail/connect", async (_request, reply) => {
+  // Google OAuth (Gmail, and calendar free/busy for meeting actions). The
+  // state value ties the callback to a consent this server started and
+  // remembers which page to return to.
+  const oauthStates = new Map<string, string>();
+  const RETURN_PAGES = new Set(["/recruiting", "/meetings"]);
+  app.get<{ Querystring: { return?: string } }>("/api/recruiting/gmail/connect", async (request, reply) => {
     if (!gmail) {
       return reply.code(409).send({
         code: "gmail_not_configured",
@@ -338,25 +341,31 @@ export function registerRecruitingRoutes(
       });
     }
     const state = randomBytes(16).toString("hex");
-    oauthStates.add(state);
+    const back = request.query.return;
+    oauthStates.set(state, back && RETURN_PAGES.has(back) ? back : "/recruiting");
     // Abandoned consents must not pile up forever.
-    while (oauthStates.size > 50) oauthStates.delete(oauthStates.values().next().value!);
-    return reply.redirect(gmail.consentUrl(state));
+    while (oauthStates.size > 50) oauthStates.delete(oauthStates.keys().next().value!);
+    return reply.redirect(gmail.consentUrl(state, (await gmail.storedAddress()) ?? undefined));
   });
 
-  app.get<{ Querystring: { code?: string; state?: string } }>(
+  app.get<{ Querystring: { code?: string; state?: string; error?: string } }>(
     "/api/recruiting/gmail/callback",
     async (request, reply) => {
-      const { code, state } = request.query;
-      if (!gmail || !code || !state || !oauthStates.delete(state)) {
+      const { code, state, error } = request.query;
+      const back = state ? oauthStates.get(state) : undefined;
+      if (!gmail || !state || !back) {
         return reply.code(400).send({ code: "invalid_oauth_callback", message: "Start from Connect Gmail." });
       }
+      oauthStates.delete(state);
+      // The person pressed Cancel on Google's consent screen.
+      if (error || !code) return reply.redirect(`${back}?google=denied`);
       try {
         await gmail.exchangeCode(code);
-      } catch (error) {
-        return fail(reply, error);
+      } catch (failure) {
+        if (failure instanceof NoGmailError) return reply.redirect(`${back}?google=no-gmail`);
+        return fail(reply, failure);
       }
-      return reply.redirect("/recruiting");
+      return reply.redirect(`${back}?google=connected`);
     },
   );
 }

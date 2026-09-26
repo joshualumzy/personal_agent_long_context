@@ -18,7 +18,15 @@ async function gmailOver(own: string, messages: unknown[]): Promise<GmailClient>
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
     if (url.includes("oauth2.googleapis.com/token")) return json({ access_token: "a", expires_in: 3600 });
     if (url.endsWith("users/me/profile")) return json({ emailAddress: own });
-    if (url.includes("users/me/threads/")) return json({ messages });
+    // Replies are read by sender: a search lists the messages, then each is fetched.
+    // Like the real "from:<candidate>" search, the founder's own mail is never listed.
+    const fromHeader = (m: unknown) => String((m as { payload?: { headers?: { name: string; value: string }[] } }).payload?.headers?.find((h) => h.name === "From")?.value ?? "");
+    const addressOf = (from: string) => (/<([^>]+)>/.exec(from)?.[1] ?? from).trim().toLowerCase();
+    if (url.includes("users/me/messages?")) {
+      return json({ messages: messages.flatMap((m, i) => (addressOf(fromHeader(m)) === own.toLowerCase() ? [] : [{ id: String(i) }])) });
+    }
+    const one = /users\/me\/messages\/(\d+)/.exec(url);
+    if (one) return json(messages[Number(one[1])]);
     return new Response("not found", { status: 404 });
   }) as typeof fetch;
   return new GmailClient({ clientId: "c", clientSecret: "s", redirectUri: "http://x/cb", tokenPath, fetch: fakeFetch });
@@ -34,7 +42,7 @@ async function texts(part: unknown): Promise<string[]> {
   const gmail = await gmailOver("michael@acme.com", [
     { internalDate: String(REPLY_AT), payload: { headers: [{ name: "From", value: "Alice Tan <alice@corp.com>" }], ...(part as object) } },
   ]);
-  return (await gmail.repliesIn("t1", SINCE)).map((reply) => reply.text);
+  return (await gmail.repliesFrom("alice@corp.com", SINCE)).map((reply) => reply.text);
 }
 const plain = (body: string) => texts({ mimeType: "text/plain", body: { data: b64(body) } });
 const html = (body: string) => texts({ mimeType: "text/html", body: { data: b64(body) } });

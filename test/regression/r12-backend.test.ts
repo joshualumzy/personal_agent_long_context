@@ -94,7 +94,15 @@ async function gmailOver(own: string, messages: unknown[]): Promise<GmailClient>
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
     if (url.includes("oauth2.googleapis.com/token")) return json({ access_token: "a", expires_in: 3600 });
     if (url.endsWith("users/me/profile")) return json({ emailAddress: own });
-    if (url.includes("users/me/threads/")) return json({ messages });
+    // Replies are read by sender: a search lists the messages, then each is fetched.
+    // Like the real "from:<candidate>" search, the founder's own mail is never listed.
+    const fromHeader = (m: unknown) => String((m as { payload?: { headers?: { name: string; value: string }[] } }).payload?.headers?.find((h) => h.name === "From")?.value ?? "");
+    const addressOf = (from: string) => (/<([^>]+)>/.exec(from)?.[1] ?? from).trim().toLowerCase();
+    if (url.includes("users/me/messages?")) {
+      return json({ messages: messages.flatMap((m, i) => (addressOf(fromHeader(m)) === own.toLowerCase() ? [] : [{ id: String(i) }])) });
+    }
+    const one = /users\/me\/messages\/(\d+)/.exec(url);
+    if (one) return json(messages[Number(one[1])]);
     return new Response("not found", { status: 404 });
   }) as typeof fetch;
   return new GmailClient({ clientId: "c", clientSecret: "s", redirectUri: "http://x/cb", tokenPath, fetch: fakeFetch });
@@ -163,7 +171,7 @@ describe("BUG: Gmail's wrapped 'On ... <address>' / 'wrote:' attribution is kept
     const gmail = await gmailOver("michael.leehartono@acme-robotics.com", [
       gmailMessage("Alice Tan <alice@corp.com>", REPLY_AT, plainPart(body)),
     ]);
-    const replies = await gmail.repliesIn("t1", SINCE);
+    const replies = await gmail.repliesFrom("alice@corp.com", SINCE);
     assert.equal(replies.length, 1);
     assert.ok(replies[0]!.text.includes("Tuesday works"));
     assert.ok(
@@ -188,7 +196,7 @@ describe("BUG: quote headers from Chinese-language mail clients are not cut", ()
       "Michael",
     ].join("\r\n");
     const gmail = await gmailOver("michael@acme.com", [gmailMessage("Alice Tan <alice@corp.com>", REPLY_AT, plainPart(body))]);
-    const replies = await gmail.repliesIn("t1", SINCE);
+    const replies = await gmail.repliesFrom("alice@corp.com", SINCE);
     assert.equal(replies.length, 1);
     assert.ok(replies[0]!.text.includes("周二"));
     assert.ok(!replies[0]!.text.includes("offline sync"), `the founder's own email is part of the reply: ${JSON.stringify(replies[0]!.text)}`);
@@ -203,7 +211,7 @@ describe("BUG: quote headers from Chinese-language mail clients are not cut", ()
       "> Hi Alice, saw you built the offline sync for the driver app.",
     ].join("\r\n");
     const gmail = await gmailOver("michael@acme.com", [gmailMessage("Alice Tan <alice@corp.com>", REPLY_AT, plainPart(body))]);
-    const replies = await gmail.repliesIn("t1", SINCE);
+    const replies = await gmail.repliesFrom("alice@corp.com", SINCE);
     assert.equal(replies.length, 1);
     assert.ok(replies[0]!.text.includes("周二"));
     assert.ok(!replies[0]!.text.includes("michael@acme.com"), `the quote attribution is part of the reply: ${JSON.stringify(replies[0]!.text)}`);
@@ -238,7 +246,7 @@ describe("NOT A BUG: checked and fine", () => {
   test("a reply that mentions 'From:' without a Sent/Date header line is kept whole", async () => {
     const body = "Happy to chat.\nFrom: Singapore, open to hybrid\nStart date: 1 November\nNotice: one month";
     const gmail = await gmailOver("michael@acme.com", [gmailMessage("Alice <alice@corp.com>", REPLY_AT, plainPart(body))]);
-    const replies = await gmail.repliesIn("t1", SINCE);
+    const replies = await gmail.repliesFrom("alice@corp.com", SINCE);
     assert.equal(replies[0]!.text, body);
   });
 
@@ -251,7 +259,7 @@ describe("NOT A BUG: checked and fine", () => {
       "<div>Hi Alice, saw you built the offline sync.</div></body></html>",
     ].join("\n");
     const gmail = await gmailOver("michael@acme.com", [gmailMessage("Alice <alice@corp.com>", REPLY_AT, { mimeType: "text/html", body: { data: b64(html) } })]);
-    const replies = await gmail.repliesIn("t1", SINCE);
+    const replies = await gmail.repliesFrom("alice@corp.com", SINCE);
     assert.equal(replies.length, 1);
     assert.ok(replies[0]!.text.includes("Sounds good & Tuesday works."));
     assert.ok(!replies[0]!.text.includes("offline sync"));
@@ -260,14 +268,14 @@ describe("NOT A BUG: checked and fine", () => {
   test("a Gmail HTML-only reply drops its gmail_quote attribution and blockquote", async () => {
     const html = "<div dir=\"ltr\">Yes please</div><br><div class=\"gmail_quote\"><div dir=\"ltr\" class=\"gmail_attr\">On Mon, Sep 21, 2026 at 8:00 PM Michael &lt;<a href=\"mailto:michael@acme.com\">michael@acme.com</a>&gt; wrote:<br></div><blockquote>Hi Alice</blockquote></div>";
     const gmail = await gmailOver("michael@acme.com", [gmailMessage("Alice <alice@corp.com>", REPLY_AT, { mimeType: "text/html", body: { data: b64(html) } })]);
-    assert.deepEqual((await gmail.repliesIn("t1", SINCE)).map((reply) => reply.text), ["Yes please"]);
+    assert.deepEqual((await gmail.repliesFrom("alice@corp.com", SINCE)).map((reply) => reply.text), ["Yes please"]);
   });
 
   test("the founder's own message is skipped whatever the case of the From header", async () => {
     const gmail = await gmailOver("michael@acme.com", [
       gmailMessage("\"Lee, Michael\" <Michael@Acme.COM>", REPLY_AT, plainPart("Following up")),
     ]);
-    assert.deepEqual(await gmail.repliesIn("t1", SINCE), []);
+    assert.deepEqual(await gmail.repliesFrom("alice@corp.com", SINCE), []);
   });
 
   test("with 20 people in view, the 16th onwards are listed in more_in_view with their ids", async () => {

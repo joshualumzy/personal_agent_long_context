@@ -96,14 +96,16 @@ const count = async (service: RecruitingService, id: string, direction: "inbound
 // ======================================================================= bugs
 
 describe("BUG: Gmail sync reads a reply twice after a late record", () => {
-  test("B1 a reply synced while a follow-up was unconfirmed is read again once the founder marks it sent (the record is dated from the claim, before the reply)", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("B1 a reply synced while a follow-up was unconfirmed is read again once the founder marks it sent (the record is dated from the claim, before the reply)", async () => {
     const T0 = Date.parse("2026-09-23T02:00:00.000Z");
     let now = T0;
     const replyAt = new Date(T0 + 3_600_000).toISOString(); // they answer an hour after the follow-up
     const gmail = {
       async connected() { return true; },
       async send() { throw new TypeError("fetch failed"); }, // Gmail's answer is lost
-      async repliesIn(_thread: string, since: string) {
+      async hasMailbox() { return true; },
+      async repliesFrom(_thread: string, since: string) {
         return now >= Date.parse(replyAt) && Date.parse(replyAt) > Date.parse(since)
           ? [{ from: "a@x.com", at: replyAt, text: "Thanks for the nudge, happy to chat" }]
           : [];
@@ -111,8 +113,7 @@ describe("BUG: Gmail sync reads a reply twice after a late record", () => {
     };
     const store = await storeWith(seeded({
       candidates: { a: candidate(POOL[0]!, {
-        stage: "contacted", messages: [outbound()], lastContactedAt: AT, gmailThreadId: "t1",
-        draft: { kind: "follow_up", subject: "Re: Hi", body: "Nudge", createdAt: AT, warnings: [] }, ...withEmail,
+        stage: "contacted", messages: [outbound()], lastContactedAt: AT, draft: { kind: "follow_up", subject: "Re: Hi", body: "Nudge", createdAt: AT, warnings: [] }, ...withEmail,
       }) },
     }));
     const service = serviceOn(store, { gmail, clock: () => new Date(now) });
@@ -156,13 +157,15 @@ describe("BUG: LinkedIn inbox loses a conversation no role can place", () => {
 // ================================================================== not bugs
 
 describe("NOT A BUG: checked and fine", () => {
-  test("two presses at once with a slow Gmail: Gmail is called once and one email is on record", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("two presses at once with a slow Gmail: Gmail is called once and one email is on record", async () => {
     let calls = 0;
     let letGo!: (value: { threadId: string }) => void;
     const gmail = {
       async connected() { return true; },
       send: () => { calls += 1; return new Promise<{ threadId: string }>((resolve) => { letGo = resolve; }); },
-      async repliesIn() { return []; },
+      async hasMailbox() { return true; },
+      async repliesFrom() { return []; },
     };
     const store = await storeWith(seeded({ candidates: { a: candidate(POOL[0]!, { stage: "drafted", draft: intro(), ...withEmail }) } }));
     const service = serviceOn(store, { gmail });
@@ -178,12 +181,14 @@ describe("NOT A BUG: checked and fine", () => {
     assert.equal(await count(service, "a", "outbound"), 1);
   });
 
-  test("after an ambiguous Gmail failure, an unchanged save keeps the claim and a real edit releases it for exactly one more send", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("after an ambiguous Gmail failure, an unchanged save keeps the claim and a real edit releases it for exactly one more send", async () => {
     let calls = 0;
     const gmail = {
       async connected() { return true; },
       async send() { calls += 1; if (calls === 1) throw new TypeError("fetch failed"); return { threadId: "t1" }; },
-      async repliesIn() { return []; },
+      async hasMailbox() { return true; },
+      async repliesFrom() { return []; },
     };
     const store = await storeWith(seeded({ candidates: { a: candidate(POOL[0]!, { stage: "drafted", draft: intro(), ...withEmail }) } }));
     const service = serviceOn(store, { gmail });
@@ -197,12 +202,14 @@ describe("NOT A BUG: checked and fine", () => {
     assert.equal(await count(service, "a", "outbound"), 1);
   });
 
-  test("a claim left by a restart mid-send (no flag, nothing in flight) can be marked sent by hand, dated from the claim", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("a claim left by a restart mid-send (no flag, nothing in flight) can be marked sent by hand, dated from the claim", async () => {
     const claimedAt = "2026-09-22T10:00:00.000Z";
     const store = await storeWith(seeded({
       candidates: { a: candidate(POOL[0]!, { stage: "drafted", draft: intro({ sending: true, claimedAt } as Partial<Draft>), ...withEmail }) },
     }));
-    const service = serviceOn(store, { gmail: { async connected() { return true; }, async send() { throw new Error("must not send"); }, async repliesIn() { return []; } } });
+    const service = serviceOn(store, { gmail: { async connected() { return true; }, async send() { throw new Error("must not send"); }, async hasMailbox() { return true; },
+      async repliesFrom() { return []; } } });
     await assert.rejects(service.send("a", false), { code: "send_unconfirmed" } as never);
     await service.send("a", true);
     const a = await find(service, "a");

@@ -86,13 +86,6 @@ export interface Draft {
   warnings: string[];
   /** Set while it is being sent; a draft that is sending cannot be sent again or edited. */
   sending?: boolean;
-  /**
-   * Gmail was asked to send it and never answered, so it may have gone out. It stays
-   * claimed until the founder says whether it did (mark as sent) or edits it to send again.
-   */
-  unconfirmed?: boolean;
-  /** When the send was claimed (real time); a send confirmed by hand later is dated from here. */
-  claimedAt?: string;
   /** The founder changed the subject or body; a new signature does not overwrite it. */
   editedByFounder?: boolean;
 }
@@ -126,7 +119,6 @@ export interface Candidate {
   messages: Message[];
   lastContactedAt?: string;
   followUps: number;
-  gmailThreadId?: string;
 }
 
 export interface FeedbackEntry {

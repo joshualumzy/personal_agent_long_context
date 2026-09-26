@@ -19,6 +19,9 @@ import type { ConversationStore } from "./conversation-domain.js";
 import type { GmailClient } from "./recruiting/gmail.js";
 import { registerRecruitingRoutes } from "./recruiting/routes.js";
 import type { RoleBoard } from "./recruiting/roles.js";
+import type { MeetingActions } from "./meetings/domain.js";
+import { replayTranscript, type ReplaySource } from "./meetings/replay.js";
+import { registerMeetingRoutes, type GoogleStatus } from "./meetings/routes.js";
 
 export interface BuildAppOptions extends ApplicationOptions {
   memory: MemoryProvider;
@@ -30,6 +33,8 @@ export interface BuildAppOptions extends ApplicationOptions {
   logger?: FastifyServerOptions["logger"];
   /** The recruiting direction (S3). Omitted, its routes are not registered. */
   recruiting?: { board: RoleBoard; gmail: GmailClient | null };
+  /** Meeting actions (S2). Omitted, its routes are not registered. */
+  meetings?: { service: MeetingActions; replays?: ReplaySource; googleStatus?: () => Promise<GoogleStatus> };
 }
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
@@ -588,6 +593,31 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     app.get("/recruiting/", async (_request, reply) => reply.redirect("/recruiting", 301));
     app.get("/recruiting/app.js", serve("recruiting.js", "text/javascript; charset=utf-8"));
     app.get("/recruiting/styles.css", serve("recruiting.css", "text/css; charset=utf-8"));
+  }
+
+  if (options.meetings) {
+    const { service, replays, googleStatus } = options.meetings;
+    registerMeetingRoutes(app, service, {
+      ...(googleStatus ? { googleStatus } : {}),
+      ...(replays
+        ? {
+            listReplays: () => replays.list(),
+            loadReplay: (sourceId: string) => replays.load(sourceId),
+            replay: (meetingId, segments, intervalMs) => {
+              void replayTranscript(service, meetingId, segments, { intervalMs }).catch((error) =>
+                app.log.error(
+                  { meetingId, reason: error instanceof Error ? error.message : String(error) },
+                  "Meeting replay failed",
+                ),
+              );
+            },
+          }
+        : {}),
+    });
+    app.get("/meetings", serve("meetings.html", "text/html; charset=utf-8"));
+    app.get("/meetings/", async (_request, reply) => reply.redirect("/meetings", 301));
+    app.get("/meetings/app.js", serve("meetings.js", "text/javascript; charset=utf-8"));
+    app.get("/meetings/styles.css", serve("meetings.css", "text/css; charset=utf-8"));
   }
 
   app.addHook("onClose", async () => {

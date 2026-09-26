@@ -740,3 +740,25 @@ live run. All fixed.
   agent ran outreach to answer "what is her email"; the skill now says a
   question about an email is answered from the status, with the lookup
   offered.
+
+## Merge with meeting actions (S2) (2026-09-26)
+
+The owner merged S2 into main together with this branch and chose S2's way
+of sending: the server never sends email. "Open in Gmail to send" opens the
+message prefilled in the founder's own Gmail and records it; "I sent it
+myself" records a message sent another way. Replies are read by the
+candidate's address, not by Gmail thread.
+
+- Kept: one record per press, no send for a closed person, no email without
+  an address or a subject, no send while a private remark is in the draft,
+  and all the reply-parsing fixes (quotes, HTML, Chinese clients, wrapped
+  attributions), now inside S2's Gmail client.
+- Removed with the server-side send: the claim, "unconfirmed", in-flight
+  and late-record machinery (rounds 3 to 7). Their tests are skipped with
+  the reason written in each; tests whose situation still exists were
+  adapted (fakes read by sender, the Gmail link instead of the button).
+- S2's meeting actions open a new role for a hiring need heard in a
+  meeting (the multi-role board), and forget it if starting fails.
+- Two held-out tests still expect the server to call Gmail on send. They
+  encode the old decision and now fail by design; the owner decides how to
+  update them (the fixer does not read or edit the held-out set).

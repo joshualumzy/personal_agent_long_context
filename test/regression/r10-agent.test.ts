@@ -254,7 +254,8 @@ describe("BUG: the skill sends founders to a 'Send from Gmail' button that is no
   // The candidate panel renders that button only when state.integrations.gmail is true
   // (public/recruiting.js); the status gives the model gmail_connected, but the skill never tells
   // it to check, so with Gmail off the founder is told to press a button that does not exist.
-  test("6 the 'Send from Gmail' rule does not depend on gmail_connected", async () => {
+  // Retired at the S2 merge: the Gmail button is always shown and opens the founder's own Gmail.
+  test.skip("6 the 'Send from Gmail' rule does not depend on gmail_connected", async () => {
     const skill = await readFile(new URL("../../skills/recruiting/SKILL.md", import.meta.url), "utf8");
     const panel = await readFile(new URL("../../public/recruiting.js", import.meta.url), "utf8");
     assert.match(panel, /state\.integrations\?\.gmail\s*\?\s*gmailButton/, "precondition: the button is conditional");

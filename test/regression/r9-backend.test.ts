@@ -104,7 +104,8 @@ const inboundCount = (service: RecruitingService, id: string) => count(service, 
 const gmailWith = (inbox: { from: string; at: string; text: string }[]) => ({
   async connected() { return true; },
   async send() { return { threadId: "t1" }; },
-  async repliesIn(_thread: string, since: string) { return inbox.filter((m) => Date.parse(m.at) > Date.parse(since)); },
+  async hasMailbox() { return true; },
+      async repliesFrom(_thread: string, since: string) { return inbox.filter((m) => Date.parse(m.at) > Date.parse(since)); },
 });
 
 // ======================================================================= bugs
@@ -114,7 +115,7 @@ describe("BUG: an emailed reply from someone the system closed as cold is never 
     const lastWrote = new Date(NOW.getTime() - 8 * 86_400_000).toISOString();
     const store = await storeWith(seeded({
       candidates: { a: candidate(POOL[0]!, {
-        stage: "contacted", followUps: 1, gmailThreadId: "t1", lastContactedAt: lastWrote, ...withEmail,
+        stage: "contacted", followUps: 1, lastContactedAt: lastWrote, ...withEmail,
         messages: [outbound(), { ...outbound("Re: Hi\n\nJust checking in"), at: lastWrote, realAt: lastWrote }],
       }) },
     }));
@@ -166,7 +167,7 @@ describe("BUG: Gmail sync reports a reply the founder already pasted as newly re
     const replyText = "Yes, I'm interested, let's talk";
     const inbox = [{ from: "a@x.com", at: new Date(NOW.getTime() - 3_600_000).toISOString(), text: replyText }];
     const store = await storeWith(seeded({
-      candidates: { a: candidate(POOL[0]!, { stage: "contacted", messages: [outbound()], lastContactedAt: AT, gmailThreadId: "t1", ...withEmail }) },
+      candidates: { a: candidate(POOL[0]!, { stage: "contacted", messages: [outbound()], lastContactedAt: AT, ...withEmail }) },
     }));
     const service = serviceOn(store, { gmail: gmailWith(inbox), model: interestedModel });
     await service.reply(replyText, "a", "pasted");
@@ -184,7 +185,7 @@ describe("NOT A BUG: checked and fine", () => {
     const replyText = "Yes, I'm interested, let's talk";
     const inbox = [{ from: "a@x.com", at: new Date(NOW.getTime() - 3_600_000).toISOString(), text: replyText }];
     const store = await storeWith(seeded({
-      candidates: { a: candidate(POOL[0]!, { stage: "contacted", messages: [outbound()], lastContactedAt: AT, gmailThreadId: "t1", ...withEmail }) },
+      candidates: { a: candidate(POOL[0]!, { stage: "contacted", messages: [outbound()], lastContactedAt: AT, ...withEmail }) },
     }));
     const service = serviceOn(store, { gmail: gmailWith(inbox), model: interestedModel });
     assert.equal(await service.syncGmail(), 1);

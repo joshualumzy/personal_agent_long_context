@@ -227,7 +227,8 @@ describe("r2 core: single-flight load", () => {
 });
 
 describe("r2 core: side effects inside a transactional change", () => {
-  test("an email sent before a failed save is not sent a second time on retry", async () => {
+  // Retired at the S2 merge (docs/s3-bug-hunt.md): the server no longer sends email; the founder sends from their own Gmail and the page records it.
+  test.skip("an email sent before a failed save is not sent a second time on retry", async () => {
     let sent = 0;
     const gmail = {
       connected: async () => true,
@@ -235,7 +236,8 @@ describe("r2 core: side effects inside a transactional change", () => {
         sent += 1;
         return { threadId: "t1" };
       },
-      repliesIn: async () => [],
+      hasMailbox: async () => true,
+      repliesFrom: async () => [],
     } as unknown as GmailClient;
     let failSave = false;
     const inner = new MemoryStore();
@@ -400,8 +402,9 @@ describe("r2 core: Gmail and the simulated clock", () => {
         sentAt.push(new Date().toISOString());
         return { threadId: "t1" };
       },
+      hasMailbox: async () => true,
       // Same filter as the real client: only messages strictly after `since`.
-      repliesIn: async (_thread: string, since: string) =>
+      repliesFrom: async (_address: string, since: string) =>
         replyAt && Date.parse(replyAt) > Date.parse(since) ? [{ from: "a@x.com", at: replyAt, text: "Sure, keen." }] : [],
     } as unknown as GmailClient;
     const { service, realNow } = await confirmed({ gmail });
@@ -422,8 +425,10 @@ describe("r2 core: Gmail and the simulated clock", () => {
     const gmail = {
       connected: async () => true,
       send: async (message: { to: string }) => ({ threadId: message.to.startsWith("a") ? "ta" : "tb" }),
-      repliesIn: async (thread: string) => {
-        if (thread === "ta") throw new Error("Gmail request failed with HTTP 404.");
+      hasMailbox: async () => true,
+      // Read by sender since the S2 merge: one person's failure must not stop the others.
+      repliesFrom: async (address: string) => {
+        if (address.startsWith("a")) throw new Error("Gmail request failed with HTTP 404.");
         return [{ from: "b@x.com", at: "2026-09-24T00:00:00.000Z", text: "Happy to chat" }];
       },
     } as unknown as GmailClient;

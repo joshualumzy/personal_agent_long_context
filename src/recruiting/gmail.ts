@@ -1,14 +1,20 @@
 import { readFile, writeFile } from "node:fs/promises";
 
 /**
- * Sends from, and reads replies in, the founder's own Gmail. The OAuth app
- * stays in Google's testing mode with the team as test users, so no review is
- * needed. Only two scopes: send, and read-only to see replies.
+ * Reads, never sends: replies in the founder's own Gmail, names and addresses
+ * in message headers, and when they are busy. Outreach is written here but
+ * sent by the founder from their own mailbox. The OAuth app stays in Google's
+ * testing mode with the team as test users, so no review is needed. Two
+ * scopes: Gmail read-only, and calendar free/busy, which shows when someone
+ * is busy but never what the event is.
  */
-const SCOPES = [
-  "https://www.googleapis.com/auth/gmail.send",
-  "https://www.googleapis.com/auth/gmail.readonly",
-];
+const CALENDAR_FREEBUSY = "https://www.googleapis.com/auth/calendar.freebusy";
+const SCOPES = ["https://www.googleapis.com/auth/gmail.readonly", CALENDAR_FREEBUSY];
+
+export interface BusyPeriod {
+  start: string;
+  end: string;
+}
 
 export interface GmailOptions {
   clientId: string;
@@ -22,16 +28,6 @@ export interface InboundMessage {
   from: string;
   at: string;
   text: string;
-}
-
-function base64Url(value: string): string {
-  return Buffer.from(value, "utf8").toString("base64url");
-}
-
-function encodeHeader(value: string): string {
-  return /^[\x20-\x7e]*$/.test(value)
-    ? value
-    : `=?UTF-8?B?${Buffer.from(value, "utf8").toString("base64")}?=`;
 }
 
 interface GmailPart {
@@ -71,12 +67,6 @@ function plainText(part: GmailPart | undefined): string {
     .replace(/&amp;/g, "&")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
-}
-
-/** The bare address in a From header: "Jax Tan <jax@x.com>" is "jax@x.com". */
-function addressOf(from: string): string {
-  const bracketed = /<([^>]+)>/.exec(from);
-  return (bracketed ? bracketed[1]! : from).trim().toLowerCase();
 }
 
 /** Drops the quoted history below a reply so only the new text remains. */
@@ -152,16 +142,60 @@ function wrapsInto(lines: string[], index: number, end: RegExp): boolean {
   return false;
 }
 
+export interface GmailContact {
+  name: string;
+  email: string;
+  /** How many header entries named this address. */
+  count: number;
+}
+
+const ADDRESS_RE = /(?:"?([^"<>,;]*?)"?\s*)<([^<>\s@]+@[^<>\s]+)>|([\w.+-]+@[\w-]+(?:\.[\w-]+)+)/g;
+
+/**
+ * Addresses in raw From/To/Cc header values whose display name contains every
+ * word of `name`, or whose local part starts with its first word, most
+ * frequent first. `own` (the mailbox owner) is never returned.
+ */
+export function contactsMatching(headerValues: string[], name: string, own: string): GmailContact[] {
+  const words = name.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return [];
+  const found = new Map<string, GmailContact>();
+  for (const value of headerValues) {
+    for (const match of value.matchAll(ADDRESS_RE)) {
+      const email = (match[2] ?? match[3] ?? "").toLowerCase();
+      const display = (match[1] ?? "").trim();
+      if (!email || email === own) continue;
+      const lowerDisplay = display.toLowerCase();
+      const byName = display !== "" && words.every((word) => lowerDisplay.includes(word));
+      const byAddress = words[0]!.length >= 3 && email.split("@")[0]!.startsWith(words[0]!);
+      if (!byName && !byAddress) continue;
+      const entry = found.get(email) ?? { name: display, email, count: 0 };
+      if (!entry.name && display) entry.name = display;
+      entry.count += 1;
+      found.set(email, entry);
+    }
+  }
+  return [...found.values()].sort((a, b) => b.count - a.count);
+}
+
+/** The Google account that consented has no Gmail mailbox. */
+export class NoGmailError extends Error {
+  constructor() {
+    super("That Google account has no Gmail mailbox.");
+  }
+}
+
 export class GmailClient {
   private readonly fetch: typeof fetch;
   private accessToken: { value: string; expiresAt: number } | null = null;
   private ownAddress: string | null = null;
+  private grantedScopes: Set<string> | null = null;
 
   constructor(private readonly options: GmailOptions) {
     this.fetch = options.fetch ?? globalThis.fetch;
   }
 
-  consentUrl(state: string): string {
+  consentUrl(state: string, loginHint?: string): string {
     const params = new URLSearchParams({
       client_id: this.options.clientId,
       redirect_uri: this.options.redirectUri,
@@ -171,6 +205,9 @@ export class GmailClient {
       prompt: "consent",
       state,
     });
+    // Preselect the account connected last time, so a reconnect does not
+    // land on a different Google account by accident.
+    if (loginHint) params.set("login_hint", loginHint);
     return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
   }
 
@@ -178,6 +215,12 @@ export class GmailClient {
     return (await this.refreshToken()) !== null;
   }
 
+  /**
+   * Stores a new grant only when its account actually has Gmail. A Google
+   * account without Gmail (one made from another email address) would
+   * otherwise replace a working grant and break sending, so it is refused and
+   * the previous grant is kept.
+   */
   async exchangeCode(code: string): Promise<void> {
     const token = await this.tokenRequest({
       code,
@@ -185,12 +228,34 @@ export class GmailClient {
       redirect_uri: this.options.redirectUri,
     });
     if (!token.refresh_token) throw new Error("Google did not return a refresh token.");
+    const profile = await this.fetch("https://gmail.googleapis.com/gmail/v1/users/me/profile", {
+      headers: { authorization: `Bearer ${token.access_token}` },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!profile.ok) throw new NoGmailError();
+    const { emailAddress } = (await profile.json()) as { emailAddress: string };
     await writeFile(
       this.options.tokenPath,
-      JSON.stringify({ refresh_token: token.refresh_token }),
+      JSON.stringify({ refresh_token: token.refresh_token, email: emailAddress }),
       { mode: 0o600 },
     );
+    this.ownAddress = emailAddress;
     this.remember(token);
+  }
+
+  /**
+   * True only when the connected account has a Gmail mailbox. A grant from a
+   * Google account without Gmail is "connected" yet cannot read mail, and the
+   * pages must ask for a different account rather than report it as working.
+   */
+  async hasMailbox(): Promise<boolean> {
+    if (!(await this.connected())) return false;
+    try {
+      await this.address();
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async address(): Promise<string> {
@@ -200,60 +265,92 @@ export class GmailClient {
     return profile.emailAddress;
   }
 
-  async send(message: {
-    to: string;
-    subject: string;
-    body: string;
-    threadId?: string;
-  }): Promise<{ threadId: string }> {
-    const from = await this.address();
-    const raw = [
-      `From: ${from}`,
-      `To: ${message.to}`,
-      `Subject: ${encodeHeader(message.subject)}`,
-      "MIME-Version: 1.0",
-      'Content-Type: text/plain; charset="UTF-8"',
-      "Content-Transfer-Encoding: 8bit",
-      "",
-      message.body,
-    ].join("\r\n");
-    const sent = (await this.api("users/me/messages/send", {
-      method: "POST",
-      body: JSON.stringify({
-        raw: base64Url(raw),
-        ...(message.threadId ? { threadId: message.threadId } : {}),
-      }),
-    })) as { threadId: string };
-    return { threadId: sent.threadId };
-  }
-
-  /** Messages in a thread that someone other than the founder sent after `since`. */
-  async repliesIn(threadId: string, since: string): Promise<InboundMessage[]> {
-    const own = (await this.address()).toLowerCase();
-    const thread = (await this.api(`users/me/threads/${threadId}?format=full`)) as {
-      messages?: {
+  /**
+   * Messages from `address` received after `since`, as plain text without the
+   * quoted history. Outreach is sent by the founder from their own mailbox,
+   * so replies are found by who sent them rather than by thread.
+   */
+  async repliesFrom(address: string, since: string): Promise<InboundMessage[]> {
+    const sinceMs = Date.parse(since);
+    const after = Math.floor(sinceMs / 1000);
+    const query = encodeURIComponent(`from:${address} after:${after}`);
+    const list = (await this.api(`users/me/messages?q=${query}&maxResults=10`)) as { messages?: { id: string }[] };
+    const replies: InboundMessage[] = [];
+    for (const { id } of list.messages ?? []) {
+      const message = (await this.api(`users/me/messages/${id}?format=full`)) as {
         internalDate?: string;
         payload?: GmailPart & { headers?: { name: string; value: string }[] };
-      }[];
+      };
+      const from = message.payload?.headers?.find((header) => header.name.toLowerCase() === "from")?.value ?? "";
+      const at = new Date(Number(message.internalDate ?? 0)).toISOString();
+      const text = withoutQuote(plainText(message.payload));
+      if (Date.parse(at) > sinceMs && text.length > 0) replies.push({ from, at, text });
+    }
+    return replies.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  }
+
+  /**
+   * People whose name matches `name`, taken from the From/To/Cc headers of
+   * recent messages that mention it. Only header metadata is fetched; message
+   * bodies are never read. Uses the existing read-only scope.
+   */
+  async contactsNamed(name: string, limit = 3): Promise<GmailContact[]> {
+    const own = (await this.address()).toLowerCase();
+    const query = encodeURIComponent(`"${name.replace(/"/g, "")}"`);
+    const list = (await this.api(`users/me/messages?q=${query}&maxResults=10`)) as { messages?: { id: string }[] };
+    const headerValues: string[] = [];
+    for (const { id } of list.messages ?? []) {
+      const message = (await this.api(
+        `users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc`,
+      )) as { payload?: { headers?: { name: string; value: string }[] } };
+      for (const header of message.payload?.headers ?? []) headerValues.push(header.value);
+    }
+    return contactsMatching(headerValues, name, own).slice(0, limit);
+  }
+
+  /** False when the stored grant predates the free/busy scope: reconnect to add it. */
+  async canReadCalendar(): Promise<boolean> {
+    if (!(await this.connected())) return false;
+    try {
+      await this.bearer();
+    } catch {
+      return false;
+    }
+    return this.grantedScopes?.has(CALENDAR_FREEBUSY) ?? false;
+  }
+
+  /**
+   * Busy periods between `from` and `to` for each calendar: "primary" is the
+   * mailbox owner's own. A calendar the owner cannot see (most people outside
+   * their Google Workspace) comes back as null, meaning unknown, not free.
+   */
+  async busy(calendars: string[], from: string, to: string): Promise<Map<string, BusyPeriod[] | null>> {
+    const response = await this.fetch("https://www.googleapis.com/calendar/v3/freeBusy", {
+      method: "POST",
+      headers: { authorization: `Bearer ${await this.bearer()}`, "content-type": "application/json" },
+      body: JSON.stringify({ timeMin: from, timeMax: to, items: calendars.map((id) => ({ id })) }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!response.ok) throw new Error(`Calendar free/busy request failed with HTTP ${response.status}.`);
+    const body = (await response.json()) as {
+      calendars?: Record<string, { busy?: BusyPeriod[]; errors?: unknown[] }>;
     };
-    const sinceMs = Date.parse(since);
-    return (thread.messages ?? [])
-      .map((message) => {
-        const from =
-          message.payload?.headers?.find((header) => header.name.toLowerCase() === "from")
-            ?.value ?? "";
-        return {
-          from,
-          at: new Date(Number(message.internalDate ?? 0)).toISOString(),
-          text: withoutQuote(plainText(message.payload)),
-        };
-      })
-      .filter(
-        (message) =>
-          addressOf(message.from) !== own &&
-          Date.parse(message.at) > sinceMs &&
-          message.text.length > 0,
-      );
+    const result = new Map<string, BusyPeriod[] | null>();
+    for (const id of calendars) {
+      const entry = body.calendars?.[id];
+      result.set(id, !entry || (entry.errors && entry.errors.length > 0) ? null : entry.busy ?? []);
+    }
+    return result;
+  }
+
+  /** The mailbox connected last time, from the stored grant, if known. */
+  async storedAddress(): Promise<string | null> {
+    try {
+      const stored = JSON.parse(await readFile(this.options.tokenPath, "utf8")) as { email?: string };
+      return stored.email ?? null;
+    } catch {
+      return null;
+    }
   }
 
   private async refreshToken(): Promise<string | null> {
@@ -267,11 +364,12 @@ export class GmailClient {
     }
   }
 
-  private remember(token: { access_token: string; expires_in: number }) {
+  private remember(token: { access_token: string; expires_in: number; scope?: string }) {
     this.accessToken = {
       value: token.access_token,
       expiresAt: Date.now() + (token.expires_in - 60) * 1000,
     };
+    if (token.scope) this.grantedScopes = new Set(token.scope.split(" "));
   }
 
   private async tokenRequest(fields: Record<string, string>) {
@@ -289,6 +387,7 @@ export class GmailClient {
       access_token: string;
       expires_in: number;
       refresh_token?: string;
+      scope?: string;
     };
   }
 

@@ -102,7 +102,8 @@ const interestedModel = modelWith({
 const gmailWith = (inbox: { from: string; at: string; text: string }[]) => ({
   async connected() { return true; },
   async send() { return { threadId: "t1" }; },
-  async repliesIn(_thread: string, since: string) { return inbox.filter((m) => Date.parse(m.at) > Date.parse(since)); },
+  async hasMailbox() { return true; },
+      async repliesFrom(_thread: string, since: string) { return inbox.filter((m) => Date.parse(m.at) > Date.parse(since)); },
 });
 const hoursAgo = (hours: number) => new Date(NOW.getTime() - hours * 3_600_000).toISOString();
 
@@ -150,8 +151,7 @@ describe("NOT A BUG: checked and fine", () => {
     const inbox = [{ from: "a@x.com", at: hoursAgo(2), text: "Yes, very interested, when can we talk?" }];
     const store = await storeWith(seeded({
       candidates: { a: candidate(POOL[0]!, {
-        stage: "closed", closedReason: "hired", closedAt: AT, closedBy: "founder", gmailThreadId: "t1",
-        messages: [outbound()], lastContactedAt: AT, ...withEmail,
+        stage: "closed", closedReason: "hired", closedAt: AT, closedBy: "founder", messages: [outbound()], lastContactedAt: AT, ...withEmail,
       }) },
     }));
     const service = serviceOn(store, { gmail: gmailWith(inbox), model: interestedModel });
@@ -168,8 +168,7 @@ describe("NOT A BUG: checked and fine", () => {
     const inbox = [{ from: "a@x.com", at: hoursAgo(2), text: "Sorry for the delay, yes!" }];
     const store = await storeWith(seeded({
       candidates: { a: candidate(POOL[0]!, {
-        stage: "closed", closedReason: "passed", closedAt: AT, closedBy: "founder", gmailThreadId: "t1",
-        messages: [outbound()], lastContactedAt: AT, ...withEmail,
+        stage: "closed", closedReason: "passed", closedAt: AT, closedBy: "founder", messages: [outbound()], lastContactedAt: AT, ...withEmail,
       }) },
     }));
     const service = serviceOn(store, { gmail: gmailWith(inbox), model: interestedModel });
@@ -184,8 +183,7 @@ describe("NOT A BUG: checked and fine", () => {
     const inbox: { from: string; at: string; text: string }[] = [];
     const store = await storeWith(seeded({
       candidates: { a: candidate(POOL[0]!, {
-        stage: "closed", closedReason: "cold", closedAt: AT, closedBy: "system", followUps: 1, gmailThreadId: "t1",
-        messages: [outbound()], lastContactedAt: AT, ...withEmail,
+        stage: "closed", closedReason: "cold", closedAt: AT, closedBy: "system", followUps: 1, messages: [outbound()], lastContactedAt: AT, ...withEmail,
       }) },
     }));
     const service = serviceOn(store, { gmail: gmailWith(inbox), model: interestedModel });
