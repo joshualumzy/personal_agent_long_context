@@ -18,6 +18,43 @@ export interface Evidence {
   score?: number;
 }
 
+/** One node of a graph slice. `id` is the natural key: a source id, or a name. */
+export interface GraphNode {
+  id: string;
+  type: "document" | "actor";
+  label: string;
+  sourceType?: string;
+  category?: string;
+  department?: string;
+  simulationDay?: number;
+  isIncident?: boolean;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  type: string;
+}
+
+export interface GraphSlice {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  /** Set when the slice hit its node cap, so the view can say so. */
+  truncated: boolean;
+}
+
+/** How to choose a slice: a causal chain from one document, or a filter. */
+export interface GraphSliceRequest {
+  seed?: string;
+  depth?: number;
+  category?: string;
+  sourceType?: string;
+  department?: string;
+  incidentsOnly?: boolean;
+  includeActors?: boolean;
+  limit?: number;
+}
+
 export interface CompanyKnowledge {
   employee(employeeId: string): Promise<EmployeeContext | null>;
   search(query: string, limit: number): Promise<Evidence[]>;
@@ -30,6 +67,11 @@ export interface CompanyKnowledge {
    */
   relatedThroughEvents?(sourceIds: string[], limit: number): Promise<Evidence[]>;
   sources(sourceIds: string[]): Promise<Evidence[]>;
+  /**
+   * A renderable piece of the deterministic graph. Optional: an implementation
+   * without the graph tables omits it.
+   */
+  graphSlice?(request: GraphSliceRequest): Promise<GraphSlice>;
   close?(): Promise<void>;
 }
 

@@ -443,6 +443,46 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     },
   );
 
+  app.get<{
+    Querystring: {
+      seed?: string;
+      depth?: string;
+      category?: string;
+      sourceType?: string;
+      department?: string;
+      incidentsOnly?: string;
+      includeActors?: string;
+      limit?: string;
+    };
+  }>("/api/v1/graph", async (request, reply) => {
+    const knowledge = options.companyKnowledge;
+    if (!knowledge?.graphSlice) {
+      return reply.code(503).send({ message: "The graph is not configured." });
+    }
+    const query = request.query;
+    const number = (value: string | undefined) => {
+      if (value === undefined) return undefined;
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    };
+
+    const slice = await knowledge.graphSlice({
+      ...(query.seed ? { seed: query.seed } : {}),
+      ...(number(query.depth) !== undefined ? { depth: number(query.depth)! } : {}),
+      ...(query.category ? { category: query.category } : {}),
+      ...(query.sourceType ? { sourceType: query.sourceType } : {}),
+      ...(query.department ? { department: query.department } : {}),
+      incidentsOnly: query.incidentsOnly === "true",
+      includeActors: query.includeActors === "true",
+      ...(number(query.limit) !== undefined ? { limit: number(query.limit)! } : {}),
+    });
+
+    if (slice.nodes.length === 0) {
+      return reply.code(404).send({ message: "That selection matched no nodes." });
+    }
+    return reply.send(slice);
+  });
+
   app.get("/api/v1/policy", async () => ({
     policyVersion: CONSENT_POLICY_VERSION,
     attestations: CONSENT_ATTESTATIONS,
@@ -508,6 +548,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.get("/styles.css", serve("styles.css", "text/css; charset=utf-8"));
   app.get("/sme.js", serve("app.js", "text/javascript; charset=utf-8"));
   app.get("/sme.css", serve("styles.css", "text/css; charset=utf-8"));
+
+  app.get("/graph", serve("graph.html", "text/html; charset=utf-8"));
+  app.get("/graph/app.js", serve("graph.js", "text/javascript; charset=utf-8"));
+  app.get("/graph/styles.css", serve("graph.css", "text/css; charset=utf-8"));
 
   if (options.recruiting) {
     registerRecruitingRoutes(app, options.recruiting.board, options.recruiting.gmail);

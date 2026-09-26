@@ -1,7 +1,40 @@
 import pg from "pg";
-import type { CompanyKnowledge, EmployeeContext, Evidence } from "../company-domain.js";
+import type {
+  CompanyKnowledge,
+  EmployeeContext,
+  Evidence,
+  GraphEdge,
+  GraphNode,
+  GraphSlice,
+  GraphSliceRequest,
+} from "../company-domain.js";
 import type { EmbeddingProvider } from "../embeddings.js";
 import { pgVector } from "../embeddings.js";
+
+type GraphNodeRow = {
+  ref_key: string;
+  node_type: string;
+  label: string;
+  props: Record<string, unknown> | null;
+};
+
+/** graph_nodes.props is denormalized precisely so this needs no extra query. */
+function graphNode(row: GraphNodeRow): GraphNode {
+  const props = row.props ?? {};
+  const day = props.simulation_day;
+  return {
+    id: row.ref_key,
+    type: row.node_type === "actor" ? "actor" : "document",
+    label: row.label,
+    ...(typeof props.source_type === "string" ? { sourceType: props.source_type } : {}),
+    ...(typeof props.category === "string" ? { category: props.category } : {}),
+    ...(typeof props.department === "string" && props.department
+      ? { department: props.department }
+      : {}),
+    ...(typeof day === "number" ? { simulationDay: day } : {}),
+    ...(props.is_incident === true ? { isIncident: true } : {}),
+  };
+}
 
 type EvidenceRow = {
   source_id: string;
@@ -224,6 +257,124 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
       [sourceIds],
     );
     return result.rows.map(evidence);
+  }
+
+  /**
+   * A renderable piece of the graph.
+   *
+   * The whole graph is 22,606 nodes, which no force layout survives, so every
+   * slice is bounded. A force-directed SVG stays readable to roughly a hundred
+   * nodes; past that the view should cluster rather than draw more, which is why
+   * `limit` is capped here instead of trusted from the caller.
+   *
+   * Unlike retrieval, a slice may include simulation events: the causal chain is
+   * the thing worth looking at, and only labels and types cross the wire — never
+   * a document body, which is where the oracle material lives.
+   */
+  async graphSlice(request: GraphSliceRequest): Promise<GraphSlice> {
+    const limit = Math.min(Math.max(request.limit ?? 80, 1), 150);
+
+    const documents = request.seed
+      ? await this.causalChainNodes(request.seed, request.depth ?? 3, limit)
+      : await this.filteredNodes(request, limit);
+
+    if (documents.length === 0) return { nodes: [], edges: [], truncated: false };
+
+    const keys = documents.map((node) => node.id);
+    const actors = request.includeActors
+      ? await this.actorsOf(keys, limit)
+      : [];
+
+    const nodes = [...documents, ...actors];
+    const edges = await this.edgesWithin(nodes.map((node) => node.id));
+    return { nodes, edges, truncated: documents.length >= limit };
+  }
+
+  /** Documents reachable from a seed along 'references', depth- and cycle-bounded. */
+  private async causalChainNodes(seed: string, depth: number, limit: number) {
+    const bounded = Math.min(Math.max(depth, 1), 6);
+    const result = await this.pool.query<GraphNodeRow>(
+      `WITH RECURSIVE chain AS (
+           SELECT node_id, 0 AS depth, ARRAY[node_id] AS path
+           FROM graph_nodes
+           WHERE node_type = 'document' AND ref_key = $1
+         UNION ALL
+           SELECT e.dst_node_id, c.depth + 1, c.path || e.dst_node_id
+           FROM chain c
+           JOIN graph_edges e ON e.src_node_id = c.node_id
+                              AND e.edge_type = 'references'
+           WHERE c.depth < $2 AND NOT e.dst_node_id = ANY(c.path)
+       )
+       SELECT DISTINCT n.ref_key, n.node_type, n.label, n.props
+       FROM chain c JOIN graph_nodes n ON n.node_id = c.node_id
+       ORDER BY n.ref_key
+       LIMIT $3`,
+      [seed, bounded, limit],
+    );
+    return result.rows.map(graphNode);
+  }
+
+  private async filteredNodes(request: GraphSliceRequest, limit: number) {
+    const conditions = ["node_type = 'document'"];
+    const parameters: unknown[] = [];
+    const next = () => `$${parameters.length + 1}`;
+
+    if (request.category) {
+      conditions.push(`props->>'category' = ${next()}`);
+      parameters.push(request.category);
+    }
+    if (request.sourceType) {
+      conditions.push(`props->>'source_type' = ${next()}`);
+      parameters.push(request.sourceType);
+    }
+    if (request.department) {
+      conditions.push(`props->>'department' = ${next()}`);
+      parameters.push(request.department);
+    }
+    if (request.incidentsOnly) conditions.push("(props->>'is_incident')::boolean");
+
+    parameters.push(limit);
+    const result = await this.pool.query<GraphNodeRow>(
+      `SELECT ref_key, node_type, label, props
+       FROM graph_nodes
+       WHERE ${conditions.join(" AND ")}
+       ORDER BY (props->>'simulation_day')::int NULLS LAST, ref_key
+       LIMIT $${parameters.length}`,
+      parameters,
+    );
+    return result.rows.map(graphNode);
+  }
+
+  private async actorsOf(documentKeys: string[], limit: number) {
+    const result = await this.pool.query<GraphNodeRow>(
+      `SELECT DISTINCT a.ref_key, a.node_type, a.label, a.props
+       FROM graph_nodes d
+       JOIN graph_edges e ON e.src_node_id = d.node_id AND e.edge_type = 'involves'
+       JOIN graph_nodes a ON a.node_id = e.dst_node_id AND a.node_type = 'actor'
+       WHERE d.node_type = 'document' AND d.ref_key = ANY($1::text[])
+       ORDER BY a.ref_key
+       LIMIT $2`,
+      [documentKeys, limit],
+    );
+    return result.rows.map(graphNode);
+  }
+
+  /** Only edges with both ends inside the slice, so the view never dangles one. */
+  private async edgesWithin(keys: string[]): Promise<GraphEdge[]> {
+    if (keys.length === 0) return [];
+    const result = await this.pool.query<{ source: string; target: string; edge_type: string }>(
+      `SELECT s.ref_key AS source, t.ref_key AS target, e.edge_type
+       FROM graph_edges e
+       JOIN graph_nodes s ON s.node_id = e.src_node_id
+       JOIN graph_nodes t ON t.node_id = e.dst_node_id
+       WHERE s.ref_key = ANY($1::text[]) AND t.ref_key = ANY($1::text[])`,
+      [keys],
+    );
+    return result.rows.map((row) => ({
+      source: row.source,
+      target: row.target,
+      type: row.edge_type,
+    }));
   }
 
   async close(): Promise<void> {

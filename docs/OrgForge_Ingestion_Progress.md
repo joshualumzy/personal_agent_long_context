@@ -375,10 +375,59 @@ deepa                          --owns-->          terraform-infra
 
 ---
 
+## 7.6 前端可视化(`/graph`)
+
+一个页面,两种看法,同一份数据:
+
+- **图示** —— 内联 SVG,自己写的小型力导向布局(弹簧 + 斥力,320 步跑完再绘制,
+  不做入场动画,所以指针下的东西不会移动)。**没有引入任何图库**,与项目"零构建、
+  vanilla JS"的现状一致。
+- **表格** —— 列出这一视图里的每一条关系。它不是事后补的降级方案:力导向图对不看屏幕的人
+  毫无意义,即便看得见也难以精确核对,所以**表格才是关系的可核查来源**。两者由同一个响应渲染。
+
+三种取法:事故相关工件 / 单条因果链(给定起点与步数)/ 某一类工件,可选是否包含人。
+
+**无障碍**(按 `ui-ux-pro-max` 对 network graph 的判定 —— 风险等级 high):
+
+- 节点靠**形状**区分而非仅颜色:圆=工件、方=模拟事件、菱形=人;事故用红色**并**在
+  `aria-label` 里写明
+- 每个节点 `tabindex="0"`,Tab 可遍历;聚焦即在右栏显示详情(键盘不必按 Enter 也能读到)
+- Enter / Space 选中;详情里的邻居是按钮,点击后**把焦点移到那个节点**,键盘不会掉出图外
+- `:focus-visible` 用 `--gold` 描边,`prefers-reduced-motion` 下关闭所有过渡
+
+**节点上限**:skill 的阈值是 ≤100 节点用 SVG、101–500 用 Canvas、>500 必须先聚类。
+所以服务端 `graphSlice` 把 `limit` 封在 150(不信任调用方传值),前端只画前 120 个,
+其余在状态行说明"未绘制,见表格"。
+
+```
+GET /api/v1/graph?seed=EVT-1-sprint_planned-49&depth=2&includeActors=true
+GET /api/v1/graph?incidentsOnly=true&includeActors=true&limit=40
+GET /api/v1/graph?sourceType=jira&category=artifact&limit=30
+```
+
+**实测**(真实库,22,606 节点图):
+
+```
+因果链 d2 +人   41 节点 / 67 边   悬空边 0
+事故 +人        51 节点 / 74 边   悬空边 0  truncated
+jira 工件 +人   37 节点 / 30 边   悬空边 0  truncated
+未知起点        HTTP 404(而不是画一张空图)
+未配置图        HTTP 503
+```
+
+渲染检查(jsdom + 真实数据):41 个节点全部绘制、坐标落在 viewBox 内、
+**重叠节点对 0**、表格 67 行与边数一致。
+
+切片里**可以**包含模拟事件——因果链正是要看的东西,而且只有标签和类型过网,
+**从不传文档正文**(oracle 信息在正文里)。这与检索层只返回 artifact 的约束并不冲突:
+两者传的东西不同。
+
+---
+
 ## 8. 待办
 
-已完成:全量 ingestion、图①、混合检索、2 跳证据补全、向量落地(经共享库同步)、图导出、
-图②的切片选择与 cognee 封装。
+已完成:全量 ingestion、图①、混合检索、2 跳证据补全、向量落地(经共享库同步)、
+图②(cognee 抽取)、以及 `/graph` 前端可视化。
 
 - [ ] **本机 Bedrock 仍未放行** —— 账号级 allowlisting 未批,需提
       `bedrock-allowlisting` support case(hackathon 账号建议直接找主办方)。
@@ -399,8 +448,10 @@ deepa                          --owns-->          terraform-infra
       `bge-large`(1024)重跑即可,切片小所以代价很低。
 - [ ] **把切片选择接进检索路由** —— `query_slice.py` 的三条腿(全文 / 图 / 语义)
       正是 §2 路由要的构件,目前是独立 CLI,尚未接入 agent 的工具链。
-- [ ] **前端可视化** —— `export_graph.py` 与 `cognee_memory.py graph` 输出同一 JSON 结构
-      (`{nodes, edges, meta}`),可用同一个前端并排渲染确定性图与涌现图,目前还没有前端。
+- [x] **确定性图的前端可视化** —— 见 §7.6。
+- [ ] **把涌现图也接进同一页面** —— `cognee_memory.py graph` 的输出已是同构 JSON
+      (`{nodes, edges, meta}`),但它存在本地 cognee 文件里,Node 侧读不到;
+      需要一条上传/读取导出文件的路径,才能与确定性图并排对比。
 - [ ] 补充数据尚未接入:`domain_registry.json`、`simulation_snapshot.json`、
       `assignment_scores.parquet`、`datadog_metrics.parquet`
       (对应 `graph_edges` 里预留的 `owns_domain` / `triggered_by` / `part_of` 边)

@@ -1,0 +1,147 @@
+/* Tokens match recruiting.css so the two pages read as one product. */
+:root {
+  color-scheme: light;
+  --sky: #f5f2ea;
+  --sky-raised: #fffdf8;
+  --sky-high: #efebe1;
+  --line: #d8d4ca;
+  --text: #1d2530;
+  --muted: #66717e;
+  --faint: #a7aeb6;
+  --gold: #1f6d5f;
+  --aqua: #4f8f82;
+  --ochre: #b7862b;
+  --danger: #9a382f;
+  --on-accent: #ffffff;
+  --radius-control: 10px;
+  --radius-surface: 16px;
+  /* Edges stay quiet so the nodes and their labels carry the meaning. */
+  --edge: #90a4ae;
+  font-family: Inter, "PingFang SC", "Hiragino Sans GB", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--sky);
+}
+
+body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; background: var(--sky); }
+[hidden] { display: none !important; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+
+button, .quiet { font: inherit; cursor: pointer; }
+.primary {
+  border: 0; border-radius: var(--radius-control); padding: 8px 14px;
+  background: var(--gold); color: var(--on-accent); font-weight: 600;
+}
+.primary:hover { filter: brightness(1.06); }
+.primary:disabled { opacity: .5; cursor: progress; }
+.quiet {
+  border: 1px solid var(--line); border-radius: var(--radius-control); padding: 5px 10px;
+  background: transparent; color: var(--text); text-decoration: none; font-size: .88rem;
+}
+.quiet:hover { border-color: var(--muted); }
+.quiet.on { border-color: var(--aqua); color: var(--aqua); }
+
+/* Header */
+.top {
+  flex: none; display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;
+  width: min(1320px, calc(100% - 32px)); margin: 0 auto; padding: 14px 0 6px;
+}
+h1 {
+  margin: 0; font-family: Georgia, "Songti SC", serif;
+  font-size: clamp(1.35rem, 2vw, 1.85rem); font-weight: 500; line-height: 1.1;
+}
+h2 { margin: 0 0 8px; font-family: Georgia, "Songti SC", serif; font-size: 1.05rem; font-weight: 500; }
+.status-line { margin: 4px 0 0; color: var(--muted); }
+.top-actions { flex: none; display: flex; gap: 8px; align-items: center; }
+
+.banner { width: min(1320px, calc(100% - 32px)); margin: 8px auto; padding: 10px 14px; border-radius: var(--radius-control); }
+.banner.error { background: #f6e3e0; color: var(--danger); }
+
+/* Controls */
+.controls {
+  width: min(1320px, calc(100% - 32px)); margin: 10px auto 0;
+  display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end;
+  padding: 14px; background: var(--sky-raised);
+  border: 1px solid var(--line); border-radius: var(--radius-surface);
+}
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field label { color: var(--muted); font-size: .82rem; }
+.field select, .field input[type="text"] {
+  border: 1px solid var(--line); border-radius: var(--radius-control);
+  padding: 8px 10px; background: var(--sky-raised); color: var(--text); font: inherit;
+}
+.field input[type="text"] { min-width: 260px; }
+.field select:focus, .field input:focus { outline: none; border-color: var(--gold); }
+.field.checkbox { flex-direction: row; align-items: center; gap: 8px; }
+/* 44px of hit area for a small control, without drawing a 44px box. */
+.field.checkbox input { width: 18px; height: 18px; accent-color: var(--gold); margin: 13px 0; }
+.field.checkbox label { color: var(--text); font-size: .9rem; }
+
+/* Board */
+.board {
+  flex: 1 1 auto; min-height: 0;
+  width: min(1320px, calc(100% - 32px)); margin: 14px auto 24px;
+  display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start;
+}
+.picture, .table-view {
+  background: var(--sky-raised); border: 1px solid var(--line);
+  border-radius: var(--radius-surface); padding: 12px;
+}
+#canvas { display: block; width: 100%; height: min(60vh, 560px); }
+.hint-line { margin: 6px 2px 0; color: var(--muted); font-size: .82rem; }
+
+.legend { list-style: none; display: flex; flex-wrap: wrap; gap: 14px; margin: 10px 2px 0; padding: 0; color: var(--muted); font-size: .82rem; }
+.legend li { display: flex; align-items: center; gap: 6px; }
+.key { width: 14px; height: 14px; flex: none; }
+
+/* Nodes are told apart by shape as well as colour. */
+.n-artifact { fill: var(--gold); }
+.n-artifact.incident { fill: var(--danger); }
+.n-event { fill: var(--ochre); }
+.n-actor { fill: var(--aqua); }
+
+.edge { stroke: var(--edge); stroke-opacity: .6; stroke-width: 1.2; fill: none; }
+.edge.involves { stroke-dasharray: 3 3; }
+.node { cursor: pointer; }
+.node .shape { stroke: var(--sky-raised); stroke-width: 1.5; }
+.node .caption { font-size: 9px; fill: var(--muted); text-anchor: middle; pointer-events: none; }
+.node:hover .shape, .node.selected .shape { stroke: var(--text); stroke-width: 2; }
+.node:focus-visible { outline: none; }
+.node:focus-visible .ring { stroke: var(--gold); stroke-width: 2.5; fill: none; }
+.node .ring { stroke: none; fill: none; }
+
+/* Table view: the accessible source of truth for the same relationships. */
+.table-scroll { max-height: min(60vh, 560px); overflow: auto; }
+table { width: 100%; border-collapse: collapse; font-size: .88rem; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+thead th { position: sticky; top: 0; background: var(--sky-high); font-weight: 600; }
+tbody tr:hover { background: var(--sky-high); }
+td.kind { color: var(--muted); white-space: nowrap; }
+
+/* Details rail */
+.details {
+  background: var(--sky-raised); border: 1px solid var(--line);
+  border-radius: var(--radius-surface); padding: 14px; min-height: 120px;
+}
+.details .empty { margin: 0; color: var(--faint); }
+.details dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; }
+.details dt { color: var(--muted); font-size: .82rem; }
+.details dd { margin: 0; font-size: .9rem; word-break: break-word; }
+.details .name { margin: 0 0 10px; font-weight: 600; line-height: 1.35; }
+.details .neighbours { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.details .neighbours li { font-size: .86rem; }
+.details .neighbours button {
+  border: 0; background: none; padding: 0; color: var(--aqua); font: inherit;
+  text-align: left; cursor: pointer; text-decoration: underline;
+}
+
+@media (max-width: 900px) {
+  .board { grid-template-columns: minmax(0, 1fr); }
+  .field input[type="text"] { min-width: 0; width: 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

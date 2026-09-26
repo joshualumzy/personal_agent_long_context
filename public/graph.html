@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Company Graph</title>
+  <link rel="stylesheet" href="/graph/styles.css">
+  <script src="/graph/app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="title-block">
+      <h1>How the company connects</h1>
+      <p id="status-line" class="status-line" aria-live="polite">Loading…</p>
+    </div>
+    <div class="top-actions">
+      <button type="button" class="quiet on" id="tab-picture" aria-pressed="true">Picture</button>
+      <button type="button" class="quiet" id="tab-table" aria-pressed="false">Table</button>
+    </div>
+  </header>
+
+  <p id="error" class="banner error" role="alert" hidden></p>
+
+  <form id="controls" class="controls">
+    <div class="field">
+      <label for="view">Show</label>
+      <select id="view">
+        <option value="incidents">Artifacts caught up in incidents</option>
+        <option value="chain">One causal chain</option>
+        <option value="type">Everything of one kind</option>
+      </select>
+    </div>
+
+    <div class="field" id="seed-field" hidden>
+      <label for="seed">Starting document</label>
+      <input type="text" id="seed" value="EVT-1-sprint_planned-49"
+             placeholder="a source id, such as CONF-ENG-022">
+    </div>
+
+    <div class="field" id="depth-field" hidden>
+      <label for="depth">How far to follow</label>
+      <select id="depth">
+        <option value="1">1 step</option>
+        <option value="2" selected>2 steps</option>
+        <option value="3">3 steps</option>
+        <option value="4">4 steps</option>
+      </select>
+    </div>
+
+    <div class="field" id="type-field" hidden>
+      <label for="source-type">Kind</label>
+      <select id="source-type">
+        <option value="jira">Jira tickets</option>
+        <option value="confluence">Confluence pages</option>
+        <option value="slack">Slack messages</option>
+        <option value="zoom_transcript">Zoom transcripts</option>
+        <option value="pr">Pull requests</option>
+        <option value="email">Email</option>
+      </select>
+    </div>
+
+    <div class="field checkbox">
+      <input type="checkbox" id="include-actors" checked>
+      <label for="include-actors">Include people</label>
+    </div>
+
+    <button type="submit" class="primary" id="draw">Draw</button>
+  </form>
+
+  <main class="board">
+    <section id="picture" class="picture" aria-labelledby="picture-heading">
+      <h2 id="picture-heading" class="visually-hidden">Diagram</h2>
+      <!-- Focus moves between nodes with Tab; the table below carries the same
+           relationships for anyone not reading the diagram. -->
+      <svg id="canvas" viewBox="-420 -320 840 640" role="application"
+           aria-describedby="canvas-help">
+        <title>Documents and people, joined by how they reference one another</title>
+      </svg>
+      <p id="canvas-help" class="hint-line">
+        Tab moves between items. Enter opens the details of the focused item.
+      </p>
+      <ul class="legend">
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-artifact"/></svg>Artifact someone wrote</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><rect x="-6" y="-6" width="12" height="12" class="n-event"/></svg>Something the simulation did</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 7,0 0,7 -7,0" class="n-actor"/></svg>Person</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-artifact incident"/></svg>Part of an incident</li>
+      </ul>
+    </section>
+
+    <section id="table-view" class="table-view" aria-labelledby="table-heading" hidden>
+      <h2 id="table-heading">Every relationship in this view</h2>
+      <p class="hint-line" id="table-summary"></p>
+      <div class="table-scroll">
+        <table>
+          <caption class="visually-hidden">Each row is one relationship, from one item to another.</caption>
+          <thead>
+            <tr><th scope="col">From</th><th scope="col">Kind</th><th scope="col">Relationship</th><th scope="col">To</th></tr>
+          </thead>
+          <tbody id="edge-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <aside id="details" class="details" aria-live="polite">
+      <p class="empty">Choose an item to see what it is.</p>
+    </aside>
+  </main>
+</body>
+</html>
