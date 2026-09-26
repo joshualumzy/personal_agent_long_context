@@ -37,3 +37,6 @@ tmp/orgforge/
 
 # Recruiting (S3): candidate records, Gmail token, LinkedIn browser profile
 data/
+
+# Local-only Compose overrides (host port differences, etc.)
+docker-compose.override.yml
