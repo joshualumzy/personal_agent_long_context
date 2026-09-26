@@ -151,7 +151,8 @@ const UNCONFIRMED =
   "Gmail did not confirm this email, so it may have gone out. Check your Sent folder: if it is there, mark it as sent by hand; if not, edit the draft and send it again.";
 
 /** Relayed text compared without time labels ("10:32 AM", "Tue", "Yesterday") or spacing. */
-function sameRelayedText(a: string, b: string): boolean {
+function sameRelayedText(a: string, b: string, preview = true): boolean {
+  if (!preview) return a.replace(/\s+/g, " ").trim().toLowerCase() === b.replace(/\s+/g, " ").trim().toLowerCase();
   // Time labels are dropped except the last line, which is the message itself ("Thursday").
   const plain = (text: string) => {
     const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -355,6 +356,7 @@ export class RecruitingService {
       if (!state.role || state.role.confirmed) {
         throw new RecruitingError("invalid_state", "There are no draft criteria to revise.", 409);
       }
+      const before = JSON.stringify(state.criteria.map((criterion) => [criterion.text.trim().toLowerCase(), criterion.kind]));
       const at = this.now(state).toISOString();
       const known = new Set(state.criteria.map((criterion) => criterion.id));
       const used = new Set<string>();
@@ -378,6 +380,9 @@ export class RecruitingService {
           active: true,
           createdAt: at,
         }));
+      // Different criteria need different searches: the drafted queries were written for the old ones.
+      const after = JSON.stringify(state.criteria.map((criterion) => [criterion.text.trim().toLowerCase(), criterion.kind]));
+      if (after !== before) state.rounds = [];
     });
   }
 
@@ -1155,6 +1160,7 @@ export class RecruitingService {
         if (!manual) throw new RecruitingError("send_unconfirmed", UNCONFIRMED, 409);
         return { draft: { ...draft }, contact: target.contact, threadId: target.gmailThreadId, confirmed: true, sender: null };
       }
+      // Also for "I sent it myself": the founder copies the draft, so the warning must be dealt with first.
       if (draft.warnings.length) {
         throw new RecruitingError("draft_has_warnings", draft.warnings[0]!, 409);
       }
@@ -1320,7 +1326,9 @@ export class RecruitingService {
       // good" twice) are a new answer. A reply pasted by hand and then read from Gmail is one reply.
       const lastOut = candidate.messages.map((message) => message.direction).lastIndexOf("outbound");
       const since = candidate.messages.slice(lastOut + 1);
-      const relayedAgain = (message: Message) => message.direction === "inbound" && sameRelayedText(message.text, text);
+      // Only a LinkedIn preview carries a name-and-time header; a pasted message is compared as it is.
+      const relayedAgain = (message: Message) =>
+        message.direction === "inbound" && sameRelayedText(message.text, text, channel === "linkedin" && message.channel === "linkedin");
       // An email is known exactly by its time: the same email again, or the founder's paste of it
       // (same words, pasted after the email arrived), wherever it sits in the thread.
       const emailAgain = (message: Message) =>

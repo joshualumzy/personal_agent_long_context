@@ -40,23 +40,56 @@ interface GmailPart {
   parts?: GmailPart[];
 }
 
-function plainText(part: GmailPart | undefined): string {
+function partText(part: GmailPart | undefined, mimeType: string): string {
   if (!part) return "";
-  if (part.mimeType === "text/plain" && part.body?.data) {
+  if (part.mimeType === mimeType && part.body?.data) {
     return Buffer.from(part.body.data, "base64url").toString("utf8");
   }
   for (const child of part.parts ?? []) {
-    const found = plainText(child);
+    const found = partText(child, mimeType);
     if (found) return found;
   }
   return "";
+}
+
+/** The plain-text body, or the HTML one as text when the reply was sent as HTML only. */
+function plainText(part: GmailPart | undefined): string {
+  const plain = partText(part, "text/plain");
+  if (plain) return plain;
+  const html = partText(part, "text/html");
+  if (!html) return "";
+  return html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
+    .replace(/<br\s*\/?>|<\/(p|div|li|tr|h\d)>/gi, "\n")
+    .replace(/<blockquote[\s\S]*$/i, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** The bare address in a From header: "Jax Tan <jax@x.com>" is "jax@x.com". */
+function addressOf(from: string): string {
+  const bracketed = /<([^>]+)>/.exec(from);
+  return (bracketed ? bracketed[1]! : from).trim().toLowerCase();
 }
 
 /** Drops the quoted history below a reply so only the new text remains. */
 function withoutQuote(body: string): string {
   const lines = body.split(/\r?\n/);
   const cut = lines.findIndex(
-    (line) => /^On .+wrote:$/.test(line.trim()) || /^>/.test(line) || /^-{2,}\s*Original Message/i.test(line),
+    (line, index) =>
+      /^On .+wrote:$/.test(line.trim()) ||
+      /^>/.test(line) ||
+      /^-{2,}\s*Original Message/i.test(line) ||
+      /^_{5,}\s*$/.test(line.trim()) ||
+      // Outlook: a "From:" header line followed within two lines by "Sent:" or "Date:".
+      (/^\*?From:\*?\s/i.test(line.trim()) && lines.slice(index + 1, index + 3).some((next) => /^\*?(Sent|Date):\*?\s/i.test(next.trim()))),
   );
   return (cut >= 0 ? lines.slice(0, cut) : lines).join("\n").trim();
 }
@@ -159,7 +192,7 @@ export class GmailClient {
       })
       .filter(
         (message) =>
-          !message.from.toLowerCase().includes(own) &&
+          addressOf(message.from) !== own &&
           Date.parse(message.at) > sinceMs &&
           message.text.length > 0,
       );

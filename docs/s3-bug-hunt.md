@@ -618,3 +618,29 @@ end 3. Six came from round 9 changes. All fixed.
   founder is typing in another box or panel; Enter that confirms Chinese,
   Japanese or Korean input no longer sends; LinkedIn links stop at the
   first character a slug cannot hold ("…/in/alice-tan，她很合适").
+
+## Round 11 (2026-09-26)
+
+15 confirmed bugs (backend 7, chat agent 4 causes / 6 tests, front end 4);
+one backend finding not adopted. All others fixed.
+
+- Chat agent: citations may hold several ids or spaces ("[source:JIRA-1,
+  CONF-2]", "[source: JIRA-1]"); each id is checked, stray ones dropped,
+  and the page makes a button per id. A call repeated at the start of the
+  model's next reply runs once too (a second identical role no longer
+  opens). The status lists everyone in view past the first 15 briefly
+  (`more_in_view`), and people ruled out or closed (`not_in_view`), so the
+  founder can name any of them.
+- Backend: revising draft criteria drops the drafted searches so confirm
+  writes new ones; Gmail replies are read from HTML when there is no plain
+  text, Outlook quote headers are cut, and the founder's own address is
+  compared exactly; only LinkedIn previews have a name-and-time header, so
+  a pasted correction ("Tuesday" to "Wednesday") is not a duplicate.
+  Not adopted: letting "I sent it myself" through a private-remark warning.
+  The original spec (test/recruiting.test.ts) blocks it on purpose, since
+  the founder copies the draft; the hunter test is skipped with that reason.
+- Front end: Safari's input-method Enter (keyCode 229) no longer sends the
+  hiring instruction; LinkedIn links accept any-script slugs and links
+  without https://; clicking a candidate in a panel no longer keeps the
+  composer from getting focus back (only a focused text box inside a panel
+  counts), and such a panel folds as before.

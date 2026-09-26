@@ -154,7 +154,8 @@ function setAnswerHtml(container, sanitizedHtml) {
     // A button inside a link would follow the link when pressed; that citation stays text.
     if (!walker.currentNode.parentElement?.closest("a")) texts.push(walker.currentNode);
   }
-  const pattern = /\[source:([A-Za-z0-9._:-]+)\]/gi;
+  // One tag may hold several ids: "[source:JIRA-1, CONF-2]" becomes a button for each.
+  const pattern = /\[source:\s*([A-Za-z0-9._:-]+(?:[\s,;，；]+[A-Za-z0-9._:-]+)*)\s*\]/gi;
   for (const node of texts) {
     const text = node.nodeValue;
     pattern.lastIndex = 0;
@@ -164,12 +165,14 @@ function setAnswerHtml(container, sanitizedHtml) {
     let at = 0;
     for (const match of text.matchAll(pattern)) {
       pieces.append(text.slice(at, match.index));
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "inline-citation";
-      button.dataset.sourceId = match[1];
-      button.textContent = match[1];
-      pieces.append(button);
+      for (const id of match[1].split(/[\s,;，；]+/).filter(Boolean)) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "inline-citation";
+        button.dataset.sourceId = id;
+        button.textContent = id;
+        pieces.append(button);
+      }
       at = match.index + match[0].length;
     }
     pieces.append(text.slice(at));
@@ -507,7 +510,15 @@ window.addEventListener("resize", () => {
 function mountPanel(container, block) {
   document.querySelectorAll(".chat-block.live").forEach((other) => {
     // A panel the founder is typing in stays open; folding it would throw the text away.
-    const inUse = other.contains(document.activeElement) && document.activeElement?.tagName === "IFRAME";
+    const active = document.activeElement;
+    let typed = null;
+    try {
+      typed = active?.tagName === "IFRAME" ? active.contentDocument?.activeElement : null;
+    } catch {
+      typed = null;
+    }
+    const inUse = other.contains(active) && Boolean(typed) &&
+      (typed.tagName === "TEXTAREA" || typed.tagName === "INPUT" || typed.isContentEditable);
     if (other !== container && !inUse) foldPanel(other, other.recruitingBlock);
   });
   const frame = document.createElement("iframe");
@@ -1035,11 +1046,21 @@ chatForm.addEventListener("submit", async (e) => {
     sendButton.disabled = false;
     askingIn = undefined;
     // Back to the composer, unless the founder is typing somewhere else meanwhile (a text box, a panel).
+    const isTextBox = (element) =>
+      Boolean(element) &&
+      (element.tagName === "TEXTAREA" || element.isContentEditable ||
+        (element.tagName === "INPUT" && !["button", "submit", "checkbox", "radio"].includes(element.type)));
+    // A panel counts only when a text box inside it has focus; a click on a candidate does not.
+    const insideFrame = (element) => {
+      try {
+        return element?.tagName === "IFRAME" ? element.contentDocument?.activeElement ?? null : null;
+      } catch {
+        return null;
+      }
+    };
     const elsewhere = document.activeElement;
     const typingElsewhere =
-      elsewhere && elsewhere !== messageInput &&
-      (elsewhere.tagName === "IFRAME" || elsewhere.tagName === "TEXTAREA" || elsewhere.isContentEditable ||
-        (elsewhere.tagName === "INPUT" && !["button", "submit", "checkbox", "radio"].includes(elsewhere.type)));
+      elsewhere && elsewhere !== messageInput && (isTextBox(elsewhere) || isTextBox(insideFrame(elsewhere)));
     if (!typingElsewhere) messageInput.focus();
     scrollToBottom();
   }

@@ -209,6 +209,7 @@ function funnelOf(snapshot: Snapshot) {
 export function statusForModel(snapshot: Snapshot) {
   const open = snapshot.candidates.filter((candidate) => candidate.stage !== "closed");
   const rank = (tier: unknown) => (typeof tier === "number" ? -tier : 0);
+  const inView = open.filter((candidate) => candidate.tier !== "out").sort((a, b) => rank(a.tier) - rank(b.tier));
   return {
     role: snapshot.role ? { title: snapshot.role.title, confirmed: snapshot.role.confirmed } : null,
     criteria: snapshot.criteria.map(({ id, text, kind }) => ({ id, text, kind })),
@@ -225,9 +226,7 @@ export function statusForModel(snapshot: Snapshot) {
     // The numbers a founder asks for. "found" minus "in_view" is everyone the criteria ruled out,
     // so "found 15" and "0 in view" are never mistaken for each other.
     funnel: funnelOf(snapshot),
-    candidates: open
-      .filter((candidate) => candidate.tier !== "out")
-      .sort((a, b) => rank(a.tier) - rank(b.tier))
+    candidates: inView
       .slice(0, 15)
       .map((candidate) => ({
         id: candidate.id,
@@ -240,6 +239,23 @@ export function statusForModel(snapshot: Snapshot) {
         email: candidate.contact ? candidate.contact.status : "none",
         has_draft: Boolean(candidate.draft),
       })),
+    // Everyone else in view, briefly, so any of them can be named in a tool call.
+    ...(inView.length > 15
+      ? { more_in_view: inView.slice(15).map((candidate) => ({ id: candidate.id, name: candidate.profile.name, stage: candidate.stage })) }
+      : {}),
+    // People the criteria ruled out or the founder closed, briefly: the founder may still name
+    // them ("draft to Zoe anyway", "keep Alex after all").
+    ...(() => {
+      const others = snapshot.candidates
+        .filter((candidate) => candidate.stage === "closed" || candidate.tier === "out")
+        .slice(0, 40)
+        .map((candidate) => ({
+          id: candidate.id,
+          name: candidate.profile.name,
+          why: candidate.stage === "closed" ? `closed (${candidate.closedReason ?? "closed"})` : "ruled out by the criteria",
+        }));
+      return others.length ? { not_in_view: others } : {};
+    })(),
     proposals: snapshot.proposals.map((proposal) => ({
       id: proposal.id,
       what: proposal.type === "criterion" ? `Add "${proposal.text}" (${proposal.kind})` : proposal.stepName,

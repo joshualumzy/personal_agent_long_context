@@ -1145,16 +1145,18 @@ document.addEventListener("DOMContentLoaded", () => {
     $("#agent-reply").textContent = "…";
     // Pasted LinkedIn profile links add those people; anything else goes to the agent.
     // Sentence punctuation after a link ("…/in/alice-tan.", "(…/in/bob-lim)") is not part of it.
-    // A slug holds only letters, digits, %, _ and -: Chinese punctuation or text right after a link
-    // ("…/in/alice-tan，她很合适") is not part of it.
-    const links = text.match(/https:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\/in\/[A-Za-z0-9%_-]+\/?/gi);
+    // A slug holds letters (any script), digits, %, _ and -: punctuation right after a link
+    // ("…/in/alice-tan，她很合适") is not part of it. "linkedin.com/in/x" without https:// counts
+    // too (it is how LinkedIn's contact info shows it) and is sent as a full https link.
+    const links = [...text.matchAll(/(?<![\w.\/])(?:https?:\/\/)?((?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com\/in\/[\p{L}\p{N}%_-]+\/?)/giu)]
+      .map((match) => `https://${match[1]}`);
     let result;
     try {
       // Done for a role no longer on screen: the instruction must not linger in this one's box.
       const onStale = (ok) => {
         if (ok && say.value.trim() === text) say.value = "";
       };
-      result = links
+      result = links.length
         ? await call(api("/candidates/import"), { urls: links }, undefined, { onStale })
         : await call(api("/say"), { text }, undefined, { onStale });
     } finally {
@@ -1175,7 +1177,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   say.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    // Safari reports an input method's confirming Enter with keyCode 229 and isComposing false.
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
       event.preventDefault();
       $("#say-form").requestSubmit();
     }
