@@ -133,4 +133,85 @@ describe("the company graph", () => {
     assert.match(details, /Design: vendor audit/);
     assert.match(details, /Connected to/);
   });
+
+  test("the emergent graph says which question produced it, and names its relationships", async () => {
+    const emergent = {
+      nodes: [
+        { id: "u1", type: "Entity", label: "tidb" },
+        { id: "u2", type: "Entity", label: "jenkins migration step" },
+        { id: "u3", type: "EntityType", label: "database" },
+      ],
+      edges: [
+        { source: "u2", target: "u1", type: "blocked_by" },
+        { source: "u1", target: "u3", type: "is_a" },
+      ],
+      meta: {
+        source: "cognee",
+        questions: ["why did the TiDB migration slip"],
+        semantic_only: true,
+      },
+    };
+
+    const { base } = await start(knowledgeWithGraph([]));
+    const [html, script] = await Promise.all([
+      fetch(`${base}/graph`).then((response) => response.text()),
+      fetch(`${base}/graph/app.js`).then((response) => response.text()),
+    ]);
+    const dom = new JSDOM(html, { url: `${base}/graph`, runScripts: "outside-only" });
+    const { window } = dom;
+    Object.defineProperty(window, "fetch", {
+      value: async (url: string) =>
+        new Response(
+          JSON.stringify(String(url).includes("emergent") ? emergent : slice),
+          { status: 200 },
+        ),
+      configurable: true,
+    });
+    window.eval(script);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    const document = window.document;
+    const source = document.querySelector("#source") as HTMLSelectElement;
+    source.value = "emergent";
+    source.dispatchEvent(new window.Event("change"));
+    document.querySelector("#controls")!.dispatchEvent(new window.Event("submit"));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    // The slicing controls belong to the recorded graph only.
+    assert.equal((document.querySelector("#view-field") as HTMLElement).hidden, true);
+    assert.equal((document.querySelector("#legend-emergent") as HTMLElement).hidden, false);
+    assert.equal((document.querySelector("#legend-recorded") as HTMLElement).hidden, true);
+
+    // Where it came from has to be stated: a model wrote it, from a stored
+    // export, which makes it weaker evidence than the recorded graph.
+    const provenance = document.querySelector("#provenance") as HTMLElement;
+    assert.equal(provenance.hidden, false);
+    assert.match(provenance.textContent!, /why did the TiDB migration slip/);
+    assert.match(provenance.textContent!, /not a live reading/);
+
+    // Its own taxonomy gets its own shapes.
+    assert.equal(document.querySelectorAll(".node circle.n-entity").length, 2);
+    assert.equal(document.querySelectorAll(".node rect.n-kind").length, 1);
+
+    // The relationship name is the finding, so it survives into the table and
+    // the details instead of being flattened to "references".
+    assert.match(document.querySelector("#edge-rows")!.textContent!, /blocked by/);
+    const jenkins = [...document.querySelectorAll(".node")].find((node) =>
+      node.getAttribute("aria-label")?.includes("jenkins"),
+    )!;
+    jenkins.dispatchEvent(new window.Event("click"));
+    assert.match(document.querySelector("#details")!.textContent!, /blocked by/);
+  });
+
+  test("with nothing exported yet, the emergent route explains how to make one", async () => {
+    const { base } = await start(knowledgeWithGraph([]));
+    const response = await fetch(`${base}/api/v1/graph/emergent`);
+    if (response.status === 404) {
+      const body = (await response.json()) as { message: string };
+      assert.match(body.message, /cognee_memory\.py/);
+    } else {
+      // An export from an earlier run is also a valid state.
+      assert.equal(response.status, 200);
+    }
+  });
 });

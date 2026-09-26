@@ -23,6 +23,14 @@
 
   <form id="controls" class="controls">
     <div class="field">
+      <label for="source">Graph</label>
+      <select id="source">
+        <option value="recorded">What the company recorded</option>
+        <option value="emergent">What was read out of the writing</option>
+      </select>
+    </div>
+
+    <div class="field" id="view-field">
       <label for="view">Show</label>
       <select id="view">
         <option value="incidents">Artifacts caught up in incidents</option>
@@ -59,13 +67,15 @@
       </select>
     </div>
 
-    <div class="field checkbox">
+    <div class="field checkbox" id="actors-field">
       <input type="checkbox" id="include-actors" checked>
       <label for="include-actors">Include people</label>
     </div>
 
     <button type="submit" class="primary" id="draw">Draw</button>
   </form>
+
+  <p id="provenance" class="provenance" hidden></p>
 
   <main class="board">
     <section id="picture" class="picture" aria-labelledby="picture-heading">
@@ -79,11 +89,16 @@
       <p id="canvas-help" class="hint-line">
         Tab moves between items. Enter opens the details of the focused item.
       </p>
-      <ul class="legend">
+      <ul class="legend" id="legend-recorded">
         <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-artifact"/></svg>Artifact someone wrote</li>
         <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><rect x="-6" y="-6" width="12" height="12" class="n-event"/></svg>Something the simulation did</li>
         <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 7,0 0,7 -7,0" class="n-actor"/></svg>Person</li>
         <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-artifact incident"/></svg>Part of an incident</li>
+      </ul>
+      <ul class="legend" id="legend-emergent" hidden>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-entity"/></svg>Something named in the writing</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><rect x="-6" y="-6" width="12" height="12" class="n-kind"/></svg>A kind of thing</li>
+        <li>Every line is a relationship read out of the prose. Select an item to see them named.</li>
       </ul>
     </section>
 

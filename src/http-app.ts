@@ -39,6 +39,10 @@ const markedBrowserBundle = fileURLToPath(
 const domPurifyBrowserBundle = fileURLToPath(
   new URL("../node_modules/dompurify/dist/purify.min.js", import.meta.url),
 );
+/** Written by orgforge_kb/cognee_memory.py graph. Ignored by Git. */
+const emergentGraphExport = fileURLToPath(
+  new URL("../data/emergent-graph.json", import.meta.url),
+);
 
 const securityHeaders = {
   "content-security-policy":
@@ -481,6 +485,31 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       return reply.code(404).send({ message: "That selection matched no nodes." });
     }
     return reply.send(slice);
+  });
+
+  /**
+   * The emergent graph, as last exported by orgforge_kb/cognee_memory.py.
+   *
+   * It is served from a file rather than queried live: cognee keeps it in its own
+   * embedded stores, which this process cannot read, and extraction takes minutes
+   * anyway — far too long for a request. So the Python side writes an export and
+   * this hands it over, which also makes plain that the view is a snapshot of
+   * whatever was last extracted rather than something computed on demand.
+   */
+  app.get("/api/v1/graph/emergent", async (_request, reply) => {
+    try {
+      const content = await readFile(emergentGraphExport, "utf8");
+      return reply.type("application/json; charset=utf-8").send(content);
+    } catch (error) {
+      if ((error as { code?: string }).code !== "ENOENT") throw error;
+      return reply.code(404).send({
+        message:
+          "No emergent graph has been exported yet. Extract one first: " +
+          "python orgforge_kb/query_slice.py \"<question>\" -o slice.json, then " +
+          "python orgforge_kb/cognee_memory.py remember slice.json, then " +
+          "python orgforge_kb/cognee_memory.py graph.",
+      });
+    }
   });
 
   app.get("/api/v1/policy", async () => ({

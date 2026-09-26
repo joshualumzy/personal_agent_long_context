@@ -422,6 +422,42 @@ jira 工件 +人   37 节点 / 30 边   悬空边 0  truncated
 **从不传文档正文**(oracle 信息在正文里)。这与检索层只返回 artifact 的约束并不冲突:
 两者传的东西不同。
 
+### 两张图在同一页面
+
+顶部下拉可切换:
+
+| | 记录下来的(确定性) | 从文字里读出来的(涌现) |
+| :--- | :--- | :--- |
+| 数据来自 | Postgres,**实时查询** | cognee **上次导出的快照** |
+| 接口 | `GET /api/v1/graph?...` | `GET /api/v1/graph/emergent` |
+| 节点形状 | 圆=工件、方=事件、菱形=人 | 圆=文中提到的东西、方=某类事物 |
+| 关系 | 只有 `references` / `involves` 两种 | **近 200 种**,大多只出现一次 |
+
+**为什么涌现图走文件而不是实时查询**:cognee 的数据在它自己的嵌入式库里(Ladybug/LanceDB/SQLite),
+Node 进程读不了;而且抽取要几分钟,不可能放在一次请求里。所以 Python 侧
+`cognee_memory.py graph` 写出导出文件,服务端只负责递给前端 —— 这也让"**这是快照,不是实时读取**"
+这件事在界面上说得明白(页面有一行 provenance 说明它由哪个问题产生)。
+
+**关系名必须显示**:涌现图的价值就在那些关系名(`blocked_by`、`mitigated_by`、`has_risk`、
+`depends_on`),类型太多无法用颜色编码,所以表格和详情面板里**逐条写出关系名**,
+而不是压缩成"references"。
+
+**过滤掉 cognee 的脚手架**:导出默认剔除 `TextDocument`/`DocumentChunk`/`TextSummary` 节点
+和 `contains`/`is_a`/`made_from`/`is_part_of` 边 —— 它们占全部边的 **67%**,且不是从正文里
+读出来的。加 `--everything` 可保留。实测:403 节点 / 1020 边 → 过滤后 **262 节点 / 332 边**。
+
+**超出上限时按连接度取舍**:262 节点超过 120 的绘制上限,所以取**连接最多**的那些画,
+而不是取前 120 个 —— 否则恰好会丢掉让图有意义的枢纽。状态行说明"最不相连的 N 个未绘制,见表格",
+表格始终是全量。
+
+```bash
+.venv/bin/python orgforge_kb/query_slice.py "why did the TiDB migration slip" -o slice.json
+.venv/bin/python orgforge_kb/cognee_memory.py remember slice.json
+.venv/bin/python orgforge_kb/cognee_memory.py graph     # 写入 data/emergent-graph.json
+```
+
+没导出过时,接口返回 404 并给出上面这三条命令。
+
 ---
 
 ## 8. 待办
@@ -449,9 +485,9 @@ jira 工件 +人   37 节点 / 30 边   悬空边 0  truncated
 - [ ] **把切片选择接进检索路由** —— `query_slice.py` 的三条腿(全文 / 图 / 语义)
       正是 §2 路由要的构件,目前是独立 CLI,尚未接入 agent 的工具链。
 - [x] **确定性图的前端可视化** —— 见 §7.6。
-- [ ] **把涌现图也接进同一页面** —— `cognee_memory.py graph` 的输出已是同构 JSON
-      (`{nodes, edges, meta}`),但它存在本地 cognee 文件里,Node 侧读不到;
-      需要一条上传/读取导出文件的路径,才能与确定性图并排对比。
+- [x] **涌现图已接进同一页面** —— 见 §7.6。
+- [ ] **让涌现图跟着问题实时更新** —— 现在页面显示的是上次导出的快照。
+      抽取要分钟级,不能放进请求;需要一个后台任务队列,问完问题后自动重新抽取并导出。
 - [ ] 补充数据尚未接入:`domain_registry.json`、`simulation_snapshot.json`、
       `assignment_scores.parquet`、`datadog_metrics.parquet`
       (对应 `graph_edges` 里预留的 `owns_domain` / `triggered_by` / `part_of` 边)

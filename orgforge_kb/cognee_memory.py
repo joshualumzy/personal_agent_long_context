@@ -54,6 +54,40 @@ import _env  # noqa: F401  (imported for its side effect)
 # checkout is self-contained and easy to throw away.
 STORAGE = Path(__file__).resolve().parent / ".cognee"
 DATASET = "orgforge_slices"
+# The questions whose slices were extracted. The graph itself does not record
+# what it was built to answer, so remember notes it here and graph reads it back.
+QUESTIONS = STORAGE / "questions.json"
+# Where the web view looks. `data/` is already ignored by Git.
+WEB_EXPORT = Path(__file__).resolve().parent.parent / "data" / "emergent-graph.json"
+
+# cognee's own scaffolding, as opposed to what it extracted from the text.
+STRUCTURAL_NODES = {"TextDocument", "DocumentChunk", "TextSummary"}
+# Relationships cognee creates to hold its structure together, rather than
+# relationships it found in the prose. They are two thirds of all edges.
+STRUCTURAL_EDGES = {"contains", "is_a", "made_from", "is_part_of"}
+
+
+def note_question(question: str) -> None:
+    """Append a question to the record, keeping order and dropping repeats."""
+    existing = []
+    if QUESTIONS.is_file():
+        try:
+            existing = json.loads(QUESTIONS.read_text(encoding="utf-8"))
+        except (ValueError, OSError):
+            existing = []
+    if question not in existing:
+        existing.append(question)
+    QUESTIONS.write_text(json.dumps(existing, indent=2, ensure_ascii=False),
+                         encoding="utf-8")
+
+
+def recorded_questions() -> list[str]:
+    if not QUESTIONS.is_file():
+        return []
+    try:
+        return json.loads(QUESTIONS.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return []
 
 
 def configure() -> None:
@@ -123,6 +157,7 @@ async def remember(slice_path: Path) -> None:
     print(f"Question: {question}", file=sys.stderr)
     print(f"Extracting from {len(documents)} artifacts "
           f"({characters} characters)...", file=sys.stderr)
+    note_question(question)
 
     for index, document in enumerate(documents, start=1):
         await cognee.add(as_document(document), dataset_name=DATASET)
@@ -151,7 +186,7 @@ async def recall(question: str) -> None:
             result, indent=2, ensure_ascii=False, default=str))
 
 
-async def export_graph(output: str | None) -> None:
+async def export_graph(output: str | None, semantic_only: bool) -> None:
     """Write the extracted graph out, in the same shape as export_graph.py.
 
     Matching that shape means the emergent graph and the deterministic one can be
@@ -160,6 +195,11 @@ async def export_graph(output: str | None) -> None:
     Access control is on by default, so the graph has to be read through the
     owning user and dataset. Asking the graph engine directly returns nothing:
     the data is there, but scoped, and an unscoped read simply does not see it.
+
+    `semantic_only` drops cognee's own scaffolding — the document, chunk and
+    summary nodes, and the `contains`/`is_a` edges that hold them together. Those
+    are two thirds of the graph and none of it was found in the prose, so leaving
+    them in buries the extracted relationships in structure.
     """
     from cognee.modules.users.methods import get_default_user
     from cognee.modules.data.methods import get_authorized_existing_datasets
@@ -205,16 +245,34 @@ async def export_graph(output: str | None) -> None:
                if isinstance(v, (str, int, float, bool))},
         })
 
-    graph = {"nodes": nodes, "edges": edges,
-             "meta": {"source": "cognee", "dataset": DATASET,
-                      "node_count": len(nodes), "edge_count": len(edges)}}
+    if semantic_only:
+        nodes = [n for n in nodes if n["type"] not in STRUCTURAL_NODES]
+        edges = [e for e in edges if e["type"] not in STRUCTURAL_EDGES]
+        # Drop edges whose ends went with the structural nodes, then drop nodes
+        # left with nothing attached: an isolated dot says nothing.
+        present = {n["id"] for n in nodes}
+        edges = [e for e in edges if e["source"] in present and e["target"] in present]
+        attached = {e["source"] for e in edges} | {e["target"] for e in edges}
+        nodes = [n for n in nodes if n["id"] in attached]
+
+    graph = {
+        "nodes": nodes,
+        "edges": edges,
+        "meta": {
+            "source": "cognee",
+            "dataset": DATASET,
+            "questions": recorded_questions(),
+            "semantic_only": semantic_only,
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+        },
+    }
     payload = json.dumps(graph, indent=2, ensure_ascii=False, default=str)
-    if output:
-        Path(output).write_text(payload + "\n", encoding="utf-8")
-        print(f"Wrote {len(nodes)} nodes and {len(edges)} edges to {output}.",
-              file=sys.stderr)
-    else:
-        print(payload)
+    destination = Path(output) if output else WEB_EXPORT
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(payload + "\n", encoding="utf-8")
+    print(f"Wrote {len(nodes)} nodes and {len(edges)} edges to {destination}.",
+          file=sys.stderr)
 
 
 async def forget() -> None:
@@ -241,7 +299,11 @@ def main() -> int:
 
     graph_command = subcommands.add_parser(
         "graph", help="export the extracted graph as JSON")
-    graph_command.add_argument("-o", "--output")
+    graph_command.add_argument("-o", "--output",
+                               help=f"defaults to {WEB_EXPORT}, where /graph reads it")
+    graph_command.add_argument("--everything", action="store_true",
+                               help="keep cognee's own document, chunk and summary "
+                                    "scaffolding as well as what it extracted")
 
     subcommands.add_parser("forget", help="delete all extracted memory")
 
@@ -253,7 +315,7 @@ def main() -> int:
     elif arguments.command == "recall":
         asyncio.run(recall(arguments.question))
     elif arguments.command == "graph":
-        asyncio.run(export_graph(arguments.output))
+        asyncio.run(export_graph(arguments.output, not arguments.everything))
     elif arguments.command == "forget":
         asyncio.run(forget())
     return 0

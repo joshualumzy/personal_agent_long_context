@@ -19,7 +19,7 @@ const $ = (selector) => document.querySelector(selector);
 // caps the slice too, and this is the view agreeing with it.
 const MAX_DRAWN = 120;
 
-const state = { slice: null, selected: null };
+const state = { slice: null, selected: null, source: "recorded" };
 
 function svg(tag, attributes = {}) {
   const element = document.createElementNS(SVG, tag);
@@ -61,15 +61,23 @@ function shortLabel(node) {
 }
 
 function nodeKind(node) {
+  // The emergent graph brings its own taxonomy: cognee labels every extracted
+  // thing an Entity, and the categories it groups them under EntityType.
+  if (node.type === "Entity") return "entity";
+  if (node.type === "EntityType") return "kind";
   if (node.type === "actor") return "actor";
-  return node.category === "artifact" ? "artifact" : "event";
+  if (node.type === "document") return node.category === "artifact" ? "artifact" : "event";
+  return "entity";
 }
 
 function describeKind(node) {
-  const kind = nodeKind(node);
-  if (kind === "actor") return "Person";
-  if (kind === "event") return "Simulation event";
-  return node.isIncident ? "Artifact, part of an incident" : "Artifact";
+  switch (nodeKind(node)) {
+    case "actor": return "Person";
+    case "event": return "Simulation event";
+    case "entity": return "Something named in the writing";
+    case "kind": return "A kind of thing";
+    default: return node.isIncident ? "Artifact, part of an incident" : "Artifact";
+  }
 }
 
 /**
@@ -159,10 +167,35 @@ function shapeFor(node) {
   if (kind === "event") {
     return svg("rect", { x: -6, y: -6, width: 12, height: 12, class: "shape n-event" });
   }
+  if (kind === "kind") {
+    return svg("rect", { x: -6, y: -6, width: 12, height: 12, class: "shape n-kind" });
+  }
+  if (kind === "entity") {
+    return svg("circle", { r: 7, class: "shape n-entity" });
+  }
   return svg("circle", {
     r: 7,
     class: `shape n-artifact${node.isIncident ? " incident" : ""}`,
   });
+}
+
+/**
+ * When a slice is larger than can be drawn, keep the best-connected nodes.
+ * Taking the first N instead would drop exactly the hubs that make the picture
+ * mean anything, and the emergent graph is routinely twice the cap.
+ */
+function mostConnected(nodes, edges, cap) {
+  if (nodes.length <= cap) return nodes;
+  const degree = new Map(nodes.map((node) => [node.id, 0]));
+  for (const edge of edges) {
+    if (degree.has(edge.source)) degree.set(edge.source, degree.get(edge.source) + 1);
+    if (degree.has(edge.target)) degree.set(edge.target, degree.get(edge.target) + 1);
+  }
+  return [...nodes]
+    .sort((left, right) =>
+      (degree.get(right.id) ?? 0) - (degree.get(left.id) ?? 0) ||
+      left.id.localeCompare(right.id))
+    .slice(0, cap);
 }
 
 function drawPicture() {
@@ -171,7 +204,7 @@ function drawPicture() {
   canvas.replaceChildren(title);
 
   const { nodes, edges } = state.slice;
-  const drawn = nodes.slice(0, MAX_DRAWN);
+  const drawn = mostConnected(nodes, edges, MAX_DRAWN);
   const visible = new Set(drawn.map((node) => node.id));
   const positions = layout(drawn, edges);
 
@@ -228,7 +261,7 @@ function drawTable() {
       "tr", {},
       h("td", {}, from?.label || edge.source),
       h("td", { class: "kind" }, from ? describeKind(from) : "—"),
-      h("td", { class: "kind" }, edge.type === "involves" ? "involves" : "references"),
+      h("td", { class: "kind" }, edge.type.replace(/_/g, " ")),
       h("td", {}, to?.label || edge.target),
     );
   });
@@ -251,13 +284,15 @@ function select(id) {
   const neighbours = [];
   for (const edge of edges) {
     if (edge.source === id && byId.has(edge.target)) {
-      neighbours.push({ node: byId.get(edge.target), direction: "to" });
+      neighbours.push({ node: byId.get(edge.target), direction: "to", type: edge.type });
     } else if (edge.target === id && byId.has(edge.source)) {
-      neighbours.push({ node: byId.get(edge.source), direction: "from" });
+      neighbours.push({ node: byId.get(edge.source), direction: "from", type: edge.type });
     }
   }
 
-  const facts = [["Kind", describeKind(node)], ["Identifier", node.id]];
+  const facts = [["Kind", describeKind(node)]];
+  // A cognee node id is a uuid, which tells a reader nothing; a source id does.
+  if (state.source === "recorded") facts.push(["Identifier", node.id]);
   if (node.sourceType) facts.push(["Type", node.sourceType]);
   if (node.department) facts.push(["Department", node.department]);
   if (typeof node.simulationDay === "number") facts.push(["Day", String(node.simulationDay)]);
@@ -274,10 +309,15 @@ function select(id) {
     neighbours.length
       ? h("ul", { class: "neighbours" },
           h("li", { class: "kind" }, `Connected to ${neighbours.length}:`),
-          ...neighbours.slice(0, 12).map(({ node: other, direction }) =>
+          // The relationship is named on every row. In the emergent graph that
+          // name is the finding — "blocked by", "mitigated by", "has risk" — and
+          // it is lost if the row only says which two things are joined.
+          ...neighbours.slice(0, 14).map(({ node: other, direction, type }) =>
             h("li", {},
+              h("span", { class: "kind" },
+                `${direction === "to" ? "→ " : "← "}${type.replace(/_/g, " ")} `),
               h("button", { type: "button", onclick: () => focusNode(other.id) },
-                `${direction === "to" ? "→ " : "← "}${other.label || other.id}`),
+                other.label || other.id),
             )),
         )
       : h("p", { class: "hint-line" }, "Nothing else in this view connects to it."),
@@ -298,6 +338,8 @@ function showError(message) {
 }
 
 function request() {
+  if ($("#source").value === "emergent") return "/api/v1/graph/emergent";
+
   const view = $("#view").value;
   const parameters = new URLSearchParams();
   if ($("#include-actors").checked) parameters.set("includeActors", "true");
@@ -316,11 +358,33 @@ function request() {
   return `/api/v1/graph?${parameters}`;
 }
 
+/** What produced this drawing. Only the emergent graph is a stored snapshot. */
+function showProvenance() {
+  const line = $("#provenance");
+  if (state.source !== "emergent") {
+    line.hidden = true;
+    return;
+  }
+  const meta = state.slice?.meta ?? {};
+  const questions = Array.isArray(meta.questions) ? meta.questions : [];
+  line.textContent = [
+    questions.length
+      ? `Read out of the writing while answering: ${questions.map((q) => `“${q}”`).join("; ")}.`
+      : "Read out of the writing by a model.",
+    meta.semantic_only === false
+      ? "Includes the extractor's own scaffolding."
+      : "Scaffolding removed, so every line here was found in the prose.",
+    "This is the last export, not a live reading.",
+  ].join(" ");
+  line.hidden = false;
+}
+
 async function draw() {
   const button = $("#draw");
   button.disabled = true;
   $("#error").hidden = true;
   $("#status-line").textContent = "Loading…";
+  state.source = $("#source").value;
 
   try {
     const response = await fetch(request());
@@ -331,13 +395,14 @@ async function draw() {
     state.slice = await response.json();
     drawPicture();
     drawTable();
+    showProvenance();
 
     const { nodes, edges } = state.slice;
     const hidden = Math.max(nodes.length - MAX_DRAWN, 0);
     $("#status-line").textContent = [
       `${nodes.length} items, ${edges.length} relationships`,
       state.slice.truncated ? "trimmed to fit" : null,
-      hidden ? `${hidden} not drawn — see the table` : null,
+      hidden ? `${hidden} of the least connected not drawn — see the table` : null,
     ].filter(Boolean).join(" · ");
 
     $("#details").replaceChildren(
@@ -352,10 +417,16 @@ async function draw() {
 }
 
 function syncFields() {
+  const emergent = $("#source").value === "emergent";
   const view = $("#view").value;
-  $("#seed-field").hidden = view !== "chain";
-  $("#depth-field").hidden = view !== "chain";
-  $("#type-field").hidden = view !== "type";
+  // The emergent graph is one stored export; none of the slicing applies to it.
+  $("#view-field").hidden = emergent;
+  $("#actors-field").hidden = emergent;
+  $("#seed-field").hidden = emergent || view !== "chain";
+  $("#depth-field").hidden = emergent || view !== "chain";
+  $("#type-field").hidden = emergent || view !== "type";
+  $("#legend-recorded").hidden = emergent;
+  $("#legend-emergent").hidden = !emergent;
 }
 
 function showTab(which) {
@@ -368,6 +439,7 @@ function showTab(which) {
   $("#tab-table").setAttribute("aria-pressed", String(!picture));
 }
 
+$("#source").addEventListener("change", syncFields);
 $("#view").addEventListener("change", syncFields);
 $("#controls").addEventListener("submit", (event) => {
   event.preventDefault();

@@ -101,6 +101,16 @@ h2 { margin: 0 0 8px; font-family: Georgia, "Songti SC", serif; font-size: 1.05r
 .n-artifact.incident { fill: var(--danger); }
 .n-event { fill: var(--ochre); }
 .n-actor { fill: var(--aqua); }
+/* The emergent graph has its own taxonomy, so its own pair of shapes. */
+.n-entity { fill: var(--aqua); }
+.n-kind { fill: var(--ochre); }
+
+/* Says where the drawing came from, which matters most for the emergent graph:
+   it is a snapshot of the last extraction, not something computed just now. */
+.provenance {
+  width: min(1320px, calc(100% - 32px)); margin: 10px auto 0;
+  color: var(--muted); font-size: .82rem;
+}
 
 .edge { stroke: var(--edge); stroke-opacity: .6; stroke-width: 1.2; fill: none; }
 .edge.involves { stroke-dasharray: 3 3; }
