@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { after, describe, test } from "node:test";
 import type { AddressInfo } from "node:net";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { JSDOM } from "jsdom";
 import { DeterministicMemoryProvider } from "../src/adapters/deterministic-memory.js";
 import { buildApp } from "../src/http-app.js";
+import { EmergentMemory } from "../src/emergent-memory.js";
 import type {
   CompanyKnowledge,
   GraphSlice,
@@ -132,6 +136,10 @@ describe("the company graph", () => {
     const details = document.querySelector("#details")!.textContent!;
     assert.match(details, /Design: vendor audit/);
     assert.match(details, /Connected to/);
+
+    // The page polls on an interval, and jsdom timers are real Node timers, so
+    // the window has to be closed or the test process never exits.
+    window.close();
   });
 
   test("the emergent graph says which question produced it, and names its relationships", async () => {
@@ -201,6 +209,8 @@ describe("the company graph", () => {
     )!;
     jenkins.dispatchEvent(new window.Event("click"));
     assert.match(document.querySelector("#details")!.textContent!, /blocked by/);
+
+    window.close();
   });
 
   test("with nothing exported yet, the emergent route explains how to make one", async () => {
@@ -213,5 +223,53 @@ describe("the company graph", () => {
       // An export from an earlier run is also a valid state.
       assert.equal(response.status, 200);
     }
+  });
+
+  test("without extraction configured, the status route says so instead of pretending", async () => {
+    const { base } = await start(knowledgeWithGraph([]));
+    const response = await fetch(`${base}/api/v1/graph/emergent/status`);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { enabled: boolean; running: string | null };
+    assert.equal(body.enabled, false);
+    assert.equal(body.running, null);
+  });
+
+  test("with extraction configured, the status route reports what is in flight", async () => {
+    // Held open so the question is still running when the route is asked, then
+    // released: a promise that never settles would keep the worker busy for the
+    // rest of the process.
+    let release: () => void = () => {};
+    const held = new Promise<{ code: number; stderr: string }>((resolve) => {
+      release = () => resolve({ code: 0, stderr: "" });
+    });
+
+    const memory = new EmergentMemory({
+      python: "/nonexistent/python",
+      projectRoot: "/nonexistent",
+      questionsFile: join(mkdtempSync(join(tmpdir(), "em-route-")), "questions.json"),
+      run: () => held,
+    });
+    memory.enqueue("why did the TiDB migration slip");
+
+    const app = buildApp({
+      memory: new DeterministicMemoryProvider(),
+      companyKnowledge: knowledgeWithGraph([]),
+      emergentMemory: memory,
+    });
+    started.push(app);
+    await app.listen({ host: "127.0.0.1", port: 0 });
+    const { port } = app.server.address() as AddressInfo;
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/graph/emergent/status`);
+    const body = (await response.json()) as {
+      enabled: boolean;
+      running: string | null;
+      queued: number;
+    };
+    assert.equal(body.enabled, true);
+    assert.equal(body.running, "why did the TiDB migration slip");
+    assert.equal(body.queued, 0);
+
+    release();
   });
 });

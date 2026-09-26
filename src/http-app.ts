@@ -19,6 +19,7 @@ import type { ConversationStore } from "./conversation-domain.js";
 import type { GmailClient } from "./recruiting/gmail.js";
 import { registerRecruitingRoutes } from "./recruiting/routes.js";
 import type { RoleBoard } from "./recruiting/roles.js";
+import type { EmergentMemory } from "./emergent-memory.js";
 
 export interface BuildAppOptions extends ApplicationOptions {
   memory: MemoryProvider;
@@ -30,6 +31,11 @@ export interface BuildAppOptions extends ApplicationOptions {
   logger?: FastifyServerOptions["logger"];
   /** The recruiting direction (S3). Omitted, its routes are not registered. */
   recruiting?: { board: RoleBoard; gmail: GmailClient | null };
+  /**
+   * Keeps the emergent graph following the questions asked. Omitted, questions
+   * are answered exactly as before and the graph stays at its last export.
+   */
+  emergentMemory?: EmergentMemory;
 }
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
@@ -265,6 +271,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
       const durationMs = Date.now() - turnStartTime;
       const modelUsed = requestedModel === "sonnet" ? "sonnet" : "soclaas";
+
+      // The answer is already settled, so extraction can happen afterwards. It
+      // reads prose with a model and takes minutes; queueing it here is what
+      // lets the emergent graph grow around the questions people actually ask.
+      options.emergentMemory?.enqueue(message);
 
       if (options.conversationStore && conversationId) {
         await options.conversationStore.appendMessage({
@@ -510,6 +521,24 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           "python orgforge_kb/cognee_memory.py graph.",
       });
     }
+  });
+
+  /**
+   * Whether an extraction is in flight, so the view can say the graph is about
+   * to change and reload it once it has.
+   */
+  app.get("/api/v1/graph/emergent/status", async (_request, reply) => {
+    if (!options.emergentMemory) {
+      return reply.send({
+        enabled: false,
+        running: null,
+        queued: 0,
+        extracted: 0,
+        lastFinishedAt: null,
+        lastError: null,
+      });
+    }
+    return reply.send({ enabled: true, ...options.emergentMemory.status() });
   });
 
   app.get("/api/v1/policy", async () => ({

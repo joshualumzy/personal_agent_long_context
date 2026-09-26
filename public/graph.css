@@ -58,6 +58,8 @@ h2 { margin: 0 0 8px; font-family: Georgia, "Songti SC", serif; font-size: 1.05r
 
 .banner { width: min(1320px, calc(100% - 32px)); margin: 8px auto; padding: 10px 14px; border-radius: var(--radius-control); }
 .banner.error { background: #f6e3e0; color: var(--danger); }
+/* Work happening elsewhere: stated, not alarming. */
+.banner.working { background: #f5ecd9; color: #6b4e14; }
 
 /* Controls */
 .controls {

@@ -19,7 +19,7 @@ const $ = (selector) => document.querySelector(selector);
 // caps the slice too, and this is the view agreeing with it.
 const MAX_DRAWN = 120;
 
-const state = { slice: null, selected: null, source: "recorded" };
+const state = { slice: null, selected: null, source: "recorded", extraction: null };
 
 function svg(tag, attributes = {}) {
   const element = document.createElementNS(SVG, tag);
@@ -374,9 +374,47 @@ function showProvenance() {
     meta.semantic_only === false
       ? "Includes the extractor's own scaffolding."
       : "Scaffolding removed, so every line here was found in the prose.",
-    "This is the last export, not a live reading.",
+    state.extraction?.enabled
+      ? "It grows as questions are asked."
+      : "This is the last export, not a live reading.",
   ].join(" ");
   line.hidden = false;
+}
+
+/**
+ * Follow extraction while the emergent graph is on screen.
+ *
+ * Extraction is queued when a question is answered elsewhere and takes minutes,
+ * so the drawing here goes stale without warning. Polling lets the page say an
+ * extraction is under way, and reload itself once the export has been rewritten.
+ */
+async function pollExtraction() {
+  if (state.source !== "emergent") return;
+  try {
+    const response = await fetch("/api/v1/graph/emergent/status");
+    if (!response.ok) return;
+    const status = await response.json();
+    const previous = state.extraction;
+    state.extraction = status;
+
+    const note = $("#extraction");
+    if (status.running) {
+      note.textContent = `Reading the writing about “${status.running}”… this takes a few minutes.`;
+      note.hidden = false;
+    } else if (status.lastError) {
+      note.textContent = `The last extraction did not finish: ${status.lastError}`;
+      note.hidden = false;
+    } else {
+      note.hidden = true;
+    }
+
+    // A finished run means the export on disk has changed underneath us.
+    if (previous && previous.lastFinishedAt !== status.lastFinishedAt && !status.running) {
+      await draw();
+    }
+  } catch {
+    // A failed poll is not worth reporting; the next one may succeed.
+  }
 }
 
 async function draw() {
@@ -439,7 +477,10 @@ function showTab(which) {
   $("#tab-table").setAttribute("aria-pressed", String(!picture));
 }
 
-$("#source").addEventListener("change", syncFields);
+$("#source").addEventListener("change", () => {
+  syncFields();
+  if ($("#source").value !== "emergent") $("#extraction").hidden = true;
+});
 $("#view").addEventListener("change", syncFields);
 $("#controls").addEventListener("submit", (event) => {
   event.preventDefault();
@@ -450,3 +491,7 @@ $("#tab-table").addEventListener("click", () => showTab("table"));
 
 syncFields();
 draw();
+// Slow on purpose: extraction takes minutes, so asking more often only adds
+// requests without learning anything sooner.
+setInterval(pollExtraction, 10_000);
+pollExtraction();

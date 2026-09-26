@@ -1,4 +1,6 @@
 import { loadEnvFile } from "node:process";
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { DeterministicMemoryProvider } from "./adapters/deterministic-memory.js";
 import { LettaMemoryProvider } from "./adapters/letta-memory.js";
 import type { MemoryProvider } from "./domain.js";
@@ -11,6 +13,7 @@ import { PostgresCompanyKnowledge } from "./adapters/postgres-company-knowledge.
 import { PostgresConversationStore } from "./adapters/postgres-conversations.js";
 import { SoCLaaSCompanyAgent } from "./soclaas-company-agent.js";
 import { embeddingProviderFromEnvironment } from "./embeddings.js";
+import { EmergentMemory } from "./emergent-memory.js";
 
 try {
   loadEnvFile();
@@ -60,8 +63,7 @@ const companyAgent = new SoCLaaSCompanyAgent(companyKnowledge, {
   ...agentSkills,
 });
 
-const gatewayUrl = (process.env.LLM_GATEWAY_URL || process.env.LM_GATEWAY_URL)?.replace(/\/$/, "");
-const gatewayApiKey = process.env.LLM_GATEWAY_API_KEY || process.env.LM_GATEWAY_API_KEY;
+const gatewayUrl = (process.env.LLM_GATEWAY_URL || process.env.LM_GATEWAY_URL)?.replace(/\/$/, "");const gatewayApiKey = process.env.LLM_GATEWAY_API_KEY || process.env.LM_GATEWAY_API_KEY;
 const gatewayModel = process.env.LLM_MODEL ?? "global.anthropic.claude-sonnet-4-5-20250929-v1:0";
 
 const sonnetAgent =
@@ -79,6 +81,26 @@ const companyAgents: Record<string, SoCLaaSCompanyAgent> = {
   ...(sonnetAgent ? { sonnet: sonnetAgent } : {}),
 };
 
+/**
+ * Extraction for the emergent graph, if this checkout can run it.
+ *
+ * It needs the project virtualenv and an LLM for cognee, so it stays off unless
+ * both are present: without it, questions are answered exactly as before and
+ * /graph simply shows the last export.
+ */
+const pythonBin = process.env.PYTHON_BIN ?? fileURLToPath(new URL("../.venv/bin/python", import.meta.url));
+const projectRoot = fileURLToPath(new URL("../", import.meta.url));
+const emergentMemory =
+  process.env.EMERGENT_MEMORY !== "off" && process.env.LLM_API_KEY && existsSync(pythonBin)
+    ? new EmergentMemory({
+        python: pythonBin,
+        projectRoot,
+        questionsFile: fileURLToPath(
+          new URL("../orgforge_kb/.cognee/questions.json", import.meta.url),
+        ),
+      })
+    : undefined;
+
 const app = buildApp({
   memory,
   companyAgent,
@@ -87,6 +109,7 @@ const app = buildApp({
   conversationStore,
   logger: true,
   ...(recruiting ? { recruiting: { board: recruiting.board, gmail: recruiting.gmail } } : {}),
+  ...(emergentMemory ? { emergentMemory } : {}),
 });
 logRecruitingFailure = (context, error) =>
   app.log.error(
