@@ -87,7 +87,7 @@ function retryAfterMs(header: string | null | undefined): number {
  * Any kana makes it Japanese, which is not Chinese.
  */
 function isChinese(text: string): boolean {
-  const plain = text.replace(/\[source:[^\]]*\]/gi, "").replace(/```[\s\S]*?```/g, "");
+  const plain = text.replace(/\[sources?\s*[:：][^\]]*\]/gi, "").replace(/```[\s\S]*?```/g, "");
   if (/[\u3040-\u30ff]/.test(plain)) return false;
   const han = plain.match(/[\u3400-\u9fff]/g)?.length ?? 0;
   const words = plain.match(/[A-Za-z]+/g)?.length ?? 0;
@@ -107,7 +107,7 @@ function withoutRepeats(text: string): string {
 
 /** Text compared without citations, spacing or case. */
 function gist(text: string): string {
-  return text.replace(/\[source:[^\]]*\]/gi, "").replace(/[\s\p{P}]+/gu, " ").trim().toLowerCase();
+  return text.replace(/\[sources?\s*[:：][^\]]*\]/gi, "").replace(/[\s\p{P}]+/gu, " ").trim().toLowerCase();
 }
 
 /** Joins what the model said beside its panel with its final reply, dropping what the reply repeats. */
@@ -243,7 +243,7 @@ function asksForChinese(question: string): boolean {
 
 /** Removes [source:ID] tags naming nothing retrieved, in any letter case, keeping real citations. */
 function withoutStrayTags(text: string, retrieved: ReadonlyMap<string, unknown>): string {
-  return text.replace(/(\s*)\[source:\s*([^\]]*)\]/gi, (_tag, space: string, group: string) => {
+  return text.replace(/(\s*)\[sources?\s*[:：]\s*([^\]]*)\]/gi, (_tag, space: string, group: string) => {
     const real = idsIn(group).filter((id) => retrieved.has(id));
     return real.length ? `${space}[source:${real.join(", ")}]` : "";
   });
@@ -265,7 +265,7 @@ function statesNoFacts(answer: string): boolean {
     .replace(EMOJI, "")
     .replace(/^\s*(just to clarify|quick question|to confirm|确认一下|想确认一下|请问)\s*[:：]\s*/i, "")
     .trim();
-  if (!text || text.length > 300 || /\d|\[source:|[:：;；]/.test(text)) return false;
+  if (!text || text.length > 300 || /\d|\[sources?\s*[:：]|[:：;；]/.test(text)) return false;
   // Lines count as sentences too, so a bullet list cannot hide inside the closing question.
   const sentences = text
     .split(/(?<=[.!?。！？])\s*|\n+/)
@@ -327,10 +327,14 @@ function compactEvidence(items: Evidence[]): string {
 }
 
 /** A citation tag, which may hold several ids and spaces: "[source:JIRA-1]", "[source: JIRA-1, CONF-2]". */
-const CITATION_TAG = /\[source:\s*([^\]]*)\]/gi;
+const CITATION_TAG = /\[sources?\s*[:：]\s*([^\]]*)\]/gi;
 
+/** The ids in a tag's body: "JIRA-1, source:CONF-2" is JIRA-1 and CONF-2. */
 function idsIn(group: string): string[] {
-  return group.split(/[\s,;，；]+/).filter(Boolean);
+  return group
+    .split(/[\s,;，；]+/)
+    .map((id) => id.replace(/^sources?[:：]/i, ""))
+    .filter(Boolean);
 }
 
 function citedIds(answer: string): string[] {
@@ -914,7 +918,9 @@ export class SoCLaaSCompanyAgent {
           } catch (error) {
             content = `Error: ${error instanceof Error ? error.message : String(error)} Fix the arguments or choose another tool.`;
           }
-          previous = { key, content };
+          // A failed call is not remembered, so the model may try it again.
+          const failed = content.startsWith("Error:") || /^\s*\{\s*"error"\s*:/.test(content);
+          previous = failed ? null : { key, content };
           messages.push({ role: "tool", tool_call_id: call.id, content });
         }
       }

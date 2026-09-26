@@ -85,6 +85,12 @@ function withoutQuote(body: string): string {
   const cut = lines.findIndex(
     (line, index) =>
       /^On .+wrote:$/.test(line.trim()) ||
+      // Gmail wraps a long attribution: "On Mon … <x@y.com>" then "wrote:" on the next line or two.
+      (/^On .+/.test(line.trim()) && lines.slice(index + 1, index + 3).some((next) => /wrote:$/.test(next.trim()))) ||
+      // Chinese clients: "…于2026年9月21日写道：", "-----原始邮件-----", and Outlook's 发件人/发送时间 block.
+      /写道[:：]$/.test(line.trim()) ||
+      /^-{2,}\s*原始邮件/.test(line.trim()) ||
+      (/^\*?发件人[:：]/.test(line.trim()) && lines.slice(index + 1, index + 3).some((next) => /^\*?(发送时间|日期|时间)[:：]/.test(next.trim()))) ||
       /^>/.test(line) ||
       /^-{2,}\s*Original Message/i.test(line) ||
       /^_{5,}\s*$/.test(line.trim()) ||

@@ -147,7 +147,12 @@ export function registerRecruitingRoutes(
     }
   });
 
-  app.post(role("/say"), handle(async (body, _params, service) => service.say(field(body, "text"))));
+  app.post(
+    role("/say"),
+    handle(async (body, _params, service) =>
+      service.say(field(body, "text"), isRecord(body) && typeof body.candidateId === "string" ? body.candidateId : null),
+    ),
+  );
 
   app.post(
     role("/criteria/draft"),

@@ -631,7 +631,8 @@ export class RecruitingService {
   // -------------------------------------------------------------- talking
 
   /** One entry point for anything the founder types or dictates. */
-  async say(text: string): Promise<SayResult> {
+  /** `focusedCandidateId` is the person whose details the founder has open, if any ("this one"). */
+  async say(text: string, focusedCandidateId: string | null = null): Promise<SayResult> {
     const said = text.trim().slice(0, MAX_REQUIREMENT);
     if (!said) throw new RecruitingError("invalid_request", "Say something first.");
     const state = await this.current();
@@ -644,7 +645,7 @@ export class RecruitingService {
       id: candidate.profile.id,
       name: candidate.profile.name,
     }));
-    const instruction = await interpret(this.deps.model, said, state.criteria, candidates);
+    const instruction = await interpret(this.deps.model, said, state.criteria, candidates, focusedCandidateId);
     switch (instruction.intent) {
       case "criteria":
         return this.changeCriteria(instruction.operations, said);
@@ -1335,7 +1336,7 @@ export class RecruitingService {
         message.direction === "inbound" &&
         ((message.channel === "email" && message.text === text && message.realAt === at) ||
           (message.channel !== "email" &&
-            sameRelayedText(message.text, text) &&
+            sameRelayedText(message.text, text, message.channel === "linkedin") &&
             Boolean(at && message.realAt && Date.parse(message.realAt) >= Date.parse(at))));
       if (channel === "email" ? candidate.messages.some(emailAgain) : since.some(relayedAgain)) return "duplicate";
       candidate.messages.push({

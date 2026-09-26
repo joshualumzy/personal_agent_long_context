@@ -644,3 +644,23 @@ one backend finding not adopted. All others fixed.
   without https://; clicking a candidate in a panel no longer keeps the
   composer from getting focus back (only a focused text box inside a panel
   counts), and such a panel folds as before.
+
+## Round 12 (2026-09-26)
+
+13 confirmed bugs (backend 4, chat agent 5, front end 4); four rated
+medium, the rest low. All fixed.
+
+- Backend: the status's not-in-view list puts people the founder added,
+  contacted or closed first (up to 60), so "draft to Zoe anyway" works in a
+  big pool; a Gmail attribution wrapped over two lines is cut; Chinese mail
+  clients' quote headers (发件人/发送时间, 写道：, 原始邮件) are cut; an
+  email is compared with an earlier paste as written, not as a preview.
+- Chat agent: citations also read as "[sources: …]", with a full-width
+  colon, or with "source:" repeated per id; a failed tool call is not
+  remembered, so the model may retry it.
+- Front end: a panel holding typed text is not folded when a new panel
+  arrives; the hiring box sends the open candidate with the instruction, so
+  "Pass on this one" names who (backend `say` and the interpreter take it);
+  LinkedIn slugs with combining marks (Thai, Devanagari) stay whole; a
+  grouped citation with a trailing separator becomes buttons; blocked
+  browser storage no longer breaks the chat page.

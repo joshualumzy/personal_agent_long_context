@@ -248,7 +248,9 @@ export function statusForModel(snapshot: Snapshot) {
     ...(() => {
       const others = snapshot.candidates
         .filter((candidate) => candidate.stage === "closed" || candidate.tier === "out")
-        .slice(0, 40)
+        // People the founder added, contacted or closed come first; the rest only fill up to 60.
+        .sort((a, b) => Number(b.origin === "referral" || b.stage === "closed" || b.messages.length > 0) - Number(a.origin === "referral" || a.stage === "closed" || a.messages.length > 0))
+        .slice(0, 60)
         .map((candidate) => ({
           id: candidate.id,
           name: candidate.profile.name,

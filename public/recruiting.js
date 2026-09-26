@@ -977,7 +977,7 @@ function outreachPanel(candidate) {
       prospeo: "Found by Prospeo",
       founder: "Entered by you",
     }[candidate.contact?.provider];
-    const gmailButton = h("button", { type: "button", class: "primary", disabled: locked ?? (!candidate.contact && !email.value ? true : undefined), title: candidate.contact ? undefined : "Add an email address first", onclick: sendAfterSave(false) }, "Send from Gmail");
+    const gmailButton = h("button", { type: "button", class: "primary", disabled: locked ?? (!candidate.contact && !email.value.trim() ? true : undefined), title: candidate.contact ? undefined : "Add an email address first", onclick: sendAfterSave(false) }, "Send from Gmail");
     // Typing an address makes Gmail sending possible right away.
     email.addEventListener("input", () => {
       gmailButton.disabled = sendingFor.has(sendKey) || (!candidate.contact && !email.value.trim());
@@ -1148,7 +1148,8 @@ document.addEventListener("DOMContentLoaded", () => {
     // A slug holds letters (any script), digits, %, _ and -: punctuation right after a link
     // ("…/in/alice-tan，她很合适") is not part of it. "linkedin.com/in/x" without https:// counts
     // too (it is how LinkedIn's contact info shows it) and is sent as a full https link.
-    const links = [...text.matchAll(/(?<![\w.\/])(?:https?:\/\/)?((?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com\/in\/[\p{L}\p{N}%_-]+\/?)/giu)]
+    // Marks (\p{M}) too: Thai and Devanagari names need them; NFC keeps "josé" whole.
+    const links = [...text.normalize("NFC").matchAll(/(?<![\w.\/])(?:https?:\/\/)?((?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com\/in\/[\p{L}\p{M}\p{N}%_-]+\/?)/giu)]
       .map((match) => `https://${match[1]}`);
     let result;
     try {
@@ -1158,7 +1159,8 @@ document.addEventListener("DOMContentLoaded", () => {
       };
       result = links.length
         ? await call(api("/candidates/import"), { urls: links }, undefined, { onStale })
-        : await call(api("/say"), { text }, undefined, { onStale });
+        // The open drawer tells the agent who "this one" is.
+        : await call(api("/say"), { text, ...(selectedId ? { candidateId: selectedId } : {}) }, undefined, { onStale });
     } finally {
       saying = false;
       fit();

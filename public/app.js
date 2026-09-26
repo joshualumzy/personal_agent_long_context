@@ -31,7 +31,25 @@ const modelSelectorBtn = document.querySelector("#model-selector-btn");
 const modelDropdownMenu = document.querySelector("#model-dropdown-menu");
 const selectedModelName = document.querySelector("#selected-model-name");
 const modelDotIcon = document.querySelector("#model-dot-icon");
-let activeModel = localStorage.getItem("sme_selected_model") || "soclaas";
+/** Browser storage can be blocked (private windows, strict settings); the page works without it. */
+const stored = {
+  get(key) {
+    try {
+      return localStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch {
+      // not remembered this time
+    }
+  },
+};
+
+let activeModel = stored.get("sme_selected_model") || "soclaas";
 
 let activeConversationId = null;
 // Bumped whenever another conversation is put on screen; an answer or history asked for
@@ -155,7 +173,7 @@ function setAnswerHtml(container, sanitizedHtml) {
     if (!walker.currentNode.parentElement?.closest("a")) texts.push(walker.currentNode);
   }
   // One tag may hold several ids: "[source:JIRA-1, CONF-2]" becomes a button for each.
-  const pattern = /\[source:\s*([A-Za-z0-9._:-]+(?:[\s,;，；]+[A-Za-z0-9._:-]+)*)\s*\]/gi;
+  const pattern = /\[sources?\s*[:：]\s*([A-Za-z0-9._:：-]+(?:[\s,;，；]+[A-Za-z0-9._:：-]+)*)[\s,;，；]*\]/gi;
   for (const node of texts) {
     const text = node.nodeValue;
     pattern.lastIndex = 0;
@@ -165,7 +183,7 @@ function setAnswerHtml(container, sanitizedHtml) {
     let at = 0;
     for (const match of text.matchAll(pattern)) {
       pieces.append(text.slice(at, match.index));
-      for (const id of match[1].split(/[\s,;，；]+/).filter(Boolean)) {
+      for (const id of match[1].split(/[\s,;，；]+/).map((part) => part.replace(/^sources?[:：]/i, "")).filter(Boolean)) {
         const button = document.createElement("button");
         button.type = "button";
         button.className = "inline-citation";
@@ -210,7 +228,7 @@ function setSidebarCollapsed(collapsed) {
     sidebarOverlay.hidden = collapsed || !isMobile();
   }
   try {
-    localStorage.setItem("sme_sidebar_collapsed", String(collapsed));
+    stored.set("sme_sidebar_collapsed", String(collapsed));
   } catch (_) {}
 }
 
@@ -245,7 +263,7 @@ document.addEventListener("keydown", (e) => {
 
 // Restore sidebar state from localStorage or default on mobile
 try {
-  const savedState = localStorage.getItem("sme_sidebar_collapsed");
+  const savedState = stored.get("sme_sidebar_collapsed");
   if (savedState !== null) {
     setSidebarCollapsed(savedState === "true");
   } else if (isMobile()) {
@@ -257,7 +275,7 @@ try {
 function updateModelSelectorUI(modelId) {
   activeModel = modelId;
   try {
-    localStorage.setItem("sme_selected_model", modelId);
+    stored.set("sme_selected_model", modelId);
   } catch (_) {}
 
   if (selectedModelName) {
@@ -506,6 +524,20 @@ window.addEventListener("resize", () => {
   document.querySelectorAll(".chat-block.live iframe").forEach((frame) => (frame.style.height = height));
 });
 
+/** A panel with text typed but not yet used (a pass reason, a reply, a draft edit): folding it would lose that. */
+function holdsUnsavedText(container) {
+  try {
+    const doc = container.querySelector("iframe")?.contentDocument;
+    if (!doc) return false;
+    return [...doc.querySelectorAll("textarea, input")].some((box) => {
+      if (box.tagName === "INPUT" && ["button", "submit", "checkbox", "radio", "file", "hidden"].includes(box.type)) return false;
+      return box.value !== box.defaultValue && box.value.trim() !== "";
+    });
+  } catch {
+    return false;
+  }
+}
+
 // Only the newest panel stays live; older ones fold into a button so they stop polling.
 function mountPanel(container, block) {
   document.querySelectorAll(".chat-block.live").forEach((other) => {
@@ -517,8 +549,8 @@ function mountPanel(container, block) {
     } catch {
       typed = null;
     }
-    const inUse = other.contains(active) && Boolean(typed) &&
-      (typed.tagName === "TEXTAREA" || typed.tagName === "INPUT" || typed.isContentEditable);
+    const inUse = (other.contains(active) && Boolean(typed) &&
+      (typed.tagName === "TEXTAREA" || typed.tagName === "INPUT" || typed.isContentEditable)) || holdsUnsavedText(other);
     if (other !== container && !inUse) foldPanel(other, other.recruitingBlock);
   });
   const frame = document.createElement("iframe");

@@ -238,6 +238,7 @@ export async function interpret(
   said: string,
   criteria: readonly Criterion[],
   candidates: readonly { id: string; name: string }[],
+  focusedCandidateId: string | null = null,
 ): Promise<Instruction> {
   const reply = await model.json<unknown>({
     task: "instruction interpretation",
@@ -248,12 +249,14 @@ export async function interpret(
       "intent reply: they relay what a candidate answered (for example \"Alex replied, free Tuesday afternoon\"). candidateId is the matching candidate or null; text is the reply content.",
       "intent question: they ask something about the search or its history.",
       "Otherwise intent unknown.",
+      "focusedCandidateId, when given, is the person whose details the founder has open: \"this one\", \"him\", \"her\" or \"them\" mean that person.",
       'Reply as {"intent": string, "summary": string, "operations": [...], "candidateId": string|null, "decision": string, "reason": string, "text": string, "question": string}; include only the fields the intent needs plus summary.',
     ].join("\n"),
     input: {
       said,
       criteria: criteriaForModel(criteria),
       candidates,
+      focusedCandidateId: candidates.some((candidate) => candidate.id === focusedCandidateId) ? focusedCandidateId : null,
     },
   });
   if (!isRecord(reply)) return { intent: "unknown", summary: "" };
