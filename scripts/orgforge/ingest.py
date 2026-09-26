@@ -174,6 +174,46 @@ def actor_names(raw_actors: object) -> list[str]:
     return list(seen)
 
 
+def backfill_actor_attributes(cursor) -> tuple[int, int]:
+    """Fill in what the corpus says about an actor, from the facts just stored.
+
+    Hiring and departure events name a person's role and department; a departure
+    also lists the domains they held. Only a handful of people are ever hired or
+    leave during the simulation, so most actors stay bare — `domain_registry.json`
+    is the fuller source and is not imported yet.
+
+    Later facts win, so someone hired and then promoted ends up with the role they
+    held last.
+    """
+    cursor.execute(
+        """
+        WITH stated AS (
+            SELECT
+                d.facts->>'name' AS name,
+                d.facts->>'role' AS role,
+                d.facts->>'dept' AS dept,
+                row_number() OVER (
+                    PARTITION BY d.facts->>'name'
+                    ORDER BY d.simulation_day DESC NULLS LAST
+                ) AS recency
+            FROM source_documents d
+            WHERE d.facts ? 'name'
+              AND (d.facts ? 'role' OR d.facts ? 'dept')
+        )
+        UPDATE actors a
+        SET role = coalesce(a.role, stated.role),
+            dept = coalesce(a.dept, stated.dept)
+        FROM stated
+        WHERE stated.recency = 1 AND stated.name = a.name
+          AND (a.role IS NULL OR a.dept IS NULL)
+        """
+    )
+    filled = cursor.rowcount
+    cursor.execute("SELECT count(*), count(role) FROM actors")
+    total, with_role = cursor.fetchone()
+    return filled, total - with_role
+
+
 def main() -> None:
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL is required.")
@@ -210,10 +250,11 @@ def main() -> None:
                 """
             )
 
-            cursor.execute(
-                "DELETE FROM source_documents WHERE dataset_revision = %s",
-                (DATASET_REVISION,),
-            )
+            # Rows are upserted and stale ones removed at the end, rather than
+            # clearing the revision first. Deleting up front cascaded to
+            # document_chunks and took every embedding with it, so each re-ingest
+            # silently cost a full re-embed — money, or a re-sync from elsewhere.
+            seen: set[str] = set()
 
             for row in dataset:
                 source_id = str(row["doc_id"])
@@ -229,6 +270,10 @@ def main() -> None:
                 actors = parse_json(row.get("actors"), [])
                 tags = parse_json(row.get("tags"), [])
                 links = parse_json(row.get("artifact_ids"), {})
+                # What the corpus asserts about this row. Empty for artifacts; for
+                # a simulation event it holds the causal chain, the domains in
+                # play, and names in full.
+                facts = parse_json(row.get("facts"), {})
                 occurred_at = parse_timestamp(row.get("timestamp"))
 
                 cursor.execute(
@@ -236,11 +281,11 @@ def main() -> None:
                     INSERT INTO source_documents (
                         source_id, source_type, category, title, body,
                         simulation_day, document_date, occurred_at, department,
-                        actors, tags, original_links, metadata, is_incident,
+                        actors, tags, original_links, facts, is_incident,
                         is_external, dataset_revision, batch_id
                     ) VALUES (
                         %s, %s, %s, %s, %s, %s, %s, %s, NULLIF(%s, ''),
-                        %s::jsonb, %s::jsonb, %s::jsonb, '{}'::jsonb,
+                        %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
                         %s, %s, %s, %s
                     )
                     ON CONFLICT (source_id) DO UPDATE SET
@@ -255,6 +300,7 @@ def main() -> None:
                         actors = EXCLUDED.actors,
                         tags = EXCLUDED.tags,
                         original_links = EXCLUDED.original_links,
+                        facts = EXCLUDED.facts,
                         is_incident = EXCLUDED.is_incident,
                         is_external = EXCLUDED.is_external,
                         dataset_revision = EXCLUDED.dataset_revision,
@@ -273,6 +319,7 @@ def main() -> None:
                         dump_json(actors),
                         dump_json(tags),
                         dump_json(links),
+                        dump_json(facts),
                         bool(row.get("is_incident")),
                         bool(row.get("is_external")),
                         DATASET_REVISION,
@@ -287,14 +334,26 @@ def main() -> None:
                             """
                             INSERT INTO document_chunks (source_id, chunk_index, content)
                             VALUES (%s, %s, %s)
-                            ON CONFLICT (source_id, chunk_index)
-                            DO UPDATE SET content = EXCLUDED.content
+                            ON CONFLICT (source_id, chunk_index) DO UPDATE SET
+                                content = EXCLUDED.content,
+                                -- Text that changed invalidates its vector: the
+                                -- embedding would otherwise keep describing what
+                                -- the chunk used to say, and the backfill only
+                                -- looks for a missing vector or a changed model.
+                                embedding = CASE
+                                    WHEN document_chunks.content = EXCLUDED.content
+                                    THEN document_chunks.embedding ELSE NULL END,
+                                embedding_model = CASE
+                                    WHEN document_chunks.content = EXCLUDED.content
+                                    THEN document_chunks.embedding_model ELSE NULL END
                             """,
                             (source_id, chunk_index, content),
                         )
                     artifacts += 1
                 else:
                     events += 1
+
+                seen.add(source_id)
 
                 for name in actor_names(row.get("actors")):
                     cursor.execute(
@@ -326,6 +385,18 @@ def main() -> None:
 
                 accepted += 1
 
+            # Anything this revision used to hold and no longer does. Removing
+            # them here, rather than clearing the revision first, is what lets
+            # unchanged rows keep their chunks and vectors.
+            cursor.execute(
+                """
+                DELETE FROM source_documents
+                WHERE dataset_revision = %s AND NOT (source_id = ANY(%s))
+                """,
+                (DATASET_REVISION, list(seen)),
+            )
+            removed = cursor.rowcount
+
             cursor.execute(
                 """
                 UPDATE ingestion_batches
@@ -334,12 +405,20 @@ def main() -> None:
                 """,
                 (artifacts, rejected, batch_id),
             )
+
+            filled, still_bare = backfill_actor_attributes(cursor)
         connection.commit()
 
     print(
         f"Imported {accepted} documents: {artifacts} retrievable artifacts "
         f"(chunked and embeddable), {events} causal-layer rows (never chunked); "
         f"skipped {rejected} rows without a usable body."
+    )
+    if removed:
+        print(f"Removed {removed} documents this revision no longer contains.")
+    print(
+        f"Filled in {filled} actors from what the corpus states; {still_bare} "
+        f"still have no role, which hiring and departure events alone cannot give."
     )
 
 
