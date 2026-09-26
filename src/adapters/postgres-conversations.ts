@@ -52,6 +52,11 @@ function messageFromRow(row: MessageRow): ConversationMessage {
 /** Conversation ids are UUIDs; anything else is an id that cannot exist, not a database error. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Postgres text cannot hold the NUL character. */
+function withoutNul(text: string): string {
+  return text.replace(/\u0000/g, "");
+}
+
 export class PostgresConversationStore implements ConversationStore {
   readonly pool: pg.Pool;
   private readonly ownsPool: boolean;
@@ -109,7 +114,7 @@ export class PostgresConversationStore implements ConversationStore {
   }
 
   async create(userId: string, title?: string): Promise<ConversationSummary> {
-    const conversationTitle = title?.trim() || "New conversation";
+    const conversationTitle = withoutNul(title ?? "").trim() || "New conversation";
     const result = await this.pool.query<ConversationRow>(
       `INSERT INTO conversations (user_id, title)
        VALUES ($1, $2)
@@ -125,13 +130,16 @@ export class PostgresConversationStore implements ConversationStore {
     content: string;
     metadata?: Record<string, unknown>;
   }): Promise<ConversationMessage> {
-    // Postgres text cannot hold NUL; a pasted one would fail the whole turn.
-    const metadataJson = JSON.stringify(params.metadata ?? {}).replace(/\\u0000/g, "");
+    // Postgres text cannot hold NUL; a pasted one would fail the whole turn. Stripped from the
+    // strings themselves, so a literal "\u0000" in the text survives as written.
+    const metadataJson = JSON.stringify(params.metadata ?? {}, (_key, value: unknown) =>
+      typeof value === "string" ? withoutNul(value) : value,
+    );
     const result = await this.pool.query<MessageRow>(
       `INSERT INTO conversation_messages (conversation_id, role, content, metadata)
        VALUES ($1, $2, $3, $4::jsonb)
        RETURNING message_id, conversation_id, role, content, metadata, created_at`,
-      [params.conversationId, params.role, params.content.replace(/\u0000/g, ""), metadataJson],
+      [params.conversationId, params.role, withoutNul(params.content), metadataJson],
     );
 
     await this.pool.query(
@@ -150,7 +158,7 @@ export class PostgresConversationStore implements ConversationStore {
       `UPDATE conversations
        SET title = $3, updated_at = now()
        WHERE conversation_id = $1 AND user_id = $2`,
-      [conversationId, userId, title.trim()],
+      [conversationId, userId, withoutNul(title).trim()],
     );
     return (result.rowCount ?? 0) > 0;
   }

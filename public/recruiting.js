@@ -1145,7 +1145,9 @@ document.addEventListener("DOMContentLoaded", () => {
     $("#agent-reply").textContent = "…";
     // Pasted LinkedIn profile links add those people; anything else goes to the agent.
     // Sentence punctuation after a link ("…/in/alice-tan.", "(…/in/bob-lim)") is not part of it.
-    const links = text.match(/https:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\/in\/[^\s,]+/gi)?.map((link) => link.replace(/[.)\]};:!?'"，。）]+$/, ""));
+    // A slug holds only letters, digits, %, _ and -: Chinese punctuation or text right after a link
+    // ("…/in/alice-tan，她很合适") is not part of it.
+    const links = text.match(/https:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\/in\/[A-Za-z0-9%_-]+\/?/gi);
     let result;
     try {
       // Done for a role no longer on screen: the instruction must not linger in this one's box.

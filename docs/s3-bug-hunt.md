@@ -598,3 +598,23 @@ now answer "not a role", and starting then fails with an error the agent
 reads (`r9-chaos-followups.test.ts`). The skill also now says how a
 LinkedIn draft is sent (by the founder on LinkedIn, then "I sent it
 myself"), since the agent told founders a button would send it.
+
+## Round 10 (2026-09-26)
+
+11 confirmed bugs, down from 17: backend 2 (both low), chat agent 6, front
+end 3. Six came from round 9 changes. All fixed.
+
+- Backend: time labels are dropped only from a LinkedIn preview's header
+  lines, so a day inside a candidate's message ("Tue / Thu" corrected to
+  "Mon / Wed") is not taken for a duplicate; the founder's own "hired" or
+  "withdrawn" can be undone with keep (a reply or a pass still cannot).
+  The "not a role" error now reads well to the founder too.
+- Chat agent: NUL is stripped from strings before JSON encoding (a literal
+  "\u0000" in text no longer corrupts the saved answer) and from titles;
+  stray tags beside a skill are dropped in any letter case, before the
+  empty-reply check, and from translations; the skill names the Gmail send
+  button only when `gmail_connected` is true.
+- Front end: the composer gets focus back after an answer unless the
+  founder is typing in another box or panel; Enter that confirms Chinese,
+  Japanese or Korean input no longer sends; LinkedIn links stop at the
+  first character a slug cannot hold ("…/in/alice-tan，她很合适").

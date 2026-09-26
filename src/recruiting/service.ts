@@ -155,8 +155,9 @@ function sameRelayedText(a: string, b: string): boolean {
   // Time labels are dropped except the last line, which is the message itself ("Thursday").
   const plain = (text: string) => {
     const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+    // Only in the preview's header (the name and time lines); a day inside the message is content.
     return lines
-      .filter((line, index) => index === lines.length - 1 || !TIME_LABEL.test(line))
+      .filter((line, index) => index === lines.length - 1 || index > 1 || !TIME_LABEL.test(line))
       .join(" ")
       .replace(/\s+/g, " ")
       .toLowerCase();
@@ -826,7 +827,11 @@ export class RecruitingService {
         target.kept = true;
         // Keeping someone the founder passed on is changing their mind: they come back.
         // They pick up where the conversation had got to.
-        if (target.stage === "closed" && ["passed", "cold", "declined"].includes(target.closedReason ?? "")) {
+        // The founder's own "hired" or "withdrawn" can be undone by their keep (a misclick);
+        // a reply or a pass never overturns them.
+        const undoable = ["passed", "cold", "declined"].includes(target.closedReason ?? "") ||
+          (["hired", "withdrawn"].includes(target.closedReason ?? "") && target.closedBy !== "system");
+        if (target.stage === "closed" && undoable) {
           const heard = target.messages.some((message) => message.direction === "inbound");
           const wrote = target.messages.some((message) => message.direction === "outbound");
           target.stage = heard ? "replied" : wrote ? "contacted" : "scored";

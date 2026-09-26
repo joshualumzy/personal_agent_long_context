@@ -185,7 +185,8 @@ messageInput.addEventListener("input", () => {
 
 // Submit on Enter without Shift
 messageInput.addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
+  // Enter that confirms an input method's text (Chinese, Japanese, Korean) is not a send.
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
     e.preventDefault();
     chatForm.requestSubmit();
   }
@@ -1033,10 +1034,13 @@ chatForm.addEventListener("submit", async (e) => {
     messageInput.disabled = false;
     sendButton.disabled = false;
     askingIn = undefined;
-    // Back to the composer, unless the founder is typing somewhere else meanwhile (a panel).
-    if (!document.activeElement || document.activeElement === document.body || document.activeElement === messageInput) {
-      messageInput.focus();
-    }
+    // Back to the composer, unless the founder is typing somewhere else meanwhile (a text box, a panel).
+    const elsewhere = document.activeElement;
+    const typingElsewhere =
+      elsewhere && elsewhere !== messageInput &&
+      (elsewhere.tagName === "IFRAME" || elsewhere.tagName === "TEXTAREA" || elsewhere.isContentEditable ||
+        (elsewhere.tagName === "INPUT" && !["button", "submit", "checkbox", "radio"].includes(elsewhere.type)));
+    if (!typingElsewhere) messageInput.focus();
     scrollToBottom();
   }
 });

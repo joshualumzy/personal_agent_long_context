@@ -35,9 +35,9 @@ const TIME_LABEL =
   /^(\d{1,2}:\d{2}(\s*[ap]m)?|now|yesterday|today|mon|tue|wed|thu|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday|[a-z]{3} \d{1,2}(, \d{4})?|\d{1,2}\/\d{1,2}(\/\d{2,4})?|\d+[mhdw])$/i;
 
 function fingerprint(text: string): string {
-  // Time labels are dropped except the last line, which is the message itself ("Thursday").
+  // Time labels in the header (name and time lines) are dropped; the message itself is kept.
   const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
-  const message = lines.filter((line, index) => index === lines.length - 1 || !TIME_LABEL.test(line)).join("\n");
+  const message = lines.filter((line, index) => index === lines.length - 1 || index > 1 || !TIME_LABEL.test(line)).join("\n");
   return createHash("sha256").update(message).digest("hex");
 }
 

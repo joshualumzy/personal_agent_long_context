@@ -241,6 +241,11 @@ function asksForChinese(question: string): boolean {
   );
 }
 
+/** Removes [source:ID] tags naming nothing retrieved, in any letter case, keeping real citations. */
+function withoutStrayTags(text: string, retrieved: ReadonlyMap<string, unknown>): string {
+  return text.replace(/\s*\[source:([^\]]+)\]/gi, (tag, id: string) => (retrieved.has(id.trim()) ? tag : ""));
+}
+
 /** Pictographs and the joiners that build them: "How can I help? 😊" still ends in a question. */
 const EMOJI = /[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}]/gu;
 
@@ -722,6 +727,10 @@ export class SoCLaaSCompanyAgent {
         } else {
           let answer = rawContent?.trim();
           if (answer || spoken.length) answer = joinSpoken(spoken.map(withoutRepeats), withoutRepeats(answer ?? ""));
+          // Beside a skill, a tag naming nothing retrieved ("[source:recruiting_start]") is a slip
+          // of the pen: it is dropped rather than sending a recruiting answer to repair. Done before
+          // the empty-reply check, since a reply that was only such a tag is empty.
+          if (answer && extensionRan) answer = withoutStrayTags(answer, retrieved).trim();
           if (!answer && !mustAnswer) {
             messages.push({ role: "user", content: "You returned nothing. Reply to the user now in plain text." });
             continue;
@@ -741,11 +750,6 @@ export class SoCLaaSCompanyAgent {
           // Once a skill's tool ran, the answer is about that skill's state even if a company
           // search happened earlier in the turn.
           const groundedElsewhere = extensionRan || (loadedSkills.size > 0 && retrieved.size === 0);
-          // Beside a skill, a tag naming nothing retrieved ("[source:recruiting_start]") is a slip
-          // of the pen: it is dropped rather than sending a recruiting answer to repair.
-          if (extensionRan && citedIds(answer).some((id) => !retrieved.has(id))) {
-            answer = answer.replace(/\s*\[source:([^\]]+)\]/g, (tag, id: string) => (retrieved.has(id.trim()) ? tag : ""));
-          }
           let citationCheck = validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere);
           // A greeting, a list of what the agent can do, or a question back holds nothing to cite.
           if (citationCheck.problem && statesNoFacts(answer)) citationCheck = { citedSourceIds: [] };
@@ -854,7 +858,9 @@ export class SoCLaaSCompanyAgent {
                   break;
                 }
                 const reply = (await again.json().catch(() => null)) as CompletionResponse | null;
-                const translated = textOf(reply?.choices?.[0]?.message?.content)?.trim();
+                const raw = textOf(reply?.choices?.[0]?.message?.content)?.trim();
+                // The same slip beside a skill is dropped from the translation too.
+                const translated = raw && extensionRan ? withoutStrayTags(raw, retrieved).trim() : raw;
                 if (!translated || !isChinese(translated)) continue;
                 // An honest "insufficient evidence" in hand may come back as "证据不足" the same way.
                 let check = validateCitations(translated, retrieved, hasPersonalContext, groundedElsewhere, honestlyInsufficient(answer));

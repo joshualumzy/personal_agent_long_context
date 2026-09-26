@@ -115,7 +115,7 @@ export async function extractBrief(model: JsonModel, requirement: string): Promi
     input: { requirement },
   });
   if (isRecord(reply) && reply.notARole === true) {
-    throw new RecruitingError("not_a_role", "That does not describe a role to hire for. Nothing was opened; ask the founder what they want to hire for.");
+    throw new RecruitingError("not_a_role", "That does not describe a role to hire for, so nothing was opened. Describe who you want to hire.");
   }
   if (!isRecord(reply) || !Array.isArray(reply.criteria)) {
     throw new Error("The model did not return criteria.");
