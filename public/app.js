@@ -1802,6 +1802,10 @@ function initSoboMascot() {
         autoplay: true,
         artboard: "SOBO-Marketplace",
         stateMachines: "State Machine 1",
+        layout: new rive.Layout({
+          fit: rive.Fit.Cover,
+          alignment: rive.Alignment.Center,
+        }),
         onLoad: () => {
           if (soboRiveInstance) {
             soboRiveInstance.resizeDrawingSurfaceToCanvas();

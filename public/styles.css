@@ -666,21 +666,23 @@ body {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
 }
 
 .sobo-canvas {
-  width: 150px;
-  height: 150px;
+  width: 130px;
+  height: 130px;
   max-width: 100%;
+  border-radius: 24px;
   cursor: pointer;
-  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.08));
-  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+  box-shadow: 0 10px 25px -5px rgba(27, 67, 50, 0.2), 0 8px 10px -6px rgba(27, 67, 50, 0.1);
+  transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease;
   display: block;
 }
 
 .sobo-canvas:hover {
-  transform: scale(1.05);
+  transform: scale(1.06) translateY(-2px);
+  box-shadow: 0 14px 28px -5px rgba(27, 67, 50, 0.28), 0 10px 10px -5px rgba(27, 67, 50, 0.15);
 }
 
 .empty-icon {
