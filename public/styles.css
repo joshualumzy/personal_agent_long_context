@@ -1603,5 +1603,101 @@ dialog::backdrop {
 
 .auth-submit-btn:active {
   transform: translateY(1px);
+}
 
+/* Confirmation Dialog */
+.confirm-dialog {
+  width: min(400px, calc(100% - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: var(--panel);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.confirm-dialog::backdrop {
+  background: rgba(14, 25, 22, 0.65);
+  backdrop-filter: blur(4px);
+}
+
+.confirm-modal-card {
+  padding: 26px 24px 20px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.confirm-modal-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #fdf2f2;
+  border: 1px solid #fecaca;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  margin-bottom: 14px;
+}
+
+.confirm-modal-title {
+  font-family: var(--font-serif);
+  font-size: 1.3rem;
+  color: var(--ink);
+  margin: 0 0 8px;
+  font-weight: 600;
+}
+
+.confirm-modal-message {
+  font-size: 0.88rem;
+  color: var(--muted);
+  line-height: 1.45;
+  margin: 0 0 22px;
+  max-width: 310px;
+}
+
+.confirm-modal-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+}
+
+.confirm-btn {
+  flex: 1;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 0.90rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: inherit;
+}
+
+.confirm-btn.secondary {
+  background: white;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.confirm-btn.secondary:hover {
+  background: #f4f5f4;
+  border-color: #cbd5e1;
+}
+
+.confirm-btn.destructive {
+  background: #dc2626;
+  border: 1px solid #dc2626;
+  color: white;
+  box-shadow: 0 1px 3px rgba(220, 38, 38, 0.2);
+}
+
+.confirm-btn.destructive:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.confirm-btn:active {
+  transform: translateY(1px);
 }

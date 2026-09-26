@@ -842,6 +842,70 @@ function appendErrorMessage(message) {
   scrollToBottom();
 }
 
+function showConfirmDialog({
+  title = "Are you sure?",
+  message = "This action cannot be undone.",
+  icon = "🗑️",
+  confirmText = "Delete",
+  destructive = true,
+} = {}) {
+  const dialog = document.querySelector("#confirm-dialog");
+  if (!dialog || typeof dialog.showModal !== "function") {
+    return Promise.resolve(window.confirm ? window.confirm(`${title}\n${message}`) : true);
+  }
+
+  const titleEl = document.querySelector("#confirm-dialog-title");
+  const messageEl = document.querySelector("#confirm-dialog-message");
+  const iconEl = document.querySelector("#confirm-modal-icon");
+  const cancelBtn = document.querySelector("#confirm-cancel-btn");
+  const actionBtn = document.querySelector("#confirm-action-btn");
+
+  if (titleEl) titleEl.textContent = title;
+  if (messageEl) messageEl.textContent = message;
+  if (iconEl) iconEl.textContent = icon;
+  if (actionBtn) {
+    actionBtn.textContent = confirmText;
+    actionBtn.className = destructive ? "confirm-btn destructive" : "confirm-btn secondary";
+  }
+
+  return new Promise((resolve) => {
+    let resolved = false;
+
+    function cleanup(result) {
+      if (resolved) return;
+      resolved = true;
+      cancelBtn?.removeEventListener("click", onCancel);
+      actionBtn?.removeEventListener("click", onConfirm);
+      dialog.removeEventListener("cancel", onCancel);
+      dialog.removeEventListener("click", onBackdrop);
+      if (dialog.open) dialog.close();
+      resolve(result);
+    }
+
+    function onCancel() {
+      cleanup(false);
+    }
+
+    function onConfirm() {
+      cleanup(true);
+    }
+
+    function onBackdrop(e) {
+      if (e.target === dialog) {
+        cleanup(false);
+      }
+    }
+
+    cancelBtn?.addEventListener("click", onCancel);
+    actionBtn?.addEventListener("click", onConfirm);
+    dialog.addEventListener("cancel", onCancel);
+    dialog.addEventListener("click", onBackdrop);
+
+    dialog.showModal();
+    actionBtn?.focus();
+  });
+}
+
 // Conversation Management
 async function loadConversations() {
   if (!conversationsList) return;
@@ -895,7 +959,13 @@ async function loadConversations() {
       const delBtn = item.querySelector(".conv-delete-btn");
       delBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
-        if (confirm(`Delete conversation "${conv.title}"?`)) {
+        const confirmed = await showConfirmDialog({
+          title: "Delete conversation?",
+          message: `Are you sure you want to delete "${conv.title}"? This cannot be undone.`,
+          confirmText: "Delete",
+          destructive: true,
+        });
+        if (confirmed) {
           await deleteConversation(conv.conversationId);
         }
       });
@@ -910,7 +980,13 @@ async function loadConversations() {
 if (clearAllConversationsBtn) {
   clearAllConversationsBtn.addEventListener("click", async () => {
     const name = currentUser?.displayName || "your account";
-    if (confirm(`Clear all saved conversations for ${name}? This action cannot be undone.`)) {
+    const confirmed = await showConfirmDialog({
+      title: "Clear all conversations?",
+      message: `Delete all saved conversations for ${name}? This action cannot be undone.`,
+      confirmText: "Clear all",
+      destructive: true,
+    });
+    if (confirmed) {
       try {
         const response = await fetch("/api/v1/conversations", {
           method: "DELETE",

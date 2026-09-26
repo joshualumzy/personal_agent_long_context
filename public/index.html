@@ -245,6 +245,21 @@
           </form>
         </div>
       </dialog>
+
+      <!-- Confirmation Dialog -->
+      <dialog id="confirm-dialog" class="confirm-dialog" aria-labelledby="confirm-dialog-title">
+        <div class="confirm-modal-card">
+          <div class="confirm-modal-icon" id="confirm-modal-icon">🗑️</div>
+          <h2 id="confirm-dialog-title" class="confirm-modal-title">Clear all conversations?</h2>
+          <p id="confirm-dialog-message" class="confirm-modal-message">
+            This action cannot be undone.
+          </p>
+          <div class="confirm-modal-actions">
+            <button type="button" id="confirm-cancel-btn" class="confirm-btn secondary">Cancel</button>
+            <button type="button" id="confirm-action-btn" class="confirm-btn destructive">Delete</button>
+          </div>
+        </div>
+      </dialog>
     </div>
   </body>
 </html>
