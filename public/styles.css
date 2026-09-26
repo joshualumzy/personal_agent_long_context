@@ -563,6 +563,15 @@ body {
   background: var(--sand);
   border-color: var(--accent);
 }
+/* The graph entry is a link, not a button, so it needs the parts of button
+   styling an anchor does not inherit. */
+.pill-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-decoration: none;
+  white-space: nowrap;
+}
 
 /* Main Chat Container */
 .chat-main {
