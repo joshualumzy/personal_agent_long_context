@@ -39,6 +39,8 @@ let activeConversationId = null;
 let chatEpoch = 0;
 /** A question is being answered; the composer and the chips wait for it. */
 let asking = false;
+/** The conversation the running question was asked in (null for a new chat). */
+let askingIn;
 /** Numbers sidebar list requests; only the latest one is drawn. */
 let listRequest = 0;
 /** The conversation whose history is being fetched, if any. */
@@ -503,7 +505,9 @@ window.addEventListener("resize", () => {
 // Only the newest panel stays live; older ones fold into a button so they stop polling.
 function mountPanel(container, block) {
   document.querySelectorAll(".chat-block.live").forEach((other) => {
-    if (other !== container) foldPanel(other, other.recruitingBlock);
+    // A panel the founder is typing in stays open; folding it would throw the text away.
+    const inUse = other.contains(document.activeElement) && document.activeElement?.tagName === "IFRAME";
+    if (other !== container && !inUse) foldPanel(other, other.recruitingBlock);
   });
   const frame = document.createElement("iframe");
   frame.src = panelSource(block);
@@ -773,7 +777,10 @@ async function selectConversation(conversationId, title) {
       appendErrorMessage("Could not load this conversation. Pick it again, or start a new chat.");
     }
   } finally {
-    statusIndicator.hidden = true;
+    // Still answering a question asked here earlier: say so, instead of looking stuck.
+    const answering = asking && askingIn === conversationId && asked === chatEpoch;
+    statusIndicator.hidden = !answering;
+    if (answering) statusText.textContent = "Still working on your question…";
     scrollToBottom();
   }
 }
@@ -824,6 +831,7 @@ chatForm.addEventListener("submit", async (e) => {
   const epoch = chatEpoch;
   const stillHere = () => epoch === chatEpoch;
   const sentTo = activeConversationId;
+  askingIn = sentTo;
 
   try {
     const payload = {
@@ -910,7 +918,11 @@ chatForm.addEventListener("submit", async (e) => {
             parsed = dataStr;
           }
 
-          if (!stillHere() && currentEvent !== "done" && currentEvent !== "error") {
+          const shownAgain = sentTo !== null && sentTo === activeConversationId && !historyLoading;
+          if (!stillHere() && shownAgain && currentEvent === "status") {
+            // Back in the conversation this question was asked in: its progress shows again.
+            if (parsed?.phrase) statusText.textContent = parsed.phrase;
+          } else if (!stillHere() && currentEvent !== "done" && currentEvent !== "error") {
             // The user opened another conversation: keep reading, draw nothing.
           } else if (currentEvent === "status") {
             if (parsed?.phrase) {
@@ -1012,14 +1024,19 @@ chatForm.addEventListener("submit", async (e) => {
     else if (sentTo && sentTo === activeConversationId) {
       // Its history is still loading: that load shows the error after the history, if unanswered.
       if (historyLoading === sentTo) failedQuestions.set(sentTo, { question: message, text });
-      else appendErrorMessage(text);
+      // Not under an answer the loaded history already shows (saved just before the cut).
+      else if (!alreadyDrawn(sentTo, message)) appendErrorMessage(text);
     }
   } finally {
     asking = false;
     stopWaitingAnimation();
     messageInput.disabled = false;
     sendButton.disabled = false;
-    messageInput.focus();
+    askingIn = undefined;
+    // Back to the composer, unless the founder is typing somewhere else meanwhile (a panel).
+    if (!document.activeElement || document.activeElement === document.body || document.activeElement === messageInput) {
+      messageInput.focus();
+    }
     scrollToBottom();
   }
 });

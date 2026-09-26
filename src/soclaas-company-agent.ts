@@ -210,7 +210,7 @@ function asksForLanguage(question: string): boolean {
   const zh = "(英文|英语|日文|日语|韩文|韩语|法语|德语|西班牙语)";
   return (
     // Directed at the reply: "请用英文回答", "用英语说一下". Not "是用英文写的吗" (about a document).
-    new RegExp(`(用|以)${zh}(来)?(回答|回复|作答|说|讲|解释|介绍|答)(?!的)`).test(question) ||
+    new RegExp(`(用|以)${zh}(来)?(回答|回复|作答|说|讲|解释|介绍|答|写|回)(?!的)`).test(question) ||
     // "…，英文回答。" at the very end.
     new RegExp(`${zh}(回答|回复|作答)[\\s。.!！]*$`).test(question) ||
     // "把这段翻译成英文": the answer is meant to be in that language.
@@ -268,7 +268,7 @@ function statesNoFacts(answer: string): boolean {
   // A greeting may name the person: a Latin name, or (only after 你好/您好/嗨) a short Chinese one.
   const latinName = String.raw`(\s*[,，]?\s*[A-Z][a-z]+( [A-Z][a-z]+)?)?`;
   const greeting = new RegExp(
-    String.raw`^((hi|hello|hey|thanks|thank you|sure|of course|happy to help|glad to help|nice to meet you|good to see you( again)?|good (morning|afternoon|evening)|好的|谢谢|很高兴(为你服务|为您服务|见到你|帮忙))( there| again)?${latinName}|(你好|您好|嗨)(\s*[,，]?\s*([A-Z][a-z]+|\p{Script=Han}{1,3}))?)[\s!！.。,，~]*$`,
+    String.raw`^((hi|hello|hey|thanks|thank you|sure|of course|happy to help|glad to help|you're welcome|you are welcome|no problem|my pleasure|anytime|nice to meet you|good to see you( again)?|good (morning|afternoon|evening)|好的|谢谢|不客气|不用谢|没问题|很高兴(为你服务|为您服务|见到你|帮忙))( there| again)?${latinName}|(你好|您好|嗨)(\s*[,，]?\s*([A-Z][a-z]+|\p{Script=Han}{1,3}))?)[\s!！.。,，~]*$`,
     "iu",
   );
   const acknowledgement = /^(got it|sure thing|understood|okay|ok|alright|all right|i see|明白了|明白|好的|收到|了解|懂了)[\s!！.。,，~]*$/iu;
@@ -384,6 +384,8 @@ async function streamChatCompletion(
   let fullContent = "";
   const toolCallsMap = new Map<number, ToolCall>();
   let lastIndex = 0;
+  // Indices a proxy reused for a new call, mapped to where that call is kept.
+  const moved = new Map<number, number>();
   // Whether anything in the body was a stream event: a proxy's error page has none.
   let sawData = false;
   let failed = false;
@@ -413,9 +415,14 @@ async function streamChatCompletion(
         if (choice.delta?.tool_calls) {
           for (const tc of choice.delta.tool_calls) {
             // Without an index, a chunk bringing a new id starts a new call.
-            let idx: number = typeof tc.index === "number" ? tc.index : lastIndex;
-            if (typeof tc.index !== "number" && tc.id && toolCallsMap.get(idx)?.id && toolCallsMap.get(idx)!.id !== tc.id) {
-              idx = Math.max(-1, ...toolCallsMap.keys()) + 1;
+            const given: number | null = typeof tc.index === "number" ? tc.index : null;
+            let idx: number = given === null ? lastIndex : (moved.get(given) ?? given);
+            // A new id at an index already holding another call is a new call (some proxies number
+            // every call 0); later pieces under that index belong to the newest one.
+            if (tc.id && toolCallsMap.get(idx)?.id && toolCallsMap.get(idx)!.id !== tc.id) {
+              const again = [...toolCallsMap.entries()].find(([, call]) => call.id === tc.id);
+              idx = again ? again[0] : Math.max(-1, ...toolCallsMap.keys()) + 1;
+              if (given !== null) moved.set(given, idx);
             }
             lastIndex = idx;
             if (!toolCallsMap.has(idx)) {
@@ -451,6 +458,8 @@ async function streamChatCompletion(
   if (!sawData) raw += rest;
   handle(buffer + rest);
   if (failed) throw new Error("The stream reported an error mid-answer.");
+  // A clean close with neither [DONE] nor a finish_reason is taken as complete: servers that
+  // omit both exist and are relied on (round 9, accepted); vLLM always sends [DONE].
   if (!sawData) {
     // Not a stream at all; perhaps an ordinary completion.
     let completion: CompletionResponse | null = null;
@@ -732,6 +741,11 @@ export class SoCLaaSCompanyAgent {
           // Once a skill's tool ran, the answer is about that skill's state even if a company
           // search happened earlier in the turn.
           const groundedElsewhere = extensionRan || (loadedSkills.size > 0 && retrieved.size === 0);
+          // Beside a skill, a tag naming nothing retrieved ("[source:recruiting_start]") is a slip
+          // of the pen: it is dropped rather than sending a recruiting answer to repair.
+          if (extensionRan && citedIds(answer).some((id) => !retrieved.has(id))) {
+            answer = answer.replace(/\s*\[source:([^\]]+)\]/g, (tag, id: string) => (retrieved.has(id.trim()) ? tag : ""));
+          }
           let citationCheck = validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere);
           // A greeting, a list of what the agent can do, or a question back holds nothing to cite.
           if (citationCheck.problem && statesNoFacts(answer)) citationCheck = { citedSourceIds: [] };
@@ -826,9 +840,10 @@ export class SoCLaaSCompanyAgent {
             // Asked in Chinese: the model follows a Chinese instruction to write Chinese far more often.
             messages.push({ role: "user", content: "请用中文把上面的回答重新写一遍给用户：内容不变，保留所有 [source:ID] 引用，不要添加任何内容。(Reply again in Chinese: same content, same [source:ID] citations, nothing added.)" });
             try {
-              // The model now and then answers this with nothing, or in English again; one more ask usually works.
-              let translated: string | undefined;
-              for (let attempt = 0; attempt < 2 && !(translated && isChinese(translated)); attempt += 1) {
+              // The model now and then answers this with nothing, in English again, or without the
+              // citations; one more ask usually works. Only a Chinese reply that passes the same
+              // check replaces the answer in hand.
+              for (let attempt = 0; attempt < 2; attempt += 1) {
                 const again = await this.request(`${this.baseUrl}/chat/completions`, {
                   method: "POST",
                   headers: { authorization: `Bearer ${this.options.apiKey}`, "content-type": "application/json" },
@@ -839,19 +854,17 @@ export class SoCLaaSCompanyAgent {
                   break;
                 }
                 const reply = (await again.json().catch(() => null)) as CompletionResponse | null;
-                translated = textOf(reply?.choices?.[0]?.message?.content)?.trim();
-              }
-              {
-                if (translated && isChinese(translated)) {
-                  // An honest "insufficient evidence" in hand may come back as "证据不足" the same way.
-                  let check = validateCitations(translated, retrieved, hasPersonalContext, groundedElsewhere, honestlyInsufficient(answer));
-                  // A greeting or a question back stays exempt in Chinese too.
-                  if (check.problem && citationCheck.citedSourceIds.length === 0 && statesNoFacts(translated)) check = { citedSourceIds: [] };
-                  const keepsCitations = citationCheck.citedSourceIds.length === 0 || check.citedSourceIds.length > 0;
-                  if (!check.problem && keepsCitations) {
-                    answer = translated;
-                    citationCheck = check;
-                  }
+                const translated = textOf(reply?.choices?.[0]?.message?.content)?.trim();
+                if (!translated || !isChinese(translated)) continue;
+                // An honest "insufficient evidence" in hand may come back as "证据不足" the same way.
+                let check = validateCitations(translated, retrieved, hasPersonalContext, groundedElsewhere, honestlyInsufficient(answer));
+                // A greeting or a question back stays exempt in Chinese too.
+                if (check.problem && citationCheck.citedSourceIds.length === 0 && statesNoFacts(translated)) check = { citedSourceIds: [] };
+                const keepsCitations = citationCheck.citedSourceIds.length === 0 || check.citedSourceIds.length > 0;
+                if (!check.problem && keepsCitations) {
+                  answer = translated;
+                  citationCheck = check;
+                  break;
                 }
               }
             } catch {

@@ -89,8 +89,10 @@ export interface RecruitingDependencies {
 export interface SayResult {
   intent: string;
   message: string;
-  /** For a reply: whether it was saved on someone's record. */
+  /** For a reply: whether it is on someone's record (saved now, or already). */
   recorded?: boolean;
+  /** For a reply: it was already on record, so nothing new was saved. */
+  duplicate?: boolean;
   refused?: { text: string; characteristic: string }[];
 }
 
@@ -150,14 +152,15 @@ const UNCONFIRMED =
 
 /** Relayed text compared without time labels ("10:32 AM", "Tue", "Yesterday") or spacing. */
 function sameRelayedText(a: string, b: string): boolean {
-  const plain = (text: string) =>
-    text
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line && !TIME_LABEL.test(line))
+  // Time labels are dropped except the last line, which is the message itself ("Thursday").
+  const plain = (text: string) => {
+    const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+    return lines
+      .filter((line, index) => index === lines.length - 1 || !TIME_LABEL.test(line))
       .join(" ")
       .replace(/\s+/g, " ")
       .toLowerCase();
+  };
   const left = plain(a);
   const right = plain(b);
   // A message that is only a day or a time ("Thursday", "10:30 am") is compared as it is.
@@ -812,6 +815,12 @@ export class RecruitingService {
       // A pass on someone already closed (hired, declined) leaves that outcome as it is.
       if (decision === "pass") {
         if (target.stage !== "closed") this.closeCandidate(latest, target, "passed");
+        // Passing on someone the system closed makes it the founder's decision: a later yes
+        // no longer reopens them.
+        else if (target.closedBy !== "founder" && target.closedReason !== "hired") {
+          target.closedReason = "passed";
+          target.closedBy = "founder";
+        }
       }
       else {
         target.kept = true;
@@ -1349,7 +1358,7 @@ export class RecruitingService {
     const name = state.candidates[id]?.profile.name ?? "The candidate";
     // Criteria added while they were closed still need a verdict.
     if (reopenedByReply) this.settle();
-    if (closedAs === "duplicate") return { intent: "reply", recorded: true, message: `${name}: that message is already on record.` };
+    if (closedAs === "duplicate") return { intent: "reply", recorded: true, duplicate: true, message: `${name}: that message is already on record.` };
     if (closedAs) return { intent: "reply", recorded: true, message: `${name} is closed (${closedAs}). Their message is saved.` };
     if (reading.interested === false) return { intent: "reply", recorded: true, message: `${name} declined. Closed.` };
 
@@ -1418,7 +1427,9 @@ export class RecruitingService {
     const state = await this.current();
     let count = 0;
     for (const candidate of Object.values(state.candidates)) {
-      if (!candidate.gmailThreadId || candidate.stage === "closed") continue;
+      // Closed people are read too: a late yes to a "cold" closure reopens them, and any other
+      // message is kept on their record.
+      if (!candidate.gmailThreadId) continue;
       // Gmail keeps real time, so the cut-off must too (fast-forward moves only the simulated clock).
       // The latest time on record, not the last message's: a send recorded late is dated earlier
       // than a reply already read, and must not move the cut-off back to before that reply.
@@ -1441,8 +1452,8 @@ export class RecruitingService {
       try {
         const replies = await this.deps.gmail.repliesIn(candidate.gmailThreadId, lastSeen);
         for (const message of replies) {
-          await this.reply(message.text, candidate.profile.id, "email", message.at);
-          count += 1;
+          const outcome = await this.reply(message.text, candidate.profile.id, "email", message.at);
+          if (!outcome.duplicate) count += 1;
         }
       } catch (error) {
         this.fail(`Reading Gmail replies from ${candidate.profile.name}`, error);

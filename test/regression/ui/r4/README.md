@@ -14,4 +14,4 @@ cd test/regression/ui/r4 && for f in [cr]0*.py; do BASE=http://127.0.0.1:3261 py
 
 Each check answers the action requests itself, so the seeded data does not change.
 
-Round 5 to 8 checks in `../r5/` to `../r8/` run the same way against the same seed.
+Round 5 to 9 checks in `../r5/` to `../r9/` run the same way against the same seed.

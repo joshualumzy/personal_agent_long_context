@@ -557,3 +557,32 @@ a claim inside a single short question ("Do you mean the service Alice is
 shutting down?"), and a bulleted capability list after a company search.
 Both would need a model to judge "does this state a company fact", which
 is a design change for the owner to decide, not a patch.
+
+## Round 9 (2026-09-26)
+
+17 confirmed bugs (backend 4, chat agent 7, front end 6), down from 24.
+Hunters rated likelihood: 2 high, 7 medium, the rest low. All fixed except
+one accepted below.
+
+- Backend: Gmail sync now reads closed people's threads too, so a late
+  email "yes" to a cold closure is not lost (high); a pass on someone the
+  system closed makes it the founder's decision; a LinkedIn preview whose
+  last line is a day or time is compared on that line; the sync count skips
+  replies already on record.
+- Chat agent: "You're welcome" / "不客气" replies are exempt (medium-high);
+  "用英文写…" is a language request; a Chinese translation that drops its
+  citations is asked for again; stray tags beside a skill are dropped
+  instead of sending a recruiting answer to repair; a proxy that numbers
+  every streamed call 0 no longer merges them; NUL characters are stripped
+  before Postgres.
+- Front end: a finished answer no longer pulls focus from the panel the
+  founder is typing in; a new panel does not fold one being typed in; no
+  "cut off" under an answer already shown; returning to a conversation
+  with an answer on its way shows progress; the email box keeps the caret
+  at the end after a rebuild; pasted LinkedIn links drop trailing
+  punctuation. One hunter check (r20) compared a sorted list with an
+  unsorted one; fixed in the check, and it still fails on the old code.
+
+Accepted (one test skipped): a stream that closes cleanly with neither
+[DONE] nor a finish_reason counts as complete. Locked tests rely on such
+streams; vLLM always sends [DONE].

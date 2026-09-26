@@ -125,12 +125,13 @@ export class PostgresConversationStore implements ConversationStore {
     content: string;
     metadata?: Record<string, unknown>;
   }): Promise<ConversationMessage> {
-    const metadataJson = JSON.stringify(params.metadata ?? {});
+    // Postgres text cannot hold NUL; a pasted one would fail the whole turn.
+    const metadataJson = JSON.stringify(params.metadata ?? {}).replace(/\\u0000/g, "");
     const result = await this.pool.query<MessageRow>(
       `INSERT INTO conversation_messages (conversation_id, role, content, metadata)
        VALUES ($1, $2, $3, $4::jsonb)
        RETURNING message_id, conversation_id, role, content, metadata, created_at`,
-      [params.conversationId, params.role, params.content, metadataJson],
+      [params.conversationId, params.role, params.content.replace(/\u0000/g, ""), metadataJson],
     );
 
     await this.pool.query(

@@ -804,9 +804,13 @@ function renderDetail() {
     if (again) {
       again.focus();
       try {
+        if (focusKey.start === null || focusKey.start === undefined) throw new Error("no caret");
         again.setSelectionRange(focusKey.start, focusKey.end);
       } catch {
-        // email inputs have no caret position
+        // Email inputs have no caret position: put it at the end, where typing continues.
+        const value = again.value;
+        again.value = "";
+        again.value = value;
       }
     }
   }
@@ -1140,7 +1144,8 @@ document.addEventListener("DOMContentLoaded", () => {
     fit();
     $("#agent-reply").textContent = "…";
     // Pasted LinkedIn profile links add those people; anything else goes to the agent.
-    const links = text.match(/https:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\/in\/[^\s,]+/gi);
+    // Sentence punctuation after a link ("…/in/alice-tan.", "(…/in/bob-lim)") is not part of it.
+    const links = text.match(/https:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\/in\/[^\s,]+/gi)?.map((link) => link.replace(/[.)\]};:!?'"，。）]+$/, ""));
     let result;
     try {
       // Done for a role no longer on screen: the instruction must not linger in this one's box.
