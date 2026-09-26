@@ -1,0 +1,1698 @@
+{
+  "timestamp": "2026-09-26T10:40:40.494Z",
+  "model": "qwen3.8:27b",
+  "summary": {
+    "totalQuestions": 76,
+    "accuracyPct": 12,
+    "citationRecallPct": 29,
+    "citationIntegrityPct": 100,
+    "avgLatencySec": 39.68
+  },
+  "results": [
+    {
+      "questionId": "counterfactual_neg_EVT-4-knowledge_gap_detected-586_doc_gap_detected",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "If the documentation gap in the design doc that Jax contributed to on Day 4 had not existed, would the incident still have occurred despite the other gaps involving Raj and Kaitlyn?",
+      "actor": "Jax",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "CONF-ENG-041",
+        "ENG-123",
+        "slack_incidents_2026-01-12T12:59:00"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 43720
+    },
+    {
+      "questionId": "silence_EVT-8-incident_opened-1219_sf_deals_risk_flagged",
+      "questionType": "SILENCE",
+      "questionText": "Was a Salesforce risk flag on the related deals created in response to the incident on Day 8 involving Jax, Kaitlyn?",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "slack_incidents_2026-01-12T12:59:00",
+        "ENG-123"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 44500
+    },
+    {
+      "questionId": "silence_EVT-38-knowledge_gap_detected-1453_confluence_created",
+      "questionType": "SILENCE",
+      "questionText": "Was a Confluence documentation page created in response to the knowledge gap detected on Day 38 involving Morgan, specifically regarding kubernetes‑deploy, terraform‑infra?",
+      "expectedAnswer": true,
+      "judgedAnswer": false,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "CONF-HR-001"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-332"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-332"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Here's what I could and couldn't verify:\n\n**What the evidence shows**\n\n- I searched for a Day 38 knowledge gap involving you on kubernetes-deploy / terraform-infra, and for any Confluence page created in response. No matching record surfaced — nothing referencing a \"Day 38\" assessment, a gap detected about you, or a remediation page tied to it.\n- The only page that came close is [source:CONF-ENG-332], a design doc for a chaos engineering experiment on telemetry packet loss (k8s). It does touch `terraform-infra` (a Helm values module) and `kubernetes-deploy` (a CI step), but its framing is a test-design artifact, not a response to any detected knowledge gap. It also references a linked SOP (CONF-ENG-330), which I couldn't retrieve.\n- No artifact mentions you by name in connection with a documentation gap.\n\n**Bottom line**\n\nBased on what's retrievable, I can't confirm that a Confluence page was created in response to a Day 38 knowledge gap involving you. Either the gap record or the response artifact isn't indexed/searchable in the systems I can see, or it was never created at all.\n\n**Suggested next steps**\n\n- If you saw the gap flagged somewhere (Slack thread, review dashboard, onboarding tracker), point me at that reference and I can trace whether a follow-up page exists.\n- Worth checking whether the gap tracker lives outside the indexed systems — if you tell me where Day 38 data was reported, I can look there specifically.\n- If you want the documentation to exist regardless, I can help scope a page covering kubernetes-deploy and terraform-infra runbooks for the backend team — that would close the gap on the merits whether or not the detection record exists.",
+      "latencyMs": 17934
+    },
+    {
+      "questionId": "silence_EVT-15-customer_email_routed-1428_zd_ticket_opened",
+      "questionType": "SILENCE",
+      "questionText": "Was a Zendesk support ticket created as a result of the routing of the customer email on Day 15 involving Metro United FC, Marcus?",
+      "expectedAnswer": false,
+      "judgedAnswer": false,
+      "answerCorrect": true,
+      "expectedArtifacts": [
+        "customer_reply_metro_united_fc_OPP-1002_15"
+      ],
+      "citedArtifacts": [
+        "SALES-135",
+        "SALES-130",
+        "SALES-133",
+        "OUTREACH-37-blake",
+        "SALES-134",
+        "OUTREACH-28-jenna",
+        "CONF-ENG-204",
+        "CONF-ENG-119"
+      ],
+      "retrievedArtifacts": [
+        "SALES-135",
+        "SALES-130",
+        "SALES-133",
+        "OUTREACH-37-blake",
+        "SALES-134",
+        "OUTREACH-28-jenna",
+        "CONF-ENG-204",
+        "CONF-ENG-119"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Short answer: **No—not based on the evidence provided.**\n\nThe Metro United FC records show **outbound sales/proposal follow-ups**, not an inbound customer email being routed or a Zendesk ticket being created:\n\n- Tasha sent a **reinforced alerting proposal** next-steps email [source:SALES-135].\n- Tasha sent a **Telemetry landing page upgrade** next-steps email [source:SALES-130].\n- Blake sent a **SEO-optimized landing page** next-steps email [source:SALES-133].\n- Blake sent a **proposal and next steps** email [source:OUTREACH-37-blake].\n- Jenna sent a **proposal & performance insights** email [source:SALES-134].\n- Jenna sent a **22% performance boost forecast** email [source:OUTREACH-28-jenna].\n\nNone of those mention **Day 15**, **Marcus**, **email routing**, or a **Zendesk support ticket created** from that interaction.\n\nThe only relevant Zendesk context is that a design doc assumes support tickets are stored in Zendesk with a `bug_id` field [source:CONF-ENG-204]. That confirms Zendesk is used for support tickets in that engineering context, but it does not confirm that this specific Metro United FC/Marcus event created one. Another doc references Zendesk analytics for new-hire support tickets, but that is unrelated [source:CONF-ENG-119].\n\nSo the missing pieces are:\n\n- the **Day 15 customer email** itself,\n- the routing action involving **Marcus**,\n- and any **Zendesk ticket record or link** connecting that email to a support ticket.\n\nBased on what’s visible, the answer is **unconfirmed, and the available evidence points away from it having happened**.",
+      "latencyMs": 29693
+    },
+    {
+      "questionId": "counterfactual_EVT-8-incident_opened-1219_postmortem_from_incident",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "On Day 8, had Deepa not filed the post‑incident documentation for the system outage, would Jax still have sent the corrective action notice that Kaitlyn later signed off on?",
+      "actor": "Deepa",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-123",
+        "slack_incidents_2026-01-12T12:59:00",
+        "CONF-ENG-078"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 43275
+    },
+    {
+      "questionId": "counterfactual_EVT-32-async_question-1581_async_gap_detected",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "Was the async Slack Q&A thread on Day 32 that exposed a knowledge gap in the undocumented domain a direct consequence of Priya’s message, or would Chloe and Jamie have raised the issue regardless?",
+      "actor": "Priya",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "export/slack/channels/digital-hq/2026-02-13.json",
+        "slack_digital-hq_2026-02-16T15:43:00"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 36802
+    },
+    {
+      "questionId": "silence_EVT-37-zd_tickets_escalated-1317_incident_opened",
+      "questionType": "SILENCE",
+      "questionText": "Was a ticket created in response to the Zendesk escalation on Day 37 involving the involved parties?",
+      "expectedAnswer": true,
+      "judgedAnswer": true,
+      "answerCorrect": true,
+      "expectedArtifacts": [
+        "ENG-210",
+        "ZD-101",
+        "slack_incidents_2026-02-20T11:51:00"
+      ],
+      "citedArtifacts": [
+        "CONF-PROD-002",
+        "CONF-ENG-293"
+      ],
+      "retrievedArtifacts": [
+        "CONF-PROD-002",
+        "CONF-ENG-293"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "### Short answer\n\nI can’t confirm that a ticket was created for a Zendesk escalation on **Day 37** involving the relevant parties. The evidence you provided does not identify a Day 37 Zendesk escalation, the involved people/teams, or a specific resulting ticket.\n\n### What the evidence does show\n\nThe retrieved artifacts describe general escalation and ticketing expectations, but not this specific incident:\n\n- For the Enhanced Data Export feature, support escalations that cannot be resolved within **2 hours** or require code changes should be escalated to Engineering using the **Incident Status Request** workflow, with reference to cross-team data export alignment [source:CONF-PROD-002].\n- Cross-team incident response expects the Incident Commander to open a **Jira ticket** during triage and notify stakeholders via Slack if escalation is needed [source:CONF-ENG-293].\n- For cross-service incidents, the team should create a **War Room ticket in JIRA** and add relevant service owners, SRE lead, and a product stakeholder [source:slack_dm_ethan patel_reese_2026-02-09T16:43:01.547455].\n\n### What’s missing to verify\n\nTo answer definitively, I’d need to see:\n\n- The Zendesk escalation record for Day 37\n- Any linked Jira ticket, especially type **Incident** or **Incident Status Request**\n- Comments showing hand-off time, notified parties, or involved service owners\n- A War Room or escalation ticket that names the relevant stakeholders",
+      "latencyMs": 32802
+    },
+    {
+      "questionId": "counterfactual_EVT-44-pr_review-1534_pr_gap_detected",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "If Deepa had not conducted the PR review on Day 44, would Jax still have identified the knowledge gap?",
+      "actor": "Deepa",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "PR-143",
+        "slack_engineering_2026-03-09T13:42:34.200120"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 51264
+    },
+    {
+      "questionId": "perspective_Alex_EVT-28-incident_resolved-1522",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Alex have learned about the incident resolved event through normal channels by Day 28?",
+      "actor": "Alex",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-173",
+        "PR-129"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 38854
+    },
+    {
+      "questionId": "silence_EVT-60-inbound_external_email-1396_customer_email_routed",
+      "questionType": "SILENCE",
+      "questionText": "Was an internal routing of the customer email created in response to the inbound email on Day 60 involving Ethan and Marcus?",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ext_email_ethan_60_9"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-453",
+        "CONF-ENG-397"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-453",
+        "CONF-ENG-397"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "I can’t confirm that an internal routing of a customer email was created in response to a Day 60 inbound email involving Ethan and Marcus. The provided evidence does not show that event.\n\nWhat the evidence does show:\n\n- The support ticket triage design mentions that tickets can come from email, JIRA Service Management, Slack, and Datadog alerts, and that manual triage was previously done via ad hoc Slack messages and a shared spreadsheet [source:CONF-ENG-453]. But it does not mention a specific Day 60 customer email, Ethan, Marcus, or an internal routing record.\n- The only Day 60 milestone in the provided material is **@patty** confirming or signing off on a data retention policy draft [source:CONF-ENG-397]. It is not about customer email routing, and Ethan or Marcus are not mentioned.\n- There is no ticket, email, routing log, or triage queue artifact in the excerpts showing an internal routing created for that inbound email [source:CONF-ENG-453] [source:CONF-ENG-397].\n\nSo the safe answer is: **not evidenced in the available records**. To verify, you’d likely need to check the Day 60 Jira Service Management/email audit trail, the support queue or triage log, and any Slack thread involving Ethan and Marcus.",
+      "latencyMs": 23968
+    },
+    {
+      "questionId": "silence_EVT-25-incident_opened-1460_postmortem_created",
+      "questionType": "SILENCE",
+      "questionText": "Was a postmortem document created in response to the incident on Day 25 involving Deepa and Alex?",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "slack_incidents_2026-02-04T11:03:00",
+        "ENG-173",
+        "CONF-ENG-223"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 46575
+    },
+    {
+      "questionId": "perspective_Felix_EVT-32-crm_touchpoint-1446",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Felix have been aware of a CRM touchpoint event as of Day 32, based only on what was accessible to them?",
+      "actor": "Felix",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 34659
+    },
+    {
+      "questionId": "counterfactual_EVT--579-employee_departed-1_hire_fills_knowledge_gap",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "If the new hire with the relevant expertise had not started on Day -579, would Janice have been able to fill the gap left by Bill’s departure?",
+      "actor": "Janice",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "hr_outbound_janice_4_offer_letter"
+      ],
+      "citedArtifacts": [
+        "slack_digital-hq_2026-03-17T17:18:00",
+        "CONF-ENG-447"
+      ],
+      "retrievedArtifacts": [
+        "slack_digital-hq_2026-03-17T17:18:00",
+        "CONF-ENG-447"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "The cleanest answer is: the evidence doesn’t let us say yes or no with confidence.\n\n- Janice is shown as stuck on the Aurora cost breakdown for TitanDB instances, trying to separate production and staging spend [source:slack_digital-hq_2026-03-17T17:18:00].\n- In that same thread, Yusuf, Morgan, Deepa, and Umji give her concrete next steps, so there was enough shared context in the room to move the work forward [source:slack_digital-hq_2026-03-17T17:18:00].\n- The onboarding docs do show that AWS cost-tagging training gaps have been a known issue, but they are not tied to Bill, Janice, or a Day -579 start [source:CONF-ENG-447].\n\nWhat’s missing is the critical detail: what Bill owned, what specific gap his departure created, whether the new hire’s expertise was required, and whether Janice had the access, ownership, or depth to cover it independently.\n\nMy read: if the gap was narrowly “how do we pull and tag Aurora/TitanDB cost data,” Janice probably could have gotten there with the same peer guidance she received in that Slack thread [source:slack_digital-hq_2026-03-17T17:18:00]. If the gap was deeper — ownership of billing reconciliation, Terraform cost tags, or AWS cost architecture — the",
+      "latencyMs": 35807
+    },
+    {
+      "questionId": "counterfactual_EVT-17-incident_opened-1323_postmortem_from_incident",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "Had Jax not escalated the system incident on Day 17, would Deepa still have completed the post‑incident report that Kaitlyn later reviewed?",
+      "actor": "Jax",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-148",
+        "slack_incidents_2026-01-23T10:00:00",
+        "CONF-ENG-150"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 38812
+    },
+    {
+      "questionId": "perspective_Janice_EVT-3-design_discussion-458",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Janice have been outside the visibility of the design discussion about the Finalize icon color palette by Day 3?",
+      "actor": "Janice",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 48180
+    },
+    {
+      "questionId": "silence_EVT-54-knowledge_gap_detected-1541_confluence_created",
+      "questionType": "SILENCE",
+      "questionText": "Was a Confluence documentation page created in response to the knowledge gap detected on Day 54 involving Sharon, specifically regarding mobile analytics, legacy auth service, AWS cost structure, Project Titan involving Sharon?",
+      "expectedAnswer": false,
+      "judgedAnswer": true,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "slack_digital-hq_2026-03-20T09:35:00"
+      ],
+      "citedArtifacts": [
+        "ENG-123",
+        "CONF-ENG-373",
+        "CONF-QA-004",
+        "CONF-ENG-315",
+        "slack_standup_2026-03-20T09:45:00"
+      ],
+      "retrievedArtifacts": [
+        "ENG-123",
+        "CONF-ENG-373",
+        "CONF-QA-004",
+        "CONF-ENG-315",
+        "slack_standup_2026-03-20T09:45:00"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Here's what the records show — the short version: **yes, a Confluence page was created in response to that gap, but I can't confirm the \"Sharon\" part at all.**\n\n**The knowledge gap itself — confirmed**\n- The gap areas you listed (\"mobile analytics, legacy auth service, AWS cost structure, Project Titan\") match exactly what's recorded on P1 incident ticket ENG-123 (Kafka leader election delay, 2026-01-12), which logged those as gap areas [source:ENG-123].\n\n**Confluence pages created in response — yes**\n- **CONF-ENG-373, \"Design: Define knowledge-gap sprint process\"** (authored by Nadia, 2026-03-09) is the direct response. Its problem statement explicitly cites \"the recent detection of a large knowledge-gap (TitanDB schema, legacy auth service, AWS cost tagging, and the legacy Project Titan codebase)\" and proposes a sprint process to reach 100% documentation coverage within a quarter [source:CONF-ENG-373].\n- Supporting process docs also exist: CONF-QA-004 (SOP for cross-team knowledge gap management, which assigns the documentation owner to update Confluence pages like CONF-ENG-291) [source:CONF-QA-004], and CONF-ENG-315, which includes a \"Knowledge-Gap Register\" child page auto-populated from detection events [source:CONF-ENG-315].\n\n**The discrepancies I'd flag plainly**\n- **Sharon:** I found zero mentions of Sharon in any of the retrieved artifacts — not in the gap records, the incident, or the follow-up docs. If Sharon is involved, she isn't in the paper trail I can see.\n- **\"Day 54\":** The only \"Day 54\" reference I found is Nadia in the 2026-03-20 standup working on \"test data gaps from Day 54\" — that's a *test data* gap, a different thing from the mobile analytics/legacy auth/AWS gap tied to ENG-123 [source:slack_standup_2026-03-20T09:45:00].\n\nSo: the documentation response to the mobile analytics/legacy auth/AWS/Titan gap is real (CONF-ENG-373 being the centerpiece), but the \"Day 54 involving Sharon\" framing doesn't line up with what's documented. If you can tell me where you saw Sharon connected to this, I can dig further.",
+      "latencyMs": 34021
+    },
+    {
+      "questionId": "counterfactual_neg_EVT-12-knowledge_gap_detected-1293_involves_gap",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "Was the Day 12 incident involving Deepa, Alex, and Jordan dependent on Alex’s incomplete knowledge of the client’s reporting requirements, or would it have happened regardless?",
+      "actor": "Deepa",
+      "expectedAnswer": false,
+      "judgedAnswer": false,
+      "answerCorrect": true,
+      "expectedArtifacts": [
+        "slack_digital-hq_2026-01-22T16:47:21.130387",
+        "ENG-173",
+        "slack_incidents_2026-02-04T11:03:00"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-187",
+        "slack_digital-hq_2026-03-24T09:00:00",
+        "slack_qa_support_2026-01-28T11:26:23.716695",
+        "slack_engineering_mobile_2026-01-22T16:13:32.435677"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-187",
+        "slack_digital-hq_2026-03-24T09:00:00",
+        "slack_qa_support_2026-01-28T11:26:23.716695",
+        "slack_engineering_mobile_2026-01-22T16:13:32.435677"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Short version: the available evidence doesn’t let me confirm that the “Day 12 incident” depended on Alex’s incomplete knowledge. It also doesn’t clearly identify an incident involving Deepa, Alex, and Jordan at all.\n\nWhat the evidence does show:\n\n- The ENG-165 postmortem describes a P1 caused by a reduced PostgreSQL connection pool on TitanDB RDS, impacting the Spring Boot telemetry ingestion service. It is framed as a configuration/pooling issue, with no mention of Deepa, Alex, Jordan, client reporting requirements, or Alex’s knowledge [source:CONF-ENG-187].\n- The `#digital-hq` thread does reference a “Design: Create documented incident-response playbook for HR data pipeline outa” from day 12, but the visible discussion is about a telemetry outage, Kafka logs, the Go telemetry service, and brand tone. It does not tie the incident to Alex or reporting requirements [source:slack_digital-hq_2026-03-24T09:00:00].\n- The QA/support and mobile engineering threads mention day-12 design docs, runbooks, on-call ownership, and a telemetry API/TitanDB outage, but again none name Deepa, Alex, or Jordan or discuss client reporting requirements [source:slack_qa_support_2026-01-28T11:26:23.716695] [source:slack_engineering_mobile_2026-01-22T16:13:32.435677].\n\nSo the grounded answer is: **not proven either way**. The documented incidents look technical, and the “Day 12” references appear to point to design/playback documents rather than a named people-dependent incident. To answer your actual question, I’d need the Day 12 incident ticket, the referenced playbook/design doc, or a postmortem that names Deepa, Alex, and Jordan.",
+      "latencyMs": 39270
+    },
+    {
+      "questionId": "counterfactual_EVT-35-knowledge_gap_detected-1471_involves_gap",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "On Day 35, did Bill’s mistaken configuration depend on Alex following Liam’s incomplete brief, or would Bill have made the same mistake independently of Liam and Alex?",
+      "actor": "Liam",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "CONF-ENG-284",
+        "ENG-230",
+        "slack_incidents_2026-02-27T10:04:00"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-241",
+        "slack_sales_marketing_2026-02-17T16:33:00",
+        "slack_digital-hq_2026-03-17T17:18:00",
+        "slack_digital-hq_2026-03-03T17:28:58.280727",
+        "slack_sales_marketing_2026-02-19T14:37:40.630078",
+        "slack_sales_marketing_2026-02-05T12:43:37.795882"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-241",
+        "slack_sales_marketing_2026-02-17T16:33:00",
+        "slack_digital-hq_2026-03-17T17:18:00",
+        "slack_digital-hq_2026-03-03T17:28:58.280727",
+        "slack_sales_marketing_2026-02-19T14:37:40.630078",
+        "slack_sales_marketing_2026-02-05T12:43:37.795882"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Short answer: the verified evidence doesn’t let us say either way.\n\nNone of the provided artifacts mention Bill, Alex, Liam, “Day 35,” an incomplete brief, or a specific mistaken configuration tied to that handoff [source:CONF-ENG-241][source:slack_sales_marketing_2026-02-17T16:33:00][source:slack_digital-hq_2026-03-17T17:18:00][source:slack_digital-hq_2026-03-03T17:28:58.280727][source:slack_sales_marketing_2026-02-19T14:37:40.630078][source:slack_sales_marketing_2026-02-05T12:43:37.795882].\n\nWhat the evidence does confirm is a billing/Finance reconciliation problem around TitanDB:\n\n- Billing data for 2023‑09 did not match Finance’s expected amounts, with about a 5% discrepancy [source:CONF-ENG-241].\n- The billing deployment was missing the `cost_center=finance` tag in Terraform [source:CONF-ENG-241][source:slack_sales_marketing_2026-02-17T16:33:00].\n- There were also concerns about stale Redis subscription IDs and Kafka consumer lag possibly affecting telemetry [source:CONF-ENG-241][source:slack_sales_marketing_2026-02-17T16:33:00].\n\nIf “Bill’s mistaken configuration” means the missing cost tag or related billing configuration, the record only shows that the tag was missing; it does not show whether Alex followed Liam’s brief, whether that brief was incomplete, or whether Bill would have made the same mistake independently.\n\nTo answer that, you’d need the actual config change, PR/commit authorship, review trail, the brief or handoff document, and timestamps around Day 35. Absent that, the grounded answer is: unknown from the available evidence.",
+      "latencyMs": 30886
+    },
+    {
+      "questionId": "perspective_Mike_EVT-22-inbound_external_email-1360",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Mike have had a blind spot around an inbound email from Nora (AWS) regarding “Optimizing Apex Athletics’ EKS Cluster Performance” as of Day 22?",
+      "actor": "Mike",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 86967
+    },
+    {
+      "questionId": "perspective_Chloe_EVT-55-knowledge_gap_detected-1480",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Could Chloe have encountered a knowledge gap in mobile analytics, legacy auth service, AWS cost structure, and Project Titan (triggered by slack_sales_marketing_2026-03-23T09:00:00, left by Sharon, detected via embedding_similarity) through the systems available to her by Day 55?",
+      "actor": "Chloe",
+      "expectedAnswer": true,
+      "judgedAnswer": false,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "slack_sales_marketing_2026-03-23T09:00:00"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-001",
+        "CONF-ENG-002",
+        "CONF-ENG-003",
+        "CONF-ENG-023",
+        "CONF-QA-001-01",
+        "CONF-ENG-025",
+        "slack_digital-hq_2026-02-17T10:27:00",
+        "CONF-ENG-111"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-001",
+        "CONF-ENG-002",
+        "CONF-ENG-003",
+        "CONF-ENG-023",
+        "CONF-QA-001-01",
+        "CONF-ENG-025",
+        "slack_digital-hq_2026-02-17T10:27:00",
+        "CONF-ENG-111"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "## Short answer: mostly yes for the underlying gaps, no for that specific trigger\n\nThe Sharon message in `slack_sales_marketing` (2026-03-23) is the wrinkle: **Day 55 lands around late February 2026**, so a message from March 23 post-dates her window. Whatever Sharon flagged couldn't itself have been encountered by Day 55. Also, I searched and the March 23 message didn't surface in what I can see, so I can't confirm its exact content — only that it's the cited trigger.\n\nThat said, the four gap areas are real and were visible well before Day 55:\n\n- **Project Titan** – CONF-ENG-001/002/003 (Jan 1) lay out the platform, TitanDB, and architecture in the ENG Confluence space, which Product can see. [source:CONF-ENG-001] [source:CONF-ENG-002] [source:CONF-ENG-003]\n- **Legacy auth service** – the Java 8 runtime quirk and OAuth2 bypass are documented across design docs and test strategy, plus discussed in #digital-hq. [source:CONF-ENG-023] [source:CONF-QA-001-01] [source:CONF-ENG-025] [source:slack_digital-hq_2026-02-17T10:27:00]\n- **AWS cost structure** – cost-tagging policy, cost_center mapping for Kafka/Redis/auth, and budget docs all existed by mid-February. [source:CONF-ENG-111] [",
+      "latencyMs": 45536
+    },
+    {
+      "questionId": "perspective_Chloe_EVT-56-knowledge_gap_detected-1562",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Chloe have reached knowledge of the knowledge gap in kubernetes-deploy and terraform-infra, triggered by a pull request left by Morgan and detected via embedding similarity, through normal channels by Day 56?",
+      "actor": "Chloe",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "PR-159"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 52626
+    },
+    {
+      "questionId": "silence_EVT-57-knowledge_gap_detected-1433_confluence_created",
+      "questionType": "SILENCE",
+      "questionText": "Did the team create a Confluence documentation page to address the knowledge gap detected on Day 57 involving Jordan, specifically regarding auth-service, redis-cache, and oauth2-flow?",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "CONF-ENG-437",
+        "slack_digital-hq_2026-03-25T09:18:00"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 49833
+    },
+    {
+      "questionId": "counterfactual_EVT-53-inbound_external_email-1583_jira_from_vendor_email",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "On Day 53, was the Jira ticket that Ethan created a direct consequence of the vendor email that Chloe received, or would the ticket have been opened regardless?",
+      "actor": "Chloe",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ext_email_ethan_53_6",
+        "ORG-200"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 45587
+    },
+    {
+      "questionId": "perspective_Vince_EVT-49-vendor_email_routed-1539",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Vince have had a blind spot around a vendor email from an external vendor being routed internally as of Day 49?",
+      "actor": "Vince",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 39872
+    },
+    {
+      "questionId": "perspective_Karen_EVT-9-retrospective-1348",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Was there any path by which Karen could have known about the retrospective event before Day 9 ended?",
+      "actor": "Karen",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 38129
+    },
+    {
+      "questionId": "silence_EVT-7-employee_hired-1030_onboarding_session",
+      "questionType": "SILENCE",
+      "questionText": "Was an onboarding session created in response to the hiring of Janice on Day 7 involving Janice?",
+      "expectedAnswer": false,
+      "judgedAnswer": false,
+      "answerCorrect": true,
+      "expectedArtifacts": [
+        "hr_outbound_janice_4_offer_letter"
+      ],
+      "citedArtifacts": [
+        "slack_engineering_mobile_2026-03-23T09:25:00",
+        "slack_dm_desmond_priya_2026-02-06T09:59:33.786930",
+        "slack_dm_karen_tom_2026-01-26T09:00:00"
+      ],
+      "retrievedArtifacts": [
+        "slack_engineering_mobile_2026-03-23T09:25:00",
+        "slack_dm_desmond_priya_2026-02-06T09:59:33.786930",
+        "slack_dm_karen_tom_2026-01-26T09:00:00"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "No — the available evidence does not show that an onboarding session was created in response to Janice’s hiring on Day 7, nor that Janice was involved in one.\n\nThe only “Day 7” reference I can see is in the mobile engineering discussion, where Priya mentions the “onboarding checklist (Design: Onboarding checklist alignment, day 7)” and ties it to displaying `session_score` in the athlete dashboard [source:slack_engineering_mobile_2026-03-23T09:25:00]. That is about a product/onboarding checklist item, not about onboarding a person named Janice.\n\nThere are other onboarding-related records, but none connect to Janice:\n\n- A hardware SDK onboarding session with Ravi is mentioned, but it is for the Apex Pro Wearable Rapid Prototyping Sprint and does not involve Janice [source:slack_dm_desmond_priya_2026-02-06T09:59:33.786930].\n- HR and engineering discussions reference new-engineer onboarding checklists and process improvements [source:slack_qa_support_2026-01-27T12:34:00, source:CONF-ENG-254].\n- Onboarding redesign and hardware/training-room action items are tracked, but again without mention of Janice [source:slack_dm_karen_tom_2026-01-26T09:00:00].\n\nSo the honest read is: we have Day 7 onboarding-checklist context, but no confirmed Janice hiring or Janice-specific onboarding session in the provided evidence.",
+      "latencyMs": 31462
+    },
+    {
+      "questionId": "perspective_Vince_EVT-49-incident_resolved-1520",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Based on Vince's role and access, is it likely he knew about the incident resolved event before Day 49 ended?",
+      "actor": "Vince",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 41362
+    },
+    {
+      "questionId": "perspective_Elena_EVT-58-confluence_created-1373",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Could Elena have encountered the document “untitled” created by Priya through the systems available to her by Day 58?",
+      "actor": "Elena",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 38403
+    },
+    {
+      "questionId": "perspective_Nadia_EVT-32-incident_resolved-1524",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Could Nadia have encountered an incident resolved event through the systems available to her by Day 32?",
+      "actor": "Nadia",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 42626
+    },
+    {
+      "questionId": "silence_EVT-29-customer_email_routed-1499_zd_ticket_opened",
+      "questionType": "SILENCE",
+      "questionText": "Was a Zendesk support ticket created in response to the routing of the customer email on Day 29 involving Metro United FC, Marcus?",
+      "expectedAnswer": false,
+      "judgedAnswer": true,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "customer_reply_metro_united_fc_OPP-1002_29"
+      ],
+      "citedArtifacts": [
+        "OPP-1002",
+        "slack_dm_jenna_marcus_2026-03-17T09:00:00"
+      ],
+      "retrievedArtifacts": [
+        "OPP-1002",
+        "slack_dm_jenna_marcus_2026-03-17T09:00:00"
+      ],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "I can’t confirm that a Zendesk support ticket was created for that Day 29 Metro United FC / Marcus email routing. The available evidence does not show one.\n\nWhat the evidence does show:\n\n- There is a Metro United FC opportunity record for a sales/negotiation email thread involving Marcus, with the subject “Next steps for Metro United FC – reinforced alerting proposal attached” [source:OPP-1002].\n- Several outbound sales emails to Metro United FC are recorded, including from Blake, Tasha, and Jenna [source:OUTREACH-57-blake, source:SALES-135, source:SALES-133, source:SALES-134, source:OUTREACH-47-jenna].\n- The Slack thread between Marcus and Jenna is about the Metro United FC NDA, pipeline stage, email wave timing, and copy sign-off—not about Zendesk support tickets [source:slack_dm_jenna_marcus_2026-03-17T09:00:00].\n- Zendesk is mentioned only in unrelated engineering/onboarding design docs as a general support-ticket system, not as a ticket tied to this Metro United FC email [source:CONF-ENG-204, source:CONF-ENG-119].\n\nSo the practical answer: **no Zendesk ticket is visible in the provided records**, and the evidence does not establish that one was created. If you have the Day 29 email ID or a Zendesk ticket reference, that would be the quickest way to confirm.",
+      "latencyMs": 29031
+    },
+    {
+      "questionId": "counterfactual_EVT-8-incident_opened-1219_incident_coordination",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "On Day 8, would the successful resolution of the system incident have occurred without Jax first contacting Google Firebase as coordinated by Kaitlyn?",
+      "actor": "Jax",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-123",
+        "slack_incidents_2026-01-12T12:59:00",
+        "slack/channels/incidents/2026-01-12.json",
+        "slack_incidents_2026-01-12T10:08:00"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 36082
+    },
+    {
+      "questionId": "silence_EVT-24-inbound_external_email-1422_customer_email_routed",
+      "questionType": "SILENCE",
+      "questionText": "Was an internal routing created for the inbound email on Day 24 involving Velox Pro Cycling, Marcus?",
+      "expectedAnswer": true,
+      "judgedAnswer": false,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "customer_reply_velox_pro_cycling_OPP-1003_24"
+      ],
+      "citedArtifacts": [
+        "customer_reply_velox_pro_cycling_OPP-1003_47",
+        "reply_customer_velox_pro_cycling_47",
+        "OPP-1003",
+        "slack_digital-hq_2026-01-26T17:01:00",
+        "slack_digital-hq_2026-03-19T12:42:00"
+      ],
+      "retrievedArtifacts": [
+        "customer_reply_velox_pro_cycling_OPP-1003_47",
+        "reply_customer_velox_pro_cycling_47",
+        "OPP-1003",
+        "slack_digital-hq_2026-01-26T17:01:00",
+        "slack_digital-hq_2026-03-19T12:42:00"
+      ],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "No—based on the retrieved evidence, I don’t see confirmation that an **internal routing** was created for the Day 24 inbound email involving Velox Pro Cycling and Marcus.\n\nWhat the evidence does show:\n\n- **Isabel from Velox Pro Cycling sent an inbound request** asking for a prototype timeline, a sync-flow demo, pricing implications, and a cycling-team case study [source:customer_reply_velox_pro_cycling_OPP-1003_47].\n- **Marcus replied externally** with a prototype ETA of early Q3 / mid-September, a 30-minute demo/pricing walkthrough offer, and a promise to send a Team Velocity case study [source:reply_customer_velox_pro_cycling_47].\n- **OPP-1003 is listed as Velox Pro Cycling**, currently in the **Value Proposition** stage, with Marcus as the sender [source:OPP-1003].\n- There is **internal Slack activity where Marcus is pushing for demo support**—first requesting dev hours for a custom leaderboard view in January [source:slack_digital-hq_2026-01-26T17:01:00], and later requesting an analytics dashboard UI tweak for a Velox demo in March [source:slack_digital-hq_2026-03-19T12:42:00].\n\nBut none of these artifacts explicitly document the creation of an internal routing ticket, assignment, or routing action tied to that Day 24 inbound email. To confirm, I’d want to see the corresponding internal ticketing or routing log—Jira, an email-routing metadata field, or an internal assignment record around that date.",
+      "latencyMs": 29454
+    },
+    {
+      "questionId": "silence_EVT-55-inbound_external_email-1516_customer_email_routed",
+      "questionType": "SILENCE",
+      "questionText": "Was an internal routing of the customer email created in response to the inbound email on Day 55 involving Velox Pro Cycling, Marcus?",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "customer_reply_velox_pro_cycling_OPP-1003_55"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 36531
+    },
+    {
+      "questionId": "silence_EVT-18-knowledge_gap_detected-1367_confluence_created",
+      "questionType": "SILENCE",
+      "questionText": "Was a Confluence documentation page created in response to the knowledge gap detected on Day 18 involving Bill, specifically regarding TitanDB, legacy auth service, AWS cost structure, Project Titan?",
+      "expectedAnswer": true,
+      "judgedAnswer": true,
+      "answerCorrect": true,
+      "expectedArtifacts": [
+        "slack_digital-hq_2026-01-28T13:07:00",
+        "CONF-ENG-177",
+        "slack_digital-hq_2026-02-05T11:30:00"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-373",
+        "ENG-123"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-373",
+        "ENG-123"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Mostly yes—there is a Confluence page that directly responds to that knowledge gap, but the evidence does not confirm the “Day 18 involving Bill” detail.\n\n- **Confluence page created:** `CONF-ENG-373`, titled **“Design: Define knowledge‑gap sprint process,”** was created on **2026-03-09** by **Nadia** in response to the detection of a large knowledge gap involving **TitanDB schema, legacy auth service, AWS cost tagging, and the legacy Project Titan codebase** [source:CONF-ENG-373].\n- **Matching gap areas:** The same areas appear in Jira incident **ENG-123**, which lists **TitanDB, legacy auth service, AWS cost structure, Project Titan** as undocumented gap areas [source:ENG-123]. The related Slack incident post also describes the P1 Kafka/telemetry impact [source:slack_incidents_",
+      "latencyMs": 39115
+    },
+    {
+      "questionId": "silence_EVT-17-incident_opened-1323_postmortem_created",
+      "questionType": "SILENCE",
+      "questionText": "Was a postmortem document created for the incident on Day 17 involving Deepa and Kaitlyn?",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-148",
+        "slack_incidents_2026-01-23T10:00:00",
+        "CONF-ENG-150"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 36036
+    },
+    {
+      "questionId": "perspective_Ben_EVT-59-pr_review-1529",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Could Ben have encountered Yusuf's review titled “fix security group rule regression and add tf validation,” authored by Janice with the comment “The missing description field is now included and the validation passes, so the changes look solid. Approve for merge,” by Day 59?",
+      "actor": "Ben",
+      "expectedAnswer": false,
+      "judgedAnswer": true,
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [
+        "PR-155",
+        "slack_engineering_2026-03-24T09:46:15",
+        "slack_digital-hq_2026-03-24T15:36:00"
+      ],
+      "retrievedArtifacts": [
+        "PR-155",
+        "slack_engineering_2026-03-24T09:46:15",
+        "slack_digital-hq_2026-03-24T15:36:00"
+      ],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Short answer: it's *possible* on the timeline, but the premise has a couple of mismatches worth flagging.\n\n**What the records actually show**\n\n- The title \"fix security group rule regression and add tf validation\" belongs to **PR-155** ([ENG-258]), which was **submitted by Janice** and **reviewed by Yusuf** [source:PR-155]. So it's not \"Yusuf's review authored by Janice\" — the authorship and review roles are the other way around from how you framed it: Janice wrote the change, Yusuf did the approving.\n- Yusuf **approved and merged PR-155 on 2026-03-24 at 09:46**, per the GitHub Actions notification in #engineering [source:slack_engineering_2026-03-24T09:46:15].\n- The \"day 59\" reference appears in #digital-hq on that same date (2026-03-24), when Priya mentions \"day 59's Remote Config plan\" [source:slack_digital-hq_2026-03-24T15:36:00]. Ben was actively in that channel the same afternoon, debugging the PR-156 Jenkins/Helm deploy issue.\n\n**Two things the evidence does not support**\n\n1. **The exact comment.** I searched for \"The missing description field is now included and the validation passes, so the changes look solid. Approve for merge\" and found no record of that text. The only approval evidence is the merged-notification line. So the specific comment is unverified.\n2. **Ben actually seeing it.** Ben's documented activity on 2026-03-24 centers on PR-156, not PR-155. There's no artifact (chat, ticket, PR activity) showing Ben encountered that review.\n\n**Bottom line:** Timing-wise, yes — the approval and merge existed by 09:46 on 2026-03-24, right at the Day 59 window, so Ben *could* have encountered it that day. But if you need proof that Ben saw it, the current records don't establish that, and the quoted comment itself doesn't appear in anything I can find. If you can point me to where you saw that comment, I can dig further.",
+      "latencyMs": 50452
+    },
+    {
+      "questionId": "silence_EVT-54-incident_opened-1631_postmortem_created",
+      "questionType": "SILENCE",
+      "questionText": "Was a postmortem document created in response to the incident on Day 54 involving Hanna and Alex?",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-263",
+        "slack_incidents_2026-03-17T10:25:00",
+        "CONF-ENG-438"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 42794
+    },
+    {
+      "questionId": "silence_EVT-15-inbound_external_email-1425_customer_email_routed",
+      "questionType": "SILENCE",
+      "questionText": "Was an internal routing created for the inbound email on Day 15 involving Metro United FC, Marcus?",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "customer_reply_metro_united_fc_OPP-1002_15"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 43422
+    },
+    {
+      "questionId": "silence_EVT-7-employee_hired-1030_warmup_1on1",
+      "questionType": "SILENCE",
+      "questionText": "Was a warmup 1‑on‑1 meeting created in response to the hiring of Janice on Day 7 involving Janice?",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "hr_outbound_janice_4_offer_letter"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-432",
+        "CONF-ENG-287",
+        "slack_dm_janice_karen_2026-02-16T10:59:00",
+        "slack_digital-hq_2026-02-23T13:00:00",
+        "slack_dm_janice_patty_2026-04-01T13:07:00"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-432",
+        "CONF-ENG-287",
+        "slack_dm_janice_karen_2026-02-16T10:59:00",
+        "slack_digital-hq_2026-02-23T13:00:00",
+        "slack_dm_janice_patty_2026-04-01T13:07:00"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "No — I can’t confirm that from the available evidence. There’s no visible calendar invite, onboarding record, or meeting request showing a “warmup 1-on-1” was created in response to Janice being hired on “Day 7.”\n\nThe “Day 7” references in the provided artifacts look like project timeline references, not hire dates. For example:\n\n- **CONF-ENG-432** lists **Day 7 – Production rollout** as a project milestone [source:CONF-ENG-432].\n- **CONF-ENG-287** mentions **Day 7** in the context of marketing feedback [source:CONF-ENG-287].\n\nJanice does appear in operational discussions around sprint capacity, Terraform tagging, Redis, and PostgreSQL work [source:slack_dm_janice_karen_2026-02-16T10:59:00], [source:slack_digital-hq_2026-02-23T13:00:00], [source:slack_dm_janice_patty_2026-04-01T13:07:00], but none of those mention a hiring-related warmup meeting.\n\nSo: **the current evidence is insufficient to say such a meeting was created.** To verify, you’d likely need to check Janice’s calendar, onboarding invite logs, or HR records.",
+      "latencyMs": 43936
+    },
+    {
+      "questionId": "counterfactual_EVT-27-pr_review-1560_review_triggers_revision",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "If Taylor had not raised the code review comments on Day 27, would Sam still have merged Chloe’s changes?",
+      "actor": "Taylor",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-164",
+        "PR-126",
+        "slack_engineering_2026-02-09T10:04:09"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 36652
+    },
+    {
+      "questionId": "silence_EVT-7-customer_email_routed-1191_zd_ticket_opened",
+      "questionType": "SILENCE",
+      "questionText": "Was a Zendesk support ticket created in response to the routing of the customer email on Day 7 involving National Olympic Training Center, Marcus?",
+      "expectedAnswer": false,
+      "judgedAnswer": false,
+      "answerCorrect": true,
+      "expectedArtifacts": [
+        "customer_reply_national_olympic_training_center_OPP-1001_7"
+      ],
+      "citedArtifacts": [
+        "OUTREACH-57-marcus",
+        "SALES-132",
+        "OUTREACH-47-marcus",
+        "SALES-127",
+        "OUTREACH-39-marcus",
+        "SALES-123",
+        "CONF-ENG-204",
+        "CONF-ENG-119"
+      ],
+      "retrievedArtifacts": [
+        "OUTREACH-57-marcus",
+        "SALES-132",
+        "OUTREACH-47-marcus",
+        "SALES-127",
+        "OUTREACH-39-marcus",
+        "SALES-123",
+        "CONF-ENG-204",
+        "CONF-ENG-119"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "No — I can’t confirm that a Zendesk support ticket was created from that Day 7 customer-email routing, and the available evidence doesn’t show one.\n\n- The Marcus/National Olympic Training Center artifacts are all outbound-email records in Jira, such as next-step and updated-proposal messages [source:OUTREACH-57-marcus][source:SALES-132][source:OUTREACH-47-marcus][source:SALES-127][source:OUTREACH-39-marcus][source:SALES-123]. None of them describe a customer email being routed or a Zendesk ticket being opened as a result.\n- The only Zendesk references in the provided material are unrelated to this case: one design doc assumes support tickets are stored in Zendesk and contain a `bug_id` field [source:CONF-ENG-204], and the onboarding doc mentions Zendesk analytics for new-hire support tickets [source:CONF-ENG-119].\n\nSo, based on what’s in front of me: there is no confirmed Zendesk support ticket tied to a Day 7 NOTC/Marcus customer-email routing. If you have the Zendesk queue or the email-routing log, that’s where we’d need to look.",
+      "latencyMs": 29582
+    },
+    {
+      "questionId": "perspective_Chloe_EVT-48-knowledge_gap_detected-1495",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Based on Chloe's role and access, is it likely she knew about the knowledge gap in auth‑service, redis‑cache, and oauth2‑flow before Day 48 ended?",
+      "actor": "Chloe",
+      "expectedAnswer": true,
+      "judgedAnswer": true,
+      "answerCorrect": true,
+      "expectedArtifacts": [
+        "slack_digital-hq_2026-03-13T12:31:16.344051"
+      ],
+      "citedArtifacts": [
+        "slack_engineering_mobile_2026-02-13T11:48:00",
+        "slack_standup_2026-03-09T09:15:00"
+      ],
+      "retrievedArtifacts": [
+        "slack_engineering_mobile_2026-02-13T11:48:00",
+        "slack_standup_2026-03-09T09:15:00"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "**Short answer: yes — the evidence strongly suggests she knew well before Day 48 ended.**\n\n**The timeline**\n- On 2026-02-13 in #engineering_mobile, Chloe herself said: \"auth-service still runs on Java 8 and bypasses the oauth2-flow, so any change will break the Redis-cache session handling,\" and pointed to infra issue #412 [source:slack_engineering_mobile_2026-02-13T11:48:00].\n- In that same thread, Jordan explicitly referenced the knowledge gap list: \"auth-service, redis-cache, and oauth2-flow are all owned by the auth team\" [source:slack_engineering_mobile_2026-02-13T11:48:00]. So the gap was named in a channel she was actively participating in.\n- Day 48 appears roughly a month later, on 2026-03-09, when Sarah reported the \"Day 48 product plan delivered\" and said the next step was a cross-team learning sprint \"so we can close the knowledge gap\" [source:slack_standup_2026-03-09T09:15:00].\n\n**What her role/access imply**\n- As a Product Manager she's clearly operating with engineering-level visibility — she was in an engineering channel, quoted the deployment constraints on auth-service, and called out concrete cross-service breakage about two weeks before the Day 48 milestone.\n- There's nothing to suggest the knowledge gap list was restricted or that she'd been excluded; quite the opposite — she contributed the most technically specific take in that thread.\n\n**Honest caveats**\n- I don't have the formal knowledge gap list artifact itself, only the Slack reference to it, so I can't quote its contents directly.\n- \"Day 48\" doesn't have a pinned calendar definition in what I retrieved, though the standup placement makes clear it lands after the Feb 13 discussion.\n\n**Bottom line:** If the question is whether she could plausibly claim she only learned of it after Day 48, the Feb 13 thread is hard to reconcile with that. She knew the specific mechanics (Java 8, oauth2 bypass, redis session breakage) and saw the gap explicitly attributed to the auth team roughly a month earlier.",
+      "latencyMs": 24634
+    },
+    {
+      "questionId": "perspective_Marcus_EVT-29-retrospective-1542",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Marcus have been outside the retrospective event's visibility by Day 29?",
+      "actor": "Marcus",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 41178
+    },
+    {
+      "questionId": "silence_EVT-17-incident_opened-1323_incident_resolved",
+      "questionType": "SILENCE",
+      "questionText": "Was a resolution created for the incident on Day 17 involving Deepa, Kaitlyn?",
+      "expectedAnswer": true,
+      "judgedAnswer": false,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-148",
+        "slack_incidents_2026-01-23T10:00:00",
+        "PR-119"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-383",
+        "slack_digital-hq_2026-03-18T15:59:34.948095"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-383",
+        "slack_digital-hq_2026-03-18T15:59:34.948095"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "The evidence doesn’t use the label “Day 17,” so I’d treat it as either **2026-03-17** or the incident still active around that time.\n\n- If you mean **ENG-237**, the incident involving Deepa’s latency dashboard and Kaitlyn as on-call: the **final resolution was created on 2026-03-16**, not 03-17 [source:CONF-ENG-383]. The 03-17 entry says the incident was **closed after observation** [source:CONF-ENG-383].\n- If you mean the **active incident ENG-250** discussed by Deepa and Kaitlyn in Slack, there is **no completed resolution shown** [source:slack_digital-hq_2026-03-18T15:59:34.948095]. They only describe next steps and a planned fix: revert Redis back to `allkeys-lru` and close it once Kafka lag drops below 5s [source:slack_digital-hq_2",
+      "latencyMs": 42529
+    },
+    {
+      "questionId": "silence_EVT-4-inbound_external_email-530_jira_from_vendor_email",
+      "questionType": "SILENCE",
+      "questionText": "Was a Jira ticket created from the vendor email in response to the inbound email on Day 4 involving Nora and Jax?",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ext_email_nora_4_6"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 40224
+    },
+    {
+      "questionId": "perspective_Tom_EVT-39-watercooler_chat-1424",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Tom have been outside the visibility of the informal chat between Dave and Jax by Day 39?",
+      "actor": "Tom",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 51878
+    },
+    {
+      "questionId": "perspective_Karen_EVT-2-ticket_completion_email-270",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would a ticket completion email event have been outside Karen's visibility by Day 2?",
+      "actor": "Karen",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 35327
+    },
+    {
+      "questionId": "perspective_Felix_EVT-4-vendor_email_routed-540",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Could Felix have encountered a vendor email from an external vendor being routed internally through the systems available to him by Day 4?",
+      "actor": "Felix",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 41903
+    },
+    {
+      "questionId": "counterfactual_EVT-3-incident_opened-375_recurrence_of",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "Had Kaitlyn, Sanjay, and Hanna not implemented the temporary fix on Day 3, would the subsequent incident still have occurred?",
+      "actor": "Kaitlyn",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-112",
+        "slack_incidents_2026-01-05T12:16:00",
+        "ENG-263",
+        "slack_incidents_2026-03-17T10:25:00"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 41492
+    },
+    {
+      "questionId": "silence_EVT-35-knowledge_gap_detected-1441_confluence_created",
+      "questionType": "SILENCE",
+      "questionText": "Was a Confluence documentation page created in response to the knowledge gap detected on Day 35 involving Sharon, specifically regarding mobile analytics, legacy auth service, AWS cost structure, Project Titan?",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "slack_sales_marketing_2026-02-23T10:23:00"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 37895
+    },
+    {
+      "questionId": "perspective_Mike_EVT-11-knowledge_gap_detected-1309",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Based on Mike's role and access, is it likely he knew about the knowledge gap in mobile analytics, the legacy auth service, the AWS cost structure, and Project Titan before Day 11 ended?",
+      "actor": "Mike",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "slack_hr_ops_2026-01-22T13:50:56.328302"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 54384
+    },
+    {
+      "questionId": "counterfactual_EVT-21-incident_opened-1387_postmortem_from_incident",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "Had Deepa not drafted the post‑incident summary on Day 21, would Jax still have coordinated the remediation steps that Yusuf later recorded?",
+      "actor": "Deepa",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-165",
+        "slack_incidents_2026-01-29T10:30:00",
+        "CONF-ENG-187"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 45495
+    },
+    {
+      "questionId": "perspective_Nadia_EVT-51-jira_ticket_created-1537",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Nadia have been aware of the Jira ticket “Design reinforced alerting panel mockup in Figma for the Real‑Time Insights dash” opened by Sarah as of Day 51, based only on what was accessible to her?",
+      "actor": "Nadia",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 38294
+    },
+    {
+      "questionId": "perspective_Alex_EVT-53-incident_resolved-1606",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Alex have been aware of the incident resolved event as of Day 53, based only on what was accessible to them?",
+      "actor": "Alex",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-250",
+        "PR-150"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 40267
+    },
+    {
+      "questionId": "perspective_Alex_EVT-13-incident_opened-1396",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Alex have reached knowledge of the P1 incident concerning the Redis cache TTL misconfiguration that impacted the leaderboard microservice through normal channels by Day 13?",
+      "actor": "Alex",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-137",
+        "slack_incidents_2026-01-19T12:35:00"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 39602
+    },
+    {
+      "questionId": "silence_EVT-13-incident_opened-1396_zd_tickets_escalated",
+      "questionType": "SILENCE",
+      "questionText": "Was a Zendesk escalation created in response to the incident on Day 13 involving Yusuf and Hanna?",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "slack_incidents_2026-01-19T12:35:00",
+        "ENG-137"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 41937
+    },
+    {
+      "questionId": "counterfactual_EVT-37-zd_tickets_escalated-1317_escalation_from_zendesk",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "Would the escalation of the Zendesk support tickets into an incident on Day 37 have occurred without Taylor first consulting Yusuf?",
+      "actor": "Taylor",
+      "expectedAnswer": true,
+      "judgedAnswer": false,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-210",
+        "ZD-101",
+        "slack_incidents_2026-02-20T11:51:00"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-078",
+        "slack_digital-hq_2026-02-25T10:50:00"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-078",
+        "slack_digital-hq_2026-02-25T10:50:00"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Short version: the available evidence doesn’t support a confident yes or no.\n\nWhat the evidence does show:\n\n- The postmortem confirms that the incident caused degraded customer experience: “Two premium clients reported degraded experience; tickets opened for support escalation” [source:CONF-ENG-078].\n- It also describes the core outage: `/predict/pacing` was unavailable for 48 hours, affecting roughly 12,000 marathon participants [source:CONF-ENG-078].\n- The Slack thread mentions “day 37” only in relation to brand/storytelling alignment for the heart-rate heatmap toggle [source:slack_digital-hq_2026-02-25T10:50:00]. It does not connect Day 37 to Zendesk ticket escalation, incident creation, Taylor, or Yusuf.\n\nWhat is missing:\n\n- No mention of Zendesk, Taylor, or Yusuf in the provided artifacts.\n- No record showing that Taylor consulted Yusuf before the escalation.\n- No decision log explaining whether that consultation changed whether the tickets became an incident.\n\nSo the grounded answer is: **we can’t determine whether the escalation would have happened without Taylor consulting Yusuf**. The records confirm that support escalation tickets were opened after the incident, but they don’t establish a causal link between the consultation and the escalation outcome.\n\nTo answer this properly, you’d likely need the Zendesk ticket trail, the Day 37 incident record, and any on-call or escalation-channel notes around when the tickets were promoted to an incident.",
+      "latencyMs": 29770
+    },
+    {
+      "questionId": "counterfactual_EVT-14-knowledge_gap_detected-1365_involves_gap",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "Had Sam not communicated the revised operational guidelines to Bill and Yusuf on Day 14, would the later system outage still have occurred?",
+      "actor": "Sam",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "slack_digital-hq_2026-01-23T12:21:00",
+        "ENG-186",
+        "slack_incidents_2026-02-10T12:37:00"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 41968
+    },
+    {
+      "questionId": "counterfactual_EVT-6-inbound_external_email-875_jira_from_vendor_email",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "On Day 6, would the Jira ticket that Lena later worked on have been created if Jax had not first received the vendor’s email?",
+      "actor": "Jax",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ext_email_lena_6_6",
+        "ORG-107"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 38806
+    },
+    {
+      "questionId": "silence_EVT-30-email_dropped-1451_zd_ticket_opened",
+      "questionType": "SILENCE",
+      "questionText": "Was a Zendesk support ticket created for the event on Day 30 involving Nisha and Marcus?",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ext_email_nisha_30_9"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 40970
+    },
+    {
+      "questionId": "perspective_Janice_EVT-54-incident_opened-1631",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Based on Janice's role and access, is it likely she knew about the P1 incident involving a misaligned Kafka topic partition count that caused uneven load distribution before Day 54 ended?",
+      "actor": "Janice",
+      "expectedAnswer": true,
+      "judgedAnswer": false,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-263",
+        "slack_incidents_2026-03-17T10:25:00"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-438",
+        "ENG-263",
+        "slack_incidents_2026-03-17T10:25:00"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-438",
+        "ENG-263",
+        "slack_incidents_2026-03-17T10:25:00"
+      ],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "**Short answer: unlikely — but I can't rule it out entirely, and the record doesn't prove either way.**\n\n**What the evidence shows**\n\n- The incident (ENG-263) was a backend infrastructure P1: a misaligned Kafka partition count caused uneven load and consumer lag, impacting telemetry, the legacy auth service, and AWS costs [source:CONF-ENG-438][source:ENG-263]. It's owned and documented in Engineering_Backend, with a postmortem written by Alex on Confluence [source:CONF-ENG-438][source:ENG-263].\n- The incident surfaced in a **#general** Slack channel on 2026-03-17 [source:slack_incidents_2026-03-17T10:25:00]. If Janice's Slack workspace has #general as a shared channel and she was active, this is the most plausible channel for accidental awareness — but I found no record of her being a member or of any HR involvement.\n- HR_Ops is not a named stakeholder anywhere in the incident record, and the postmortem's gap areas (mobile analytics, legacy auth, AWS costs, Project Titan) don't touch HR domains [source:CONF-ENG-438][source:ENG-263].\n- Janice's profile shows an HR Generalist role with no current assignments tied to this work [source context: your own record], so nothing in her active workload would have routed this to her.\n\n**Assessment**\n\n- **Direct, intentional knowledge: low likelihood.** No ticket assignment, no stakeholder mention, no HR notification record.\n- **Passive exposure: possible but unproven.** A #general post is the kind of thing an active Slack user might see; whether she did depends on channel membership and activity on that date, which I can't confirm from what's available.\n\n**Gaps worth checking**\n\n- Confirm what \"Day 54\" anchors to (project start? incident day?) — the timeline I have pins the incident to 2026-03-12, lasting three days [source:CONF-ENG-438].\n- Check Slack channel membership for #general around that date if you need a defensible yes/no rather than a likelihood.\n\nIf this is feeding something bigger (accountability question, comms audit), I'd want that membership check before concluding.",
+      "latencyMs": 18822
+    },
+    {
+      "questionId": "perspective_Blake_EVT-59-customer_email_routed-1440",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Based on Blake's role and access, is it likely they knew about a customer email being routed to support before Day 59 ended?",
+      "actor": "Blake",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 43001
+    },
+    {
+      "questionId": "counterfactual_EVT-34-pr_review-1592_review_triggers_revision",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "Had Miki not performed the code review on Day 34, would Alex still have merged the implementation revision that Chloe authored?",
+      "actor": "Miki",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-195",
+        "PR-135",
+        "slack_engineering_2026-02-17T09:37:07"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 35450
+    },
+    {
+      "questionId": "counterfactual_EVT-39-pr_review-1320_pr_gap_detected",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "Had the PR review that surfaced a knowledge gap not taken place on Day 39, would Raj still have proceeded with the code merge that Chloe later approved?",
+      "actor": "Raj",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-194",
+        "PR-134"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 44449
+    },
+    {
+      "questionId": "perspective_Janice_EVT-2-confluence_created-299",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Based on Janice's role and access, is it likely she knew about the design document titled “Design: Define and implement cost‑tagging standards for all TiDB cloud instances support” created by Tom, which spawned tickets and updated the legacy auth service and AWS cost structure, before Day 2 ended?",
+      "actor": "Janice",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 68238
+    },
+    {
+      "questionId": "counterfactual_EVT-36-async_question-1537_async_gap_detected",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "Would the knowledge gap have been surfaced without Tom's follow‑up comment after Priya and Deepa's contributions on Day 36?",
+      "actor": "Priya",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "export/slack/channels/digital-hq/2026-02-19.json",
+        "slack_digital-hq_2026-02-20T12:47:00"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-315"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-315"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Based on the evidence provided, I can’t say definitively whether the knowledge gap would have surfaced without Tom’s follow‑up comment.\n\nWhat the sources do show:\n\n- The cross‑team sync design doc explicitly calls out that knowledge gaps around **TitanDB, legacy auth, and AWS cost structure** remain poorly tracked [source:CONF-ENG-315].\n- It also describes a broader organizational pattern where important details live in scattered Slack threads, Jira tickets, and siloed docs rather than a shared source of truth [source:CONF-ENG-315].\n\nThat does suggest a realistic risk that a gap like this could have stayed under the radar unless someone explicitly surfaced it. But the provided evidence does **not** confirm:\n\n- the specific Day 36 discussion,\n- Priya’s and Deepa’s contributions,\n- Tom’s follow‑up comment,\n- or whether the gap was already visible before his comment.\n\nSo my honest read: **the evidence makes it plausible that Tom’s follow‑up was needed to surface the gap**, but it doesn’t prove it was the deciding factor. If you have the Day 36 thread, Jira ticket, or meeting notes, I can help you reason through whether the gap would likely have emerged anyway or was genuinely dependent on his follow‑up.",
+      "latencyMs": 19410
+    },
+    {
+      "questionId": "perspective_Blake_EVT-31-customer_email_routed-1474",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Based on Blake's role and access, is it likely they knew about a customer email being routed to support before Day 31 ended?",
+      "actor": "Blake",
+      "expectedAnswer": false,
+      "judgedAnswer": false,
+      "answerCorrect": true,
+      "expectedArtifacts": [],
+      "citedArtifacts": [
+        "CONF-ENG-453",
+        "slack_sales_marketing_2026-03-20T12:01:00",
+        "slack_digital-hq_2026-03-10T15:12:00",
+        "slack_digital-hq_2026-02-17T16:45:20.918245"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-453",
+        "slack_sales_marketing_2026-03-20T12:01:00",
+        "slack_digital-hq_2026-03-10T15:12:00",
+        "slack_digital-hq_2026-02-17T16:45:20.918245"
+      ],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Short answer: I wouldn’t treat it as likely, based only on the evidence in front of us.\n\nWhat the evidence does show:\n\n- Support tickets can arrive via Jira Service Management, email, Slack `#support`, and Datadog alerts, and current triage is manual, relying on ad hoc Slack and a shared spreadsheet [source:CONF-ENG-453].\n- That setup means visibility depends heavily on who has access to `#support`, the Jira queue, the spreadsheet, or email routing.\n- None of the retrieved artifacts mention Blake, Blake’s role, their support-system access, or a specific customer email being routed to support before Day 31 ended.\n- The Day 31 references I see are about the HR handbook/flexible work policy [source:slack_sales_marketing_2026-03-20T12:01:00], a remote config proposal [source:slack_digital-hq_2026-03-10T15:12:00], and a brand/dashboard rollout alignment [source:slack_digital-hq_2026-02-17T16:45:20.918245], not support email triage.\n\nSo the honest read is: we can’t infer that Blake knew unless we find evidence they had access to one of the support intake surfaces. I’d check `#support` history, Jira Service Management permissions/audit trail, the shared triage spreadsheet, and email routing rules around Day 31.",
+      "latencyMs": 33397
+    },
+    {
+      "questionId": "perspective_Jordan_EVT-49-postmortem_created-1519",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Jordan have been aware of a postmortem being written as of Day 49, based only on what was accessible to them?",
+      "actor": "Jordan",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "CONF-ENG-383",
+        "ENG-237"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 45878
+    },
+    {
+      "questionId": "silence_EVT-13-incident_opened-1396_postmortem_created",
+      "questionType": "SILENCE",
+      "questionText": "Was a postmortem document created in response to the incident on Day 13 involving Yusuf, Hanna?",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "slack_incidents_2026-01-19T12:35:00",
+        "ENG-137",
+        "CONF-ENG-129"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 37291
+    },
+    {
+      "questionId": "silence_EVT-41-inbound_external_email-1476_customer_email_routed",
+      "questionType": "SILENCE",
+      "questionText": "Was an internal routing created for the inbound email on Day 41 involving National Olympic Training Center, Marcus?",
+      "expectedAnswer": true,
+      "judgedAnswer": false,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "customer_reply_national_olympic_training_center_OPP-1001_41"
+      ],
+      "citedArtifacts": [
+        "OUTREACH-57-marcus",
+        "SALES-115",
+        "OUTREACH-4-marcus",
+        "SALES-132",
+        "OUTREACH-47-marcus",
+        "SALES-127",
+        "OUTREACH-39-marcus",
+        "SALES-123",
+        "OPP-1001"
+      ],
+      "retrievedArtifacts": [
+        "OUTREACH-57-marcus",
+        "SALES-115",
+        "OUTREACH-4-marcus",
+        "SALES-132",
+        "OUTREACH-47-marcus",
+        "SALES-127",
+        "OUTREACH-39-marcus",
+        "SALES-123",
+        "OPP-1001"
+      ],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "No, the evidence does not confirm that an internal routing was created for an inbound email on Day 41 involving National Olympic Training Center and Marcus.\n\nWhat the records do show:\n\n- Marcus sent multiple outbound emails to National Olympic Training Center about proposal next steps, updated proposals, latency benchmarks, and value-prop follow-ups [source:OUTREACH-57-marcus][source:SALES-115][source:OUTREACH-4-marcus][source:SALES-132][source:OUTREACH-47-marcus][source:SALES-127][source:OUTREACH-39-marcus][source:SALES-123].\n- There is a NOTC opportunity in “Proposal/Price Quote,” with Marcus as sender and a reply-thread subject referencing the value-prop conversation [source:OPP-1001].\n\nWhat is missing:\n\n- No record shows the email was inbound on Day 41.\n- No record shows an internal routing, ticket, queue item, or handoff was created for that message.\n- The “Re: Re:” subject suggests an ongoing thread, but not the specific Day 41 inbound email or any routing action [source:OPP-1001].\n\nSo the grounded answer is: not confirmed from the available evidence.",
+      "latencyMs": 23293
+    },
+    {
+      "questionId": "silence_EVT-55-inbound_external_email-1577_jira_from_vendor_email",
+      "questionType": "SILENCE",
+      "questionText": "Was a Jira ticket created from the vendor email in response to the inbound email on Day 55 involving Nora and Jax?",
+      "expectedAnswer": false,
+      "judgedAnswer": true,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ext_email_nora_55_6"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-397",
+        "slack_digital-hq_2026-03-18T16:30:03.303028"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-397",
+        "slack_digital-hq_2026-03-18T16:30:03.303028"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "I can’t confirm that a Jira ticket was created, and the supplied evidence does not show one.\n\nWhat the evidence does show:\n\n- **Day 55** appears in the telemetry alignment plan as Alex’s deadline to provide Kafka lag metrics and a scaling proposal [source:CONF-ENG-397].\n- A **vendor suggestion** to consolidate Kafka partitions and retag AWS resources was discussed in `#digital-hq`, with **Jax** saying the team needs sign-off on the Kafka partition count before merging [source:slack_digital-hq_2026-03-18T16:30:03.303028].\n- The materials do **not** mention **Nora**, an inbound vendor email on Day 55, or any Jira ticket tied to that exchange.\n\nSo the records support a vendor/Kafka tagging discussion involving Jax and the Day 55 Kafka plan context, but they do not prove that a Jira ticket was created from a vendor email.",
+      "latencyMs": 31846
+    },
+    {
+      "questionId": "counterfactual_EVT-33-design_discussion-1539_spawned_doc",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "On Day 33, would the Confluence page documenting the design discussion have been created if Nadia, Priya, and Deepa had not held that design discussion first?",
+      "actor": "Nadia",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "./export/zoom/2026-02-16/zoom_2026-02-16_517fa693.md",
+        "CONF-ENG-261",
+        "zoom_2026-02-16_517fa693",
+        "ENG-203"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 44884
+    },
+    {
+      "questionId": "silence_EVT-29-knowledge_gap_detected-1455_confluence_created",
+      "questionType": "SILENCE",
+      "questionText": "Did the team create a Confluence documentation page to address the knowledge gap detected on Day 29 involving Sharon, specifically regarding mobile analytics, the legacy auth service, the AWS cost structure, and Project Titan?",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "CONF-ENG-225",
+        "slack_sales_marketing_2026-02-16T09:39:00"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 45144
+    },
+    {
+      "questionId": "perspective_Chloe_EVT-58-pr_review-1499",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Chloe have had a blind spot around the change request by Deepa on shard telemetry_events DynamoDB and enable on‑demand scaling, authored by Hanna: “Sharding implementation is clear, but enabling on‑demand scaling without a backup plan and without CloudWatch throttling,” as of Day 58?",
+      "actor": "Chloe",
+      "expectedAnswer": false,
+      "judgedAnswer": true,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-251",
+        "ENG-252",
+        "ENG-253",
+        "ENG-254"
+      ],
+      "citedArtifacts": [
+        "slack_dm_janice_miki_2026-02-06T17:27:00"
+      ],
+      "retrievedArtifacts": [
+        "slack_dm_janice_miki_2026-02-06T17:27:00"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "**Tool call:**\n\nWe need to search. Use parallel: query Chloe Deepa Hanna shard telemetry_events DynamoDB on-demand scaling Day 58; query CloudWatch throttling backup plan autoscaling DynamoDB shard telemetry_events; maybe query Chloe blind spot change request. We'll call 3.\n\n\n**Search queries:**\n1. `Chloe Deepa Hanna shard telemetry_events DynamoDB on-demand scaling backup plan CloudWatch throttling Day 58`\n2. `DynamoDB telemetry_events sharding on-demand scaling CloudWatch alarms throttling backup plan`\n3. `Chloe blind spot change request autoscaling DynamoDB writer Lambda permissions`\n\n**Tool results:**\n\n```json\n[\n  {\n    \"source_id\": \"slack_dm_janice_miki_2026-02-06T17:27:00\",\n    \"content\": \"Autoscaling changes: Target utilization 70%, min-capacity currently 5 RCU/WCU, consider lower bound 2. CloudWatch alarms: alarm for “Scaling throttled” is in place, but no corresponding “Scaling succeeded” notification. Add success alarm/dashboard widget. Testing under load: integration test simulates 10x spike for 5 minutes, passes, but only covers write capacity. Add read-heavy scenario. Possible gap flagged: missing permission for DynamoDB autoscaling in writer Lambda’s role; updating role resolves immediate issue and prevents throttling errors when table scales up. Growth toward architecture & integration leadership: deepen AWS architecture knowledge, AWS SA Associate certification, Designing Data-Intensive Applications.\"\n  }\n]\n```\n\n**Grounded answer:**\n\nBased on the verified evidence, **yes—Chloe would likely have had a meaningful blind spot** around the change request by Deepa on `telemetry_events` DynamoDB sharding and enabling on-demand scaling, especially if the change was being evaluated by Hanna with the note: “Sharding implementation is clear, but enabling on‑demand scaling without a backup plan and without CloudWatch throttling.”\n\nThe key evidence points to several missing safeguards around the scaling change:\n\n- The change involved enabling on-demand or autoscaling behavior for a DynamoDB table, but the available evidence shows gaps in **CloudWatch observability** around scaling effectiveness. Specifically, a “Scaling throttled” alarm was present, but there was no corresponding “Scaling succeeded” alarm or dashboard widget to confirm that scaling events were actually working as intended [source:slack_dm_janice_miki_2026-02-06T17:27:00].\n- The testing under load covered only a **write-heavy 10× spike for 5 minutes**, and did not validate a read-heavy scenario. That means the read autoscaling path was not fully verified [source:slack_dm_janice_miki_2026-02-06T17:27:00].\n- There was also a concrete operational gap: the **writer Lambda role was missing DynamoDB autoscaling permissions**, which could have caused throttling errors when the table scaled up [source:slack_dm_janice_miki_2026-02-06T17:27:00].\n- The change also raised cost-capacity concerns: the minimum capacity was set to **5 RCU/WCU**, which could still be more expensive than a fixed provisioned setting during low-traffic periods, and a lower bound such as 2 was suggested but not confirmed as implemented [source:slack_dm_janice_miki_2026-02-06T17:27:00].\n\nSo Chloe’s blind spot would not necessarily be that she missed the sharding implementation. The sharding approach appears clear. The blind spot would more likely be around the **operational risk of enabling on-demand or autoscaling without sufficient backup plans, scaling-success observability, read-path load testing, and Lambda permission safeguards**. In other words, the design may have looked sound, but the rollout would have been under-validated for production safety and cost control.",
+      "latencyMs": 32563
+    },
+    {
+      "questionId": "counterfactual_EVT-29-incident_opened-1552_incident_coordination",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "Would the coordination that Nadia, Sam, and Yusuf carried out with the external party on Day 29 have occurred without the system incident happening first?",
+      "actor": "Nadia",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-186",
+        "slack_incidents_2026-02-10T12:37:00",
+        "slack/channels/incidents/2026-02-10.json",
+        "slack_incidents_2026-02-10T15:46:00"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 41552
+    },
+    {
+      "questionId": "perspective_Blake_EVT-30-jira_ticket_created-1511",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Was there any path by which Blake could have learned about the Jira ticket “[Vendor] IAM Policy Review Recommendations for Apex Athletics” opened by Morgan from a vendor email (vendor: Nora) before Day 30 ended?",
+      "actor": "Blake",
+      "expectedAnswer": false,
+      "judgedAnswer": false,
+      "answerCorrect": true,
+      "expectedArtifacts": [],
+      "citedArtifacts": [
+        "CONF-ENG-382",
+        "ORG-156"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-382",
+        "ORG-156"
+      ],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "No confirmed path, based on the evidence provided.\n\n- The only Nora-related trace is in the process-documentation design note, where vendor IAM review is described as currently living in an email thread with Nora (AWS), with no versioning and Jax as owner [source:CONF-ENG-382]. That suggests a Nora/vendor IAM channel existed, but it does not show Blake receiving, forwarding, or seeing that thread.\n\n- The Jira artifact we have is only the title: “[Vendor] IAM Policy Review Recommendations for Apex Athletics” [source:ORG-156]. It does not confirm that Morgan opened it, that it originated from Nora, or that any email content was attached, forwarded, or",
+      "latencyMs": 45376
+    }
+  ]
+}

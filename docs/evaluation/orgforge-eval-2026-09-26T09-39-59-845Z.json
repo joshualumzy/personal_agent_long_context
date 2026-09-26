@@ -1,0 +1,54 @@
+{
+  "timestamp": "2026-09-26T09:39:59.845Z",
+  "model": "qwen3.8:27b",
+  "summary": {
+    "totalQuestions": 2,
+    "accuracyPct": 50,
+    "citationRecallPct": 50,
+    "citationIntegrityPct": 100,
+    "avgLatencySec": 48.3
+  },
+  "results": [
+    {
+      "questionId": "perspective_Alex_EVT-28-incident_resolved-1522",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Alex have learned about the incident resolved event through normal channels by Day 28?",
+      "actor": "Alex",
+      "expectedAnswer": true,
+      "judgedAnswer": true,
+      "answerCorrect": true,
+      "expectedArtifacts": [
+        "ENG-173",
+        "PR-129"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-354"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-354"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Short answer: the evidence shows the incident was resolved/closed on 2026‑04‑02, so if “Day 28” falls after that date, the resolved event would have been on record by then. But the evidence does not confirm that Alex personally learned about it through normal channels.\n\nWhat the postmortem confirms:\n\n- The incident started with a latency alert on **2026‑03‑27 08:12 UTC** [source:CONF-ENG-354].\n- **All remediation work was completed and the incident was closed on 2026‑04‑02 09:00 UTC** [source:CONF-ENG-354].\n- Total duration was **3 days / 72 hours** [source:CONF-ENG-354].\n\nSo if “Day 28” means a point after **April 2**—for example, 28 days after the initial alert, or April 28—then yes, the incident-resolved event would have happened well before that.\n\nThe missing piece is whether Alex was on the relevant normal channel, such as incident comms, postmortem readers, or team notification. The provided evidence does not say.",
+      "latencyMs": 42953
+    },
+    {
+      "questionId": "perspective_Felix_EVT-32-crm_touchpoint-1446",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Felix have been aware of a CRM touchpoint event as of Day 32, based only on what was accessible to them?",
+      "actor": "Felix",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 53648
+    }
+  ]
+}

@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DeterministicMemoryProvider } from "../src/adapters/deterministic-memory.js";
+import { extractWorkingContextFromHumanMd } from "../src/adapters/letta-memory.js";
+import { createSessionToken } from "../src/auth.js";
 import { buildApp } from "../src/http-app.js";
 import type { CompanyAnswer } from "../src/company-domain.js";
+
+const TEST_SECRET = "test-auth-session-secret-key-32chars-min";
 
 test("unified route scopes Letta context to the requested user and keeps its sources separate", async () => {
   const memory = new DeterministicMemoryProvider();
@@ -19,6 +23,7 @@ test("unified route scopes Letta context to the requested user and keeps its sou
     },
   };
   const app = buildApp({
+    sessionConfig: { secret: TEST_SECRET },
     memory,
     companyAgent: companyAgent as never,
     clock: () => new Date("2026-09-24T00:00:00.000Z"),
@@ -40,7 +45,8 @@ test("unified route scopes Letta context to the requested user and keeps its sou
   const response = await app.inject({
     method: "POST",
     url: "/api/v1/agent/questions",
-    payload: { userId: "jax", employeeId: "jax", question: "What is the migration status?" },
+    headers: { cookie: `sme_session=${createSessionToken("jax", TEST_SECRET)}` },
+    payload: { question: "What is the migration status?" },
   });
   assert.equal(response.statusCode, 200);
   assert.match(asked[0]?.personalMemory ?? "", /coordinating the migration rollout/);
@@ -51,7 +57,8 @@ test("unified route scopes Letta context to the requested user and keeps its sou
   const otherUser = await app.inject({
     method: "POST",
     url: "/api/v1/agent/questions",
-    payload: { userId: "other", employeeId: "jax", question: "What is the migration status?" },
+    headers: { cookie: `sme_session=${createSessionToken("other", TEST_SECRET)}` },
+    payload: { question: "What is the migration status?" },
   });
   assert.equal(otherUser.statusCode, 200);
   assert.equal(asked[1]?.personalMemory, undefined);
@@ -88,6 +95,7 @@ test("GET /api/v1/models lists configured models and POST /api/v1/agent/question
   };
 
   const app = buildApp({
+    sessionConfig: { secret: TEST_SECRET },
     memory,
     companyAgent: soclaasAgent as never,
     companyAgents: {
@@ -106,11 +114,14 @@ test("GET /api/v1/models lists configured models and POST /api/v1/agent/question
   assert.equal(modelsData.models.length, 2);
   assert.equal(modelsData.models.find((m: any) => m.id === "sonnet")?.available, true);
 
+  const jaxAuthHeader = { cookie: `sme_session=${createSessionToken("jax", TEST_SECRET)}` };
+
   // Ask with default (or omitted) model -> routes to soclaas
   const defaultRes = await app.inject({
     method: "POST",
     url: "/api/v1/agent/questions",
-    payload: { userId: "jax", employeeId: "jax", question: "Hello" },
+    headers: jaxAuthHeader,
+    payload: { question: "Hello" },
   });
   assert.equal(defaultRes.statusCode, 200);
   assert.equal(soclaasCalled, true);
@@ -120,12 +131,102 @@ test("GET /api/v1/models lists configured models and POST /api/v1/agent/question
   const sonnetRes = await app.inject({
     method: "POST",
     url: "/api/v1/agent/questions",
-    payload: { userId: "jax", employeeId: "jax", question: "Hello", model: "sonnet" },
+    headers: jaxAuthHeader,
+    payload: { question: "Hello", model: "sonnet" },
   });
   assert.equal(sonnetRes.statusCode, 200);
   assert.equal(sonnetCalled, true);
   assert.equal(sonnetRes.json().model, "sonnet");
   assert.match(sonnetRes.json().answer, /Answer from Sonnet/);
 
+  await app.close();
+});
+
+test("extractWorkingContextFromHumanMd parses current working context and sources instantly", () => {
+  const sampleHumanMd = `---
+description: Personal context
+---
+## Recorded personal context
+### Current
+- Identity: user "jax". [jax-note-001]
+- Favorite drink: matcha latte. [jax-note-001]
+
+## Working context (SME employee)
+### Current
+- Role: head engineer on jax's team. [jax, workplace message, 2026-09-25]
+- Coordinating TitanDB rollout. [jax, workplace message, 2026-09-25]
+
+### History (superseded / cancelled)
+(none)
+`;
+
+  const result = extractWorkingContextFromHumanMd(sampleHumanMd);
+  assert.ok(result);
+  assert.match(result.contextConsidered, /head engineer on jax's team/);
+  assert.match(result.contextConsidered, /Coordinating TitanDB rollout/);
+  assert.deepEqual(result.sources, [
+    { sourceId: "jax-note-001", label: "system/human.md" },
+    { sourceId: "jax", label: "system/human.md" },
+  ]);
+});
+
+test("unified route uses getWorkingContextFast when provider supports it and triggers async update", async () => {
+  let fastCalled = false;
+  let updateCalled = false;
+  const memory = {
+    async getWorkingContextFast(userId: string) {
+      fastCalled = true;
+      return {
+        contextConsidered: "Fast context for " + userId,
+        memoryUpdated: false,
+        sources: [{ sourceId: "fast-src-1", label: "system/human.md" }],
+      };
+    },
+    async processWorkingContext() {
+      updateCalled = true;
+      return { contextConsidered: "", memoryUpdated: false, sources: [] };
+    },
+    async ask() {
+      return { answer: "fallback", runRef: "ref", sources: [] };
+    },
+    async inspect() {
+      return { userId: "jax", items: [] };
+    },
+    async ingest() {
+      return { agentRef: "agent" };
+    },
+  };
+
+  let receivedPersonalMemory = "";
+  const companyAgent = {
+    async answer(input: any) {
+      receivedPersonalMemory = input.personalMemory ?? "";
+      return {
+        answer: "Company answer [source:S1]",
+        sources: [{ sourceId: "S1", sourceType: "jira", title: "T", excerpt: "E" }],
+        runId: "run-1",
+        toolCalls: [],
+      };
+    },
+  };
+
+  const app = buildApp({
+    sessionConfig: { secret: TEST_SECRET },
+    memory: memory as never,
+    companyAgent: companyAgent as never,
+  });
+
+  const res = await app.inject({
+    method: "POST",
+    url: "/api/v1/agent/questions",
+    headers: { cookie: `sme_session=${createSessionToken("jax", TEST_SECRET)}` },
+    payload: { question: "Who leads infra?" },
+  });
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(fastCalled, true);
+  assert.equal(receivedPersonalMemory, "Fast context for jax");
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.equal(updateCalled, true);
   await app.close();
 });

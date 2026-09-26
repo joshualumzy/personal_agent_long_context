@@ -5,6 +5,7 @@ import type {
   MemoryInspection,
   MemoryItem,
   MemoryProvider,
+  PersonalMemoryContext,
   WorkingContextResult,
 } from "../domain.js";
 
@@ -74,5 +75,35 @@ export class DeterministicMemoryProvider implements MemoryProvider {
       memoryUpdated: false,
       sources: askRes.sources,
     };
+  }
+
+  async getContext(userId: string): Promise<PersonalMemoryContext> {
+    const items = this.memoryByUser.get(userId) ?? [];
+    if (items.length === 0) {
+      return { status: "empty", workingContext: "", sources: [] };
+    }
+    const sources = this.ingested
+      .filter((transcript) => transcript.userId === userId)
+      .map((transcript) => ({
+        sourceId: transcript.sourceId,
+        label: `context/${transcript.sourceId}`,
+      }));
+    return {
+      status: "available",
+      workingContext: items.map((item) => item.content).join(" "),
+      sources,
+    };
+  }
+
+  async getWorkingContextFast(userId: string): Promise<WorkingContextResult | null> {
+    const ctx = await this.getContext(userId);
+    if (ctx.status === "available") {
+      return {
+        contextConsidered: ctx.workingContext,
+        memoryUpdated: false,
+        sources: ctx.sources,
+      };
+    }
+    return null;
   }
 }

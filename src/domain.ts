@@ -61,10 +61,19 @@ export interface WorkingContextResult {
   sources: SourceReference[];
 }
 
+export type PersonalMemoryStatus = "available" | "empty" | "unavailable";
+
+export type PersonalMemoryContext =
+  | { status: "available"; workingContext: string; sources: SourceReference[] }
+  | { status: "empty"; workingContext: ""; sources: [] }
+  | { status: "unavailable"; reason: string };
+
 export interface MemoryProvider {
   ingest(transcript: AcceptedTranscript): Promise<{ agentRef: string }>;
   inspect(userId: string): Promise<MemoryInspection>;
   ask(question: AcceptedQuestion): Promise<MemoryAnswer>;
+  getContext?(userId: string): Promise<PersonalMemoryContext>;
+  getWorkingContextFast?(userId: string): Promise<WorkingContextResult | null>;
   processWorkingContext?(input: {
     userId: string;
     message: string;
