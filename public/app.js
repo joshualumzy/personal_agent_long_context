@@ -1253,7 +1253,7 @@ chatForm.addEventListener("submit", async (e) => {
           const normalized = normalizeModelMarkdown(accumulatedContent);
           const rawHtml = marked.parse(normalized, { gfm: true, breaks: false });
           const sanitized = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } });
-          textContainer.innerHTML = linkifyCitations(sanitized);
+          setAnswerHtml(textContainer, sanitized);
           textContainer.querySelectorAll(".inline-citation").forEach((btn) => {
             btn.addEventListener("click", () => showSource(btn.getAttribute("data-source-id")));
           });
@@ -1279,7 +1279,7 @@ chatForm.addEventListener("submit", async (e) => {
           const normalized = normalizeModelMarkdown(text);
           const rawHtml = marked.parse(normalized, { gfm: true, breaks: false });
           const sanitized = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } });
-          textContainer.innerHTML = linkifyCitations(sanitized);
+          setAnswerHtml(textContainer, sanitized);
           textContainer.querySelectorAll(".inline-citation").forEach((btn) => {
             btn.addEventListener("click", () => showSource(btn.getAttribute("data-source-id")));
           });
