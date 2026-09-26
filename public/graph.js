@@ -19,7 +19,7 @@ const $ = (selector) => document.querySelector(selector);
 // caps the slice too, and this is the view agreeing with it.
 const MAX_DRAWN = 120;
 
-const state = { slice: null, selected: null, source: "recorded", extraction: null };
+const state = { slice: null, selected: null, source: "recorded", extraction: null, questions: [] };
 
 function svg(tag, attributes = {}) {
   const element = document.createElementNS(SVG, tag);
@@ -337,8 +337,44 @@ function showError(message) {
   banner.hidden = false;
 }
 
+/**
+ * Which questions have a graph. Each is extracted on its own, so each has its own
+ * picture: merging them would leave a relationship impossible to attribute to the
+ * question that found it.
+ */
+async function loadQuestions() {
+  const select = $("#question");
+  try {
+    const response = await fetch("/api/v1/graph/emergent");
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      state.questions = [];
+      select.replaceChildren();
+      throw new Error(body.message || "No extracted graphs yet.");
+    }
+    const index = await response.json();
+    state.questions = Array.isArray(index.graphs) ? index.graphs : [];
+    // Newest first: the question just asked is the one most likely wanted.
+    state.questions.sort((left, right) =>
+      String(right.extracted_at ?? "").localeCompare(String(left.extracted_at ?? "")));
+    const chosen = select.value;
+    select.replaceChildren(
+      ...state.questions.map((graph) =>
+        h("option", { value: graph.slug },
+          `${graph.question}  (${graph.node_count} items)`)),
+    );
+    if (state.questions.some((graph) => graph.slug === chosen)) select.value = chosen;
+    return state.questions.length > 0;
+  } catch (error) {
+    throw error;
+  }
+}
+
 function request() {
-  if ($("#source").value === "emergent") return "/api/v1/graph/emergent";
+  if ($("#source").value === "emergent") {
+    const slug = $("#question").value;
+    return slug ? `/api/v1/graph/emergent/graphs/${encodeURIComponent(slug)}` : null;
+  }
 
   const view = $("#view").value;
   const parameters = new URLSearchParams();
@@ -366,18 +402,16 @@ function showProvenance() {
     return;
   }
   const meta = state.slice?.meta ?? {};
-  const questions = Array.isArray(meta.questions) ? meta.questions : [];
   line.textContent = [
-    questions.length
-      ? `Read out of the writing while answering: ${questions.map((q) => `“${q}”`).join("; ")}.`
+    meta.question
+      ? `Read out of the writing while answering “${meta.question}”.`
       : "Read out of the writing by a model.",
     meta.semantic_only === false
       ? "Includes the extractor's own scaffolding."
       : "Scaffolding removed, so every line here was found in the prose.",
-    state.extraction?.enabled
-      ? "It grows as questions are asked."
-      : "This is the last export, not a live reading.",
-  ].join(" ");
+    meta.extracted_at ? `Extracted ${meta.extracted_at}.` : null,
+    "One question, one graph: nothing here came from any other question.",
+  ].filter(Boolean).join(" ");
   line.hidden = false;
 }
 
@@ -425,7 +459,14 @@ async function draw() {
   state.source = $("#source").value;
 
   try {
-    const response = await fetch(request());
+    if (state.source === "emergent") {
+      const any = await loadQuestions();
+      if (!any) throw new Error("No question has a graph yet.");
+    }
+    const url = request();
+    if (!url) throw new Error("Choose a question first.");
+
+    const response = await fetch(url);
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
       throw new Error(body.message || `The graph could not be loaded (${response.status}).`);
@@ -457,7 +498,9 @@ async function draw() {
 function syncFields() {
   const emergent = $("#source").value === "emergent";
   const view = $("#view").value;
-  // The emergent graph is one stored export; none of the slicing applies to it.
+  // Each emergent graph is one question's own extraction; none of the slicing
+  // applies to it, and which question is the only choice that does.
+  $("#question-field").hidden = !emergent;
   $("#view-field").hidden = emergent;
   $("#actors-field").hidden = emergent;
   $("#seed-field").hidden = emergent || view !== "chain";
@@ -481,6 +524,7 @@ $("#source").addEventListener("change", () => {
   syncFields();
   if ($("#source").value !== "emergent") $("#extraction").hidden = true;
 });
+$("#question").addEventListener("change", () => draw());
 $("#view").addEventListener("change", syncFields);
 $("#controls").addEventListener("submit", (event) => {
   event.preventDefault();

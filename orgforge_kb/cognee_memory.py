@@ -10,7 +10,12 @@ model reading the prose.
 Doing it over the whole corpus would be slow and expensive and mostly wasted, so
 it is done per question: `query_slice.py` selects the dozen or so artifacts a
 question is about, and only those are extracted here. Cost then follows how much
-is asked rather than how much exists, and memory accumulates around real use.
+is asked rather than how much exists.
+
+Each question gets its own dataset, and its own exported graph. Sharing one
+dataset merges everything ever asked into a single picture, where a relationship
+can no longer be attributed to the question that found it — which is exactly what
+makes an emergent graph worth looking at.
 
 Storage is cognee's embedded default — Ladybug for the graph, LanceDB for
 vectors, SQLite for metadata — so it is all local files under `.cognee/` and
@@ -22,27 +27,33 @@ Configuration comes from the environment, via any OpenAI-compatible endpoint::
 
     LLM_PROVIDER=custom
     LLM_ENDPOINT=https://.../v1
-    LLM_MODEL=openai/qwen3.8:27b
+    LLM_MODEL=openai/deepseek-flash
     LLM_API_KEY=...
+    EMBEDDING_PROVIDER=fastembed
+    EMBEDDING_MODEL=BAAI/bge-small-en-v1.5
+    EMBEDDING_DIMENSIONS=384
 
 Usage
 -----
-    # build memory from a slice, then ask it something
+    # build memory from one question's slice, then ask it something
     python query_slice.py "why did the TiDB migration slip" -o slice.json
     python cognee_memory.py remember slice.json
     python cognee_memory.py recall "who raised the TiDB risk first?"
 
-    # what the extractor made of it
-    python cognee_memory.py graph -o emergent.json
+    # one graph per question, written where /graph reads them
+    python cognee_memory.py graph
 """
 
 from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import os
+import re
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -53,12 +64,17 @@ import _env  # noqa: F401  (imported for its side effect)
 # Keep cognee's files beside the code rather than in a home directory, so a
 # checkout is self-contained and easy to throw away.
 STORAGE = Path(__file__).resolve().parent / ".cognee"
-DATASET = "orgforge_slices"
-# The questions whose slices were extracted. The graph itself does not record
-# what it was built to answer, so remember notes it here and graph reads it back.
+# One dataset per question, so a graph shows what that question turned up rather
+# than the union of everything ever asked. A relationship in a shared dataset
+# cannot be traced back to the question that found it, which makes the picture
+# unreadable as soon as there is more than one.
+DATASET_PREFIX = "orgforge_q_"
+# What has been extracted, and under which dataset. Written by remember, read by
+# graph and by the background worker deciding what still needs doing.
 QUESTIONS = STORAGE / "questions.json"
-# Where the web view looks. `data/` is already ignored by Git.
-WEB_EXPORT = Path(__file__).resolve().parent.parent / "data" / "emergent-graph.json"
+# Where the web view looks: one file per question, plus an index. `data/` is
+# already ignored by Git.
+WEB_EXPORT_DIR = Path(__file__).resolve().parent.parent / "data" / "emergent-graph"
 
 # cognee's own scaffolding, as opposed to what it extracted from the text.
 STRUCTURAL_NODES = {"TextDocument", "DocumentChunk", "TextSummary"}
@@ -67,27 +83,63 @@ STRUCTURAL_NODES = {"TextDocument", "DocumentChunk", "TextSummary"}
 STRUCTURAL_EDGES = {"contains", "is_a", "made_from", "is_part_of"}
 
 
+def slug_for(question: str) -> str:
+    """A short, stable, filesystem- and dataset-safe name for a question.
+
+    The readable prefix makes an export directory browsable; the hash keeps two
+    similar questions apart, and keeps the name stable across runs.
+    """
+    normalized = re.sub(r"[^a-z0-9]+", "_", question.strip().lower()).strip("_")
+    digest = hashlib.sha256(question.strip().encode("utf-8")).hexdigest()[:8]
+    return f"{normalized[:48].rstrip('_')}_{digest}" if normalized else digest
+
+
+def dataset_for(question: str) -> str:
+    return f"{DATASET_PREFIX}{slug_for(question)}"
+
+
 def note_question(question: str) -> None:
-    """Append a question to the record, keeping order and dropping repeats."""
-    existing = []
-    if QUESTIONS.is_file():
-        try:
-            existing = json.loads(QUESTIONS.read_text(encoding="utf-8"))
-        except (ValueError, OSError):
-            existing = []
-    if question not in existing:
-        existing.append(question)
-    QUESTIONS.write_text(json.dumps(existing, indent=2, ensure_ascii=False),
+    """Record a question and the dataset holding what was extracted from it."""
+    question = question.strip()
+    record = recorded()
+    record = [entry for entry in record if entry.get("question") != question]
+    record.append({
+        "question": question,
+        "slug": slug_for(question),
+        "dataset": dataset_for(question),
+        "extracted_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+    })
+    QUESTIONS.parent.mkdir(parents=True, exist_ok=True)
+    QUESTIONS.write_text(json.dumps(record, indent=2, ensure_ascii=False),
                          encoding="utf-8")
 
 
-def recorded_questions() -> list[str]:
+def recorded() -> list[dict[str, str]]:
+    """Every question extracted so far.
+
+    Tolerates the older format, a bare list of question strings, so an existing
+    checkout does not have to be cleared by hand.
+    """
     if not QUESTIONS.is_file():
         return []
     try:
-        return json.loads(QUESTIONS.read_text(encoding="utf-8"))
+        parsed = json.loads(QUESTIONS.read_text(encoding="utf-8"))
     except (ValueError, OSError):
         return []
+    if not isinstance(parsed, list):
+        return []
+    entries = []
+    for item in parsed:
+        if isinstance(item, str):
+            entries.append({"question": item, "slug": slug_for(item),
+                            "dataset": dataset_for(item), "extracted_at": ""})
+        elif isinstance(item, dict) and isinstance(item.get("question"), str):
+            entries.append(item)
+    return entries
+
+
+def recorded_questions() -> list[str]:
+    return [entry["question"] for entry in recorded()]
 
 
 def configure() -> None:
@@ -154,74 +206,92 @@ async def remember(slice_path: Path) -> None:
 
     question = payload.get("question", "(unknown question)")
     characters = sum(len(d.get("text", "")) for d in documents)
+    dataset = dataset_for(question)
     print(f"Question: {question}", file=sys.stderr)
+    print(f"Dataset:  {dataset}", file=sys.stderr)
     print(f"Extracting from {len(documents)} artifacts "
           f"({characters} characters)...", file=sys.stderr)
-    note_question(question)
 
     for index, document in enumerate(documents, start=1):
-        await cognee.add(as_document(document), dataset_name=DATASET)
+        await cognee.add(as_document(document), dataset_name=dataset)
         print(f"  added {index}/{len(documents)}  {document['source_id']}",
               file=sys.stderr)
 
     # This is the expensive step: the model reads each document and proposes
     # entities and relationships.
-    await cognee.cognify(datasets=[DATASET])
+    await cognee.cognify(datasets=[dataset])
+    note_question(question)
     print("Extraction finished.", file=sys.stderr)
 
 
-async def recall(question: str) -> None:
+async def recall(question: str, about: str | None) -> None:
+    """Answer from what was extracted.
+
+    Each question has its own dataset, so recall needs to know which one to read.
+    `about` names it; without it, every dataset is searched, which is the right
+    default for a question that was never itself extracted.
+    """
     import cognee
     from cognee.api.v1.search import SearchType
 
+    record = recorded()
+    if not record:
+        print("Nothing has been extracted yet.", file=sys.stderr)
+        return
+    datasets = (
+        [dataset_for(about)]
+        if about
+        else [entry["dataset"] for entry in record]
+    )
+
     results = await cognee.search(
         query_text=question, query_type=SearchType.GRAPH_COMPLETION,
-        datasets=[DATASET],
+        datasets=datasets,
     )
     if not results:
-        print("Nothing recalled. Has a slice been remembered yet?", file=sys.stderr)
+        print("Nothing recalled from " + ", ".join(datasets), file=sys.stderr)
         return
     for result in results:
         print(result if isinstance(result, str) else json.dumps(
             result, indent=2, ensure_ascii=False, default=str))
 
 
-async def export_graph(output: str | None, semantic_only: bool) -> None:
-    """Write the extracted graph out, in the same shape as export_graph.py.
+async def fetch_graph(dataset: str) -> tuple[list[Any], list[Any]]:
+    """Read one dataset's graph.
 
-    Matching that shape means the emergent graph and the deterministic one can be
-    rendered by the same front end, and compared side by side.
-
-    Access control is on by default, so the graph has to be read through the
-    owning user and dataset. Asking the graph engine directly returns nothing:
-    the data is there, but scoped, and an unscoped read simply does not see it.
-
-    `semantic_only` drops cognee's own scaffolding — the document, chunk and
-    summary nodes, and the `contains`/`is_a` edges that hold them together. Those
-    are two thirds of the graph and none of it was found in the prose, so leaving
-    them in buries the extracted relationships in structure.
+    Access control is on by default and graph data is scoped to its dataset, so
+    this has to go through the owning user and dataset. Asking the graph engine
+    directly returns nothing: the data is there, but scoped, and an unscoped read
+    simply does not see it. `full=True` asks for the whole dataset rather than a
+    neighbourhood around a query.
     """
     from cognee.modules.users.methods import get_default_user
     from cognee.modules.data.methods import get_authorized_existing_datasets
     from cognee.api.v1.visualize.visualize import fetch_dataset_graph_data
 
     user = await get_default_user()
-    authorized = await get_authorized_existing_datasets([DATASET], "read", user)
+    authorized = await get_authorized_existing_datasets([dataset], "read", user)
     if not authorized:
-        raise SystemExit(
-            f"Dataset {DATASET!r} is not readable, or nothing has been "
-            "remembered into it yet."
-        )
+        return [], []
 
-    # full=True asks for the whole dataset rather than a neighbourhood around a
-    # query, which is what an export wants. The dataset carries its own owner, so
-    # no user has to be passed: the read is scoped from the dataset itself.
     graph_data = await fetch_dataset_graph_data(authorized[0], full=True)
     raw_nodes = getattr(graph_data, "nodes", None)
     raw_edges = getattr(graph_data, "edges", None)
     if raw_nodes is None:
         raw_nodes, raw_edges = graph_data[0], graph_data[1]
+    return list(raw_nodes), list(raw_edges or [])
 
+
+def shape_graph(raw_nodes: list[Any], raw_edges: list[Any],
+                semantic_only: bool) -> tuple[list[dict], list[dict]]:
+    """Turn cognee's tuples into the shape export_graph.py produces, so the two
+    graphs can be rendered by one front end.
+
+    `semantic_only` drops cognee's own scaffolding — the document, chunk and
+    summary nodes, and the edges holding them together. Those are two thirds of
+    the graph and none of it was found in the prose, so leaving them in buries
+    the extracted relationships in structure.
+    """
     nodes = []
     for entry in raw_nodes:
         identifier, properties = entry if isinstance(entry, tuple) else (entry, {})
@@ -229,8 +299,7 @@ async def export_graph(output: str | None, semantic_only: bool) -> None:
         nodes.append({
             "id": str(identifier),
             "type": properties.get("type", "entity"),
-            "label": properties.get("name") or properties.get("text")
-                     or str(identifier),
+            "label": properties.get("name") or properties.get("text") or str(identifier),
         })
 
     edges = []
@@ -255,24 +324,60 @@ async def export_graph(output: str | None, semantic_only: bool) -> None:
         attached = {e["source"] for e in edges} | {e["target"] for e in edges}
         nodes = [n for n in nodes if n["id"] in attached]
 
-    graph = {
-        "nodes": nodes,
-        "edges": edges,
-        "meta": {
-            "source": "cognee",
-            "dataset": DATASET,
-            "questions": recorded_questions(),
-            "semantic_only": semantic_only,
-            "node_count": len(nodes),
-            "edge_count": len(edges),
-        },
-    }
-    payload = json.dumps(graph, indent=2, ensure_ascii=False, default=str)
-    destination = Path(output) if output else WEB_EXPORT
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(payload + "\n", encoding="utf-8")
-    print(f"Wrote {len(nodes)} nodes and {len(edges)} edges to {destination}.",
-          file=sys.stderr)
+    return nodes, edges
+
+
+async def export_graph(output_dir: str | None, semantic_only: bool) -> None:
+    """Write one graph per question, plus an index of them.
+
+    One file per question is the point: a graph shows what that question turned
+    up. Merging them would make a relationship impossible to attribute, which is
+    what a shared dataset did.
+    """
+    directory = Path(output_dir) if output_dir else WEB_EXPORT_DIR
+    directory.mkdir(parents=True, exist_ok=True)
+
+    record = recorded()
+    if not record:
+        raise SystemExit("Nothing has been extracted yet, so there is nothing to export.")
+
+    index = []
+    for entry in record:
+        raw_nodes, raw_edges = await fetch_graph(entry["dataset"])
+        if not raw_nodes:
+            print(f"  skipped {entry['slug']}: its dataset holds no graph",
+                  file=sys.stderr)
+            continue
+        nodes, edges = shape_graph(raw_nodes, raw_edges, semantic_only)
+        graph = {
+            "nodes": nodes,
+            "edges": edges,
+            "meta": {
+                "source": "cognee",
+                "question": entry["question"],
+                "slug": entry["slug"],
+                "dataset": entry["dataset"],
+                "extracted_at": entry.get("extracted_at", ""),
+                "semantic_only": semantic_only,
+                "node_count": len(nodes),
+                "edge_count": len(edges),
+            },
+        }
+        (directory / f"{entry['slug']}.json").write_text(
+            json.dumps(graph, indent=2, ensure_ascii=False, default=str) + "\n",
+            encoding="utf-8",
+        )
+        index.append({k: graph["meta"][k] for k in
+                      ("question", "slug", "extracted_at", "node_count", "edge_count")})
+        print(f"  {entry['slug']}: {len(nodes)} nodes, {len(edges)} edges",
+              file=sys.stderr)
+
+    (directory / "index.json").write_text(
+        json.dumps({"graphs": index, "semantic_only": semantic_only},
+                   indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    print(f"Wrote {len(index)} graphs to {directory}.", file=sys.stderr)
 
 
 async def forget() -> None:
@@ -296,11 +401,14 @@ def main() -> int:
     recall_command = subcommands.add_parser(
         "recall", help="answer from what has been extracted")
     recall_command.add_argument("question")
+    recall_command.add_argument("--about",
+                               help="read only the graph extracted for this "
+                                    "question; defaults to all of them")
 
     graph_command = subcommands.add_parser(
-        "graph", help="export the extracted graph as JSON")
-    graph_command.add_argument("-o", "--output",
-                               help=f"defaults to {WEB_EXPORT}, where /graph reads it")
+        "graph", help="export one graph per question, plus an index")
+    graph_command.add_argument("-o", "--output-dir",
+                               help=f"defaults to {WEB_EXPORT_DIR}, where /graph reads it")
     graph_command.add_argument("--everything", action="store_true",
                                help="keep cognee's own document, chunk and summary "
                                     "scaffolding as well as what it extracted")
@@ -313,9 +421,9 @@ def main() -> int:
     if arguments.command == "remember":
         asyncio.run(remember(Path(arguments.slice)))
     elif arguments.command == "recall":
-        asyncio.run(recall(arguments.question))
+        asyncio.run(recall(arguments.question, arguments.about))
     elif arguments.command == "graph":
-        asyncio.run(export_graph(arguments.output, not arguments.everything))
+        asyncio.run(export_graph(arguments.output_dir, not arguments.everything))
     elif arguments.command == "forget":
         asyncio.run(forget())
     return 0

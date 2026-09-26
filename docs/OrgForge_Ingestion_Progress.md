@@ -428,10 +428,17 @@ jira 工件 +人   37 节点 / 30 边   悬空边 0  truncated
 
 | | 记录下来的(确定性) | 从文字里读出来的(涌现) |
 | :--- | :--- | :--- |
-| 数据来自 | Postgres,**实时查询** | cognee **上次导出的快照** |
-| 接口 | `GET /api/v1/graph?...` | `GET /api/v1/graph/emergent` |
+| 数据来自 | Postgres,**实时查询** | cognee 导出的快照,**每个问题一张** |
+| 接口 | `GET /api/v1/graph?...` | `GET /api/v1/graph/emergent`(索引)<br>`GET /api/v1/graph/emergent/graphs/<slug>`(单张) |
 | 节点形状 | 圆=工件、方=事件、菱形=人 | 圆=文中提到的东西、方=某类事物 |
 | 关系 | 只有 `references` / `involves` 两种 | **近 200 种**,大多只出现一次 |
+
+**一个问题一张图**:每个问题用**自己的 cognee dataset**(`orgforge_q_<slug>`),导出成
+独立文件。早先所有问题共用一个 dataset,结果图是全部提问的**并集**——看到一条 `has_risk` 边
+无法知道它来自哪个问题,而这恰恰是涌现图唯一值得看的信息。页面上用下拉框选问题。
+
+代价:跨问题的实体不再互联(两个问题都提到 `tidb`,不会连成一个节点)。这是有意的取舍——
+跨实体的连接由确定性图负责,涌现图负责"这个问题读出了什么"。
 
 **为什么涌现图走文件而不是实时查询**:cognee 的数据在它自己的嵌入式库里(Ladybug/LanceDB/SQLite),
 Node 进程读不了;而且抽取要几分钟,不可能放在一次请求里。所以 Python 侧
@@ -452,11 +459,22 @@ Node 进程读不了;而且抽取要几分钟,不可能放在一次请求里。�
 
 ```bash
 .venv/bin/python orgforge_kb/query_slice.py "why did the TiDB migration slip" -o slice.json
-.venv/bin/python orgforge_kb/cognee_memory.py remember slice.json
-.venv/bin/python orgforge_kb/cognee_memory.py graph     # 写入 data/emergent-graph.json
+.venv/bin/python orgforge_kb/cognee_memory.py remember slice.json    # 进该问题自己的 dataset
+.venv/bin/python orgforge_kb/cognee_memory.py graph                  # 写 data/emergent-graph/
+.venv/bin/python orgforge_kb/cognee_memory.py recall "..." --about "原问题"   # 只读该问题的图
 ```
 
-没导出过时,接口返回 404 并给出上面这三条命令。
+导出目录:`data/emergent-graph/index.json`(索引)+ 每个问题一个 `<slug>.json`。
+没抽取过时接口返回 404 并给出这几条命令。
+
+**实测两个问题各自独立**:
+```
+404 节点 / 637 边   "why did the TiDB migration slip"
+370 节点 / 561 边   "what went wrong with the predictive pacing dashboard"
+两图节点标签重叠仅 48(tidb 这类实体名天然共现),各自独有 356 / 322
+```
+
+日常不用手动跑:在聊天里提问后,后台会自动抽取(见下)。
 
 ---
 

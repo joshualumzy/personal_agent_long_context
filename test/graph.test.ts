@@ -142,7 +142,26 @@ describe("the company graph", () => {
     window.close();
   });
 
-  test("the emergent graph says which question produced it, and names its relationships", async () => {
+  test("each question gets its own graph, and it says which question that is", async () => {
+    const index = {
+      graphs: [
+        {
+          question: "why did the TiDB migration slip",
+          slug: "why_did_the_tidb_migration_slip_50ff7f52",
+          extracted_at: "2026-09-26T13:20:00+00:00",
+          node_count: 3,
+          edge_count: 2,
+        },
+        {
+          question: "what went wrong with the pacing dashboard",
+          slug: "what_went_wrong_b40b6a93",
+          extracted_at: "2026-09-26T13:30:00+00:00",
+          node_count: 2,
+          edge_count: 1,
+        },
+      ],
+      semantic_only: true,
+    };
     const emergent = {
       nodes: [
         { id: "u1", type: "Entity", label: "tidb" },
@@ -155,7 +174,9 @@ describe("the company graph", () => {
       ],
       meta: {
         source: "cognee",
-        questions: ["why did the TiDB migration slip"],
+        question: "why did the TiDB migration slip",
+        slug: "why_did_the_tidb_migration_slip_50ff7f52",
+        extracted_at: "2026-09-26T13:20:00+00:00",
         semantic_only: true,
       },
     };
@@ -167,12 +188,19 @@ describe("the company graph", () => {
     ]);
     const dom = new JSDOM(html, { url: `${base}/graph`, runScripts: "outside-only" });
     const { window } = dom;
+    const asked: string[] = [];
     Object.defineProperty(window, "fetch", {
-      value: async (url: string) =>
-        new Response(
-          JSON.stringify(String(url).includes("emergent") ? emergent : slice),
-          { status: 200 },
-        ),
+      value: async (url: string) => {
+        const path = String(url);
+        asked.push(path);
+        if (path.endsWith("/api/v1/graph/emergent")) {
+          return new Response(JSON.stringify(index), { status: 200 });
+        }
+        if (path.includes("/emergent/graphs/")) {
+          return new Response(JSON.stringify(emergent), { status: 200 });
+        }
+        return new Response(JSON.stringify(slice), { status: 200 });
+      },
       configurable: true,
     });
     window.eval(script);
@@ -183,19 +211,29 @@ describe("the company graph", () => {
     source.value = "emergent";
     source.dispatchEvent(new window.Event("change"));
     document.querySelector("#controls")!.dispatchEvent(new window.Event("submit"));
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    // One question is chosen from the ones that have a graph, newest first.
+    const picker = document.querySelector("#question") as HTMLSelectElement;
+    assert.equal((document.querySelector("#question-field") as HTMLElement).hidden, false);
+    assert.equal(picker.options.length, 2);
+    assert.match(picker.options[0]!.textContent!, /pacing dashboard/);
+    assert.ok(
+      asked.some((path) => path.includes("/emergent/graphs/")),
+      "the chosen question's own graph should be fetched",
+    );
 
     // The slicing controls belong to the recorded graph only.
     assert.equal((document.querySelector("#view-field") as HTMLElement).hidden, true);
     assert.equal((document.querySelector("#legend-emergent") as HTMLElement).hidden, false);
     assert.equal((document.querySelector("#legend-recorded") as HTMLElement).hidden, true);
 
-    // Where it came from has to be stated: a model wrote it, from a stored
-    // export, which makes it weaker evidence than the recorded graph.
+    // Named as one question's reading, and said to contain nothing from others.
     const provenance = document.querySelector("#provenance") as HTMLElement;
     assert.equal(provenance.hidden, false);
     assert.match(provenance.textContent!, /why did the TiDB migration slip/);
-    assert.match(provenance.textContent!, /not a live reading/);
+    assert.match(provenance.textContent!, /One question, one graph/);
+    assert.doesNotMatch(provenance.textContent!, /pacing dashboard/);
 
     // Its own taxonomy gets its own shapes.
     assert.equal(document.querySelectorAll(".node circle.n-entity").length, 2);
@@ -213,7 +251,20 @@ describe("the company graph", () => {
     window.close();
   });
 
-  test("with nothing exported yet, the emergent route explains how to make one", async () => {
+  test("a graph name that is not one the exporter makes is refused", async () => {
+    const { base } = await start(knowledgeWithGraph([]));
+    for (const slug of ["../../etc/passwd", "Has Capitals", "dots.here"]) {
+      const response = await fetch(
+        `${base}/api/v1/graph/emergent/graphs/${encodeURIComponent(slug)}`,
+      );
+      assert.ok(
+        response.status === 400 || response.status === 404,
+        `${slug} should be refused, got ${response.status}`,
+      );
+    }
+  });
+
+  test("with nothing extracted yet, the emergent route explains how to make one", async () => {
     const { base } = await start(knowledgeWithGraph([]));
     const response = await fetch(`${base}/api/v1/graph/emergent`);
     if (response.status === 404) {

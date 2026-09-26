@@ -81,7 +81,16 @@ export class EmergentMemory {
     try {
       if (!existsSync(this.options.questionsFile)) return [];
       const parsed: unknown = JSON.parse(readFileSync(this.options.questionsFile, "utf8"));
-      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+      if (!Array.isArray(parsed)) return [];
+      // Entries carry the dataset and time they were extracted; an older
+      // checkout wrote bare strings, which are still accepted.
+      return parsed.flatMap((item) => {
+        if (typeof item === "string") return [item];
+        if (item && typeof item === "object" && typeof (item as { question?: unknown }).question === "string") {
+          return [(item as { question: string }).question];
+        }
+        return [];
+      });
     } catch {
       return [];
     }

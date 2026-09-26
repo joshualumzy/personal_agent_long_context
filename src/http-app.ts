@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, {
   type FastifyInstance,
@@ -45,9 +46,10 @@ const markedBrowserBundle = fileURLToPath(
 const domPurifyBrowserBundle = fileURLToPath(
   new URL("../node_modules/dompurify/dist/purify.min.js", import.meta.url),
 );
-/** Written by orgforge_kb/cognee_memory.py graph. Ignored by Git. */
-const emergentGraphExport = fileURLToPath(
-  new URL("../data/emergent-graph.json", import.meta.url),
+/** Written by orgforge_kb/cognee_memory.py graph: one file per question, plus
+ *  index.json. Ignored by Git. */
+const emergentGraphDirectory = fileURLToPath(
+  new URL("../data/emergent-graph/", import.meta.url),
 );
 
 const securityHeaders = {
@@ -509,19 +511,42 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
    */
   app.get("/api/v1/graph/emergent", async (_request, reply) => {
     try {
-      const content = await readFile(emergentGraphExport, "utf8");
+      const content = await readFile(join(emergentGraphDirectory, "index.json"), "utf8");
       return reply.type("application/json; charset=utf-8").send(content);
     } catch (error) {
       if ((error as { code?: string }).code !== "ENOENT") throw error;
       return reply.code(404).send({
         message:
-          "No emergent graph has been exported yet. Extract one first: " +
+          "No question has been extracted yet. Ask something in the chat and it " +
+          "will be extracted in the background, or run it by hand: " +
           "python orgforge_kb/query_slice.py \"<question>\" -o slice.json, then " +
           "python orgforge_kb/cognee_memory.py remember slice.json, then " +
           "python orgforge_kb/cognee_memory.py graph.",
       });
     }
   });
+
+  /** The graph extracted for one question. */
+  app.get<{ Params: { slug: string } }>(
+    "/api/v1/graph/emergent/graphs/:slug",
+    async (request, reply) => {
+      // The slug reaches the filesystem, so it may only be what the exporter
+      // produces: lower-case words, digits and underscores.
+      if (!/^[a-z0-9_]{1,120}$/.test(request.params.slug)) {
+        return reply.code(400).send({ message: "That is not a graph name." });
+      }
+      try {
+        const content = await readFile(
+          join(emergentGraphDirectory, `${request.params.slug}.json`),
+          "utf8",
+        );
+        return reply.type("application/json; charset=utf-8").send(content);
+      } catch (error) {
+        if ((error as { code?: string }).code !== "ENOENT") throw error;
+        return reply.code(404).send({ message: "No graph for that question." });
+      }
+    },
+  );
 
   /**
    * Whether an extraction is in flight, so the view can say the graph is about
