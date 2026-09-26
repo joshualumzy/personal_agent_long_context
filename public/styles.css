@@ -1308,6 +1308,7 @@ dialog::backdrop {
 
 @media (max-width: 768px) {
   .chat-block-body iframe { height: 520px; }
+}
 
 /* Auth / Login Modal */
 .auth-dialog {
