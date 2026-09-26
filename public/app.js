@@ -1800,13 +1800,14 @@ function initSoboMascot() {
         src: "/assets/sobo.riv",
         canvas: canvas,
         autoplay: true,
-        artboard: "SOBO-Marketplace",
-        stateMachines: "State Machine 1",
+        artboard: "SOBO-Motion-V02",
+        animations: ["Idle", "Blink"],
         layout: new rive.Layout({
-          fit: rive.Fit.Cover,
+          fit: rive.Fit.Contain,
           alignment: rive.Alignment.Center,
         }),
         onLoad: () => {
+          window.soboRive = soboRiveInstance;
           if (soboRiveInstance) {
             soboRiveInstance.resizeDrawingSurfaceToCanvas();
           }
@@ -1817,6 +1818,30 @@ function initSoboMascot() {
           const wrapper = document.querySelector("#empty-avatar-wrapper");
           if (wrapper) wrapper.innerHTML = '<div class="empty-icon">🤖</div>';
         },
+      });
+
+      // Interactive state switching on click
+      const interactiveStates = [
+        { anims: ["Hello", "Blink"], duration: 2200 },
+        { anims: ["Talk", "Sparkles", "Blink"], duration: 2500 },
+        { anims: ["Yes", "Blink"], duration: 2000 },
+      ];
+      let stateIndex = 0;
+      let stateTimeout = null;
+
+      canvas.addEventListener("click", () => {
+        if (!soboRiveInstance) return;
+        if (stateTimeout) clearTimeout(stateTimeout);
+
+        const current = interactiveStates[stateIndex % interactiveStates.length];
+        stateIndex++;
+
+        soboRiveInstance.play(current.anims);
+        stateTimeout = setTimeout(() => {
+          if (soboRiveInstance) {
+            soboRiveInstance.play(["Idle", "Blink"]);
+          }
+        }, current.duration);
       });
     } catch (err) {
       console.warn("Could not instantiate Rive animation", err);
