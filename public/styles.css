@@ -385,7 +385,7 @@ body {
 }
 
 .sidebar-toggle-btn {
-  display: flex;
+  display: none;
   align-items: center;
   justify-content: center;
   background: transparent;
@@ -396,6 +396,23 @@ body {
   color: var(--ink);
   transition: all 0.15s ease;
   margin-right: 12px;
+  animation: fadeInToggle 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* Only display header toggle button when the sidebar is collapsed */
+.chat-sidebar.collapsed ~ .chat-panel .sidebar-toggle-btn {
+  display: flex;
+}
+
+@keyframes fadeInToggle {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .sidebar-toggle-btn:hover {
