@@ -37,6 +37,10 @@ from typing import Any
 
 import psycopg
 
+# Reads the repository's .env, so DATABASE_URL and the LLM settings do not
+# have to be exported by hand. Must precede any use of os.environ.
+import _env  # noqa: F401  (imported for its side effect)
+
 # Guard rails. A slice is meant to be small: it is about to be read by a
 # language model, and cost scales with what goes in.
 MAX_DOCUMENTS = 60

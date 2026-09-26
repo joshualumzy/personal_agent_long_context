@@ -41,6 +41,10 @@ from typing import Any, Optional
 
 import psycopg
 
+# Reads the repository's .env, so DATABASE_URL and the LLM settings do not
+# have to be exported by hand. Must precede any use of os.environ.
+import _env  # noqa: F401  (imported for its side effect)
+
 # A force-directed layout stops being readable well before this, and the browser
 # stops being responsive not long after. Refuse rather than emit a useless file.
 MAX_NODES = 5_000

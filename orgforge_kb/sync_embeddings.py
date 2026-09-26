@@ -36,6 +36,10 @@ import sys
 
 import psycopg
 
+# Reads the repository's .env, so DATABASE_URL and the LLM settings do not
+# have to be exported by hand. Must precede any use of os.environ.
+import _env  # noqa: F401  (imported for its side effect)
+
 BATCH = 500
 
 

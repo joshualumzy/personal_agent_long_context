@@ -47,6 +47,10 @@ import sys
 
 import psycopg
 
+# Reads the repository's .env, so DATABASE_URL and the LLM settings do not
+# have to be exported by hand. Must precede any use of os.environ.
+import _env  # noqa: F401  (imported for its side effect)
+
 
 def reset_graph(cursor) -> None:
     cursor.execute("TRUNCATE graph_edges, graph_nodes RESTART IDENTITY CASCADE")

@@ -33,7 +33,7 @@ sim_event 是模拟器事件流,`facts` 里带 `causal_chain`、`spawned_pr` 等
 | 个人记忆 | Letta **memfs**(Markdown 文件) | 老板指示、偏好、日程 —— 少量、会被修正 |
 | 公司知识 | Postgres(`source_documents` / `document_chunks`) | orgforge artifact —— 大量、只读、可检索 |
 | 因果结构 | Postgres(`graph_nodes` / `graph_edges`) | 全量,供 scheduler 与图②导出 |
-| 涌现认知 | cognee(Kuzu + LanceDB,本地文件) | **每个 query 相关的那一小片** artifact,LLM 抽取 + 可视化 |
+| 涌现认知 | cognee(Ladybug 图 + LanceDB 向量,本地文件) | **每个 query 相关的那一小片** artifact,LLM 抽取 + 可视化 |
 
 **注意**:本项目的 Letta 用的是 Agent SDK 的 `memfs`(`letta-memory.ts` 里 `memfs: true`),
 **没有**经典 Letta 的 core / recall / archival 三层,也没有向量 passages。
@@ -319,7 +319,7 @@ question
    │        ← 不需要给 question 算向量,绕开了 Bedrock 阻塞
    │
    └─ cognee_memory.py  只把这一小片交给 LLM 抽取
-         → Kuzu(图)+ LanceDB(向量)+ SQLite(元数据),全是本地文件
+         → Ladybug(图)+ LanceDB(向量)+ SQLite(元数据),全是本地文件
 ```
 
 成本随**问得多少**走,而不是随语料规模走;记忆围绕真实使用累积。
@@ -327,6 +327,11 @@ question
 
 **存储隔离**:cognee 用自己的嵌入式栈(`orgforge_kb/.cognee/`,已 gitignore),
 不部署任何服务。Postgres 里的确定性图仍是权威,**cognee 侧不回写**。
+
+**一个坑**:cognee 1.6 默认开启多用户访问控制,图数据是**按 dataset 作用域**存的。
+直接问 `get_graph_engine().get_graph_data()` 会返回 0 个节点(看起来像抽取失败,其实数据都在),
+必须经 `get_default_user()` → `get_authorized_existing_datasets()` → `fetch_dataset_graph_data(ds, full=True)`
+这条路读。`full=True` 也必要,否则只返回一个有界邻域而非整个 dataset。
 
 实测切片规模(三个问题):12–14 篇 / 约 17k 字符,适合单次 LLM 抽取。
 "why did the TiDB migration slip" 在只用全文检索时**完全落空**,
@@ -348,8 +353,25 @@ LLM_MODEL=openai/qwen3.8:27b
 LLM_API_KEY=...
 ```
 
-**当前状态**:切片选择已实测可用;cognee 1.6.0 + kuzu 0.19.0 + lancedb 0.39.0 已装
-(轻量版,未引入 torch);抽取与 recall **待 LLM 凭证**——缺 `LLM_API_KEY` 时脚本会明确报错而非静默失败。
+**实测结果(2026-09-26,DeepSeek v4-pro)**:13 篇 / 30,861 字符的切片,抽取耗时 2m24s,
+产出 **403 节点 / 1020 边**。`recall` 给出的答案是图①无法给出的因果解释:
+
+> The TiDB migration slipped because the Jenkins migration step was skipped after
+> `runMigration` was removed from the Helm default values file. Earlier, the Jenkins
+> run also hit a connection timeout to the new RDS due to VPC security group settings.
+
+涌现出的关系类型正是确定性图无法表达的:
+
+```
+legacy authentication service  --has_risk-->      service downtime during cut-over
+data loss during dual-write    --mitigated_by-->  kafka connect
+ios swift login sdk            --blocked_by-->    java 8 auth-service
+athlete dashboard              --depends_on-->    titandb
+deepa                          --owns-->          terraform-infra
+```
+
+边类型分布:`contains` 353、`is_a` 309、`made_from` 13、`is_part_of` 13、
+`has_risk` 10、`has_phase` 8、`references` 7、`has_goal` 7。
 
 ---
 
@@ -366,9 +388,15 @@ LLM_API_KEY=...
       并注明「never put AWS access keys in this file」;而当前手上是 Bedrock bearer token。
       需与队友对齐。团队 region 为 `ap-southeast-2`。
 - [ ] **实现检索路由三条路径**(§2)。语义与图两条腿现已齐备。
-- [ ] **图②(cognee)待 LLM 凭证** —— 切片选择(`query_slice.py`)已实测可用,
-      cognee 封装(`cognee_memory.py`)已就绪,缺 `LLM_API_KEY` 才跑不了抽取。见 §7.5。
-      待定:抽取放同步路径还是后台异步(LLM 抽取需数秒);Qwen 还是 DeepSeek。
+- [x] **图②(cognee)已跑通** —— DeepSeek v4-pro 抽取,403 节点 / 1020 边,见 §7.5。
+- [ ] **抽取放同步还是异步** —— 实测一个 13 篇的切片要 **2m24s**,
+      显然不能放在交互式问答的同步路径上。需要改成后台任务:先用 Postgres 检索答复,
+      cognee 的抽取结果供后续 query 与可视化使用。
+- [ ] **模型选型** —— `v4-pro` 是 thinking 模型(同一句输入比 flash 多花 53 token)。
+      抽取任务可试 `openai/deepseek-v4-flash` 降低耗时与成本。
+- [ ] **384 维是否够用** —— 当前用 `bge-small-en-v1.5`(384 维,67MB)。
+      候选池只有十几篇文档,理论上够;若召回质量不足,换 `bge-base`(768)或
+      `bge-large`(1024)重跑即可,切片小所以代价很低。
 - [ ] **把切片选择接进检索路由** —— `query_slice.py` 的三条腿(全文 / 图 / 语义)
       正是 §2 路由要的构件,目前是独立 CLI,尚未接入 agent 的工具链。
 - [ ] **前端可视化** —— `export_graph.py` 与 `cognee_memory.py graph` 输出同一 JSON 结构
