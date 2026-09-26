@@ -41,6 +41,16 @@ function fuseEvidence(keyword: Evidence[], semantic: Evidence[], limit: number):
     .map(({ item }) => item);
 }
 
+/**
+ * Company evidence out of Postgres.
+ *
+ * Every method here returns artifacts only. `source_documents` also holds the
+ * simulation's own event rows, whose bodies state things no employee could know
+ * — detected knowledge gaps, causal chains, the ticket a change will spawn.
+ * Chunking already excludes them, so keyword and semantic search cannot reach
+ * them, but `related` and `sources` read document bodies directly and so filter
+ * on category themselves.
+ */
 export class PostgresCompanyKnowledge implements CompanyKnowledge {
   readonly pool: pg.Pool;
 
@@ -152,6 +162,7 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
               left(d.body, 1800) AS excerpt, d.occurred_at, d.department,
               NULL::double precision AS score
        FROM related_ids r JOIN source_documents d USING (source_id)
+       WHERE d.category = 'artifact'
        ORDER BY d.occurred_at DESC NULLS LAST
        LIMIT $2`,
       [sourceIds, Math.min(Math.max(limit, 1), 12)],
@@ -164,7 +175,8 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     const result = await this.pool.query<EvidenceRow>(
       `SELECT source_id, source_type, title, body AS excerpt,
               occurred_at, department, NULL::double precision AS score
-       FROM source_documents WHERE source_id = ANY($1::text[])`,
+       FROM source_documents
+       WHERE source_id = ANY($1::text[]) AND category = 'artifact'`,
       [sourceIds],
     );
     return result.rows.map(evidence);
