@@ -48,6 +48,34 @@ import pandas as pd
 import psycopg2
 import psycopg2.extras
 
+
+def _load_dotenv() -> None:
+    """Load environment variables from a .env file if python-dotenv is present.
+
+    Searches (first found wins, later files do not override earlier ones):
+      1. $ORGFORGE_ENV_FILE if set
+      2. the repo root (parent of this orgforge_kb/ dir) — where .env.example lives
+      3. this orgforge_kb/ directory
+    Missing files and a missing python-dotenv are both silently ignored, so the
+    scripts still work when env vars are exported directly.
+    """
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    here = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.environ.get("ORGFORGE_ENV_FILE"),
+        os.path.join(os.path.dirname(here), ".env"),  # repo root
+        os.path.join(here, ".env"),                    # orgforge_kb/
+    ]
+    for path in candidates:
+        if path and os.path.isfile(path):
+            load_dotenv(path)
+
+
+_load_dotenv()
+
 # --- The embedding dimension MUST match document_embeddings.embedding vector(N)
 #     in the schema. Amazon Titan Text Embeddings v2 -> 1024.
 EMBED_DIM = 1024
