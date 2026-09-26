@@ -634,8 +634,8 @@ function formatRuntime(durationMs, ttftMs) {
     const safeTtft = Math.min(ttftMs, durationMs);
     const ttftStr = safeTtft < 1000 ? `${safeTtft}ms` : `${(safeTtft / 1000).toFixed(1)}s`;
     return {
-      label: `⏱️ ${totalStr} (TTFT ${ttftStr})`,
-      tooltip: `Total runtime: ${totalStr} (${durationMs}ms) · Time to first token: ${ttftStr} (${safeTtft}ms)`,
+      label: `⏱️ ${totalStr}`,
+      tooltip: `Total runtime: ${totalStr} (${durationMs}ms) · First token: ${ttftStr} (${safeTtft}ms)`,
     };
   }
   return {
