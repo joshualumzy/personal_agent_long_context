@@ -58,11 +58,10 @@ function plainText(part: GmailPart | undefined): string {
   if (plain) return plain;
   const html = partText(part, "text/html");
   if (!html) return "";
-  return html
+  // Quoted parts go; text after them (an answer below the quote) stays.
+  return withoutBlockquotes(html)
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
     .replace(/<br\s*\/?>|<\/(p|div|li|tr|h\d)>/gi, "\n")
-    // Quoted parts go; text after them (an answer below the quote) stays.
-    .replace(/<blockquote[\s\S]*?<\/blockquote>/gi, "")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/&lt;/g, "<")
@@ -106,13 +105,42 @@ function withoutQuote(body: string): string {
   );
   const above = (cut >= 0 ? lines.slice(0, cut) : lines).join("\n").trim();
   if (above || cut < 0) return above;
-  // Nothing above the quote: they answered below it, or between the quoted lines. Keep their lines
-  // and drop only the quoted ones and the attribution.
+  // Nothing above the quote. With "> " quoting (Gmail and most clients) they may have answered below
+  // it or between the quoted lines: keep their lines, drop the quoted ones and the attribution. An
+  // Outlook or Chinese-client quote has no marks, so everything below it is the old mail: nothing new.
+  const cutLine = lines[cut]!;
+  const marked = /^>/.test(cutLine) || /^On .+/.test(cutLine.trim()) || /写道[:：]$/.test(cutLine.trim()) ||
+    /<[^>]*@[^>]*>|于\s*\d{4}\s*年/.test(cutLine);
+  if (!marked) return "";
+  const attribution = new Set<number>();
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    if (/^On .+wrote:$/.test(trimmed) || /写道[:：]$/.test(trimmed)) attribution.add(index);
+    // Wrapped over two or three lines: the "On …" or "<address> 于…" start and the lines up to the end.
+    const start = /^On .+/.test(trimmed) ? /wrote:$/ : /<[^>]*@[^>]*>|于\s*\d{4}\s*年/.test(line) ? /写道[:：]$/ : null;
+    if (start && wrapsInto(lines, index, start)) {
+      for (let at = index; at < Math.min(index + 3, lines.length); at += 1) {
+        attribution.add(at);
+        if (start.test(lines[at]!.trim())) break;
+      }
+    }
+  });
   return lines
-    .filter((line) => !/^>/.test(line) && !/^On .+wrote:$/.test(line.trim()) && !/写道[:：]$/.test(line.trim()))
+    .filter((line, index) => !/^>/.test(line) && !attribution.has(index))
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+/** Removes quoted parts, innermost first, so a quote inside a quote cannot leave history behind. */
+function withoutBlockquotes(html: string): string {
+  let rest = html;
+  for (let pass = 0; pass < 20 && /<blockquote/i.test(rest); pass += 1) {
+    const next = rest.replace(/<blockquote\b(?:(?!<blockquote\b)[\s\S])*?<\/blockquote>/gi, "");
+    if (next === rest) break;
+    rest = next;
+  }
+  return rest;
 }
 
 /** The next one or two lines, up to a blank line, include one matching `end`. */

@@ -402,7 +402,18 @@ async function runTool(
     }
     case "recruiting_import_profiles": {
       // One link or a list; "linkedin.com/in/x", "www…" and "http://…" become https links, as on the page.
-      const given = typeof args.urls === "string" ? args.urls.split(/[\s,，]+/) : Array.isArray(args.urls) ? args.urls : [];
+      // A list sent as JSON text ("[\"a\", \"b\"]") is read as the list it is.
+      let raw: unknown = args.urls;
+      if (typeof raw === "string" && raw.trim().startsWith("[")) {
+        try {
+          raw = JSON.parse(raw);
+        } catch {
+          // not JSON after all: split it as text
+        }
+      }
+      const given = typeof raw === "string"
+        ? raw.split(/[\s,，、;；]+/).map((piece) => piece.replace(/^["'\[]+|["'\]]+$/g, ""))
+        : Array.isArray(raw) ? raw : [];
       const urls = given
         .filter((url): url is string => typeof url === "string" && url.trim() !== "")
         .map((url) => url.trim().replace(/^(?:https?:\/\/)?((?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com\/)/i, "https://$1"));

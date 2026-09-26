@@ -87,7 +87,12 @@ function retryAfterMs(header: string | null | undefined): number {
  * Any kana makes it Japanese, which is not Chinese.
  */
 function isChinese(text: string): boolean {
-  const plain = text.replace(/\[sources?\s*[:：][^\]]*\]/gi, "").replace(/```[\s\S]*?```/g, "");
+  // Quoted text is a name being quoted ("为什么有这条标准：「Founding backend engineer」？"), not the
+  // language the person writes in; code and citations neither.
+  const plain = text
+    .replace(/\[sources?\s*[:：][^\]]*\]/gi, "")
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/`[^`\n]*`|「[^」\n]*」|『[^』\n]*』|“[^”\n]*”|"[^"\n]*"/g, "");
   if (/[\u3040-\u30ff]/.test(plain)) return false;
   const han = plain.match(/[\u3400-\u9fff]/g)?.length ?? 0;
   const words = plain.match(/[A-Za-z]+/g)?.length ?? 0;
@@ -249,6 +254,22 @@ function withoutStrayTags(text: string, retrieved: ReadonlyMap<string, unknown>)
   });
 }
 
+/**
+ * Whether a skill tool's answer says something changed. An error did not act, and neither did an
+ * instruction the skill could not place (intent unknown or question, a reply it could not record).
+ */
+function changedSomething(content: string): boolean {
+  if (/^\s*\{\s*"error"\s*:/.test(content)) return false;
+  try {
+    const result = (JSON.parse(content) as { result?: { intent?: string; recorded?: boolean } }).result;
+    if (result?.intent === "unknown" || result?.intent === "question") return false;
+    if (result?.intent === "reply" && result.recorded !== true) return false;
+  } catch {
+    // not JSON: a plain message from the tool
+  }
+  return true;
+}
+
 /** Pictographs and the joiners that build them: "How can I help? 😊" still ends in a question. */
 const EMOJI = /[\p{Extended_Pictographic}\u{FE0F}\u{200D}\u{1F3FB}-\u{1F3FF}]/gu;
 
@@ -273,7 +294,8 @@ function statesNoFacts(answer: string): boolean {
     .filter(Boolean);
   const last = sentences[sentences.length - 1] ?? "";
   // A stock closing offer instead of a question: "Let me know if you need anything else." / "有需要随时找我。"
-  const offer = /^(let me know if (you need|there's) anything( else)?|feel free to ask( if you need anything)?|just ask if you need anything( else)?|anything else,? just ask|有需要随时找我|有问题随时问我|随时找我|需要的话随时说|有什么需要随时告诉我)[\s.!。！~]*$/iu;
+  const offer =
+    /^((please )?let me know if (you need|there's|you have) (anything|any (other |more |further )?questions)( else)?|(if you have any (other |more |further )?questions,? )?feel free to (ask|reach out)( if you need anything)?|just ask if you need anything( else)?|anything else,? just ask|happy to help with anything else|有需要随时找我|有问题随时问我|随时找我|需要的话随时说|有什么需要随时告诉我|(如果)?(还)?有(其他|别的|任何)?(问题|需要)[，,]?(请)?(随时)?(问我|告诉我|联系我|找我))[\s.!。！~]*$/iu;
   if (!/[?？]$/.test(last) && !offer.test(last)) return false;
   // A greeting may name the person: a Latin name, or (only after 你好/您好/嗨) a short Chinese one.
   const latinName = String.raw`(\s*[,，]?\s*[A-Z][a-z]+( [A-Z][a-z]+)?)?`;
@@ -587,7 +609,7 @@ export class SoCLaaSCompanyAgent {
         extensionRan = true;
         // A tool that reads or shows changes nothing; one that answered with an error did not act.
         const readsOnly = /(_status|show_[a-z_]+_panel)$/.test(call.function.name);
-        if (!readsOnly && !/^\s*\{\s*"error"\s*:/.test(outcome.content)) acted = true;
+        if (!readsOnly && changedSomething(outcome.content)) acted = true;
         // The same panel twice is shown once.
         if (outcome.block && !blocks.some((block) => JSON.stringify(block) === JSON.stringify(outcome.block))) {
           blocks.push(outcome.block);
@@ -615,6 +637,24 @@ export class SoCLaaSCompanyAgent {
       }
       for (const item of result) retrieved.set(item.sourceId, item);
       return compactEvidence(result);
+    };
+    /**
+     * The answer when the model is lost ("lost") or said nothing ("empty") after a skill's tools ran:
+     * what the model said beside its panel, then a note that claims only what really happened.
+     */
+    const unfinishedAnswer = (why: "lost" | "empty"): string => {
+      const chinese = asksForChinese(input.question) || (isChinese(input.question) && !asksForLanguage(input.question));
+      const cut = why === "lost";
+      const note = acted
+        ? chinese
+          ? `操作已经完成，但我${cut ? "在总结之前和模型断开了连接" : "没能写出总结"}。你可以再问我一次让我总结。`
+          : `That was done, but ${cut ? "I lost the connection to the model before I could sum up" : "I could not write a summary"}. Ask again for a summary.`
+        : chinese
+          ? `我${cut ? "和模型断开了连接，" : ""}没能完成回答。下方面板显示的是当前状态，请再试一次。`
+          : `${cut ? "I lost the connection to the model before I could answer" : "I could not finish the answer"}. The panel shows where things stand; please try again.`;
+      // What the model already said beside its panel is kept, without tags naming nothing retrieved.
+      const said = spoken.length ? withoutStrayTags(joinSpoken(spoken.map(withoutRepeats), ""), retrieved).trim() : "";
+      return said ? `${said}\n\n${note}` : note;
     };
     // The last call run, to tell a repeat of it (even in the model's next reply) from a new call.
     let previous = null as { key: string; content: string } | null;
@@ -721,18 +761,8 @@ export class SoCLaaSCompanyAgent {
           // the model now must not hide that. Otherwise nothing was done and the error stands.
           if (!acted && !blocks.length) throw error;
           callbacks?.onResetTokens?.();
-          const chinese = asksForChinese(input.question) || (isChinese(input.question) && !asksForLanguage(input.question));
-          const note = acted
-            ? chinese
-              ? "操作已经完成，但我在总结之前和模型断开了连接。你可以再问我一次让我总结。"
-              : "That was done, but I lost the connection to the model before I could sum up. Ask again for a summary."
-            : chinese
-              ? "我和模型断开了连接，没能完成回答。下方面板显示的是当前状态，请再试一次。"
-              : "I lost the connection to the model before I could answer. The panel shows where things stand; please try again.";
-          // What the model already said beside its panel is kept.
-          const said = spoken.length ? joinSpoken(spoken.map(withoutRepeats), "") : "";
           return {
-            answer: said ? `${said}\n\n${note}` : note,
+            answer: unfinishedAnswer("lost"),
             sources: [],
             runId,
             toolCalls,
@@ -784,7 +814,8 @@ export class SoCLaaSCompanyAgent {
           }
           if (!answer) {
             return {
-              answer: "I could not finish that one. Could you ask again, perhaps a little more specifically?",
+              // After a tool acted, "ask again" would repeat it (a second role): say what was done instead.
+              answer: acted || blocks.length ? unfinishedAnswer("empty") : "I could not finish that one. Could you ask again, perhaps a little more specifically?",
               sources: [],
               runId,
               toolCalls,

@@ -712,3 +712,31 @@ round 13 fixes. All fixed.
   while the role is unconfirmed; stale entries are dropped. A stray
   keystroke, a replaced draft, a hired candidate or a chat confirm no
   longer keeps a panel live and polling for good.
+
+## Round 15 (2026-09-26)
+
+12 confirmed bugs (backend 3, chat agent 5, front end 4), plus one from the
+live run. All fixed.
+
+- Backend (all from round 14's quote changes): a reply that is only an
+  Outlook or Chinese-client quote (a CV sent back with the original below)
+  is dropped again instead of being read as the candidate's words; wrapped
+  attributions are removed from answers written below the quote; nested
+  HTML quotes are removed innermost first.
+- Chat agent: common thank-you closings ("Let me know if you have any other
+  questions.", "如果还有其他问题，随时问我。") are exempt (medium-high);
+  the lost-model note counts `recruiting_update` as acting only when the
+  skill placed the instruction; an empty last step after a tool acted gets
+  the same honest note instead of "ask again" (which would repeat the
+  action); stray tags are dropped from that note; links passed as JSON
+  text import.
+- Front end: a history load the founder moved away from no longer hides
+  the progress line; text typed while an instruction, a reply or a pass
+  reason is being sent survives; a draft saved in another tab shows in the
+  drawer before it can be sent from there.
+- Live run on round 13 code (156 conversations): 2 flagged. A Chinese
+  question quoting an English criterion was taken for English; quoted
+  text no longer counts toward the language (`r15-chaos-followups`). The
+  agent ran outreach to answer "what is her email"; the skill now says a
+  question about an email is answered from the status, with the lookup
+  offered.

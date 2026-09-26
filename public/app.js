@@ -825,10 +825,14 @@ async function selectConversation(conversationId, title) {
       appendErrorMessage("Could not load this conversation. Pick it again, or start a new chat.");
     }
   } finally {
-    // Still answering a question asked here earlier: say so, instead of looking stuck.
-    const answering = asking && askingIn === conversationId && asked === chatEpoch;
-    statusIndicator.hidden = !answering;
-    if (answering) statusText.textContent = "Still working on your question…";
+    // Only the load for what is on screen touches the status line; a load the founder moved away
+    // from must not hide the progress of the conversation they came back to.
+    if (asked === chatEpoch) {
+      // Still answering a question asked here earlier: say so, instead of looking stuck.
+      const answering = asking && askingIn === conversationId;
+      statusIndicator.hidden = !answering;
+      if (answering) statusText.textContent = "Still working on your question…";
+    }
     scrollToBottom();
   }
 }

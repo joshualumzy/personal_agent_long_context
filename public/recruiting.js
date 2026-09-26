@@ -727,6 +727,9 @@ function signature(candidate) {
     candidate.kept,
     candidate.contact,
     candidate.draft?.createdAt,
+    // A draft saved elsewhere (another tab or panel) must show here before it can be sent from here.
+    candidate.draft?.subject,
+    candidate.draft?.body,
     candidate.draft?.warnings,
     candidate.draft?.unconfirmed,
     candidate.messages.length,
@@ -770,9 +773,12 @@ function renderDetail() {
     const button = event.currentTarget;
     return act(candidate.id, async () => {
       // Done for a role no longer on screen still counts as done: the reason was used.
-      const onStale = (ok) => ok && typedFields.delete(reasonKey);
-      const done = await call(api(`/candidates/${candidate.id}/feedback`), { decision: value, reason: reasonInput.value }, button, { onStale });
-      if (done !== undefined) typedFields.delete(reasonKey);
+      // Forget the reason only if nothing was typed after it went out.
+      const sent = reasonInput.value;
+      const used = () => (typedFields.get(reasonKey) ?? "") === sent && typedFields.delete(reasonKey);
+      const onStale = (ok) => ok && used();
+      const done = await call(api(`/candidates/${candidate.id}/feedback`), { decision: value, reason: sent }, button, { onStale });
+      if (done !== undefined) used();
     });
   };
 
@@ -1087,9 +1093,12 @@ function outreachPanel(candidate) {
           h("button", { type: "button", class: "quiet", disabled: acting, onclick: (event) => {
             const button = event.currentTarget;
             return act(candidate.id, async () => {
-              const onStale = (ok) => ok && typedFields.delete(replyKey);
-              const result = await call(api(`/candidates/${candidate.id}/reply`), { text: reply.value }, button, { onStale });
-              if (result !== undefined) typedFields.delete(replyKey);
+              // Forget the reply only if nothing was added to the box after it went out.
+              const sent = reply.value;
+              const used = () => (typedFields.get(replyKey) ?? "") === sent && typedFields.delete(replyKey);
+              const onStale = (ok) => ok && used();
+              const result = await call(api(`/candidates/${candidate.id}/reply`), { text: sent }, button, { onStale });
+              if (result !== undefined) used();
               if (result) $("#agent-reply").textContent = result.message;
             });
           } }, "Add reply"),
@@ -1210,7 +1219,8 @@ document.addEventListener("DOMContentLoaded", () => {
       fit();
     }
     if (result) {
-      say.value = "";
+      // Only the instruction that was sent is cleared; anything typed meanwhile stays.
+      if (say.value.trim() === text) say.value = "";
       fit();
       $("#agent-reply").textContent = [
         result.message,
