@@ -434,7 +434,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         }
       } else if (typeof options.memory.processWorkingContext === "function") {
         try {
-          const memRes = await options.memory.processWorkingContext({ userId, message });
+          const memRes = await options.memory.processWorkingContext({ userId, message, history });
           if (memRes.contextConsidered && memRes.contextConsidered.trim()) {
             memoryStatus = "available";
             contextConsidered = memRes.contextConsidered;
@@ -469,7 +469,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       if (typeof options.memory.processWorkingContext === "function") {
         memoryUpdateQueue.enqueue(userId, async () => {
           try {
-            const res = await options.memory.processWorkingContext!({ userId, message });
+            const res = await options.memory.processWorkingContext!({ userId, message, history });
             memoryUpdated = res.memoryUpdated;
           } catch (err) {
             request.log.warn({ err }, "Background working context update failed");
@@ -868,7 +868,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       return reply.code(400).send({ message: "Provide valid userId, employeeId, and question values." });
     }
 
-    return handleAgentTurn(userId, employeeId, question, request, reply);
+    const requestedConversationId =
+      typeof fields.conversationId === "string" && fields.conversationId.trim()
+        ? fields.conversationId.trim()
+        : undefined;
+
+    return handleAgentTurn(userId, employeeId, question, request, reply, requestedConversationId);
   });
 
   app.get<{ Params: { sourceId: string } }>(

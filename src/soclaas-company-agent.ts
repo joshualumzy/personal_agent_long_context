@@ -767,6 +767,7 @@ export class GatewayCompanyAgent {
     ];
 
     let draftAnswer: string | null = null;
+    let retriedEmpty = false;
 
     // STEP 1: Run tool selection loop without forwarding draft answer text
     for (let step = 0; step < this.maxSteps; step += 1) {
@@ -785,10 +786,17 @@ export class GatewayCompanyAgent {
         callbacks?.onStatus?.("Investigating additional company evidence…");
       }
 
-        let calls: ToolCall[] = [];
-        let rawContent: string | null = null;
-        // A 200 whose body is not a completion (a proxy's error page) is asked for again, twice at most.
-        try {
+      if (mustAnswer && messages[messages.length - 1]?.role === "tool") {
+        messages.push({
+          role: "user",
+          content: "Based on the company evidence gathered above, provide your final response to the user now in plain text, citing all relevant sources using [source:SOURCE_ID].",
+        });
+      }
+
+      let calls: ToolCall[] = [];
+      let rawContent: string | null = null;
+      // A 200 whose body is not a completion (a proxy's error page) is asked for again, twice at most.
+      try {
         for (let read = 0; ; read += 1) {
           const response = await this.request(`${this.baseUrl}/chat/completions`, {
             method: "POST",
@@ -885,11 +893,12 @@ export class GatewayCompanyAgent {
           // of the pen: it is dropped rather than sending a recruiting answer to repair. Done before
           // the empty-reply check, since a reply that was only such a tag is empty.
           if (answer && extensionRan) answer = withoutStrayTags(answer, retrieved).trim();
-          if (!answer && !mustAnswer) {
-            messages.push({ role: "user", content: "You returned nothing. Reply to the user now in plain text." });
-            continue;
-          }
           if (!answer) {
+            if (!retriedEmpty) {
+              retriedEmpty = true;
+              messages.push({ role: "user", content: "You returned nothing. Based on the gathered evidence, reply to the user now in plain text." });
+              continue;
+            }
             return {
               // After a tool acted, "ask again" would repeat it (a second role): say what was done instead.
               answer: acted || blocks.length ? unfinishedAnswer("empty") : "I could not finish that one. Could you ask again, perhaps a little more specifically?",

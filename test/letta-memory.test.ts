@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { LettaMemoryProvider } from "../src/adapters/letta-memory.js";
+import { LettaMemoryProvider, workingContextPrompt } from "../src/adapters/letta-memory.js";
 import { CONSENT_POLICY_VERSION } from "../src/domain.js";
 
 test("auto-approves ingestion tools only inside the agent Memory directory", async () => {
@@ -466,4 +466,108 @@ test("drops narration and reassembles token deltas when the run reports no resul
   assert.deepEqual(result.sources, [
     { sourceId: "voice-note-009", label: "personal-context/note.md" },
   ]);
+});
+
+test("workingContextPrompt omits recent_conversation when history is omitted or empty", () => {
+  const promptWithoutHistory = workingContextPrompt({
+    userId: "jax",
+    message: "Working on titan migration",
+  });
+
+  assert.match(
+    promptWithoutHistory,
+    /When the user's message agrees with, confirms, or refers to a preceding assistant proposal/,
+  );
+
+  const jsonStr1 = promptWithoutHistory.split("\n\n").at(-1) ?? "";
+  const payload1 = JSON.parse(jsonStr1);
+  assert.equal(payload1.user_id, "jax");
+  assert.equal(payload1.message, "Working on titan migration");
+  assert.equal(payload1.recent_conversation, undefined);
+
+  const promptWithEmptyHistory = workingContextPrompt({
+    userId: "jax",
+    message: "Working on titan migration",
+    history: [],
+  });
+  const jsonStr2 = promptWithEmptyHistory.split("\n\n").at(-1) ?? "";
+  const payload2 = JSON.parse(jsonStr2);
+  assert.equal(payload2.user_id, "jax");
+  assert.equal(payload2.recent_conversation, undefined);
+});
+
+test("workingContextPrompt includes recent_conversation when history is provided", () => {
+  const history = [
+    { role: "user" as const, content: "Should we make TitanDB migration P0?" },
+    { role: "assistant" as const, content: "Yes, I propose classifying the TitanDB migration as P0." },
+  ];
+
+  const prompt = workingContextPrompt({
+    userId: "jax",
+    message: "ok that sounds good",
+    history,
+  });
+
+  assert.match(
+    prompt,
+    /When the user's message agrees with, confirms, or refers to a preceding assistant proposal/,
+  );
+
+  const jsonStr = prompt.split("\n\n").at(-1) ?? "";
+  const payload = JSON.parse(jsonStr);
+  assert.equal(payload.user_id, "jax");
+  assert.equal(payload.message, "ok that sounds good");
+  assert.deepEqual(payload.recent_conversation, history);
+});
+
+test("processWorkingContext passes history to Letta session prompt", async () => {
+  let sentPrompt: string | undefined;
+  const fakeSession = {
+    async getDeviceStatus() {
+      return { memoryDirectory: "/srv/letta/memory" };
+    },
+    async send(prompt: string) {
+      sentPrompt = prompt;
+    },
+    async *stream() {
+      yield { type: "tool_call", toolName: "Write", toolInput: { file_path: "/srv/letta/memory/human.md" } };
+      yield {
+        type: "assistant",
+        content: "RETAINED_CONTEXT: TitanDB migration is classified as P0.\nMEMORY_UPDATED: Yes",
+      };
+      yield { type: "result", success: true };
+    },
+    close() {},
+  };
+  const fakeClient = {
+    agents: {
+      async list() {
+        return [{ id: "agent-1" }];
+      },
+    },
+    resumeSession() {
+      return fakeSession;
+    },
+    async close() {},
+  };
+  const provider = new LettaMemoryProvider({ url: "http://127.0.0.1:4500" });
+  Object.defineProperty(provider, "client", { value: fakeClient });
+
+  const history = [
+    { role: "user" as const, content: "Should TitanDB be P0?" },
+    { role: "assistant" as const, content: "I recommend P0 priority." },
+  ];
+  const result = await provider.processWorkingContext({
+    userId: "jax",
+    message: "sounds good",
+    history,
+  });
+
+  assert.equal(result.memoryUpdated, true);
+  assert.equal(result.contextConsidered, "TitanDB migration is classified as P0.");
+  assert.ok(sentPrompt);
+  const payload = JSON.parse(sentPrompt.split("\n\n").at(-1) ?? "{}");
+  assert.equal(payload.user_id, "jax");
+  assert.equal(payload.message, "sounds good");
+  assert.deepEqual(payload.recent_conversation, history);
 });

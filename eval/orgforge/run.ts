@@ -10,6 +10,7 @@ import {
   type OrgForgeBenchmarkQuestion,
 } from "./dataset.js";
 import { evaluateQuestionResponse, type QuestionEvaluationResult } from "./judge.js";
+import { groundBenchmarkQuestion } from "./temporal.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -128,13 +129,14 @@ async function run(): Promise<void> {
         `[${i + 1}/${questions.length}] ${q.question_type.padEnd(14)} (${actorName.padEnd(8)}) "${q.question_text.slice(0, 48)}…" `,
       );
 
+      const groundedQuestion = groundBenchmarkQuestion(q.question_text, q.day);
       const startTime = Date.now();
       let agentResult: { answer: string; sources: { sourceId: string; title: string }[] };
 
       try {
         agentResult = await companyAgent.answer({
           employeeId,
-          question: q.question_text,
+          question: groundedQuestion,
         });
       } catch (err) {
         console.log(`\n    ❌ Error during agent execution: ${err instanceof Error ? err.message : String(err)}`);
@@ -148,6 +150,7 @@ async function run(): Promise<void> {
         agentResult,
         elapsed,
         judgeOptions,
+        groundedQuestion,
       );
 
       results.push(evalResult);

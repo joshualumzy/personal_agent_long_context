@@ -62,6 +62,7 @@ export class DeterministicMemoryProvider implements MemoryProvider {
   async processWorkingContext(input: {
     userId: string;
     message: string;
+    history?: Array<{ role: "user" | "assistant"; content: string }>;
   }): Promise<WorkingContextResult> {
     const askRes = await this.ask({
       userId: input.userId,

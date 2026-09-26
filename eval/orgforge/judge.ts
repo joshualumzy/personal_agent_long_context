@@ -11,6 +11,7 @@ export interface QuestionEvaluationResult {
   questionId: string;
   questionType: string;
   questionText: string;
+  groundedQuestion?: string;
   actor?: string;
   expectedAnswer: boolean | string | null;
   judgedAnswer: boolean | string | "inconclusive";
@@ -104,6 +105,7 @@ export async function evaluateQuestionResponse(
   },
   latencyMs: number,
   judgeOptions?: JudgeOptions,
+  groundedQuestion?: string,
 ): Promise<QuestionEvaluationResult> {
   const expectedArtifacts = getExpectedArtifacts(question);
   const expectedBool = getExpectedBooleanAnswer(question);
@@ -151,6 +153,7 @@ export async function evaluateQuestionResponse(
     questionId: question.question_id,
     questionType: question.question_type,
     questionText: question.question_text,
+    groundedQuestion,
     actor: question.actor ?? question.actors?.[0],
     expectedAnswer: expectedBool ?? "evidence_grounded",
     judgedAnswer,

@@ -1,0 +1,284 @@
+{
+  "timestamp": "2026-09-26T15:21:59.227Z",
+  "model": "qwen3.8:27b",
+  "summary": {
+    "totalQuestions": 10,
+    "accuracyPct": 20,
+    "citationRecallPct": 3,
+    "citationIntegrityPct": 100,
+    "avgLatencySec": 16.07
+  },
+  "results": [
+    {
+      "questionId": "counterfactual_neg_EVT-4-knowledge_gap_detected-586_doc_gap_detected",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "If the documentation gap in the design doc that Jax contributed to on Day 4 had not existed, would the incident still have occurred despite the other gaps involving Raj and Kaitlyn?",
+      "groundedQuestion": "If the documentation gap in the design doc that Jax contributed to on Day 4 (approx. 2026-01-06) had not existed, would the incident still have occurred despite the other gaps involving Raj and Kaitlyn?",
+      "actor": "Jax",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "CONF-ENG-041",
+        "ENG-123",
+        "slack_incidents_2026-01-12T12:59:00"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "I could not finish that one. Could you ask again?",
+      "latencyMs": 15938
+    },
+    {
+      "questionId": "silence_EVT-8-incident_opened-1219_sf_deals_risk_flagged",
+      "questionType": "SILENCE",
+      "questionText": "Was a Salesforce risk flag on the related deals created in response to the incident on Day 8 involving Jax, Kaitlyn?",
+      "groundedQuestion": "Was a Salesforce risk flag on the related deals created in response to the incident on Day 8 (approx. 2026-01-12) involving Jax, Kaitlyn?",
+      "expectedAnswer": false,
+      "judgedAnswer": false,
+      "answerCorrect": true,
+      "expectedArtifacts": [
+        "slack_incidents_2026-01-12T12:59:00",
+        "ENG-123"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-078",
+        "slack_digital-hq_2026-02-02T12:59:34.533814",
+        "CONF-ENG-230"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-078",
+        "slack_digital-hq_2026-02-02T12:59:34.533814",
+        "CONF-ENG-230"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Jax, I dug through what's on record here, and the short answer is: **I can't confirm that a Salesforce risk flag was created on the related deals as a response to that incident.**\n\nWhat the records *do* show:\n\n- The Day 8 incident (~2026-01-12) is the P1 ENG-123 event — Kafka partition leader re-election delay in the telemetry stream, with a postmortem logged on 2026-01-15 [source:CONF-ENG-078]. You and Kaitlyn were both involved, and you each carried action items (chaos-kit tests for forced leader election failures on your side; Kaitlyn on the Zookeeper watchdog, controller metrics, and documenting the incident).\n\n- Notably, the postmortem's action items and references contain **no mention of any Salesforce deal or opportunity, and no sales-side risk flag** [source:CONF-ENG-078]. The follow-ups are all engineering/ops-oriented.\n\n- The only Salesforce risk-flag activity I found in the records is a different, later matter: Marcus discussing the **OPP-1002 demo for Metro United FC** and saying he'd \"need to flag escalation to VP\" if the deal slipped, in a Slack thread from 2026-02-02 [source:slack_digital-hq_2026-02-02T12:59:34.533814]. That's roughly three weeks after the incident and tied to a demo/timeline risk, not a direct response to ENG-123. The Salesforce pipeline alignment doc also notes sales tags opportunities in Salesforce but there's no structured hand-off [source:CONF-ENG-230].\n\nSo, based on what's documented, there's no trace of a Salesforce risk flag on the related deals being created in response to the Jan 12 incident. It's possible it was raised in Salesforce or a Slack channel I can't see, but the incident postmortem itself doesn't record any sales-side action.\n\nIf you want, I can do a tighter search on the specific deal names/opportunity IDs involved — do you have the deal or opp reference (e.g., an OPP-#### number) for the \"related deals\"? That would let me check whether a flag was actually logged.",
+      "latencyMs": 17942
+    },
+    {
+      "questionId": "silence_EVT-38-knowledge_gap_detected-1453_confluence_created",
+      "questionType": "SILENCE",
+      "questionText": "Was a Confluence documentation page created in response to the knowledge gap detected on Day 38 involving Morgan, specifically regarding kubernetes‑deploy, terraform‑infra?",
+      "groundedQuestion": "Was a Confluence documentation page created in response to the knowledge gap detected on Day 38 (approx. 2026-02-23) involving Morgan, specifically regarding kubernetes‑deploy, terraform‑infra?",
+      "expectedAnswer": true,
+      "judgedAnswer": false,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "CONF-HR-001"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-332"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-332"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Short answer: No — I can't confirm a Confluence page was created *in response to* that specific Day 38 knowledge gap, and I can't even find the gap record itself in company docs.\n\nWhat I searched:\n- The Day 38 knowledge gap (~2026-02-23) involving you re: kubernetes-deploy / terraform-infra — no matching record surfaced in any system.\n- Confluence pages created around that date covering kubernetes-deploy and terraform-infra — one page came up, but it's not the fit.\n\nThe only nearby artifact is [CONF-ENG-332], a chaos-engineering design doc for a packet-loss test in the telemetry stream, dated 2026-02-27 [source:CONF-ENG-332]. It does reference both systems, but only incidentally: it calls for adding Chaos Mesh Helm values to the `terraform-infra` module and a CI step that runs after `kubernetes-deploy` succeeds [source:CONF-ENG-332]. It also plans to \"document the experiment in Confluence (this page) and link from `CONF-ENG-330` SOP\" [source:CONF-ENG-332]. So it's a design doc tied to a chaos experiment, not a documentation gap fill, and it's four days after the gap date rather than a direct response to it.\n\nA couple of candid caveats:\n- I couldn't find the Day 38 gap entry itself, so I can't verify it was ever logged or who owned the follow-up. If it was raised in a Slack thread or a personal note rather than a tracked artifact, it may simply not be in the searchable company systems.\n- There's a possible documentation-lag angle: if the gap was flagged on the 23rd and the remediation page landed later, it wouldn't necessarily mention \"Day 38\" in its title or body, which would make it hard to match on those terms alone.\n\nIf you want, I can do a follow-up pass on `CONF-ENG-330` (the SOP this page links to) and any Jira tickets tagged around 2026-02-23 to see if a gap-remediation task was actually tracked. Want me to dig into those?",
+      "latencyMs": 16741
+    },
+    {
+      "questionId": "silence_EVT-15-customer_email_routed-1428_zd_ticket_opened",
+      "questionType": "SILENCE",
+      "questionText": "Was a Zendesk support ticket created as a result of the routing of the customer email on Day 15 involving Metro United FC, Marcus?",
+      "groundedQuestion": "Was a Zendesk support ticket created as a result of the routing of the customer email on Day 15 (approx. 2026-01-21) involving Metro United FC, Marcus?",
+      "expectedAnswer": false,
+      "judgedAnswer": false,
+      "answerCorrect": true,
+      "expectedArtifacts": [
+        "customer_reply_metro_united_fc_OPP-1002_15"
+      ],
+      "citedArtifacts": [
+        "SALES-133",
+        "SALES-134"
+      ],
+      "retrievedArtifacts": [
+        "SALES-133",
+        "SALES-134"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Hey Marcus,\n\nShort answer: I couldn't find any record of a Zendesk support ticket being created from that customer email routing on Day 15 (~2026-01-21).\n\nWhat I searched:\n- Zendesk / ticketing references tied to Metro United FC and to that specific date — nothing came back.\n- \"Customer email routing\" plus the date — no matching records.\n- General Zendesk ticket activity in January 2026 — also empty.\n\nThe only Metro United FC activity in the systems I can see is a cluster of Sales & Marketing outreach items (Jira), all from Feb–Mar 2026 — outbound \"next steps / proposal\" emails from Tasha, Blake, and Jenna, e.g. the SEO landing page follow-up [source:SALES-133] and the proposal/performance-insights email [source:SALES-134]. None of these are from ~Jan 21, none mention a customer email being routed, and none reference Zendesk or a support ticket.\n\nSo based on what's in company systems, there's no evidence a Zendesk ticket resulted from that Day 15 routing. A couple of possibilities worth flagging:\n\n- The ticket may exist but simply isn't captured in the artifacts I can search (Zendesk records may live outside the tracked systems here).\n- Or no ticket was ever auto-created — the email may have gone elsewhere or been handled manually.\n\nIf you want a definitive answer, I'd suggest checking the Zendesk instance directly for ~2026-01-21 and filtering on \"Metro United FC\" as the requester, and confirming with whoever owned that Day 15 routing whether the routing rule was supposed to spawn a ticket. If you can share the Zendesk ticket ID or the routing rule, I can help trace what happened end-to-end.",
+      "latencyMs": 13516
+    },
+    {
+      "questionId": "counterfactual_EVT-8-incident_opened-1219_postmortem_from_incident",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "On Day 8, had Deepa not filed the post‑incident documentation for the system outage, would Jax still have sent the corrective action notice that Kaitlyn later signed off on?",
+      "groundedQuestion": "On Day 8 (approx. 2026-01-12), had Deepa not filed the post‑incident documentation for the system outage, would Jax still have sent the corrective action notice that Kaitlyn later signed off on?",
+      "actor": "Deepa",
+      "expectedAnswer": true,
+      "judgedAnswer": false,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-123",
+        "slack_incidents_2026-01-12T12:59:00",
+        "CONF-ENG-078"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-094",
+        "CONF-RETRO-001",
+        "zoom_2026-03-13_01a5921b",
+        "CONF-ENG-078",
+        "CONF-ENG-223"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-094",
+        "CONF-RETRO-001",
+        "zoom_2026-03-13_01a5921b",
+        "CONF-ENG-078",
+        "CONF-ENG-223"
+      ],
+      "citationRecall": 0.3333333333333333,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Deepa, I dug through the incident, postmortem, and process docs you'd be involved with, and I have to be straight with you: **the company records I can find don't contain that specific chain of events**, so I can't responsibly give you a yes/no.\n\nWhat I did find is adjacent, and it may help orient you:\n\n- The post‑incident documentation step is treated as part of the incident review workflow, but it isn't documented as a gating condition for any corrective action. [source:CONF-ENG-094]\n- There's a known historical gap in our process: retrospectives flagged missing post‑mortems and no unified incident board as systemic issues, not as prerequisites for specific downstream actions. [source:CONF-RETRO-001]\n- I couldn't locate a record of a corrective action notice sent by Jax around Day 8 (~2026‑01‑12), nor a corresponding sign‑off from Kaitlyn in that window. The closest Kaitlyn activity I found is later, in March on infra security hardening. [source:zoom_2026-03-13_01a5921b]\n- The outages and postmortems around that date reference different incident IDs and timelines that don't line up with the specific scenario you're describing. [source:CONF-ENG-078] [source:CONF-ENG-223]\n\nA couple of candid notes:\n\n1. If Jax's corrective action notice was triggered by the *incident itself* (e.g., an SLA breach or a flagged P1), your post‑incident doc wouldn't have been the trigger — it would have been the detection/alerting path.\n2. If it was triggered *by* the documentation (e.g., a compliance or audit step), then missing the doc could plausibly have delayed or blocked it. The process docs I retrieved don't make it clear which.\n\nIf you can tell me the incident ID or the channel/doc where the corrective action notice was sent, I can pull the actual thread and answer this definitively instead of inferring.",
+      "latencyMs": 21040
+    },
+    {
+      "questionId": "counterfactual_EVT-32-async_question-1581_async_gap_detected",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "Was the async Slack Q&A thread on Day 32 that exposed a knowledge gap in the undocumented domain a direct consequence of Priya’s message, or would Chloe and Jamie have raised the issue regardless?",
+      "groundedQuestion": "Was the async Slack Q&A thread on Day 32 (approx. 2026-02-13) that exposed a knowledge gap in the undocumented domain a direct consequence of Priya’s message, or would Chloe and Jamie have raised the issue regardless?",
+      "actor": "Priya",
+      "expectedAnswer": true,
+      "judgedAnswer": false,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "export/slack/channels/digital-hq/2026-02-13.json",
+        "slack_digital-hq_2026-02-16T15:43:00"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-373"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-373"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "I dug through Slack and Confluence for the Day 32 (~Feb 13, 2026) thread, but I can't actually verify the causal question you're asking. Here's what the records do and don't show:\n\n**What I found**\n- A Confluence page, \"Design: Define knowledge-gap sprint process\" [source:CONF-ENG-373], documents the *detection* of a big knowledge gap — TitanDB schema, legacy auth service, AWS cost tagging, and the legacy Project Titan codebase. It frames it as a systemic issue (siloed, undocumented knowledge causing onboarding delays, defect rates, and operational risk) and lays out a sprint process to close the gaps.\n- That page has no linked Slack artifacts I could follow, and the excerpts available don't name who said what in the Feb 13 thread.\n\n**What I could not find**\n- The actual Day 32 async Q&A thread text, including Priya's message and the sequence of who responded.\n- Any record indicating Chloe or Jamie were independently preparing to raise the same gap, or any pre-existing thread/ticket showing they had the issue queued before Priya posted.\n\n**Bottom line**\nWith the thread content unavailable, I can't determine whether Priya's message was the direct trigger or whether Chloe and Jamie would have surfaced it anyway. The only documented framing — in Nadia's sprint-process page — is that the gap was a *systemic* visibility problem, which leans toward \"it would have surfaced regardless,\" but that's inference, not evidence from the Slack record itself.\n\n**Practical next step:** if this matters for credit/decision-making, it's worth reconstructing the timeline from the raw Slack channel (message timestamps and who replied first). Want me to pull the exact thread once you confirm which channel it was in?",
+      "latencyMs": 14407
+    },
+    {
+      "questionId": "silence_EVT-37-zd_tickets_escalated-1317_incident_opened",
+      "questionType": "SILENCE",
+      "questionText": "Was a ticket created in response to the Zendesk escalation on Day 37 involving the involved parties?",
+      "groundedQuestion": "Was a ticket created in response to the Zendesk escalation on Day 37 (approx. 2026-02-20) involving the involved parties?",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-210",
+        "ZD-101",
+        "slack_incidents_2026-02-20T11:51:00"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-204",
+        "CONF-ENG-119",
+        "CONF-MKT-003",
+        "CONF-ENG-247",
+        "CONF-PROD-002"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-204",
+        "CONF-ENG-119",
+        "CONF-MKT-003",
+        "CONF-ENG-247",
+        "CONF-PROD-002"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "I couldn't confirm a ticket was created in response to that specific escalation, Jax. Here's what I checked:\n\n**What I searched**\n- Zendesk escalations around 2026-02-20 / \"Day 37\"\n- Any Jira ticket tied to a support/Zendesk escalation, and the \"involved parties\" framing\n\n**What I found**\n- Zendesk is referenced in a couple of places as the support-ticket store — the Support-Ticket-Mapper design (which pulls bug IDs out of the support queue) [source:CONF-ENG-204] and the onboarding metrics around new-hire support tickets [source:CONF-ENG-119].\n- There's an escalation-path table for the Performance-Wellness feed (P1/P2/P3 routing to SRE, Platform Eng, Support Lead) [source:CONF-MKT-003] and a telemetry alert escalation matrix [source:CONF-ENG-247], plus a data-export escalation workflow [source:CONF-PROD-002].\n\nNone of these are the specific Day 37 escalation you're describing, and none show a Jira ticket created *in response to* that event.\n\n**Honest read**\nThere's no record in the artifacts I can see of the 2026-02-20 Zendesk escalation or a follow-up ticket tied to it. A few possibilities:\n- The escalation was logged in Zendesk itself rather than mirrored to Jira/Confluence, so it wouldn't show up here.\n- \"Day 37\" is an internal reference I don't have a mapping for, and the date might be slightly off.\n\n**To help me pin it down, could you tell me:**\n1. The Zendesk ticket ID (or roughly what the issue was about — feed, data export, leaderboard, etc.), and\n2. Who the \"involved parties\" are — that'll let me search the right Jira project and channel.\n\nWith one of those I can do a targeted look and confirm whether a ticket actually went out.",
+      "latencyMs": 15129
+    },
+    {
+      "questionId": "counterfactual_EVT-44-pr_review-1534_pr_gap_detected",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "If Deepa had not conducted the PR review on Day 44, would Jax still have identified the knowledge gap?",
+      "groundedQuestion": "If Deepa had not conducted the PR review on Day 44 (approx. 2026-03-03), would Jax still have identified the knowledge gap?",
+      "actor": "Deepa",
+      "expectedAnswer": true,
+      "judgedAnswer": false,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "PR-143",
+        "slack_engineering_2026-03-09T13:42:34.200120"
+      ],
+      "citedArtifacts": [
+        "zoom_2026-03-06_08616c6d",
+        "zoom_2026-01-05_ee3db1de"
+      ],
+      "retrievedArtifacts": [
+        "zoom_2026-03-06_08616c6d",
+        "zoom_2026-01-05_ee3db1de"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Deepa, I have to be straight with you: the records I can see don't actually contain a \"knowledge gap\" event tied to a Day 44 PR review around 2026-03-03, so I can't reconstruct the counterfactual you're asking about.\n\nHere's what I searched for:\n\n- PR review on Day 44 / around 2026-03-03 — no matching record\n- \"Jax identified a knowledge gap\" or \"knowledge gap discovered\" — no matches\n- Deepa's March 2026 PR activity specifically — nothing indexed\n\nThe closest things I did find from that exact window are:\n\n- A 2026-03-06 branch protection policy call with you, Jax, Marc, Ben, Priya, and Dave, where the discussion was about required status checks, reviewer counts, and admin bypass — not a knowledge-gap finding [source:zoom_2026-03-06_08616c6d]\n- An earlier 2026-01-05 EKS optimization review where you and Jax were working through node sizing, autoscaling, and pod requests [source:zoom_2026-01-05_ee3db1de]\n\nNeither of these describes the scenario in your question, so I don't want to fabricate an answer about whether Jax would still have caught the gap.\n\nTo actually help you reason through this, could you give me one of the following:\n\n1. The Jira ticket or PR number tied to that Day 44 review, or\n2. The Slack/Zoom thread where Jax flagged the gap, or\n3. A short description of what the gap was (a missing doc, an undocumented behavior, a security pattern?)\n\nWith any of those, I can pull the timeline and we can genuinely assess whether the discovery depended on your review or whether Jax's own path to it was independent.",
+      "latencyMs": 13776
+    },
+    {
+      "questionId": "perspective_Alex_EVT-28-incident_resolved-1522",
+      "questionType": "PERSPECTIVE",
+      "questionText": "Would Alex have learned about the incident resolved event through normal channels by Day 28?",
+      "groundedQuestion": "Would Alex have learned about the incident resolved event through normal channels by Day 28 (approx. 2026-02-09)?",
+      "actor": "Alex",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ENG-173",
+        "PR-129"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-040",
+        "CONF-ENG-094",
+        "CONF-HR-001",
+        "CONF-ENG-054",
+        "CONF-ENG-129",
+        "CONF-ENG-150"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-040",
+        "CONF-ENG-094",
+        "CONF-HR-001",
+        "CONF-ENG-054",
+        "CONF-ENG-129",
+        "CONF-ENG-150"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Short answer: the company records don't let me confirm it either way — but here's what I can reason out.\n\n**What \"normal channels\" means per the playbooks**\n- **Telemetry/mobile-impact incidents:** The incident process has the incident ID posted to the **#incidents** Slack channel with service owners tagged, and a Confluence post-mortem linked from the JIRA ticket after resolution [source:CONF-ENG-040].\n- **HR data pipeline incidents:** Resolution goes out via Slack + email, with the post-mortem published on Confluence within 48 hours [source:CONF-ENG-094].\n- **Recognition/learning:** The Incident Owner posts a shout-out in **#digital-hq** within ~2 days of resolution, plus a spotlight at the Friday town hall [source:CONF-HR-001].\n\n**The gap in the evidence**\nI searched specifically for an incident that resolved around **2026-02-09 / Day 28** and found none. The post-mortems in the system are all earlier (ENG-112 Jan 8, ENG-137 Jan 22, ENG-148 Jan 28), and none are tied to the Mobile team's services [source:CONF-ENG-054][source:CONF-ENG-129][source:CONF-ENG-150]. I also don't see an on-call roster or a \"who got paged\" record for Mobile Engineering that would tell us whether you were the acking on-call that week.\n\n**Bottom line**\nIf the incident touched mobile surfaces, the #incidents post + tagged owner would have been your primary channel, and the 48-hour post-mortem would have followed. If it was an HR-data or platform-only incident, the mobile team might reasonably miss it unless it was cross-posted. Without a specific ticket or channel post for that date, I can't say definitively you'd have seen it — do you remember which service the incident hit, or which channel you're expecting the notice in? That'd let me check whether it was actually posted.",
+      "latencyMs": 16560
+    },
+    {
+      "questionId": "silence_EVT-60-inbound_external_email-1396_customer_email_routed",
+      "questionType": "SILENCE",
+      "questionText": "Was an internal routing of the customer email created in response to the inbound email on Day 60 involving Ethan and Marcus?",
+      "groundedQuestion": "Was an internal routing of the customer email created in response to the inbound email on Day 60 (approx. 2026-03-25) involving Ethan and Marcus?",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "ext_email_ethan_60_9"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient evidence.\n\nI have no company artifacts to cite — every search I ran for an internal routing of a customer email involving you and Marcus around 2026-03-25 (Day 60) returned nothing, and no source IDs are available to reference.\n\nWhat's missing: any captured record — email, Slack thread, ticket, or document — showing the inbound customer email on ~2026-03-25 or an internal routing of it between Ethan and Marcus. Without at least one retrievable artifact, I can't substantiate that the routing happened.\n\nPossible explanations: the routing may have occurred outside tracked systems (e.g., a plain email forward), or the date/topic keywords didn't match the records. If you give me a ticket ID, a topic keyword from the customer email, or the exact date, I can re-search and cite what I find.",
+      "latencyMs": 15620
+    }
+  ]
+}
