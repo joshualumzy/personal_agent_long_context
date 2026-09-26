@@ -627,20 +627,12 @@ function appendAssistantMessage(data) {
   scrollToBottom();
 }
 
-function formatRuntime(durationMs, ttftMs) {
+function formatRuntime(durationMs) {
   if (typeof durationMs !== "number" || isNaN(durationMs)) return null;
   const totalStr = durationMs < 1000 ? `${durationMs}ms` : `${(durationMs / 1000).toFixed(1)}s`;
-  if (typeof ttftMs === "number" && !isNaN(ttftMs) && ttftMs > 0) {
-    const safeTtft = Math.min(ttftMs, durationMs);
-    const ttftStr = safeTtft < 1000 ? `${safeTtft}ms` : `${(safeTtft / 1000).toFixed(1)}s`;
-    return {
-      label: `⏱️ ${totalStr}`,
-      tooltip: `Total runtime: ${totalStr} (${durationMs}ms) · First token: ${ttftStr} (${safeTtft}ms)`,
-    };
-  }
   return {
     label: `⏱️ ${totalStr}`,
-    tooltip: `Total runtime: ${totalStr} (${durationMs}ms)`,
+    tooltip: `Response time: ${totalStr}`,
   };
 }
 
