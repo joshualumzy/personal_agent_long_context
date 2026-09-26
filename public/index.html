@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="/styles.css?v=4" />
     <script src="/vendor/marked.js" defer></script>
     <script src="/vendor/dompurify.js" defer></script>
+    <script src="/vendor/rive.js" defer></script>
     <script src="/app.js?v=4" defer></script>
   </head>
   <body>
@@ -98,7 +99,9 @@
         <main class="chat-main">
           <div id="messages-container" class="messages-container">
             <div id="empty-state" class="empty-state">
-              <div class="empty-icon">🏢</div>
+              <div class="empty-avatar-wrapper" id="empty-avatar-wrapper">
+                <canvas id="sobo-canvas" class="sobo-canvas" width="160" height="160" aria-label="Sobo AI Assistant Mascot"></canvas>
+              </div>
               <h2 id="empty-state-title">How can I help you today, Jax?</h2>
               <p>
                 I answer questions grounded in verified OrgForge company evidence, and remember your working context across sessions.

@@ -75,7 +75,7 @@ const domPurifyBrowserBundle = fileURLToPath(
 
 const securityHeaders = {
   "content-security-policy":
-    "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+    "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
   "referrer-policy": "no-referrer",
   "x-content-type-options": "nosniff",
   "x-frame-options": "DENY",
@@ -1011,6 +1011,18 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.get(
     "/vendor/dompurify.js",
     serveFile(domPurifyBrowserBundle, "text/javascript; charset=utf-8"),
+  );
+  app.get(
+    "/vendor/rive.js",
+    serve("vendor/rive.js", "text/javascript; charset=utf-8"),
+  );
+  app.get(
+    "/vendor/rive.wasm",
+    serve("vendor/rive.wasm", "application/wasm"),
+  );
+  app.get(
+    "/assets/sobo.riv",
+    serve("assets/sobo.riv", "application/octet-stream"),
   );
   app.get("/app.js", serve("app.js", "text/javascript; charset=utf-8"));
   app.get("/styles.css", serve("styles.css", "text/css; charset=utf-8"));

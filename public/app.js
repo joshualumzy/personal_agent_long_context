@@ -498,6 +498,9 @@ function startNewChat() {
   activeConversationId = null;
   chatMessages.innerHTML = "";
   if (emptyState) emptyState.style.display = "block";
+  if (soboRiveInstance && typeof soboRiveInstance.play === "function") {
+    soboRiveInstance.play();
+  }
   const emptyTitle = document.querySelector("#empty-state-title");
   if (emptyTitle && currentUser?.displayName) {
     emptyTitle.textContent = `How can I help you today, ${currentUser.displayName}?`;
@@ -1783,6 +1786,41 @@ async function initAuth() {
   handleAuthRequired();
 }
 
+let soboRiveInstance = null;
+function initSoboMascot() {
+  const canvas = document.querySelector("#sobo-canvas");
+  if (!canvas) return;
+
+  if (typeof rive !== "undefined" && typeof rive.Rive === "function") {
+    try {
+      if (rive.RuntimeLoader && typeof rive.RuntimeLoader.setWasmUrl === "function") {
+        rive.RuntimeLoader.setWasmUrl("/vendor/rive.wasm");
+      }
+      soboRiveInstance = new rive.Rive({
+        src: "/assets/sobo.riv",
+        canvas: canvas,
+        autoplay: true,
+        artboard: "SOBO-Marketplace",
+        stateMachines: "State Machine 1",
+        onLoad: () => {
+          if (soboRiveInstance) {
+            soboRiveInstance.resizeDrawingSurfaceToCanvas();
+          }
+        },
+        onError: (err) => {
+          console.warn("Rive mascot failed to load, falling back to icon", err);
+          canvas.style.display = "none";
+          const wrapper = document.querySelector("#empty-avatar-wrapper");
+          if (wrapper) wrapper.innerHTML = '<div class="empty-icon">🤖</div>';
+        },
+      });
+    } catch (err) {
+      console.warn("Could not instantiate Rive animation", err);
+    }
+  }
+}
+
 // Startup
 initAuth();
 initModels();
+initSoboMascot();
