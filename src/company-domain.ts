@@ -22,6 +22,13 @@ export interface CompanyKnowledge {
   employee(employeeId: string): Promise<EmployeeContext | null>;
   search(query: string, limit: number): Promise<Evidence[]>;
   related(sourceIds: string[], limit: number): Promise<Evidence[]>;
+  /**
+   * Artifacts that share a cause with the given ones, found by stepping through
+   * the simulation event that produced them and returning only what sits on the
+   * far side. Weaker evidence than a direct link, and optional: an
+   * implementation without the graph simply omits it.
+   */
+  relatedThroughEvents?(sourceIds: string[], limit: number): Promise<Evidence[]>;
   sources(sourceIds: string[]): Promise<Evidence[]>;
   close?(): Promise<void>;
 }

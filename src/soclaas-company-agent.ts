@@ -479,10 +479,21 @@ export class SoCLaaSCompanyAgent {
               throw new Error("get_related_sources requires source_ids.");
             }
             const allowedSeeds = args.source_ids.filter((id) => retrieved.has(id));
-            result = await this.knowledge.related(
-              allowedSeeds,
-              typeof args.limit === "number" ? args.limit : 6,
-            );
+            const wanted = typeof args.limit === "number" ? args.limit : 6;
+            result = await this.knowledge.related(allowedSeeds, wanted);
+            // Direct links between artifacts are scarce: in this corpus most
+            // links run from the simulation event to the artifacts it produced,
+            // so two artifacts of one cause are siblings rather than neighbours.
+            // Top up from those siblings so a thin direct result does not read
+            // as "nothing is related".
+            if (result.length < wanted && this.knowledge.relatedThroughEvents) {
+              const seen = new Set([...allowedSeeds, ...result.map((r) => r.sourceId)]);
+              const siblings = await this.knowledge.relatedThroughEvents(
+                allowedSeeds,
+                wanted - result.length,
+              );
+              result = [...result, ...siblings.filter((s) => !seen.has(s.sourceId))];
+            }
           } else {
             throw new Error(`SoCLaaS requested unknown tool ${call.function.name}.`);
           }

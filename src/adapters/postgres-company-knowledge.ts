@@ -170,6 +170,50 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     return result.rows.map(evidence);
   }
 
+  /**
+   * Artifacts reached by stepping through the event that produced the seeds.
+   *
+   * In this corpus a simulation event references the artifacts it produced, and
+   * artifacts never reference events, so siblings are found by following the
+   * incoming edges of a seed to the events that caused it, then the outgoing
+   * edges of those events. The events are only ever traversed; what comes back
+   * is artifacts, so nothing an employee could not have seen is returned.
+   *
+   * Two hops exactly. A third hop leaves the shared cause behind and the
+   * connection stops meaning anything.
+   */
+  async relatedThroughEvents(sourceIds: string[], limit: number): Promise<Evidence[]> {
+    if (sourceIds.length === 0) return [];
+    const result = await this.pool.query<EvidenceRow>(
+      `WITH seeds AS (
+         SELECT node_id FROM graph_nodes
+         WHERE node_type = 'document' AND ref_key = ANY($1::text[])
+       ),
+       causes AS (
+         SELECT DISTINCT e.src_node_id AS node_id
+         FROM graph_edges e JOIN seeds ON e.dst_node_id = seeds.node_id
+         WHERE e.edge_type = 'references'
+       ),
+       siblings AS (
+         SELECT DISTINCT e.dst_node_id AS node_id
+         FROM graph_edges e JOIN causes ON e.src_node_id = causes.node_id
+         WHERE e.edge_type = 'references'
+       )
+       SELECT d.source_id, d.source_type, d.title,
+              left(d.body, 1800) AS excerpt, d.occurred_at, d.department,
+              NULL::double precision AS score
+       FROM siblings
+       JOIN graph_nodes n ON n.node_id = siblings.node_id AND n.node_type = 'document'
+       JOIN source_documents d ON d.source_id = n.ref_key
+       WHERE d.category = 'artifact'
+         AND NOT (d.source_id = ANY($1::text[]))
+       ORDER BY d.occurred_at DESC NULLS LAST
+       LIMIT $2`,
+      [sourceIds, Math.min(Math.max(limit, 1), 12)],
+    );
+    return result.rows.map(evidence);
+  }
+
   async sources(sourceIds: string[]): Promise<Evidence[]> {
     if (sourceIds.length === 0) return [];
     const result = await this.pool.query<EvidenceRow>(
