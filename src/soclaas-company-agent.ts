@@ -209,26 +209,40 @@ function limitOf(value: unknown): number {
 function asksForLanguage(question: string): boolean {
   const zh = "(英文|英语|日文|日语|韩文|韩语|法语|德语|西班牙语)";
   return (
-    // "请用英文回答", "用英语写": a language followed by a reply verb.
-    new RegExp(`(用|以)${zh}(来)?(回答|回复|作答|写|答|说|讲|解释|介绍)`).test(question) ||
-    new RegExp(`${zh}(回答|回复|作答)`).test(question) ||
-    // "翻译成英文": the answer is meant to be in that language.
-    new RegExp(`(翻译成|翻译为|译成|翻成|换成|改成)${zh}`).test(question) ||
+    // Directed at the reply: "请用英文回答", "用英语说一下". Not "是用英文写的吗" (about a document).
+    new RegExp(`(用|以)${zh}(来)?(回答|回复|作答|说|讲|解释|介绍|答)(?!的)`).test(question) ||
+    // "…，英文回答。" at the very end.
+    new RegExp(`${zh}(回答|回复|作答)[\\s。.!！]*$`).test(question) ||
+    // "把这段翻译成英文": the answer is meant to be in that language.
+    new RegExp(`(翻译成|翻译为|译成|翻成)${zh}`).test(question) ||
     /\btranslate\b[^.?!]{0,60}\b(in|into|to) (english|japanese|korean|french|german|spanish)\b/i.test(question) ||
-    // "…? In English please." at the end.
-    /\bin (english|japanese|korean|french|german|spanish)\b[\s,]*(please|pls|thanks)?[\s.!。！]*$/i.test(question) ||
     /\b(answer|reply|respond|write|explain|say it|tell me)\b[^.?!]{0,30}\b(in|into) (english|japanese|korean|french|german|spanish)\b/i.test(question) ||
-    /^\s*in (english|japanese|korean|french|german|spanish)\b/i.test(question)
+    /^\s*in (english|japanese|korean|french|german|spanish)\b/i.test(question) ||
+    // "…? In English please." at the end.
+    /\bin (english|japanese|korean|french|german|spanish)\b[\s,]*(please|pls|thanks)?[\s.!。！]*$/i.test(question)
+  );
+}
+
+/** The user asked for the answer in Chinese, whatever language the rest of the message is in. */
+function asksForChinese(question: string): boolean {
+  return (
+    /(用|以)(中文|汉语|普通话)(来)?(回答|回复|作答|说|讲|解释|介绍|答)(?!的)/.test(question) ||
+    /(中文|汉语)(回答|回复|作答)[\s。.!！]*$/.test(question) ||
+    /(翻译成|翻译为|译成|翻成)(中文|汉语)/.test(question) ||
+    /\b(answer|reply|respond|write|explain)\b[^.?!]{0,30}\bin (chinese|mandarin)\b/i.test(question) ||
+    /\bin (chinese|mandarin)\b[\s,]*(please|pls|thanks)?[\s.!。！]*$/i.test(question)
   );
 }
 
 /**
- * A reply with nothing to cite: greetings, what the agent can do, and questions back to the user.
- * Every sentence is a question, a greeting, or about the agent itself, and it holds no figures.
+ * A reply with nothing to cite: a greeting, a short acknowledgement, what the agent can help
+ * with, and short questions back. Kept deliberately narrow, because anything it lets through
+ * skips the citation check: no figures, no colons, no premise clauses, short sentences, and a
+ * greeting may name one person at most.
  */
 function statesNoFacts(answer: string): boolean {
   const text = answer.trim();
-  if (!text || text.length > 400 || /\d|\[source:/.test(text)) return false;
+  if (!text || text.length > 300 || /\d|\[source:|[:：;；]/.test(text)) return false;
   // Lines count as sentences too, so a bullet list cannot hide inside the closing question.
   const sentences = text
     .split(/(?<=[.!?。！？])\s*|\n+/)
@@ -236,15 +250,32 @@ function statesNoFacts(answer: string): boolean {
     .filter(Boolean);
   const last = sentences[sentences.length - 1] ?? "";
   if (!/[?？]$/.test(last)) return false;
+  const name = String.raw`(\s*[,，]?\s*([A-Z][a-z]+( [A-Z][a-z]+)?|\p{Script=Han}{1,4}))?`;
+  const greeting = new RegExp(
+    String.raw`^(hi|hello|hey|thanks|thank you|sure|of course|good (morning|afternoon|evening)|你好|您好|嗨|好的|谢谢)( there| again)?${name}[\s!！.。,，~]*$`,
+    "iu",
+  );
+  const acknowledgement = /^(got it|sure thing|understood|okay|ok|alright|all right|i see|明白了|明白|好的|收到|了解|懂了)[\s!！.。,，~]*$/iu;
+  // Every clause says what the agent can help with, briefly.
+  const capability = (sentence: string) => {
+    const clauses = sentence.replace(/[.!。！]+$/, "").split(/[,，]\s*/);
+    return (
+      /^(I can|I'm here to|I am here to|我(也|还)?(可以|能))/i.test(sentence) &&
+      clauses.every(
+        (clause) =>
+          /^((and|or) )?(I )?(can |could |am here to |'m here to )?(also )?(help|answer|look up|search|draft|find)\b[\w\s'-]{0,60}$/i.test(clause) ||
+          /^(我)?(也|还|或者)?(可以|能)(帮|替)(你|您)\p{Script=Han}{0,12}$/u.test(clause),
+      )
+    );
+  };
+  // A short question with no premise ("Since X, do you want…?" slips X in uncited).
+  const question = (sentence: string) =>
+    /[?？]$/.test(sentence) &&
+    sentence.length <= 120 &&
+    !/\b(since|because|given|now that|as you know|so)\b|由于|因为|既然|鉴于|所以|已经/i.test(sentence) &&
+    !/，.*，/.test(sentence);
   return sentences.every(
-    (sentence) =>
-      /[?？]$/.test(sentence) ||
-      // The whole sentence is a greeting, perhaps with a name: "Hi Jax!", "你好！".
-      /^(hi|hello|hey|thanks|thank you|sure|of course|good (morning|afternoon|evening)|你好|您好|嗨|好的|谢谢)( there| again)?([\s,，]+[\p{L}]+)?[\s!！.。,，~]*$/iu.test(sentence) ||
-      // A whole-sentence acknowledgement before a question back: "Got it.", "明白了。".
-      /^(got it|sure thing|understood|okay|ok|alright|all right|i see|明白了|明白|好的|收到|了解|懂了)[\s!！.。,，~]*$/iu.test(sentence) ||
-      // What the agent can do for the user, never what it can confirm or tell.
-      /^(I can (also )?(help|answer|look up|search|draft|find)|I'm here to help|I am here to help|我(也)?(可以|能)(帮|替)(你|您))/i.test(sentence),
+    (sentence) => question(sentence) || greeting.test(sentence) || acknowledgement.test(sentence) || capability(sentence),
   );
 }
 
@@ -752,7 +783,7 @@ export class SoCLaaSCompanyAgent {
             }
             if (citationCheck.problem || !answer) {
               return {
-                answer: isChinese(input.question) ? INSUFFICIENT_EVIDENCE_ANSWER_ZH : INSUFFICIENT_EVIDENCE_ANSWER,
+                answer: isChinese(input.question) || asksForChinese(input.question) ? INSUFFICIENT_EVIDENCE_ANSWER_ZH : INSUFFICIENT_EVIDENCE_ANSWER,
                 sources: [],
                 runId,
                 toolCalls,
@@ -763,7 +794,8 @@ export class SoCLaaSCompanyAgent {
           // The system prompt asks for the user's language; when the model still answers a
           // Chinese question in another language, ask once more. The translation must pass the
           // same citation check; if it does not, or the call fails, the checked answer stands.
-          if (isChinese(input.question) && !isChinese(answer) && !asksForLanguage(input.question)) {
+          const wantsChinese = asksForChinese(input.question) || (isChinese(input.question) && !asksForLanguage(input.question));
+          if (wantsChinese && !isChinese(answer)) {
             showAnswer(answer);
             messages.push({ role: "user", content: "Reply to the user again, in the language of their message (Chinese). Same content and the same [source:ID] citations, nothing added." });
             try {

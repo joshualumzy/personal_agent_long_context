@@ -43,8 +43,13 @@ let asking = false;
 let listRequest = 0;
 /** The conversation whose history is being fetched, if any. */
 let historyLoading = null;
-/** The last answer drawn from a loaded history, so an answer arriving after it is not drawn twice. */
-let drawnLastAnswer = null;
+/** What the last loaded history ended with, so an answer arriving after it is not drawn twice. */
+let drawnHistory = null;
+
+/** The history on screen already answers this question (it was saved before the history loaded). */
+function alreadyDrawn(conversationId, question) {
+  return drawnHistory?.conversationId === conversationId && drawnHistory.lastQuestion === question && drawnHistory.answered;
+}
 /** Answers that finished while their conversation's history was loading, by conversation. */
 const finishedAnswers = new Map();
 
@@ -141,7 +146,10 @@ function setAnswerHtml(container, sanitizedHtml) {
   container.innerHTML = sanitizedHtml;
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const texts = [];
-  while (walker.nextNode()) texts.push(walker.currentNode);
+  while (walker.nextNode()) {
+    // A button inside a link would follow the link when pressed; that citation stays text.
+    if (!walker.currentNode.parentElement?.closest("a")) texts.push(walker.currentNode);
+  }
   const pattern = /\[source:([A-Za-z0-9._:-]+)\]/gi;
   for (const node of texts) {
     const text = node.nodeValue;
@@ -340,7 +348,7 @@ if (newChatBtn) {
 suggestionChips.forEach((chip) => {
   chip.addEventListener("click", () => {
     // One question at a time, whichever way it is asked.
-    if (asking) return;
+    if (asking || historyLoading) return;
     messageInput.value = chip.textContent.trim();
     messageInput.dispatchEvent(new Event("input"));
     chatForm.requestSubmit();
@@ -737,11 +745,16 @@ async function selectConversation(conversationId, title) {
     // An answer that finished while this history was loading, and is not in it yet.
     const pending = finishedAnswers.get(conversationId);
     finishedAnswers.delete(conversationId);
-    const lastAnswer = [...(detail.messages ?? [])].reverse().find((msg) => msg.role === "assistant")?.content;
-    drawnLastAnswer = { conversationId, answer: lastAnswer };
-    if (pending && pending.answer !== lastAnswer) {
-      appendAssistantMessage(pending);
-      drawnLastAnswer = { conversationId, answer: pending.answer };
+    const messages = detail.messages ?? [];
+    const lastQuestionAt = messages.map((msg) => msg.role).lastIndexOf("user");
+    drawnHistory = {
+      conversationId,
+      lastQuestion: lastQuestionAt >= 0 ? messages[lastQuestionAt].content : undefined,
+      answered: lastQuestionAt >= 0 && messages.slice(lastQuestionAt + 1).some((msg) => msg.role === "assistant"),
+    };
+    if (pending && !alreadyDrawn(conversationId, pending.question)) {
+      appendAssistantMessage(pending.payload);
+      drawnHistory = { conversationId, lastQuestion: pending.question, answered: true };
     }
   } catch (err) {
     if (asked === chatEpoch) {
@@ -767,6 +780,10 @@ async function deleteConversation(conversationId) {
     });
     // Already gone counts as deleted; anything else leaves the chat where it is.
     if (!response.ok && response.status !== 404) throw new Error(`HTTP ${response.status}`);
+    // Gone from the list now, even if reloading the list fails.
+    document.querySelectorAll(".conversation-item").forEach((el) => {
+      if (el.dataset.conversationId === conversationId) el.remove();
+    });
     if (activeConversationId === conversationId) {
       startNewChat();
     }
@@ -779,7 +796,8 @@ async function deleteConversation(conversationId) {
 chatForm.addEventListener("submit", async (e) => {
   e.preventDefault();
   const message = messageInput.value.trim();
-  if (!message || asking) return;
+  // Not while a conversation's history is loading: it would redraw over this question.
+  if (!message || asking || historyLoading) return;
   asking = true;
 
   if (emptyState) {
@@ -800,6 +818,7 @@ chatForm.addEventListener("submit", async (e) => {
   let ttftMs = null;
   const epoch = chatEpoch;
   const stillHere = () => epoch === chatEpoch;
+  const sentTo = activeConversationId;
 
   try {
     const payload = {
@@ -946,10 +965,10 @@ chatForm.addEventListener("submit", async (e) => {
         finalPayload.durationMs = typeof finalPayload.durationMs === "number" ? finalPayload.durationMs : Math.round(performance.now() - requestStartTime);
         if (historyLoading === id) {
           // Its history is still on its way: that load draws it if the history lacks it.
-          finishedAnswers.set(id, finalPayload);
-        } else if (!(drawnLastAnswer?.conversationId === id && drawnLastAnswer.answer === finalPayload.answer)) {
+          finishedAnswers.set(id, { payload: finalPayload, question: message });
+        } else if (!alreadyDrawn(id, message)) {
           appendAssistantMessage(finalPayload);
-          drawnLastAnswer = { conversationId: id, answer: finalPayload.answer };
+          drawnHistory = { conversationId: id, lastQuestion: message, answered: true };
         }
       }
       loadConversations();
@@ -980,7 +999,9 @@ chatForm.addEventListener("submit", async (e) => {
       }
     }
   } catch (err) {
-    if (stillHere()) appendErrorMessage(err instanceof Error ? err.message : "The request failed.");
+    // Also when the user left and came back to the conversation this question was asked in.
+    const backInIt = sentTo && sentTo === activeConversationId && !historyLoading;
+    if (stillHere() || backInIt) appendErrorMessage(err instanceof Error ? err.message : "The request failed.");
   } finally {
     asking = false;
     stopWaitingAnimation();

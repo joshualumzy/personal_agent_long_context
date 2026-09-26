@@ -148,6 +148,22 @@ function mergeDuplicatePeople(state: RecruitingState): void {
 const UNCONFIRMED =
   "Gmail did not confirm this email, so it may have gone out. Check your Sent folder: if it is there, mark it as sent by hand; if not, edit the draft and send it again.";
 
+/** Relayed text compared without time labels ("10:32 AM", "Tue", "Yesterday") or spacing. */
+function sameRelayedText(a: string, b: string): boolean {
+  const plain = (text: string) =>
+    text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line && !TIME_LABEL.test(line))
+      .join(" ")
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+  return plain(a) === plain(b);
+}
+
+const TIME_LABEL =
+  /^(\d{1,2}:\d{2}(\s*[ap]m)?|now|yesterday|today|mon|tue|wed|thu|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday|[a-z]{3} \d{1,2}(, \d{4})?|\d{1,2}\/\d{1,2}(\/\d{2,4})?|\d+[mhdw])$/i;
+
 function rewritten(): RecruitingError {
   return new RecruitingError("invalid_state", "You rewrote this draft yourself, so it is kept. Edit it in the outreach tab.", 409);
 }
@@ -686,6 +702,11 @@ export class RecruitingService {
       }
       const criterion = state.criteria.find((entry) => entry.id === operation.id && entry.active);
       if (!criterion) continue;
+      // A pending widening planned against this criterion as it was; that part of it no longer applies.
+      for (const proposal of state.proposals) {
+        if (proposal.type !== "expansion" || proposal.status !== "pending") continue;
+        proposal.operations = proposal.operations.filter((planned) => planned.op === "add" || planned.id !== criterion.id);
+      }
       if (operation.op === "remove") {
         criterion.active = false;
         summary.push(`dropped "${criterion.text}"`);
@@ -785,7 +806,7 @@ export class RecruitingService {
         target.kept = true;
         // Keeping someone the founder passed on is changing their mind: they come back.
         // They pick up where the conversation had got to.
-        if (target.stage === "closed" && target.closedReason === "passed") {
+        if (target.stage === "closed" && ["passed", "cold", "declined"].includes(target.closedReason ?? "")) {
           const heard = target.messages.some((message) => message.direction === "inbound");
           const wrote = target.messages.some((message) => message.direction === "outbound");
           target.stage = heard ? "replied" : wrote ? "contacted" : "scored";
@@ -881,7 +902,14 @@ export class RecruitingService {
       // Declining a step still moves past it, so the next stall offers the next rung.
       state.expansionStep = Math.max(state.expansionStep, proposal.step + 1);
       if (accept) {
-        const summary = this.applyOperations(state, proposal.operations, "relaxed");
+        // Operations on a criterion the founder changed since the proposal was made are dropped.
+        const targets = proposal.targets;
+        const still = proposal.operations.filter((operation) => {
+          if (operation.op === "add" || !targets || !(operation.id in targets)) return true;
+          const criterion = state.criteria.find((entry) => entry.id === operation.id && entry.active);
+          return criterion !== undefined && `${criterion.text}\u0000${criterion.kind}` === targets[operation.id];
+        });
+        const summary = this.applyOperations(state, still, "relaxed");
         this.record(
           state,
           "pool_expanded",
@@ -1256,6 +1284,12 @@ export class RecruitingService {
     // 1. The reply itself is saved first; nothing after this can lose it.
     const closedAs = await this.mutate((latest) => {
       const candidate = this.candidate(latest, id);
+      // The same message relayed again (a LinkedIn preview whose time label changed, a sync
+      // run twice) is already on record.
+      const same = (message: Message) =>
+        message.direction === "inbound" &&
+        (channel === "email" ? message.text === text && message.realAt === at : sameRelayedText(message.text, text));
+      if (candidate.messages.some(same)) return "duplicate";
       candidate.messages.push({
         direction: "inbound",
         channel,
@@ -1267,8 +1301,14 @@ export class RecruitingService {
       if ((candidate.draft?.kind === "follow_up" || candidate.draft?.kind === "intro") && !candidate.draft.sending) {
         delete candidate.draft;
       }
-      // A closed person stays closed (hired stays hired); the message is kept on record.
-      if (candidate.stage === "closed") return candidate.closedReason ?? "closed";
+      // A closed person stays closed (hired stays hired); the message is kept on record. Only a
+      // closure the system made on silence or a misread ("cold", "declined") gives way to a yes.
+      if (candidate.stage === "closed") {
+        const reopenable = candidate.closedReason === "cold" || candidate.closedReason === "declined";
+        if (!(reopenable && reading.interested === true)) return candidate.closedReason ?? "closed";
+        delete candidate.closedReason;
+        delete candidate.closedAt;
+      }
       if (reading.interested === false) {
         this.closeCandidate(latest, candidate, "declined");
         return null;
@@ -1277,6 +1317,7 @@ export class RecruitingService {
       return null;
     });
     const name = state.candidates[id]?.profile.name ?? "The candidate";
+    if (closedAs === "duplicate") return { intent: "reply", recorded: true, message: `${name}: that message is already on record.` };
     if (closedAs) return { intent: "reply", recorded: true, message: `${name} is closed (${closedAs}). Their message is saved.` };
     if (reading.interested === false) return { intent: "reply", recorded: true, message: `${name} declined. Closed.` };
 
@@ -1349,8 +1390,21 @@ export class RecruitingService {
       // Gmail keeps real time, so the cut-off must too (fast-forward moves only the simulated clock).
       // The latest time on record, not the last message's: a send recorded late is dated earlier
       // than a reply already read, and must not move the cut-off back to before that reply.
-      const times = candidate.messages.map((message) => message.realAt ?? message.at).filter(Boolean);
-      const lastSeen = times.length ? times.reduce((a, b) => (Date.parse(b) > Date.parse(a) ? b : a)) : candidate.discoveredAt;
+      // Replies after the latest one already read; before any, everything since the first email.
+      // The founder's own later sends do not move it, or a reply not yet read would be skipped.
+      const latest = (messages: Message[]) =>
+        messages
+          .map((message) => message.realAt ?? message.at)
+          .filter(Boolean)
+          .reduce<string | undefined>((a, b) => (!a || Date.parse(b) > Date.parse(a) ? b : a), undefined);
+      const earliest = (messages: Message[]) =>
+        messages
+          .map((message) => message.realAt ?? message.at)
+          .filter(Boolean)
+          .reduce<string | undefined>((a, b) => (!a || Date.parse(b) < Date.parse(a) ? b : a), undefined);
+      const read = candidate.messages.filter((message) => message.direction === "inbound" && message.channel === "email");
+      const emailed = candidate.messages.filter((message) => message.direction === "outbound" && message.channel === "email");
+      const lastSeen = latest(read) ?? earliest(emailed) ?? candidate.discoveredAt;
       // One thread that fails is reported; the others are still read.
       try {
         const replies = await this.deps.gmail.repliesIn(candidate.gmailThreadId, lastSeen);
@@ -1455,6 +1509,14 @@ export class RecruitingService {
         rationale: plan.rationale,
         query: plan.query,
         operations: plan.operations,
+        // What each targeted criterion said, so a later change by the founder is not overwritten.
+        targets: Object.fromEntries(
+          plan.operations.flatMap((operation) => {
+            if (operation.op === "add") return [];
+            const criterion = latest.criteria.find((entry) => entry.id === operation.id);
+            return criterion ? [[operation.id, `${criterion.text}\u0000${criterion.kind}`]] : [];
+          }),
+        ),
       });
     });
   }

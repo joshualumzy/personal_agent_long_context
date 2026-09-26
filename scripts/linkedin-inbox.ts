@@ -30,8 +30,17 @@ async function loadSeen(): Promise<Set<string>> {
   }
 }
 
+/** A preview's time label ("10:32 AM", "Tue") changes as the day passes; the message does not. */
+const TIME_LABEL =
+  /^(\d{1,2}:\d{2}(\s*[ap]m)?|now|yesterday|today|mon|tue|wed|thu|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday|[a-z]{3} \d{1,2}(, \d{4})?|\d{1,2}\/\d{1,2}(\/\d{2,4})?|\d+[mhdw])$/i;
+
 function fingerprint(text: string): string {
-  return createHash("sha256").update(text).digest("hex");
+  const message = text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !TIME_LABEL.test(line))
+    .join("\n");
+  return createHash("sha256").update(message).digest("hex");
 }
 
 await mkdir(PROFILE_DIR, { recursive: true });

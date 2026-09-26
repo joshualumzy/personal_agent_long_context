@@ -492,3 +492,30 @@ The model once answered the Chinese retry with nothing; the retry is now
 asked once more (`r6-chaos-followups.test.ts`). The model once asked "which
 one?" and acted in the same turn; the skill now forbids changing anything
 in a turn that asks a question.
+
+## Round 7 (2026-09-26)
+
+21 confirmed bugs: backend 4, chat agent 10, front end 7. All fixed
+(`r7-*.test.ts`, `ui/r7/`).
+
+- Chat agent: all ten were holes in the two word rules added in rounds 4 to
+  6 (the "nothing to cite" exemption and explicit language requests).
+  Instead of patching each, both rules were narrowed as a whole. The
+  exemption now refuses any colon, figure or premise clause ("since",
+  "因为"), caps questions at 120 characters, lets a greeting name one person
+  at most, and checks capability sentences clause by clause. Language
+  requests must be aimed at the reply ("用英文回答", not "是用英文写的吗" or
+  "英语回答流利吗"). "请用中文回答" in an English message now gets Chinese.
+- Backend: Gmail sync reads replies after the latest reply already read, so
+  the founder's own later sends no longer hide an unread reply; a pending
+  widening drops its planned change to a criterion the founder has changed
+  since; someone the system closed as cold (or read as declining) who
+  writes back with interest reopens, and keep can reopen them too; the same
+  relayed message is not recorded twice (time labels ignored), and the
+  LinkedIn reader's fingerprint ignores them too.
+- Front end: no question can be sent while a conversation's history loads;
+  an answer is recognised as already drawn by its question, not its text;
+  a deleted conversation leaves the sidebar even if the list reload fails;
+  citations inside links stay text; a failed answer is reported after the
+  user returns to its conversation; a pasted reply and a pass reason survive
+  drawer rebuilds; drawer actions lock per person, not per button.

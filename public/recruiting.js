@@ -20,6 +20,32 @@ let draftCriteria = null;
 const typedDrafts = new Map();
 /** People whose message is being saved and sent right now. */
 const sendingFor = new Set();
+/** Text typed into a drawer's other boxes (a pass reason, a pasted reply), kept across rebuilds until used. */
+const typedFields = new Map();
+/** People with a drawer action (outreach, keep, pass, reply, hired) on its way; its buttons stay disabled. */
+const actingFor = new Set();
+
+function keptInput(key, element) {
+  if (typedFields.has(key)) element.value = typedFields.get(key);
+  element.addEventListener("input", () => typedFields.set(key, element.value));
+  return element;
+}
+
+/** Runs one drawer action per person at a time, then redraws that person's drawer. */
+async function act(candidateId, work) {
+  const key = `${roleId}:${candidateId}`;
+  if (actingFor.has(key)) return undefined;
+  actingFor.add(key);
+  try {
+    return await work();
+  } finally {
+    actingFor.delete(key);
+    if (state && selectedId === candidateId) {
+      detailSignature = "";
+      renderDetail();
+    }
+  }
+}
 let lastRoundCount = 0;
 let pollTimer = null;
 const nodes = new Map();
@@ -694,9 +720,16 @@ function renderDetail() {
   const { profile } = candidate;
   const matched = candidate.tier === 100 || candidate.tier === 75 || candidate.tier === 50;
   const hasOutreach = Boolean(candidate.draft) || candidate.messages.length > 0;
-  const reasonInput = h("input", { type: "text", placeholder: "Why? Optional, stays private" });
-  const decision = (value) => (event) =>
-    call(api(`/candidates/${candidate.id}/feedback`), { decision: value, reason: reasonInput.value }, event.currentTarget);
+  const busy = actingFor.has(`${roleId}:${candidate.id}`) ? true : undefined;
+  const reasonKey = `${roleId}:${candidate.id}:reason`;
+  const reasonInput = keptInput(reasonKey, h("input", { type: "text", placeholder: "Why? Optional, stays private" }));
+  const decision = (value) => (event) => {
+    const button = event.currentTarget;
+    return act(candidate.id, async () => {
+      const done = await call(api(`/candidates/${candidate.id}/feedback`), { decision: value, reason: reasonInput.value }, button);
+      if (done !== undefined) typedFields.delete(reasonKey);
+    });
+  };
 
   const tab = (key, label, dot = false) =>
     h(
@@ -743,8 +776,8 @@ function renderDetail() {
             "div",
             { class: "decide" },
             reasonInput,
-            h("button", { type: "button", class: "quiet", onclick: decision("keep") }, "Keep"),
-            h("button", { type: "button", class: "quiet warn", onclick: decision("pass") }, "Pass"),
+            h("button", { type: "button", class: "quiet", disabled: busy, onclick: decision("keep") }, "Keep"),
+            h("button", { type: "button", class: "quiet warn", disabled: busy, onclick: decision("pass") }, "Pass"),
           ),
       h(
         "nav",
@@ -840,6 +873,7 @@ function careerPanel(candidate) {
 
 function outreachPanel(candidate) {
   const parts = [];
+  const acting = actingFor.has(`${roleId}:${candidate.id}`) ? true : undefined;
   if (candidate.stage === "closed") {
     parts.push(h("p", { class: "empty-note" }, `Closed: ${candidate.closedReason}.`));
   }
@@ -959,17 +993,20 @@ function outreachPanel(candidate) {
   } else if (["discovered", "scored"].includes(candidate.stage)) {
     parts.push(
       h("p", { class: "empty-note" }, "Nothing sent yet. I will look up an email with Hunter and Prospeo and write a first message for you to check. I never guess an address."),
-      h("button", { type: "button", class: "primary", onclick: async (event) => {
+      h("button", { type: "button", class: "primary", disabled: acting, onclick: (event) => {
         const button = event.currentTarget;
         button.textContent = "Finding email and drafting…";
-        await call(api(`/candidates/${candidate.id}/outreach`), {}, button);
-        button.textContent = "Find email and draft";
-      } }, "Find email and draft"),
+        return act(candidate.id, async () => {
+          await call(api(`/candidates/${candidate.id}/outreach`), {}, button);
+          button.textContent = "Find email and draft";
+        });
+      } }, acting ? "Finding email and drafting…" : "Find email and draft"),
     );
   }
 
   if (["contacted", "replied", "scheduling"].includes(candidate.stage)) {
-    const reply = h("textarea", { rows: 3, placeholder: "Paste or dictate their reply" });
+    const replyKey = `${roleId}:${candidate.id}:reply`;
+    const reply = keptInput(replyKey, h("textarea", { rows: 3, placeholder: "Paste or dictate their reply" }));
     parts.push(
       h(
         "div",
@@ -979,11 +1016,18 @@ function outreachPanel(candidate) {
         h(
           "div",
           { class: "row" },
-          h("button", { type: "button", class: "quiet", onclick: async (event) => {
-            const result = await call(api(`/candidates/${candidate.id}/reply`), { text: reply.value }, event.currentTarget);
-            if (result) $("#agent-reply").textContent = result.message;
+          h("button", { type: "button", class: "quiet", disabled: acting, onclick: (event) => {
+            const button = event.currentTarget;
+            return act(candidate.id, async () => {
+              const result = await call(api(`/candidates/${candidate.id}/reply`), { text: reply.value }, button);
+              if (result !== undefined) typedFields.delete(replyKey);
+              if (result) $("#agent-reply").textContent = result.message;
+            });
           } }, "Add reply"),
-          h("button", { type: "button", class: "quiet", onclick: (event) => call(api(`/candidates/${candidate.id}/close`), { reason: "hired" }, event.currentTarget) }, "Mark as hired"),
+          h("button", { type: "button", class: "quiet", disabled: acting, onclick: (event) => {
+            const button = event.currentTarget;
+            return act(candidate.id, () => call(api(`/candidates/${candidate.id}/close`), { reason: "hired" }, button));
+          } }, "Mark as hired"),
         ),
       ),
     );

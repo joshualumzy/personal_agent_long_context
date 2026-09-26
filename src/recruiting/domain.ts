@@ -164,6 +164,8 @@ export interface ExpansionProposal {
   rationale: string;
   query: string;
   operations: CriteriaOperation[];
+  /** Each targeted criterion's text and kind when proposed, by id. */
+  targets?: Record<string, string>;
 }
 
 export type Proposal = CriterionProposal | ExpansionProposal;
