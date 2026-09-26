@@ -3,6 +3,7 @@ import type { JsonModel } from "../recruiting/llm.js";
 import type {
   ActionPayload,
   AnswerPayload,
+  AnswerStream,
   CalendarPayload,
   AvailabilityChecker,
   CandidateAction,
@@ -20,7 +21,42 @@ import type {
   TicketPayload,
 } from "./domain.js";
 import { checkAvailability } from "./availability.js";
+import { mustEscalate } from "./policy.js";
 import { ModelWhenReader, resolveWhen, type WhenReader } from "./when.js";
+
+// A discount, credit, refund, or amount in text meant for someone outside the approval.
+const MONEY_MENTION = /\bdiscount|\bcredit\b|\brefund|\b\d+(?:\.\d+)?\s?%|[$€£¥]\s?\d|\b\d[\d,.]*\s?(?:usd|sgd|dollars?)\b/i;
+
+/**
+ * An email or chat message can repeat a money commitment heard earlier ("as
+ * agreed, we will apply a 20% discount") while the escalation card for it is
+ * still waiting on an approver. Prompt rules did not stop it reliably (it
+ * stated the discount as settled in 3 of 24 test drafts), so the card says so.
+ * Money talk counts as settled only once its escalation has been executed.
+ */
+export function unapprovedMoneyNote(candidate: CandidateAction, meeting: MeetingState, payload: ActionPayload): string | null {
+  const text =
+    candidate.kind === "email_draft"
+      ? (payload as EmailPayload).body
+      : candidate.kind === "message_draft"
+        ? (payload as MessagePayload).text
+        : "";
+  if (!text || !MONEY_MENTION.test(text)) return null;
+  const settled = new Set(
+    meeting.actions
+      .filter((action) => action.kind === "escalation" && action.status === "executed")
+      .map((action) => action.trigger.segmentIndex),
+  );
+  const pending = meeting.segments.some(
+    (segment) =>
+      segment.index <= candidate.trigger.segmentIndex &&
+      !settled.has(segment.index) &&
+      mustEscalate({ summary: segment.text, details: {} }) !== null,
+  );
+  return pending
+    ? "Mentions a discount, credit, refund, or amount from this meeting that has not been approved yet. Confirm it is approved before sending, or take it out."
+    : null;
+}
 
 /**
  * Turns a candidate commitment into the payload an employee (or, for an
@@ -288,8 +324,10 @@ export class ActionDrafter {
    * Whatever is still missing is returned for the employee to fill in, never
    * guessed.
    */
-  async draft(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
-    const result = await this.draftWithLookups(candidate, meeting);
+  async draft(candidate: CandidateAction, meeting: MeetingState, stream?: AnswerStream): Promise<DraftResult> {
+    const result = await this.draftWithLookups(candidate, meeting, stream);
+    const moneyNote = unapprovedMoneyNote(candidate, meeting, result.payload);
+    if (moneyNote) return { ...result, notes: [...(result.notes ?? []), moneyNote] };
     if (candidate.kind !== "calendar_draft") return result;
     const availability = await this.calendarNotes(result.payload as CalendarPayload);
     if (availability.length === 0) return result;
@@ -319,8 +357,12 @@ export class ActionDrafter {
     }
   }
 
-  private async draftWithLookups(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
-    const first = await this.draftOnce(candidate, meeting, []);
+  private async draftWithLookups(
+    candidate: CandidateAction,
+    meeting: MeetingState,
+    stream?: AnswerStream,
+  ): Promise<DraftResult> {
+    const first = await this.draftOnce(candidate, meeting, [], stream);
     const gaps = mergeGaps(structuralGaps(candidate.kind, first.payload, candidate), first.gaps ?? []);
     if (gaps.length === 0) {
       return { payload: first.payload, evidence: first.evidence, title: first.title, ...(first.notes ? { notes: first.notes } : {}) };
@@ -373,10 +415,15 @@ export class ActionDrafter {
     return { found, lookups };
   }
 
-  private async draftOnce(candidate: CandidateAction, meeting: MeetingState, extra: Evidence[]): Promise<RawDraft> {
+  private async draftOnce(
+    candidate: CandidateAction,
+    meeting: MeetingState,
+    extra: Evidence[],
+    stream?: AnswerStream,
+  ): Promise<RawDraft> {
     switch (candidate.kind) {
       case "answer_question":
-        return this.draftAnswer(candidate, meeting);
+        return this.draftAnswer(candidate, meeting, stream);
       case "email_draft":
         return this.draftEmail(candidate, meeting, extra);
       case "ticket_draft":
@@ -402,10 +449,10 @@ export class ActionDrafter {
     }
   }
 
-  private async draftAnswer(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
+  private async draftAnswer(candidate: CandidateAction, meeting: MeetingState, stream?: AnswerStream): Promise<DraftResult> {
     const question = detailText(candidate.details, "question") || candidate.summary;
     if (this.deps.answerer) {
-      const answer = await this.answerWithRetry(meeting.employeeId, question);
+      const answer = await this.answerWithRetry(meeting.employeeId, question, stream);
       if (answer) return {
         payload: {
           question,
@@ -433,10 +480,11 @@ export class ActionDrafter {
   }
 
   /** The S1 model occasionally returns an empty turn; one retry covers most of those. */
-  private async answerWithRetry(employeeId: string, question: string) {
+  private async answerWithRetry(employeeId: string, question: string, stream?: AnswerStream) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (attempt > 0) stream?.onResetTokens?.();
       try {
-        return await this.deps.answerer!.answer({ employeeId, question });
+        return await this.deps.answerer!.answer({ employeeId, question }, stream);
       } catch {
         // fall through to the next attempt, then to plain retrieval
       }

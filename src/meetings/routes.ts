@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ActionPayload, MeetingActions, MeetingEvent } from "./domain.js";
 import { MeetingError } from "./domain.js";
+import type { Transcribe } from "./speech.js";
 
 export interface GoogleStatus {
   connected: boolean;
@@ -25,6 +26,8 @@ export interface RegisterMeetingRoutesOptions {
   ) => void;
   /** Lists the OrgForge meetings available to replay. */
   listReplays?: () => Promise<Array<{ sourceId: string; title: string }>>;
+  /** Speech to text for recorded meeting audio. Omitted, the audio route answers 503. */
+  transcribe?: Transcribe;
 }
 
 const DEFAULT_REPLAY_EMPLOYEE_ID = "jax";
@@ -34,6 +37,7 @@ const MAX_REPLAY_INTERVAL_MS = 60_000;
 const MAX_SEGMENTS_PER_CALL = 50;
 const MAX_SEGMENT_TEXT_LENGTH = 2_000;
 const HEARTBEAT_MS = 15_000;
+const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -111,11 +115,19 @@ function parseSegments(body: unknown): SegmentInput[] {
 /** Wraps a handler: maps MeetingError to {code,message} at its statusCode, else logs and answers 502. */
 function route<T>(
   app: FastifyInstance,
-  work: (body: unknown, params: Record<string, string>) => Promise<{ status: number; body: T }>,
+  work: (
+    body: unknown,
+    params: Record<string, string>,
+    query: Record<string, string>,
+  ) => Promise<{ status: number; body: T }>,
 ) {
-  return async (request: { body: unknown; params: unknown }, reply: FastifyReply) => {
+  return async (request: { body: unknown; params: unknown; query?: unknown }, reply: FastifyReply) => {
     try {
-      const { status, body } = await work(request.body, (request.params ?? {}) as Record<string, string>);
+      const { status, body } = await work(
+        request.body,
+        (request.params ?? {}) as Record<string, string>,
+        (request.query ?? {}) as Record<string, string>,
+      );
       return reply.code(status).send(body);
     } catch (error) {
       if (error instanceof MeetingError) {
@@ -231,6 +243,35 @@ export function registerMeetingRoutes(
       const segments = parseSegments(body);
       const appended = await meetings.append(params.id!, segments);
       return { status: 200, body: appended };
+    }),
+  );
+
+  // Recorded audio arrives as raw bytes, a few seconds per request.
+  app.addContentTypeParser(/^audio\//, { parseAs: "buffer", bodyLimit: MAX_AUDIO_BYTES }, (_request, body, done) =>
+    done(null, body),
+  );
+
+  app.post<{ Params: { id: string } }>(
+    "/api/v1/meetings/:id/audio",
+    { bodyLimit: MAX_AUDIO_BYTES },
+    route(app, async (body, params, query) => {
+      if (!options.transcribe) {
+        throw new MeetingError("transcription_not_configured", "Transcription is not configured on this server.", 503);
+      }
+      if (!Buffer.isBuffer(body) || body.length === 0) {
+        throw new MeetingError("invalid_request", "Send the recorded audio as the request body.", 400);
+      }
+      const speaker = (query.speaker ?? "").trim().slice(0, 80) || "Meeting";
+      const language = /^[a-z]{2}$/.test(query.language ?? "") ? query.language : undefined;
+      // A preview is the clip so far, shown while the speaker is still talking; only the final clip is kept.
+      const preview = query.preview === "1";
+      const text = (await options.transcribe(body, { ...(language ? { language } : {}), preview })).slice(
+        0,
+        MAX_SEGMENT_TEXT_LENGTH,
+      );
+      if (!text || preview) return { status: 200, body: { text } };
+      await meetings.append(params.id!, [{ speaker, text }]);
+      return { status: 200, body: { text } };
     }),
   );
 

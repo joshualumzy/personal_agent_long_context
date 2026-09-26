@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import type { CompanyAnswer, CompanyKnowledge, CompanyQuestion, EmployeeContext, Evidence } from "../src/company-domain.js";
-import { ActionDrafter } from "../src/meetings/drafter.js";
+import { ActionDrafter, unapprovedMoneyNote } from "../src/meetings/drafter.js";
 import {
   MeetingError,
   type ActionExecutor,
@@ -112,6 +112,7 @@ function fakeModel(): JsonModel & { calls: string[] } {
         case "meeting commitment extraction": {
           const candidates: unknown[] = [];
           const decisions: unknown[] = [];
+          const assignments: unknown[] = [];
           for (const segment of data.newSegments as Array<{ index: number; speaker: string; text: string }>) {
             const t = segment.text;
             if (t.includes("Flag it to security")) {
@@ -199,8 +200,11 @@ function fakeModel(): JsonModel & { calls: string[] } {
             if (t.includes("we will use vendor B for hosting")) {
               decisions.push({ segmentIndex: segment.index, speaker: segment.speaker, text: "We will use vendor B for hosting." });
             }
+            if (t.includes("I'll run the load test by Friday")) {
+              assignments.push({ segmentIndex: segment.index, owner: "I", task: "run the load test", due: "Friday" });
+            }
           }
-          return { candidates, decisions } as T;
+          return { candidates, decisions, assignments } as T;
         }
         case "email draft":
           return {
@@ -232,6 +236,13 @@ function fakeModel(): JsonModel & { calls: string[] } {
           }
           return { conflict: false } as T;
         }
+        case "meeting minutes":
+          return {
+            summary: "The team settled hosting.",
+            decisions: ["Use vendor B for hosting."],
+            owners: [{ owner: "Dana", task: "run the load test", due: "Friday" }],
+            openQuestions: [],
+          } as T;
         default:
           throw new Error(`Unscripted task ${task}`);
       }
@@ -290,6 +301,31 @@ describe("policy", () => {
     assert.ok(mustEscalate({ summary: "Refund the client for last month", details: {} }));
     assert.ok(mustEscalate({ summary: "Approve the $5,000 sponsorship", details: {} }));
     assert.ok(mustEscalate({ summary: "Approve SGD 500 for the offsite", details: { note: "SGD 500 total" } }));
+  });
+
+  test("an email that repeats an unapproved discount carries a note until the escalation is executed", () => {
+    const segments = [
+      { index: 0, speaker: "Marcus", text: "I'm going to offer them a 20% discount on next quarter's fee." },
+      { index: 1, speaker: "Jax", text: "I'll send a follow-up email today with the root cause and the fix." },
+    ];
+    const email = {
+      kind: "email_draft" as const,
+      trigger: { segmentIndex: 1, speaker: "Jax", quote: segments[1]!.text },
+      summary: "Follow-up email",
+      dedupeKey: "email_draft:follow-up",
+      details: {},
+    };
+    const meeting = (actions: unknown[]) =>
+      ({ meetingId: "m", title: "t", employeeId: "jax", status: "live", startedAt: "", segments, decisions: [], actions, trace: [] }) as never;
+    const saysDiscount = { to: "", subject: "Follow-up", body: "As agreed, we will apply a 20% discount to next quarter's fee." };
+    const noMoney = { to: "", subject: "Follow-up", body: "The root cause was ENG-210; we are shipping approach B." };
+    const escalation = (status: string) => ({ kind: "escalation", status, trigger: { segmentIndex: 0, speaker: "Marcus", quote: "" } });
+
+    assert.ok(unapprovedMoneyNote(email, meeting([]), saysDiscount));
+    assert.ok(unapprovedMoneyNote(email, meeting([escalation("escalated")]), saysDiscount));
+    assert.equal(unapprovedMoneyNote(email, meeting([escalation("executed")]), saysDiscount), null);
+    assert.equal(unapprovedMoneyNote(email, meeting([]), noMoney), null);
+    assert.equal(unapprovedMoneyNote({ ...email, kind: "ticket_draft" }, meeting([]), { title: "20% discount", description: "" } as never), null);
   });
 });
 
@@ -629,5 +665,70 @@ describe("explicit decision backstop", () => {
       result.decisions.map((decision) => decision.segmentIndex),
       [0, 2],
     );
+  });
+});
+
+// ------------------------------------------------------------------- notes and minutes
+
+describe("notes and minutes", () => {
+  test("a task the agent cannot do is noted as an assignment, owned by the speaker who said I", async () => {
+    const { service } = setup();
+    const meeting = await service.start({ title: "Load test sync", employeeId: "emp-1" });
+    await service.append(meeting.meetingId, [{ speaker: "Dana", text: "I'll run the load test by Friday." }]);
+    await service.idle(meeting.meetingId);
+    const state = await service.get(meeting.meetingId);
+    assert.deepEqual(
+      state!.assignments!.map(({ owner, task, due }) => ({ owner, task, due })),
+      [{ owner: "Dana", task: "run the load test", due: "Friday" }],
+    );
+    assert.equal(state!.actions.length, 0, "an assignment is not an action card");
+  });
+
+  test("ending the meeting writes minutes from the final decisions, not the running log", async () => {
+    const { service } = setup();
+    const meeting = await service.start({ title: "Hosting sync", employeeId: "emp-1" });
+    await service.append(meeting.meetingId, [
+      { speaker: "Ana", text: "Decision: we will use vendor A for hosting." },
+      { speaker: "Ben", text: "Actually, we will use vendor B for hosting." },
+    ]);
+    await service.idle(meeting.meetingId);
+    await service.end(meeting.meetingId);
+    let minutes = (await service.get(meeting.meetingId))!.minutes;
+    for (let tries = 0; minutes?.status !== "ready" && tries < 50; tries += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      minutes = (await service.get(meeting.meetingId))!.minutes;
+    }
+    assert.equal(minutes?.status, "ready");
+    assert.match(minutes!.markdown!, /## Decisions\n\n- Use vendor B for hosting\./);
+    assert.doesNotMatch(minutes!.markdown!, /vendor A/, "a reversed decision is left out");
+    assert.match(minutes!.markdown!, /\*\*Dana\*\*: run the load test \(due Friday\)/);
+  });
+
+  test("an ended meeting takes no new lines", async () => {
+    const { service } = setup();
+    const meeting = await service.start({ title: "Short sync", employeeId: "emp-1" });
+    await service.end(meeting.meetingId);
+    await assert.rejects(
+      service.append(meeting.meetingId, [{ speaker: "Ana", text: "One more thing." }]),
+      (error: unknown) => error instanceof MeetingError && error.code === "meeting_ended" && error.statusCode === 409,
+    );
+  });
+
+  test("an email with no recipient cannot be approved until one is added", async () => {
+    const { service, executor } = setup();
+    const meeting = await service.start({ title: "Vendor check-in", employeeId: "emp-1" });
+    await service.append(meeting.meetingId, [{ speaker: "Dana", text: "I'll email the vendor about the shipment delay." }]);
+    await service.idle(meeting.meetingId);
+    const proposed = (await actionFor(service, meeting.meetingId, "email:vendor-shipment-delay"))!;
+    const payload = proposed.payload as { to: string; subject: string; body: string };
+    const blank = await service.edit(meeting.meetingId, proposed.id, { ...payload, to: " " });
+    await assert.rejects(
+      service.approve(meeting.meetingId, blank.id, blank.payloadHash),
+      (error: unknown) => error instanceof MeetingError && error.code === "missing_recipient" && error.statusCode === 409,
+    );
+    assert.equal(executor.executed.length, 0);
+    const addressed = await service.edit(meeting.meetingId, proposed.id, { ...payload, to: "vendor@example.test" });
+    const approved = await service.approve(meeting.meetingId, addressed.id, addressed.payloadHash);
+    assert.equal(approved.status, "executed");
   });
 });

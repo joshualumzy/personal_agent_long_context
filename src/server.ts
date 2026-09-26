@@ -14,6 +14,7 @@ import { embeddingProviderFromEnvironment } from "./embeddings.js";
 import { meetingsFromEnvironment } from "./meetings/config.js";
 import { googleAvailability } from "./meetings/availability.js";
 import { gmailContactDirectory } from "./meetings/contacts.js";
+import { localWhisper } from "./meetings/speech.js";
 
 import { validateAuthConfig } from "./auth.js";
 
@@ -144,7 +145,7 @@ const app = buildApp({
   conversationStore,
   logger: true,
   ...(recruiting ? { recruiting: { board: recruiting.board, gmail: recruiting.gmail } } : {}),
-  ...(meetings ? { meetings } : {}),
+  ...(meetings ? { meetings: { ...meetings, transcribe: localWhisper() } } : {}),
 });
 logMeetingFailure = (context, error) =>
   app.log.error(

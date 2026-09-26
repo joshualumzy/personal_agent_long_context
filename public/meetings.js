@@ -75,10 +75,8 @@ const EDITABLE_FIELDS = {
 };
 
 const READONLY_FIELDS = {
-  answer_question: [
-    ["question", "Question"],
-    ["answer", "Answer"],
-  ],
+  // The quoted line above the fields already shows the question.
+  answer_question: [["answer", "Answer"]],
   flag_conflict: [
     ["statement", "Statement"],
     ["priorDecision", "Prior decision"],
@@ -110,6 +108,8 @@ const state = {
   current: null, // MeetingState, filled in once the "snapshot" SSE event arrives
   source: null, // EventSource
   selectedActionId: null,
+  streams: {}, // answers being written, by the transcript line that asked
+  thoughts: {}, // what the agent said between searches, kept folded on the finished answer
 };
 
 // actionId -> { values: payload-in-progress, dirty: boolean }. Cleared
@@ -220,8 +220,12 @@ function closeStream() {
 }
 
 function openMeeting(meetingId) {
+  document.body.classList.add("in-meeting");
+  stopRecording();
   closeStream();
   state.current = null;
+  state.streams = {};
+  state.thoughts = {};
   state.selectedActionId = null;
   editDrafts.clear();
   showError("");
@@ -245,13 +249,18 @@ function openMeeting(meetingId) {
     if (!state.current) return;
     const payload = JSON.parse(event.data);
     upsertAction(payload.action);
+    const index = payload.action.trigger?.segmentIndex;
+    if (state.streams[index]?.steps.length) state.thoughts[index] = state.streams[index].steps;
+    delete state.streams[index];
     renderActions();
+    renderPending();
   });
   source.addEventListener("trace", (event) => {
     if (!state.current) return;
     const payload = JSON.parse(event.data);
     state.current.trace.push(payload.trace);
     renderTrace();
+    renderPending();
   });
   source.addEventListener("meeting", (event) => {
     if (!state.current) return;
@@ -259,6 +268,33 @@ function openMeeting(meetingId) {
     state.current.status = payload.status;
     renderMeetingHead();
     renderMeetingList();
+  });
+  // An answer being written arrives here piece by piece, before its card exists.
+  source.addEventListener("answer_stream", (event) => {
+    if (!state.current) return;
+    const { segmentIndex, delta, status, reset } = JSON.parse(event.data);
+    const stream = (state.streams[segmentIndex] ??= { text: "", status: "", steps: [] });
+    // Text withdrawn mid-answer is the agent thinking aloud between searches;
+    // it stays visible as a step instead of vanishing.
+    if (reset) {
+      if (stream.text.trim()) stream.steps.push(stream.text.trim());
+      stream.text = "";
+    }
+    if (status) stream.status = status;
+    if (delta) stream.text += delta;
+    renderPending();
+  });
+  source.addEventListener("notes", (event) => {
+    if (!state.current) return;
+    const { decisions, assignments } = JSON.parse(event.data);
+    state.current.decisions = decisions;
+    state.current.assignments = assignments;
+    renderNotes();
+  });
+  source.addEventListener("minutes", (event) => {
+    if (!state.current) return;
+    state.current.minutes = JSON.parse(event.data).minutes;
+    renderMinutes();
   });
   source.addEventListener("busy", (event) => {
     const payload = JSON.parse(event.data);
@@ -278,7 +314,43 @@ function upsertAction(action) {
 }
 
 function setBusy(busy) {
+  state.busy = busy;
   $("#busy-indicator").hidden = !busy;
+  renderPending();
+}
+
+// Looking something up takes 20 to 30 seconds. As soon as the agent has picked
+// a line to act on, a placeholder quotes it, so the room can see it was heard.
+function renderPending() {
+  const box = $("#assistant-pending");
+  const trace = state.current?.trace ?? [];
+  let picked = null;
+  for (const event of trace) {
+    if (event.step === "extracted" && /Found [1-9]/.test(event.detail)) picked = event;
+    else if (picked && (event.step === "drafted" || event.step === "executed" || event.step === "blocked")) picked = null;
+  }
+  const segments = state.current?.segments ?? [];
+  const segment =
+    picked &&
+    (picked.segmentIndex === undefined
+      ? segments.at(-1)
+      : segments.find((candidate) => candidate.index === picked.segmentIndex));
+  const stream = segment && state.streams[segment.index];
+  box.hidden = !(state.busy && segment);
+  refreshEmpty();
+  if (box.hidden) return;
+  box.replaceChildren(
+    h(
+      "div",
+      { class: "pending-head" },
+      h("span", { class: "busy-dot" }),
+      h("span", {}, stream?.status || "Working on what was just said"),
+    ),
+    h("q", {}, segment.text),
+  );
+  for (const step of stream?.steps ?? []) box.append(h("p", { class: "thinking-step" }, step));
+  // The answer so far, as the model writes it; the finished card replaces it.
+  if (stream?.text) box.append(renderValue("answer", stream.text));
 }
 
 // ------------------------------------------------------------------ transcript
@@ -287,7 +359,10 @@ function renderBoard() {
   renderMeetingHead();
   renderTranscript();
   renderActions();
+  renderNotes();
+  renderMinutes();
   renderTrace();
+  state.cardsShownFor = state.current?.meetingId;
 }
 
 function renderMeetingHead() {
@@ -296,6 +371,8 @@ function renderMeetingHead() {
   $("#status-line").textContent = `${state.current.title} — ${state.current.status === "live" ? "live" : "ended"}`;
   $("#end-meeting-btn").disabled = state.current.status !== "live";
   for (const element of $("#live-form").elements) element.disabled = state.current.status !== "live";
+  if (state.current.status !== "live" && recording.active) stopRecording();
+  renderRecording();
 }
 
 function triggeredSegmentIndices() {
@@ -339,15 +416,129 @@ function highlightSegment(index) {
 
 // ------------------------------------------------------------------ approval queue
 
+// Conflicts are what the assistant most needs you to see, so they lead,
+// whatever their tier, then its answers. Handled and blocked items shrink to one line.
 function renderActions() {
   if (!state.current) return;
-  for (const tier of TIERS) {
-    const container = $(`#cards-${tier}`);
-    container.replaceChildren();
-    for (const action of state.current.actions.filter((candidate) => candidate.tier === tier)) {
-      container.append(renderCard(action));
-    }
+  const actions = state.current.actions;
+  // Answers are the assistant looking things up for the room, so they stay
+  // open and newest first rather than folding into the handled list.
+  const leads = new Set(["flag_conflict", "answer_question"]);
+  const groups = {
+    alerts: actions.filter((action) => action.kind === "flag_conflict"),
+    answers: actions.filter((action) => action.kind === "answer_question").reverse(),
+    ...Object.fromEntries(
+      TIERS.map((tier) => [tier, actions.filter((action) => action.tier === tier && !leads.has(action.kind))]),
+    ),
+  };
+  for (const [group, members] of Object.entries(groups)) {
+    const container = $(`#cards-${group}`);
+    container.replaceChildren(...members.map((action) => renderCard(action, group === "auto" || group === "blocked")));
+    container.closest(".tier-group").hidden = members.length === 0;
   }
+  refreshEmpty();
+  for (const action of actions) seenActions.add(action.id);
+}
+
+const seenActions = new Set();
+
+// The empty-room hint goes as soon as the assistant has anything to show.
+function refreshEmpty() {
+  const current = state.current;
+  const shown =
+    (current?.actions.length ?? 0) > 0 ||
+    (current?.decisions?.length ?? 0) > 0 ||
+    (current?.assignments?.length ?? 0) > 0 ||
+    Boolean(current?.minutes) ||
+    !$("#assistant-pending").hidden;
+  $("#assistant-empty").hidden = shown;
+}
+
+// ------------------------------------------------------------------ notes and minutes
+
+// What was decided and who took what on, as the meeting goes. Assignments are
+// tasks the agent cannot do itself, so they are noted here rather than drafted.
+function renderNotes() {
+  if (!state.current) return;
+  const decisions = state.current.decisions ?? [];
+  const assignments = state.current.assignments ?? [];
+  const box = $("#notes");
+  box.replaceChildren();
+  if (decisions.length) {
+    box.append(
+      h("h4", {}, "Decided"),
+      h(
+        "ul",
+        {},
+        decisions.map((decision) =>
+          h(
+            "li",
+            { onclick: () => highlightSegment(decision.segmentIndex) },
+            decision.text,
+            h("span", { class: "who" }, ` ${decision.speaker}`),
+          ),
+        ),
+      ),
+    );
+  }
+  if (assignments.length) {
+    box.append(
+      h("h4", {}, "Who's on it"),
+      h(
+        "ul",
+        {},
+        assignments.map((entry) =>
+          h(
+            "li",
+            { onclick: () => highlightSegment(entry.segmentIndex) },
+            h("strong", {}, entry.owner),
+            `: ${entry.task}`,
+            entry.due ? h("span", { class: "who" }, ` by ${entry.due}`) : null,
+          ),
+        ),
+      ),
+    );
+  }
+  box.closest(".tier-group").hidden = decisions.length + assignments.length === 0;
+  refreshEmpty();
+}
+
+function renderMinutes() {
+  const box = $("#minutes-box");
+  const minutes = state.current?.minutes;
+  box.hidden = !minutes;
+  refreshEmpty();
+  if (!minutes) return;
+  if (minutes.status !== "ready") {
+    box.replaceChildren(
+      h(
+        "p",
+        { class: "pending-head" },
+        minutes.status === "writing" ? h("span", { class: "busy-dot" }) : null,
+        minutes.status === "writing" ? "Writing the minutes…" : "The minutes could not be written.",
+      ),
+    );
+    return;
+  }
+  const markdown = minutes.markdown ?? "";
+  const copy = h("button", { type: "button", class: "quiet" }, "Copy");
+  copy.addEventListener("click", async () => {
+    await copyRich(markdown, "markdown");
+    copy.textContent = "Copied";
+  });
+  const download = h(
+    "a",
+    {
+      class: "quiet",
+      download: `${state.current.title.replace(/[\\/:*?"<>|]+/g, " ").trim() || "minutes"}.md`,
+      href: `data:text/markdown;charset=utf-8,${encodeURIComponent(markdown)}`,
+    },
+    "Download .md",
+  );
+  box.replaceChildren(
+    h("div", { class: "minutes-head" }, h("h3", {}, "Minutes"), copy, download),
+    renderValue("answer", markdown),
+  );
 }
 
 function currentDraft(action) {
@@ -357,17 +548,19 @@ function currentDraft(action) {
   return editDrafts.get(action.id);
 }
 
-function renderCard(action) {
+function renderCard(action, compact = false) {
+  // A card the page has not shown before is marked once, so the eye finds it.
+  const fresh = state.cardsShownFor === state.current.meetingId && !seenActions.has(action.id);
   const card = h("div", {
     class: `card${action.kind === "flag_conflict" ? " conflict" : ""}${
       state.selectedActionId === action.id ? " selected" : ""
-    }`,
+    }${compact ? " compact" : ""}${fresh ? " fresh" : ""}`,
     "data-tier": action.tier,
     "data-action-id": action.id,
   });
 
   card.addEventListener("click", (event) => {
-    if (event.target.closest("button, input, textarea, select")) return;
+    if (event.target.closest("button, input, textarea, select, details, a")) return;
     selectAction(action.id);
   });
 
@@ -461,6 +654,17 @@ function renderCard(action) {
     );
   }
 
+  const thoughts = action.kind === "answer_question" && state.thoughts[action.trigger.segmentIndex];
+  if (thoughts) {
+    card.append(
+      h(
+        "details",
+        { class: "thinking" },
+        h("summary", {}, `Thinking (${thoughts.length} step${thoughts.length > 1 ? "s" : ""})`),
+        ...thoughts.map((step) => h("p", { class: "thinking-step" }, step)),
+      ),
+    );
+  }
   if (action.evidence.length > 0) card.append(renderEvidence(action.evidence));
 
   if (action.status === "executed" && action.result) {
@@ -758,7 +962,8 @@ function renderEvidence(evidence) {
       ),
     );
   }
-  return list;
+  // Sources stay one click away so the suggestion itself is what the card shows.
+  return h("details", { class: "evidence" }, h("summary", {}, `Sources (${evidence.length})`), list);
 }
 
 function renderApprovalButtons(action) {
@@ -947,6 +1152,217 @@ async function endMeeting() {
   }
 }
 
+// --------------------------------------------------------------- recording
+
+// Records the meeting's audio in clips cut at pauses, so words are not split,
+// and sends each clip to the server, which transcribes it into the transcript.
+const CLIP_MIN_MS = 3_000;
+const CLIP_MAX_MS = 8_000;
+const PAUSE_MS = 600;
+const SILENCE_LEVEL = 0.01;
+
+const recording = {
+  active: false,
+  meetingId: null,
+  streams: [],
+  context: null,
+  tap: null,
+  mixed: null,
+  recorder: null,
+  pending: 0,
+  hearing: false,
+  clip: 0,
+  previewing: false,
+  queue: Promise.resolve(),
+};
+
+async function startRecording() {
+  if (!state.current || state.current.status !== "live" || recording.active) return;
+  showError("");
+  const source = $("#mic-source").value;
+  const streams = [];
+  // Made before the share dialog, while the click still counts as a user gesture;
+  // made after it, Chrome can leave it suspended, and it then hears only silence.
+  const context = new AudioContext();
+  try {
+    if (source === "tab") {
+      // Chrome asks which tab to share; the meeting tab's "Also share tab audio" must be on.
+      const display = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: { suppressLocalAudioPlayback: false },
+        systemAudio: "include",
+      });
+      streams.push(display);
+      if (display.getAudioTracks().length === 0) {
+        throw new Error('No audio was shared. Pick the meeting tab with "Also share tab audio" on, or the entire screen with system audio on.');
+      }
+    }
+    try {
+      streams.push(await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }));
+    } catch (error) {
+      // Without the mic, tab audio still records everyone except you.
+      if (source === "mic") throw error;
+    }
+  } catch (error) {
+    for (const stream of streams) for (const track of stream.getTracks()) track.stop();
+    context.close();
+    if (error.name !== "NotAllowedError") showError(error.message);
+    return;
+  }
+
+  await context.resume();
+  const destination = context.createMediaStreamDestination();
+  // Audio callbacks keep running while this tab is in the background, unlike
+  // timers, which Chrome slows down there; clip cutting is driven from them.
+  const tap = context.createScriptProcessor(4096, 1, 1);
+  tap.connect(context.destination);
+  for (const stream of streams) {
+    const tracks = stream.getAudioTracks();
+    if (tracks.length === 0) continue;
+    const node = context.createMediaStreamSource(new MediaStream(tracks));
+    node.connect(destination);
+    node.connect(tap);
+    // Stopping the share from Chrome's bar ends the recording too.
+    for (const track of tracks) track.addEventListener("ended", stopRecording);
+  }
+  Object.assign(recording, {
+    active: true,
+    meetingId: state.current.meetingId,
+    streams,
+    context,
+    tap,
+    mixed: destination.stream,
+  });
+  recordClip();
+  renderRecording();
+}
+
+function recordClip() {
+  if (!recording.active) return;
+  const recorder = new MediaRecorder(recording.mixed, { mimeType: "audio/webm;codecs=opus" });
+  const chunks = [];
+  const meetingId = recording.meetingId;
+  const startedAt = Date.now();
+  let lastSoundAt = 0;
+  const clip = (recording.clip += 1);
+  recorder.addEventListener("dataavailable", (event) => {
+    if (event.data.size) chunks.push(event.data);
+    // Every half second, the clip so far is transcribed and shown, so words appear while they are spoken.
+    if (recorder.state === "recording" && lastSoundAt) previewClip(new Blob(chunks, { type: "audio/webm" }), meetingId, clip);
+  });
+  recorder.addEventListener("stop", () => {
+    // A clip nobody spoke in is not worth sending; Whisper invents text on silence.
+    if (lastSoundAt && chunks.length) sendClip(new Blob(chunks, { type: "audio/webm" }), meetingId);
+  });
+  recorder.start(500);
+  recording.recorder = recorder;
+
+  recording.tap.onaudioprocess = (event) => {
+    const samples = event.inputBuffer.getChannelData(0);
+    let sum = 0;
+    for (const sample of samples) sum += sample * sample;
+    const now = Date.now();
+    const hearing = Math.sqrt(sum / samples.length) > SILENCE_LEVEL;
+    if (hearing) lastSoundAt = now;
+    if (hearing !== recording.hearing) {
+      recording.hearing = hearing;
+      renderRecording();
+    }
+    const elapsed = now - startedAt;
+    const paused = lastSoundAt && now - lastSoundAt > PAUSE_MS;
+    if (elapsed >= CLIP_MAX_MS || (elapsed >= CLIP_MIN_MS && paused)) {
+      recording.tap.onaudioprocess = null;
+      recorder.stop();
+      recordClip();
+    }
+  };
+}
+
+function audioParams(extra = {}) {
+  const params = new URLSearchParams({ speaker: $("#mic-speaker").value.trim() || "Meeting", ...extra });
+  const language = $("#mic-lang").value;
+  if (language) params.set("language", language);
+  return params;
+}
+
+// Previews wait while a final clip is transcribing and never overlap, so they
+// cannot hold up the lines that are kept.
+async function previewClip(blob, meetingId, clip) {
+  if (recording.previewing || recording.pending) return;
+  recording.previewing = true;
+  try {
+    const response = await fetch(`/api/v1/meetings/${meetingId}/audio?${audioParams({ preview: "1" })}`, {
+      method: "POST",
+      headers: { "content-type": "audio/webm" },
+      body: blob,
+    });
+    const data = await response.json().catch(() => ({}));
+    if (response.ok && clip === recording.clip && recording.active) setInterim(data.text);
+  } catch {
+    // A missed preview is replaced by the next one a second later.
+  } finally {
+    recording.previewing = false;
+  }
+}
+
+function setInterim(text) {
+  const line = $("#mic-interim");
+  line.textContent = text || "";
+  line.hidden = !text;
+  if (text) line.scrollIntoView({ block: "nearest" });
+}
+
+function sendClip(blob, meetingId) {
+  const params = audioParams();
+  recording.pending += 1;
+  renderRecording();
+  // One clip at a time keeps the transcript in spoken order.
+  recording.queue = recording.queue.then(async () => {
+    try {
+      const response = await fetch(`/api/v1/meetings/${meetingId}/audio?${params}`, {
+        method: "POST",
+        headers: { "content-type": "audio/webm" },
+        body: blob,
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.message || "Could not transcribe the recording.");
+      }
+      if (!recording.pending || recording.pending === 1) setInterim("");
+    } catch (error) {
+      showError(error.message);
+    } finally {
+      recording.pending -= 1;
+      renderRecording();
+    }
+  });
+}
+
+function stopRecording() {
+  if (!recording.active) return;
+  recording.active = false;
+  if (recording.tap) recording.tap.onaudioprocess = null;
+  if (recording.recorder?.state === "recording") recording.recorder.stop();
+  for (const stream of recording.streams) for (const track of stream.getTracks()) track.stop();
+  recording.context?.close();
+  Object.assign(recording, { streams: [], context: null, tap: null, mixed: null, recorder: null });
+  recording.queue.then(() => setInterim(""));
+  renderRecording();
+}
+
+function renderRecording() {
+  const live = state.current?.status === "live";
+  const button = $("#mic-btn");
+  button.textContent = recording.active ? "Stop recording" : "Start recording";
+  button.classList.toggle("recording", recording.active);
+  button.disabled = !live && !recording.active;
+  for (const id of ["#mic-source", "#mic-lang", "#mic-speaker"]) $(id).disabled = !live || recording.active;
+  const parts = [];
+  if (recording.active) parts.push(recording.hearing ? "Recording, hearing sound" : "Recording, silent");
+  if (recording.pending) parts.push(`transcribing ${recording.pending} clip${recording.pending > 1 ? "s" : ""}`);
+  $("#mic-status").textContent = parts.join(" · ");
+}
+
 // ------------------------------------------------------------------ wiring
 
 function init() {
@@ -974,6 +1390,7 @@ function init() {
   });
 
   $("#end-meeting-btn").addEventListener("click", endMeeting);
+  $("#mic-btn").addEventListener("click", () => (recording.active ? stopRecording() : startRecording()));
 
   $("#trace-clear").addEventListener("click", () => {
     state.selectedActionId = null;

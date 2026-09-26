@@ -27,6 +27,27 @@ export interface Decision {
   at: string;
 }
 
+/**
+ * Someone took on a task the agent cannot do for them ("Deepa will handle the
+ * alerting ticket", "我去跟 Sarah 确认"). It is recorded for the minutes, not
+ * turned into an action card.
+ */
+export interface Assignment {
+  owner: string;
+  task: string;
+  due?: string;
+  segmentIndex: number;
+  speaker: string;
+  at: string;
+}
+
+/** Written when the meeting ends, from what the meeting recorded. */
+export interface MeetingMinutes {
+  status: "writing" | "ready" | "failed";
+  markdown?: string;
+  at: string;
+}
+
 export type MeetingStatus = "live" | "ended";
 
 export interface MeetingSummary {
@@ -51,6 +72,9 @@ export interface MeetingState {
   segments: TranscriptSegment[];
   /** Decisions heard in this meeting, used to spot conflicts in later ones. */
   decisions: Decision[];
+  /** Tasks people took on that the agent cannot carry out; absent on older meetings. */
+  assignments?: Assignment[];
+  minutes?: MeetingMinutes;
   actions: ProposedAction[];
   trace: TraceEvent[];
 }
@@ -256,7 +280,17 @@ export type MeetingEvent =
   | { type: "action"; meetingId: string; action: ProposedAction }
   | { type: "trace"; meetingId: string; trace: TraceEvent }
   | { type: "meeting"; meetingId: string; status: MeetingStatus }
-  | { type: "busy"; meetingId: string; busy: boolean };
+  | { type: "busy"; meetingId: string; busy: boolean }
+  | { type: "notes"; meetingId: string; decisions: Decision[]; assignments: Assignment[] }
+  | { type: "minutes"; meetingId: string; minutes: MeetingMinutes }
+  | {
+      type: "answer_stream";
+      meetingId: string;
+      segmentIndex: number;
+      delta?: string;
+      status?: string;
+      reset?: boolean;
+    };
 
 // ------------------------------------------------------------------- contracts
 
@@ -280,6 +314,7 @@ export interface CandidateAction {
 export interface ExtractionResult {
   candidates: CandidateAction[];
   decisions: Decision[];
+  assignments?: Assignment[];
 }
 
 export interface CommitmentExtractor {
@@ -288,7 +323,15 @@ export interface CommitmentExtractor {
 
 /** S1: the company-context agent. SoCLaaSCompanyAgent satisfies it. */
 export interface QuestionAnswerer {
-  answer(input: CompanyQuestion): Promise<CompanyAnswer>;
+  answer(input: CompanyQuestion, callbacks?: AnswerStream): Promise<CompanyAnswer>;
+}
+
+/** Progress while an answer is written, so the room sees it arrive word by word. */
+export interface AnswerStream {
+  onStatus?: (status: string) => void;
+  onToken?: (token: string) => void;
+  /** The text streamed so far is void: the answer is being written again. */
+  onResetTokens?: () => void;
 }
 
 /** S3: the recruiting agent. RecruitingService satisfies it. */

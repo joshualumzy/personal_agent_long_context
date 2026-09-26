@@ -53,48 +53,82 @@
   </section>
 
   <main id="board" class="board" hidden>
-    <section class="col transcript-col" aria-label="Live transcript">
-      <div class="col-head">
-        <h2 id="meeting-title-heading">Live transcript</h2>
-        <span id="busy-indicator" class="busy" hidden><span class="busy-dot"></span>Agent thinking&hellip;</span>
-        <button type="button" id="end-meeting-btn" class="quiet warn">End meeting</button>
+    <section class="col assistant-col" aria-label="Assistant">
+      <div class="col-head assistant-head">
+        <h2>Assistant</h2>
+        <span id="busy-indicator" class="busy" hidden><span class="busy-dot"></span>Thinking&hellip;</span>
       </div>
-      <ul id="transcript" class="transcript"></ul>
-      <form id="live-form" class="live-form">
-        <label for="live-input" class="visually-hidden">Type transcript lines as "Speaker: text", one per line</label>
-        <textarea id="live-input" rows="3" placeholder="Alice: Let's ship the export flow by Friday.&#10;Bob: Can someone confirm the SSO deadline?"></textarea>
-        <button type="submit" class="primary">Send</button>
-      </form>
-    </section>
-
-    <section class="col actions-col" aria-label="Approval queue">
-      <div class="col-head"><h2>Approval queue</h2></div>
       <div class="queue">
-        <div class="tier-group" data-tier="auto">
-          <h3>Done for you</h3>
-          <div class="cards" id="cards-auto"></div>
+        <section id="minutes-box" class="minutes" aria-label="Minutes" hidden></section>
+        <div id="assistant-pending" class="assistant-pending" aria-live="polite" hidden></div>
+        <p id="assistant-empty" class="assistant-empty">Listening. When someone makes a decision, a promise, or says something risky, it shows up here. Ask a question about a past incident, ticket, or customer and the answer lands here too.</p>
+        <div class="tier-group" data-tier="alerts" hidden>
+          <h3>Heads up</h3>
+          <div class="cards" id="cards-alerts"></div>
         </div>
-        <div class="tier-group" data-tier="approval">
-          <h3>Needs your approval</h3>
+        <div class="tier-group" data-tier="answers" hidden>
+          <h3>Looked up for you</h3>
+          <div class="cards" id="cards-answers"></div>
+        </div>
+        <div class="tier-group" data-tier="approval" hidden>
+          <h3>Needs your OK</h3>
           <div class="cards" id="cards-approval"></div>
         </div>
-        <div class="tier-group" data-tier="escalate">
+        <div class="tier-group" data-tier="escalate" hidden>
           <h3>Needs someone else</h3>
           <div class="cards" id="cards-escalate"></div>
         </div>
-        <div class="tier-group" data-tier="blocked">
+        <div class="tier-group" data-tier="notes" hidden>
+          <h3>Meeting notes</h3>
+          <div id="notes" class="notes"></div>
+        </div>
+        <div class="tier-group" data-tier="auto" hidden>
+          <h3>Handled for you</h3>
+          <div class="cards" id="cards-auto"></div>
+        </div>
+        <div class="tier-group" data-tier="blocked" hidden>
           <h3>Blocked</h3>
           <div class="cards" id="cards-blocked"></div>
         </div>
       </div>
+      <details class="trace-panel">
+        <summary>Agent trace <button type="button" id="trace-clear" class="link" hidden>Show all steps</button></summary>
+        <ol id="trace-list" class="trace-list"></ol>
+      </details>
     </section>
 
-    <section class="col trace-col" aria-label="Trace timeline">
+    <section class="col transcript-col" aria-label="Live transcript">
       <div class="col-head">
-        <h2>Trace</h2>
-        <button type="button" id="trace-clear" class="quiet" hidden>Show all</button>
+        <h2 id="meeting-title-heading">Transcript</h2>
+        <button type="button" id="end-meeting-btn" class="quiet warn">End meeting</button>
       </div>
-      <ol id="trace-list" class="trace-list"></ol>
+      <div id="mic-bar" class="mic-bar">
+        <button type="button" id="mic-btn" class="primary">Start recording</button>
+        <label for="mic-source" class="visually-hidden">What to record</label>
+        <select id="mic-source">
+          <option value="tab">Screen or tab + my mic</option>
+          <option value="mic">My mic only</option>
+        </select>
+        <label for="mic-lang" class="visually-hidden">Spoken language</label>
+        <select id="mic-lang">
+          <option value="zh">中文（夹英文也行）</option>
+          <option value="en">English</option>
+          <option value="">Auto language</option>
+        </select>
+        <label for="mic-speaker" class="visually-hidden">Speaker label for recorded lines</label>
+        <input type="text" id="mic-speaker" value="Meeting" maxlength="80" title="Speaker label for recorded lines">
+        <span id="mic-status" class="mic-status" aria-live="polite"></span>
+      </div>
+      <ul id="transcript" class="transcript"></ul>
+      <p id="mic-interim" class="mic-interim" hidden></p>
+      <details class="type-lines" open>
+        <summary>Type lines instead</summary>
+        <form id="live-form" class="live-form">
+          <label for="live-input" class="visually-hidden">Type transcript lines as "Speaker: text", one per line</label>
+          <textarea id="live-input" rows="3" placeholder="Alice: Let's ship the export flow by Friday.&#10;Bob: Can someone confirm the SSO deadline?"></textarea>
+          <button type="submit" class="primary">Send</button>
+        </form>
+      </details>
     </section>
   </main>
 </body>
