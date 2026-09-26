@@ -690,3 +690,25 @@ eval's false positives (a quoted button name "I sent it myself", an
 option introduced with 例如). The detector ignores quoted text and
 examples now. The seventh (a one-character "好" answered in English) was
 a translation refused over a stray citation tag, fixed in round 10.
+
+## Round 14 (2026-09-26)
+
+9 confirmed bugs (backend 2, chat agent 3, front end 4); seven came from
+round 13 fixes. All fixed.
+
+- Backend: a wrapped Gmail attribution has no blank line inside it and a
+  year is 19xx/20xx, so "On Thursday, 1400 works" is kept; an answer
+  written below the quote, or between quoted lines, is kept (quoted lines
+  and attributions are dropped instead of everything after the first); in
+  HTML replies only the blockquote goes, not what follows it.
+- Chat agent: the lost-model note claimed "the steps were done" after a
+  mere status read or a failed tool. It now says "done" only after a
+  changing tool succeeded, otherwise that the panel shows the current state,
+  and otherwise the error stands; it keeps what the model already said
+  beside its panel and follows the reply-language rule.
+- Front end: `hasUnsavedText` now checks against what the panel shows: a
+  draft edit counts only while its draft exists and differs from it, a
+  reason or reply only while its box can be shown, and criteria edits only
+  while the role is unconfirmed; stale entries are dropped. A stray
+  keystroke, a replaced draft, a hired candidate or a chat confirm no
+  longer keeps a panel live and polling for good.

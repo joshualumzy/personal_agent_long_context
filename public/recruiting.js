@@ -35,10 +35,44 @@ function keptInput(key, element) {
  * Whether the founder has typed something not yet saved or used: a draft edit, a pass reason, a
  * pasted reply, or unsaved criteria. The chat page asks before folding this panel away.
  */
-window.hasUnsavedText = () =>
-  draftDirty ||
-  [...typedDrafts.values()].some((typed) => Object.values(typed ?? {}).some((value) => typeof value === "string" && value.trim() !== "")) ||
-  [...typedFields.values()].some((value) => typeof value === "string" && value.trim() !== "");
+window.hasUnsavedText = () => {
+  if (!state?.role) return false;
+  // Criteria edits matter only while there is still a review to confirm.
+  if (draftDirty && !state.role.confirmed) return true;
+  const byId = new Map(state.candidates.map((candidate) => [candidate.id, candidate]));
+  const differs = (typed, draft, candidate) =>
+    (typed.subject !== undefined && typed.subject !== draft.subject) ||
+    (typed.body !== undefined && typed.body !== draft.body) ||
+    (typed.email !== undefined && typed.email.trim() !== "" && typed.email !== (candidate.contact?.email ?? ""));
+  for (const [key, typed] of typedDrafts) {
+    const [role, id, ...rest] = key.split(":");
+    if (role !== roleId) continue;
+    const candidate = byId.get(id);
+    // The draft this was typed into is gone (sent, replaced, closed): nothing left to lose.
+    if (!candidate?.draft || candidate.draft.createdAt !== rest.join(":")) {
+      typedDrafts.delete(key);
+      continue;
+    }
+    if (differs(typed ?? {}, candidate.draft, candidate)) return true;
+  }
+  for (const [key, value] of typedFields) {
+    const [role, id, box] = key.split(":");
+    if (role !== roleId || typeof value !== "string" || value.trim() === "") continue;
+    const candidate = byId.get(id);
+    // Only a box that can still be shown: the reason while they are open, the reply while in a conversation.
+    const shown =
+      candidate &&
+      (box === "reason"
+        ? candidate.stage !== "closed"
+        : ["contacted", "replied", "scheduling"].includes(candidate.stage));
+    if (!shown) {
+      typedFields.delete(key);
+      continue;
+    }
+    return true;
+  }
+  return false;
+};
 
 /** Runs one drawer action per person at a time, then redraws that person's drawer. */
 async function act(candidateId, work) {

@@ -61,7 +61,8 @@ function plainText(part: GmailPart | undefined): string {
   return html
     .replace(/<(script|style)[\s\S]*?<\/\1>/gi, "")
     .replace(/<br\s*\/?>|<\/(p|div|li|tr|h\d)>/gi, "\n")
-    .replace(/<blockquote[\s\S]*$/i, "")
+    // Quoted parts go; text after them (an answer below the quote) stays.
+    .replace(/<blockquote[\s\S]*?<\/blockquote>/gi, "")
     .replace(/<[^>]+>/g, "")
     .replace(/&nbsp;/g, " ")
     .replace(/&lt;/g, "<")
@@ -87,9 +88,10 @@ function withoutQuote(body: string): string {
       /^On .+wrote:$/.test(line.trim()) ||
       // Gmail wraps a long attribution: "On Mon, Sep 21, 2026 … <x@y.com>" then "wrote:" below. Only a
       // line that looks like one (an address or a year) counts: "On Thursday 3pm works" is a reply.
+      // A wrapped attribution has no blank line inside it, and a year is 19xx or 20xx ("1400 works" is a time).
       (/^On .+/.test(line.trim()) &&
-        /<[^>]*@[^>]*>|\b\d{4}\b/.test(line) &&
-        lines.slice(index + 1, index + 3).some((next) => /wrote:$/.test(next.trim()))) ||
+        /<[^>]*@[^>]*>|\b(19|20)\d{2}\b/.test(line) &&
+        wrapsInto(lines, index, /wrote:$/)) ||
       // Chinese clients: "…于2026年9月21日写道：" (perhaps wrapped after the address or date),
       // "-----原始邮件-----", and Outlook's 发件人/发送时间 block.
       /写道[:：]$/.test(line.trim()) ||
@@ -102,7 +104,24 @@ function withoutQuote(body: string): string {
       // Outlook: a "From:" header line followed within two lines by "Sent:" or "Date:".
       (/^\*?From:\*?\s/i.test(line.trim()) && lines.slice(index + 1, index + 3).some((next) => /^\*?(Sent|Date):\*?\s/i.test(next.trim()))),
   );
-  return (cut >= 0 ? lines.slice(0, cut) : lines).join("\n").trim();
+  const above = (cut >= 0 ? lines.slice(0, cut) : lines).join("\n").trim();
+  if (above || cut < 0) return above;
+  // Nothing above the quote: they answered below it, or between the quoted lines. Keep their lines
+  // and drop only the quoted ones and the attribution.
+  return lines
+    .filter((line) => !/^>/.test(line) && !/^On .+wrote:$/.test(line.trim()) && !/写道[:：]$/.test(line.trim()))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/** The next one or two lines, up to a blank line, include one matching `end`. */
+function wrapsInto(lines: string[], index: number, end: RegExp): boolean {
+  for (const next of lines.slice(index + 1, index + 3)) {
+    if (!next.trim()) return false;
+    if (end.test(next.trim())) return true;
+  }
+  return false;
 }
 
 export class GmailClient {

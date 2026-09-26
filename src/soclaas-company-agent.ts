@@ -546,6 +546,8 @@ export class SoCLaaSCompanyAgent {
     const loadedSkills = new Set<string>();
     const blocks: ChatBlock[] = [];
     let extensionRan = false;
+    // A skill's tool changed something and it worked (a role opened, a draft written).
+    let acted = false;
     // What the model wrote alongside tool calls; often the real answer comes with the last panel call.
     const spoken: string[] = [];
     /** Makes `text` the model's last word, so a follow-up request is about exactly that. */
@@ -583,6 +585,9 @@ export class SoCLaaSCompanyAgent {
         callbacks?.onStatus?.("Working on it…");
         const outcome = await extension.run(call.function.name, args);
         extensionRan = true;
+        // A tool that reads or shows changes nothing; one that answered with an error did not act.
+        const readsOnly = /(_status|show_[a-z_]+_panel)$/.test(call.function.name);
+        if (!readsOnly && !/^\s*\{\s*"error"\s*:/.test(outcome.content)) acted = true;
         // The same panel twice is shown once.
         if (outcome.block && !blocks.some((block) => JSON.stringify(block) === JSON.stringify(outcome.block))) {
           blocks.push(outcome.block);
@@ -712,14 +717,22 @@ export class SoCLaaSCompanyAgent {
           break;
         }
         } catch (error) {
-          // A skill's tools already acted (a role opened, a draft written): losing the model now must
-          // not lose that. The founder gets the panels and a short note instead of an error.
-          if (!extensionRan) throw error;
+          // A skill's tools already acted (a role opened, a draft written), or a panel is ready: losing
+          // the model now must not hide that. Otherwise nothing was done and the error stands.
+          if (!acted && !blocks.length) throw error;
           callbacks?.onResetTokens?.();
+          const chinese = asksForChinese(input.question) || (isChinese(input.question) && !asksForLanguage(input.question));
+          const note = acted
+            ? chinese
+              ? "操作已经完成，但我在总结之前和模型断开了连接。你可以再问我一次让我总结。"
+              : "That was done, but I lost the connection to the model before I could sum up. Ask again for a summary."
+            : chinese
+              ? "我和模型断开了连接，没能完成回答。下方面板显示的是当前状态，请再试一次。"
+              : "I lost the connection to the model before I could answer. The panel shows where things stand; please try again.";
+          // What the model already said beside its panel is kept.
+          const said = spoken.length ? joinSpoken(spoken.map(withoutRepeats), "") : "";
           return {
-            answer: isChinese(input.question) || asksForChinese(input.question)
-              ? "操作已经完成，但我在总结之前和模型断开了连接。下方面板显示的是当前状态，你可以再问我一次让我总结。"
-              : "The steps above were done, but I lost the connection to the model before I could sum up. The panel shows where things stand; ask again for a summary.",
+            answer: said ? `${said}\n\n${note}` : note,
             sources: [],
             runId,
             toolCalls,
