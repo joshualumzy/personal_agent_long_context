@@ -31,6 +31,15 @@ function keptInput(key, element) {
   return element;
 }
 
+/**
+ * Whether the founder has typed something not yet saved or used: a draft edit, a pass reason, a
+ * pasted reply, or unsaved criteria. The chat page asks before folding this panel away.
+ */
+window.hasUnsavedText = () =>
+  draftDirty ||
+  [...typedDrafts.values()].some((typed) => Object.values(typed ?? {}).some((value) => typeof value === "string" && value.trim() !== "")) ||
+  [...typedFields.values()].some((value) => typeof value === "string" && value.trim() !== "");
+
 /** Runs one drawer action per person at a time, then redraws that person's drawer. */
 async function act(candidateId, work) {
   const key = `${roleId}:${candidateId}`;
@@ -1120,6 +1129,7 @@ document.addEventListener("DOMContentLoaded", () => {
     // A failed confirm leaves the draft as it was, so it can be edited and confirmed again.
     if (confirmed === undefined) return;
     draftCriteria = null;
+    draftDirty = false;
     showRefused([]);
     schedulePoll();
   });

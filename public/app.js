@@ -527,7 +527,11 @@ window.addEventListener("resize", () => {
 /** A panel with text typed but not yet used (a pass reason, a reply, a draft edit): folding it would lose that. */
 function holdsUnsavedText(container) {
   try {
-    const doc = container.querySelector("iframe")?.contentDocument;
+    const frame = container.querySelector("iframe");
+    // The panel knows best: typed text it keeps across its own redraws, cleared once saved or used.
+    const ask = frame?.contentWindow?.hasUnsavedText;
+    if (typeof ask === "function") return Boolean(ask());
+    const doc = frame?.contentDocument;
     if (!doc) return false;
     return [...doc.querySelectorAll("textarea, input")].some((box) => {
       if (box.tagName === "INPUT" && ["button", "submit", "checkbox", "radio", "file", "hidden"].includes(box.type)) return false;

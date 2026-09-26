@@ -626,9 +626,12 @@ function checkTurn(input: {
   if (langProblem) v.push({ invariant: "7-language", detail: langProblem });
   // 8
   const changed = fingerprint(before) !== fingerprint(after);
-  const sentences = answer.split(/(?<=[.!?。！？])\s*|\n+/);
+  // Quoted text is a name, not a claim ("press "I sent it myself""), and examples offer options.
+  const sentences = answer
+    .replace(/"[^"\n]*"|“[^”\n]*”|「[^」\n]*」|'[^'\n]{0,40}'/g, "")
+    .split(/(?<=[.!?。！？])\s*|\n+/);
   for (const sentence of sentences) {
-    if (NEGATION.test(sentence)) continue;
+    if (NEGATION.test(sentence) || /\b(e\.g\.|for example|such as)\b|例如|比如/i.test(sentence)) continue;
     for (const claim of CLAIMS) {
       if (!claim.pattern.test(sentence)) continue;
       const closedBefore = new Set(before.detail.flatMap((r) => r.candidates.filter((c) => c.stage === "closed").map((c) => c.id)));

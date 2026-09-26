@@ -401,7 +401,11 @@ async function runTool(
       return { content: await status({ result: { ...found, message } }) };
     }
     case "recruiting_import_profiles": {
-      const urls = Array.isArray(args.urls) ? args.urls.filter((url): url is string => typeof url === "string") : [];
+      // One link or a list; "linkedin.com/in/x", "www…" and "http://…" become https links, as on the page.
+      const given = typeof args.urls === "string" ? args.urls.split(/[\s,，]+/) : Array.isArray(args.urls) ? args.urls : [];
+      const urls = given
+        .filter((url): url is string => typeof url === "string" && url.trim() !== "")
+        .map((url) => url.trim().replace(/^(?:https?:\/\/)?((?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com\/)/i, "https://$1"));
       return { content: await status({ result: await service.importProfiles(urls) }) };
     }
     case "recruiting_prepare_outreach": {

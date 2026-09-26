@@ -272,11 +272,13 @@ function statesNoFacts(answer: string): boolean {
     .map((sentence) => sentence.replace(/^[-*•\s]+/, "").trim())
     .filter(Boolean);
   const last = sentences[sentences.length - 1] ?? "";
-  if (!/[?？]$/.test(last)) return false;
+  // A stock closing offer instead of a question: "Let me know if you need anything else." / "有需要随时找我。"
+  const offer = /^(let me know if (you need|there's) anything( else)?|feel free to ask( if you need anything)?|just ask if you need anything( else)?|anything else,? just ask|有需要随时找我|有问题随时问我|随时找我|需要的话随时说|有什么需要随时告诉我)[\s.!。！~]*$/iu;
+  if (!/[?？]$/.test(last) && !offer.test(last)) return false;
   // A greeting may name the person: a Latin name, or (only after 你好/您好/嗨) a short Chinese one.
   const latinName = String.raw`(\s*[,，]?\s*[A-Z][a-z]+( [A-Z][a-z]+)?)?`;
   const greeting = new RegExp(
-    String.raw`^((hi|hello|hey|thanks|thank you|sure|of course|happy to help|glad to help|you're welcome|you are welcome|no problem|my pleasure|anytime|nice to meet you|good to see you( again)?|good (morning|afternoon|evening)|好的|谢谢|不客气|不用谢|没问题|很高兴(为你服务|为您服务|见到你|帮忙))( there| again)?${latinName}|(你好|您好|嗨)(\s*[,，]?\s*([A-Z][a-z]+|\p{Script=Han}{1,3}))?)[\s!！.。,，~]*$`,
+    String.raw`^((hi|hello|hey|thanks|thank you|sure|of course|happy to help|glad to help|you're welcome|you are welcome|no problem|my pleasure|anytime|nice to meet you|good to see you( again)?|good (morning|afternoon|evening)|好的|谢谢|不客气|不用谢|没问题|很高兴(为你服务|为您服务|见到你|帮忙))( there| again)?${latinName}|(你好|您好|嗨|早上好|上午好|中午好|下午好|晚上好|早安|晚安)(\s*[,，]?\s*([A-Z][a-z]+|\p{Script=Han}{1,3}))?)[\s!！.。,，~]*$`,
     "iu",
   );
   const acknowledgement = /^(got it|sure thing|understood|okay|ok|alright|all right|i see|明白了|明白|好的|收到|了解|懂了)[\s!！.。,，~]*$/iu;
@@ -309,7 +311,7 @@ function statesNoFacts(answer: string): boolean {
   };
   return sentences.every(
     (sentence) =>
-      question(sentence) || greeting.test(sentence) || acknowledgement.test(sentence) || persona.test(sentence) || capability(sentence),
+      question(sentence) || offer.test(sentence) || greeting.test(sentence) || acknowledgement.test(sentence) || persona.test(sentence) || capability(sentence),
   );
 }
 
@@ -664,6 +666,7 @@ export class SoCLaaSCompanyAgent {
         let calls: ToolCall[] = [];
         let rawContent: string | null = null;
         // A 200 whose body is not a completion (a proxy's error page) is asked for again, twice at most.
+        try {
         for (let read = 0; ; read += 1) {
           const response = await this.request(`${this.baseUrl}/chat/completions`, {
             method: "POST",
@@ -707,6 +710,21 @@ export class SoCLaaSCompanyAgent {
           calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
           rawContent = textOf(message.content);
           break;
+        }
+        } catch (error) {
+          // A skill's tools already acted (a role opened, a draft written): losing the model now must
+          // not lose that. The founder gets the panels and a short note instead of an error.
+          if (!extensionRan) throw error;
+          callbacks?.onResetTokens?.();
+          return {
+            answer: isChinese(input.question) || asksForChinese(input.question)
+              ? "操作已经完成，但我在总结之前和模型断开了连接。下方面板显示的是当前状态，你可以再问我一次让我总结。"
+              : "The steps above were done, but I lost the connection to the model before I could sum up. The panel shows where things stand; ask again for a summary.",
+            sources: [],
+            runId,
+            toolCalls,
+            ...(blocks.length ? { blocks } : {}),
+          };
         }
         // A call without a name cannot be run or answered; it is dropped.
         calls = calls.filter((call) => typeof call?.function?.name === "string" && call.function.name.length > 0);

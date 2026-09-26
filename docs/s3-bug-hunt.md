@@ -664,3 +664,29 @@ medium, the rest low. All fixed.
   LinkedIn slugs with combining marks (Thai, Devanagari) stay whole; a
   grouped citation with a trailing separator becomes buttons; blocked
   browser storage no longer breaks the chat page.
+
+## Round 13 (2026-09-26)
+
+8 confirmed bugs, down from 13: backend 2, chat agent 4, front end 2.
+Three were caused by round 12 fixes. All fixed.
+
+- Backend: the round 12 wrapped-attribution cut treated any reply starting
+  with "On" as a quote ("On Thursday 3pm works" vanished); an "On" line now
+  counts only if it holds an address or a year. A wrapped Chinese
+  attribution ("…<addr> 于2026年…" then "写道：") is cut whole.
+- Chat agent: Chinese time-of-day greetings (早上好, 晚上好) and thank-you
+  replies that close with a stock offer instead of a question ("Let me know
+  if you need anything else.", "有需要随时找我。") are exempt; the chat tool
+  accepts LinkedIn links without https:// (or a single string); and once a
+  skill's tool has acted, losing the model mid-turn returns the panels and
+  a short note instead of an error, so nothing the tools did is hidden.
+- Front end: the round 12 "keep a panel with unsaved text" rule compared
+  box values with their defaults, which a redraw resets and a save never
+  does. The panel now reports its own unsaved text (`hasUnsavedText`), and
+  confirming criteria clears their edited flag.
+
+Live run on round 9 code (156 conversations): 7 flagged, 6 of them the
+eval's false positives (a quoted button name "I sent it myself", an
+option introduced with 例如). The detector ignores quoted text and
+examples now. The seventh (a one-character "好" answered in English) was
+a translation refused over a stray citation tag, fixed in round 10.
