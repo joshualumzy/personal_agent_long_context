@@ -1,0 +1,4634 @@
+{
+ "stats": {
+  "jev503": 1577,
+  "qwenRetries": 113,
+  "rerun": {
+   "tries": 1064,
+   "fixed": 177
+  }
+ },
+ "rows": [
+  {
+   "key": "0.0",
+   "line": "Jax: hey all, goal: quick review of the telemetry pipeline architecture and lock down the core components we’ll ship this sprint.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.96,
+    "ms": 880
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 792
+   }
+  },
+  {
+   "key": "0.1",
+   "line": "Deepa: i’ll break this down: 1. ingest layer – currently we have kinesis but kafka would give better ordering guarantees; 2. storage – raw events to s3, processed aggregates to dynamodb; 3. processing – flink jobs pulling from kafka; 4. alerting – prometheus exporters feeding datadog. if we shift to kafka we need to re‑wire the producer libs, then we can keep the rest unchanged.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 929
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 374
+   }
+  },
+  {
+   "key": "0.2",
+   "line": "Morgan: i ran terraform plan on the s3 bucket changes – it shows a new lifecycle rule `aws_s3_bucket.lifecycle_rule` with `expiration.days = 90`. also `kubectl get svc -n telemetry` confirms the kafka svc is pending. we should apply the runbook #infra‑telemetry‑update before prod rollout.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.93,
+    "ms": 844
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 546
+   }
+  },
+  {
+   "key": "0.3",
+   "line": "Priya: the data stream is the heartbeat of our athlete experience – it needs to feel seamless, like a silk thread weaving through the UI. if we surface latency metrics in a warm amber tone, users will sense reliability; a cold blue for error spikes will cue urgency. let’s align the visual language with the brand promise of “always on, always precise”.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 900
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 605
+   }
+  },
+  {
+   "key": "0.4",
+   "line": "Tom: need clarification on retention: 1. raw s3 retention period, 2. dynamodb ttl config, 3. kafka topic compaction policy.",
+   "accepted": [
+    "answer_question",
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.56,
+    "ms": 772
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 702
+   }
+  },
+  {
+   "key": "0.5",
+   "line": "Jax: cost is a factor – kafka clusters eat more budget than kinesis, especially with cross‑region replication… we gotta keep the spend under 5% of ops budget.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 413
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1092
+   }
+  },
+  {
+   "key": "0.6",
+   "line": "Patty: just to confirm, are we versioning the event schema in the s3 prefix, or using a separate schema registry?",
+   "accepted": [
+    "answer_question",
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.57,
+    "ms": 765
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 718
+   }
+  },
+  {
+   "key": "0.7",
+   "line": "Chris: we could use the existing confluent schema registry; it integrates with kafka and lets us evolve schemas without breaking consumers.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 431
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 544
+   }
+  },
+  {
+   "key": "0.8",
+   "line": "Deepa: so updating the plan: 1. replace kinesis with kafka (i’ll spin up a dev cluster); 2. point the producers to the kafka bootstrap – that’s a code change in the telemetry SDK; 3. keep s3 for raw, add lifecycle rule as Morgan outlined; 4. enable schema registry as Chris suggested. does anyone see a blocker?",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.68,
+    "ms": 478
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 785
+   }
+  },
+  {
+   "key": "0.9",
+   "line": "Morgan: no blockers on the infra side, just need to schedule the terraform apply after the kafka node is healthy. i’ll add a `terraform apply -target=module.kafka` to the pipeline.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.94,
+    "ms": 415
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 766
+   }
+  },
+  {
+   "key": "0.10",
+   "line": "Priya: i’ll draft the dashboard mock with the amber/blue palette and share in the design channel by tomorrow.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.82,
+    "ms": 455
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 987
+   }
+  },
+  {
+   "key": "0.11",
+   "line": "Tom: i’ll verify the ttl settings on dynamodb and confirm the kafka topic compaction config matches the retention policy.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 1,
+    "ms": 443
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 904
+   }
+  },
+  {
+   "key": "0.12",
+   "line": "Jax: okay, decision: we go with kafka + s3 + dynamodb, use schema registry, and apply the lifecycle rule. deepa owns the kafka prototype, morgan owns the terraform update, tom owns retention verification, priya owns the UI mock. any final thoughts?",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.68,
+    "ms": 444
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 915
+   }
+  },
+  {
+   "key": "0.13",
+   "line": "Patty: none from me.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 424
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 915
+   }
+  },
+  {
+   "key": "0.14",
+   "line": "Chris: all good.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 414
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 705
+   }
+  },
+  {
+   "key": "0.15",
+   "line": "Jax: thanks everyone, i’ll post the action items in the ticket and set a follow‑up sync for next wednesday.",
+   "accepted": [
+    "calendar_draft",
+    "ticket_draft",
+    "task"
+   ],
+   "jev": {
+    "choice": "calendar_draft",
+    "p": 0.55,
+    "ms": 422
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 685
+   }
+  },
+  {
+   "key": "1.0",
+   "line": "Jax: ok folks the goal is to review our branch protection strategy and lock down the core repos...",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 499
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 677
+   }
+  },
+  {
+   "key": "1.1",
+   "line": "Morgan: current terraform state shows the codecommit repo protection block missing required_approving_review_count. `terraform plan -target=aws_codecommit_repository.protected` outputs a diff adding that field.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 434
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 677
+   }
+  },
+  {
+   "key": "1.2",
+   "line": "Hanna: Which repositories are we targeting with this change?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.63,
+    "ms": 865
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 874
+   }
+  },
+  {
+   "key": "1.3",
+   "line": "Jax: we're focusing on the core services repo and the data ingestion repo for now...",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.84,
+    "ms": 569
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 913
+   }
+  },
+  {
+   "key": "1.4",
+   "line": "Priya: i’m thinking the developer experience could suffer if we make the rules too rigid — we need clear, friendly language in the PR guidelines so the team feels guided rather than constrained.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 662
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 918
+   }
+  },
+  {
+   "key": "1.5",
+   "line": "Sam: we should enable required status checks for the CI pipeline and set required_approving_review_count to 2 to keep quality high.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.93,
+    "ms": 403
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 914
+   }
+  },
+  {
+   "key": "1.6",
+   "line": "Morgan: the terraform snippet would be: \\n\\nresource \\\"aws_codecommit_repository\\\" \\\"protected\\\" {\\n  repository_name = var.repo_name\\n  branch_policy {\\n    required_approving_review_count = 2\\n    strict = true\\n    enforce_admins = true\\n    status_checks = [\\\"ci-build\\\"]\\n  }\\n}\\n",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.8,
+    "ms": 584
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 918
+   }
+  },
+  {
+   "key": "1.7",
+   "line": "Dave: do we need an exception for hotfix branches that need to go out fast?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 455
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 911
+   }
+  },
+  {
+   "key": "1.8",
+   "line": "Jamie: we can add a separate protection rule for `release/*` branches that only requires one approval and skips the CI check.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 424
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 922
+   }
+  },
+  {
+   "key": "1.9",
+   "line": "Elena: sorry if this is obvious but do we also need to update the onboarding docs and the PR template!!! 🚀✨",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.98,
+    "ms": 411
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 986
+   }
+  },
+  {
+   "key": "1.10",
+   "line": "Sam: i’ll draft the updated docs and push them to the wiki after the terraform change is merged.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "doc_draft",
+    "p": 0.58,
+    "ms": 595
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 991
+   }
+  },
+  {
+   "key": "1.11",
+   "line": "Priya: i’ll craft the microcopy for the PR template, using a tone that feels supportive — something like “please ensure all checks pass before merging, thank you for keeping the code healthy!”",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.68,
+    "ms": 459
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 991
+   }
+  },
+  {
+   "key": "1.12",
+   "line": "Jax: so decision: we’ll apply terraform branch protection to core services and ingestion repos with 2 approvals, CI checks, admin override, plus a lighter rule for release/*; Morgan will own the terraform PR, Sam will own the docs update, Priya will own the PR template microcopy, and Elena will coordinate the rollout schedule.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.97,
+    "ms": 420
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 3977
+   }
+  },
+  {
+   "key": "1.13",
+   "line": "Jax: that’s it thanks everyone meeting adjourned.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 409
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 3716
+   }
+  },
+  {
+   "key": "2.0",
+   "line": "Priya: Alright team, thanks for hopping on — our goal today is to align the UI copy with our refreshed brand voice, making sure every button label, tooltip, and error message sings the same tone while still staying crystal‑clear for the athletes.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 720,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 3691
+   }
+  },
+  {
+   "key": "2.1",
+   "line": "Marc: Sounds good. I can share the current copy inventory and note where it diverges.",
+   "accepted": [
+    "task",
+    "message_draft"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.72,
+    "ms": 425,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 3492
+   }
+  },
+  {
+   "key": "2.2",
+   "line": "Sophie: Do we have a deadline for the rollout? The product team needs it before the next sprint.",
+   "accepted": [
+    "none",
+    "answer_question"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.76,
+    "ms": 452,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 487
+   }
+  },
+  {
+   "key": "2.3",
+   "line": "Priya: We're targeting the end of next week so developers can ship the updated strings with the upcoming firmware build.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.73,
+    "ms": 1085,
+    "attempts": 2
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 689
+   }
+  },
+  {
+   "key": "2.4",
+   "line": "Deepa: 1. We'll audit all UI strings in the repo. 2. We'll map each to the new brand guidelines. 3. We'll flag any that need copywriting revisions. 4. We'll push the approved set to the config service.",
+   "accepted": [
+    "none",
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.9,
+    "ms": 786,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 720
+   }
+  },
+  {
+   "key": "2.5",
+   "line": "Elena: Sorry if this is obvious but... do we have a shared doc where we can track those flags? 😅✨",
+   "accepted": [
+    "answer_question",
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.92,
+    "ms": 696,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 906
+   }
+  },
+  {
+   "key": "2.6",
+   "line": "Dave: We can use the existing Confluence page; I’ll add a table for the audit.",
+   "accepted": [
+    "task",
+    "sheet_draft"
+   ],
+   "jev": {
+    "choice": "sheet_draft",
+    "p": 0.6900000000000001,
+    "ms": 436,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 912
+   }
+  },
+  {
+   "key": "2.7",
+   "line": "Sophie: Just make sure the table includes a column for the responsible writer so we don’t lose accountability.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.77,
+    "ms": 483,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 918
+   }
+  },
+  {
+   "key": "2.8",
+   "line": "Priya: Exactly—let's create columns for current copy, proposed copy, tone note, and owner; that way we keep the narrative thread visible.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.56,
+    "ms": 411,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 911
+   }
+  },
+  {
+   "key": "2.9",
+   "line": "Desmond: What level of formality are we aiming for? The current copy is pretty direct; the brand guide suggests a more motivational vibe.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 452,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 917
+   }
+  },
+  {
+   "key": "2.10",
+   "line": "Priya: We want a tone that's energetic yet precise—think 'you’re on track' rather than 'you’re doing okay', while still being concise enough for a smartwatch screen.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.97,
+    "ms": 1887,
+    "attempts": 2
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 914
+   }
+  },
+  {
+   "key": "2.11",
+   "line": "Marc: I’ll draft a short style cheat sheet that highlights examples for buttons, alerts, and onboarding screens.",
+   "accepted": [
+    "doc_draft",
+    "task"
+   ],
+   "jev": {
+    "choice": "doc_draft",
+    "p": 0.84,
+    "ms": 427,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "doc_draft",
+    "p": 1,
+    "ms": 926
+   }
+  },
+  {
+   "key": "2.12",
+   "line": "Deepa: 5. Marc delivers the cheat sheet by tomorrow. 6. Sophie reviews and adds any missing edge cases. 7. Dave updates the Confluence table with the audit results. 8. Elena will coordinate with the QA team to verify copy rendering.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.99,
+    "ms": 413,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 920
+   }
+  },
+  {
+   "key": "2.13",
+   "line": "Elena: Sounds awesome! I'll set up a quick Slack channel for the copy QA so we can ping each other when we spot issues 🚀",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.62,
+    "ms": 408,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1110
+   }
+  },
+  {
+   "key": "2.14",
+   "line": "Jamie: Who will give the final sign‑off before we push to production?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.95,
+    "ms": 650,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1085
+   }
+  },
+  {
+   "key": "2.15",
+   "line": "Priya: Final sign‑off will come from me, as the brand steward, after the cheat sheet and audit are complete.",
+   "accepted": [
+    "task",
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.51,
+    "ms": 1987
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1066
+   }
+  },
+  {
+   "key": "2.16",
+   "line": "Priya: To recap: Marc will draft the cheat sheet by tomorrow, Sophie will review it, Dave will update the Confluence audit table, Elena will create the QA Slack channel, and I’ll give final sign‑off on Friday. Thanks everyone.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.7,
+    "ms": 719,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 1063
+   }
+  },
+  {
+   "key": "3.0",
+   "line": "Nadia: Thanks everyone for joining, the goal is to get a concrete alignment on our telemetry test strategy so we can ship the next firmware update without gaps.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 395,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 875
+   }
+  },
+  {
+   "key": "3.1",
+   "line": "Ben: Got it. Right now our unit coverage sits around 68% on the sensor stack, but we don't have a clear integration plan for the cloud ingest layer.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 430,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 891
+   }
+  },
+  {
+   "key": "3.2",
+   "line": "Zoe: Exactly, the ingestion pipeline has a few edge cases around out‑of‑order packets that aren't exercised in CI yet.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2044
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 896
+   }
+  },
+  {
+   "key": "3.3",
+   "line": "Chloe: Mobile SDK telemetry needs its own suite, otherwise we're just testing the backend and ignoring the iOS side.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 442,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 885
+   }
+  },
+  {
+   "key": "3.4",
+   "line": "Priya: From a user‑experience angle, the telemetry UI should gracefully handle missing data, so we need tests that simulate intermittent connectivity and verify the placeholder visuals stay on brand.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.97,
+    "ms": 417,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 883
+   }
+  },
+  {
+   "key": "3.5",
+   "line": "Vince: Do we have parity between our staging and prod environments for the data lake? If not, tests could pass here and fail in the field.",
+   "accepted": [
+    "none",
+    "answer_question"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.73,
+    "ms": 397,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 889
+   }
+  },
+  {
+   "key": "3.6",
+   "line": "Sanjay: Our monitoring alerts currently only flag latency spikes, not data fidelity issues, so we should add an alert for sudden drops in telemetry volume.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.98,
+    "ms": 397,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 879
+   }
+  },
+  {
+   "key": "3.7",
+   "line": "Nadia: Just to be precise, are we all on version 2.15.0 of the test framework, or are some teams still on 2.14.3‑rc1?",
+   "accepted": [
+    "answer_question",
+    "none"
+   ],
+   "jev": {
+    "choice": "answer_question",
+    "p": 0.93,
+    "ms": 426,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "answer_question",
+    "p": 1,
+    "ms": 894
+   }
+  },
+  {
+   "key": "3.8",
+   "line": "Ben: We're on 2.15.0 across the board. I propose a three‑layer approach: unit tests for sensor firmware, integration tests for the ingestion service, and end‑to‑end tests that include the mobile SDK and UI.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.96,
+    "ms": 411,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 899
+   }
+  },
+  {
+   "key": "3.9",
+   "line": "Zoe: That makes sense, but who will own the integration pipeline changes? We need a clear owner to avoid the same bottleneck we hit last sprint.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.98,
+    "ms": 446
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 889
+   }
+  },
+  {
+   "key": "3.10",
+   "line": "Chloe: I can set up a fastlane matrix that runs the SDK tests on iOS 15 and 16, and push the results to the same CI dashboard.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.99,
+    "ms": 678,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 908
+   }
+  },
+  {
+   "key": "3.11",
+   "line": "Priya: I'll draft the UI test cases that verify the placeholder visuals and make sure the copy follows the brand style guide.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.96,
+    "ms": 2050
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 895
+   }
+  },
+  {
+   "key": "3.12",
+   "line": "Vince: I'll update the documentation to reflect the new three‑layer strategy and add a checklist for the release notes.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "doc_draft",
+    "p": 0.86,
+    "ms": 1498,
+    "attempts": 3
+   },
+   "qwen": {
+    "choice": "doc_draft",
+    "p": 1,
+    "ms": 905
+   }
+  },
+  {
+   "key": "3.13",
+   "line": "Sanjay: I'll add a new alert rule for telemetry volume dip and tag it to the test dashboard so we can see failures in real time.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 1,
+    "ms": 3326,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 903
+   }
+  },
+  {
+   "key": "3.14",
+   "line": "Nadia: Alright, decision: we adopt the three‑layer telemetry test strategy. Ben will draft the unit test plan, Zoe will coordinate the integration pipeline, Chloe will implement the mobile SDK matrix, Priya will create UI placeholder tests, Vince will update the docs, and Sanjay will add the volume‑dip alert. We'll reconvene next week to review the first test run results.",
+   "accepted": [
+    "task",
+    "calendar_draft"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.88,
+    "ms": 2946,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 898
+   }
+  },
+  {
+   "key": "4.0",
+   "line": "Priya: Alright team, thanks for joining — our goal today is to lock down the brand narrative that will anchor the upcoming product launch, ensuring it resonates with athletes, investors, and the broader market. We'll walk through the core pillars, tone, and the headline tagline, then assign ownership for the final copy. Any quick thoughts before we dive?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 3573,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 891
+   }
+  },
+  {
+   "key": "4.1",
+   "line": "Marc: I think we need to be clear on the three pillars we want to highlight: performance data accuracy, seamless integration, and athlete empowerment. Could we confirm those are the ones we’re aligning with?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 2827,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 878
+   }
+  },
+  {
+   "key": "4.2",
+   "line": "Sophie: Those pillars match the product roadmap and the user research we did last quarter, so I’m on board. We should also make sure the narrative reflects our sustainability commitments.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2660,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 892
+   }
+  },
+  {
+   "key": "4.3",
+   "line": "Yusuf: Just to clarify, are we targeting elite athletes only, or also recreational users in this narrative?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 648
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 888
+   }
+  },
+  {
+   "key": "4.4",
+   "line": "Priya: Good point, Yusuf — the narrative should speak to both elite and serious recreational athletes, emphasizing that the data is actionable for anyone looking to improve, while the brand voice stays aspirational.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 1443,
+    "attempts": 4
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 917
+   }
+  },
+  {
+   "key": "4.5",
+   "line": "Desmond: From a tone perspective, we want it confident but not arrogant, using active verbs that inspire action. I’d suggest we avoid jargon that only engineers understand.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1787,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 921
+   }
+  },
+  {
+   "key": "4.6",
+   "line": "Chloe: iOS copy needs to stay under 30 characters for the tagline, otherwise it breaks layout — here's the spec: https://github.com/apex/brand-assets/issues/42",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.89,
+    "ms": 1098
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 937
+   }
+  },
+  {
+   "key": "4.7",
+   "line": "Sarah: @Marc **please draft the three pillar statements by EOD tomorrow**. @Priya **prepare the final narrative doc and circulate it for review by Friday**. @Chloe **verify the tagline length on mobile and report any issues**. sent from mobile",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.95,
+    "ms": 2144,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 932
+   }
+  },
+  {
+   "key": "4.8",
+   "line": "Priya: Thanks everyone — we’ve agreed on the three pillars (performance accuracy, integration, empowerment), the inclusive audience scope, and a confident yet accessible tone. Marc will draft the pillar statements, I’ll compile the narrative, and Chloe will validate the mobile tagline. I’ll send a summary by tomorrow morning.",
+   "accepted": [
+    "email_draft",
+    "task"
+   ],
+   "jev": {
+    "choice": "email_draft",
+    "p": 0.93,
+    "ms": 2449,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 12449,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "5.0",
+   "line": "Priya: Alright team, thanks for hopping on — our goal today is to lock down the Q1 brand narrative, align the core message, visual tone, and the key performance indicators that will let us measure user delight across the new wearables launch.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 1557,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 12317,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "5.1",
+   "line": "Marc: Got it, Priya. I’ll keep an eye on the timeline and make sure we surface any dependencies.",
+   "accepted": [
+    "none",
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.82,
+    "ms": 2579,
+    "attempts": 8
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 12355,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "5.2",
+   "line": "Jamie: Quick question — are we aiming for a single overarching tagline or a set of supporting pillars for the quarter?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2545,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 12347,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "5.3",
+   "line": "Deepa: 1. We need to define the narrative hierarchy: tagline, pillar statements, and supporting copy. 2. Align each pillar with measurable metrics like activation rate, session length, and NPS. 3. Validate with the data team that our metrics are trackable in the existing dashboard.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.77,
+    "ms": 859,
+    "attempts": 3
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2591
+   }
+  },
+  {
+   "key": "5.4",
+   "line": "Tom: I have the current asset inventory list ready — 1) logo files, 2) color palette specs, 3) motion graphics templates. Let me know if you need anything added.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.97,
+    "ms": 2720,
+    "attempts": 8
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2488
+   }
+  },
+  {
+   "key": "5.5",
+   "line": "Patty: From a sales perspective, the narrative should highlight performance insights and community competition, because those are the top drivers we hear from prospects.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1045
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2376
+   }
+  },
+  {
+   "key": "5.6",
+   "line": "Chris: I agree with Patty, and we should also weave in the durability angle since Q1 includes the new water‑resistant model.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 1864,
+    "error": "Error: Jev unavailable"
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 12342,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "5.7",
+   "line": "Priya: I’m hearing a pattern — we want a tagline that captures elevation, insight, and resilience — something like ‘Elevate Every Move’ that feels both aspirational and data‑driven, and then pillar statements that flesh out insight, community, and durability.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1675,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 13996,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "5.8",
+   "line": "Marc: That tagline works for me, and it fits the visual language we’ve been testing.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 5589,
+    "attempts": 19
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 233
+   }
+  },
+  {
+   "key": "5.9",
+   "line": "Jamie: I can draft the full narrative document with the tagline and three pillars by end of day Thursday, and circulate it for review.",
+   "accepted": [
+    "doc_draft",
+    "task"
+   ],
+   "jev": {
+    "choice": "doc_draft",
+    "p": 0.92,
+    "ms": 1506,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 13853,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "5.10",
+   "line": "Deepa: 1. I’ll map the three pillars to the metrics I listed earlier. 2. I’ll set up a dashboard view for activation, session length, and NPS. 3. I’ll share the dashboard link with the team by Friday.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 2299,
+    "error": "Error: Jev unavailable"
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 13828,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "5.11",
+   "line": "Priya: Great, so the decision is to adopt ‘Elevate Every Move’ as the Q1 tagline, Jamie will deliver the narrative draft Thursday, Deepa will align the metrics dashboard by Friday, and Tom will upload the updated brand assets to the CMS by March 15 — let’s reconvene next week to review the final version.",
+   "accepted": [
+    "task",
+    "calendar_draft"
+   ],
+   "jev": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 1717,
+    "error": "Error: Jev unavailable"
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 2558
+   }
+  },
+  {
+   "key": "6.0",
+   "line": "Chloe: Alright folks, let's get straight to it: we need to nail down the cross‑team data sync architecture by the end of the sprint, so everyone knows what to build and how we avoid duplicate pipelines.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.74,
+    "ms": 2984,
+    "attempts": 13
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 244
+   }
+  },
+  {
+   "key": "6.1",
+   "line": "Raj: Sounds good. Just to confirm, are we still pulling from the TitanDB layer or moving to a service‑bus model?",
+   "accepted": [
+    "none",
+    "answer_question"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.66,
+    "ms": 818,
+    "attempts": 3
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 6438
+   }
+  },
+  {
+   "key": "6.2",
+   "line": "Yusuf: Right now the mobile team is hitting TitanDB directly, which is causing contention when the analytics service reads the same tables for real‑time insights.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 967,
+    "attempts": 3
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2512
+   }
+  },
+  {
+   "key": "6.3",
+   "line": "Tasha: And the schema differences between the wearables telemetry and the coaching dashboard are getting in the way of a clean join.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 982,
+    "attempts": 2
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 12380,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "6.4",
+   "line": "Chloe: Exactly, and the current direct DB hack violates iOS conventions – we need a proper contract, not a shared mutable store.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 695,
+    "attempts": 2
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 12338,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "6.5",
+   "line": "Raj: What if we introduce a Kafka topic for telemetry events and let both teams consume from it? That would decouple the write path.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 445,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2337
+   }
+  },
+  {
+   "key": "6.6",
+   "line": "Yusuf: Kafka is solid, but we have a latency budget of under 200 ms for live feedback; pulling from a broker could add jitter we can't afford.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1286,
+    "attempts": 2
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 245
+   }
+  },
+  {
+   "key": "6.7",
+   "line": "Tasha: We could add a lightweight batch fallback that runs every few seconds for non‑critical data, keeping the real‑time path lean.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 663,
+    "attempts": 2
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 231
+   }
+  },
+  {
+   "key": "6.8",
+   "line": "Chloe: Okay, let's prototype a hybrid: real‑time events go through Kafka with a strict 100 ms SLA, and anything that falls behind gets queued for the batch job. Yusuf, you own the prototype.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 1,
+    "ms": 445,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 241
+   }
+  },
+  {
+   "key": "6.9",
+   "line": "Raj: I'll draft the design doc outlining the topic schema, partition strategy, and fallback triggers, and circulate it by Thursday.",
+   "accepted": [
+    "doc_draft",
+    "task"
+   ],
+   "jev": {
+    "choice": "doc_draft",
+    "p": 0.93,
+    "ms": 598,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "doc_draft",
+    "p": 1,
+    "ms": 434
+   }
+  },
+  {
+   "key": "6.10",
+   "line": "Tasha: I'll review the schema changes with the data team and make sure the telemetry fields line up with the coaching models.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 1,
+    "ms": 1282
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 406
+   }
+  },
+  {
+   "key": "6.11",
+   "line": "Chloe: Great. Decision: hybrid Kafka + batch fallback, prototype by Yusuf, design doc by Raj, schema review by Tasha. We'll reconvene next Monday to assess progress.",
+   "accepted": [
+    "task",
+    "calendar_draft"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.84,
+    "ms": 660,
+    "attempts": 2
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 6431
+   }
+  },
+  {
+   "key": "7.0",
+   "line": "Priya: ok team, today's sprint is to align our brand guidelines with ops—specifically the monitoring dashboards and alert emails—so that every touchpoint feels like the Apex experience, not just the UI layer. we need to surface the brand colors, typography, and tone consistently while keeping latency low for user delight.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.76,
+    "ms": 1044,
+    "attempts": 2
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 12735
+   }
+  },
+  {
+   "key": "7.1",
+   "line": "Marc: Got it. Just to confirm, are we focusing only on the internal ops tools or also the external partner portals?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.97,
+    "ms": 532,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2389
+   }
+  },
+  {
+   "key": "7.2",
+   "line": "Priya: primary focus is internal ops—our dashboard, alert system, and the incident‑response playbooks. external portals can follow in the next quarter once we lock down the core assets.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.79,
+    "ms": 595,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2324
+   }
+  },
+  {
+   "key": "7.3",
+   "line": "Morgan: From an infra side, the dashboards pull styles from the shared S3 bucket; updating the CSS will require a terraform apply—`terraform apply -target=module.brand_assets`—and a rolling restart of the Grafana pods. we need to ensure the bucket policy allows the ops service role read access.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.81,
+    "ms": 428,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2371
+   }
+  },
+  {
+   "key": "7.4",
+   "line": "Nadia: Wait, did we test the new style sheet against version 2.14.3‑rc1 of the ops UI? I want to verify that the contrast ratios meet AA standards before we push to prod.",
+   "accepted": [
+    "answer_question",
+    "none"
+   ],
+   "jev": {
+    "choice": "answer_question",
+    "p": 0.5,
+    "ms": 448,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 229
+   }
+  },
+  {
+   "key": "7.5",
+   "line": "Jax: i guess we can just drop the new css in the bucket and hope it works...",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 637,
+    "attempts": 2
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 502
+   }
+  },
+  {
+   "key": "7.6",
+   "line": "Marc: I suggest we create a feature flag in the config repo so we can toggle the new branding on a per‑environment basis.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 420,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 489
+   }
+  },
+  {
+   "key": "7.7",
+   "line": "Priya: yes, a flag named `brand_ops_enabled`—we can wire it into the existing remote‑config loader and have the UI read it at startup, that gives us instant rollback if user delight drops.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.95,
+    "ms": 432,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 258
+   }
+  },
+  {
+   "key": "7.8",
+   "line": "Morgan: I'll add the flag to the Terraform variables file and push a PR by EOD; also will run `kubectl rollout restart deployment/grafana` once merged.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.98,
+    "ms": 1886,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 227
+   }
+  },
+  {
+   "key": "7.9",
+   "line": "Nadia: I'll run the visual regression suite on 2.14.3‑rc1 with the flag on and off, and report any AA compliance issues by tomorrow afternoon.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 1,
+    "ms": 2900,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 294
+   }
+  },
+  {
+   "key": "7.10",
+   "line": "Jax: sounds fine, i'll keep an eye on the logs for any 500s after the rollout...",
+   "accepted": [
+    "none",
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.78,
+    "ms": 2901,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 304
+   }
+  },
+  {
+   "key": "7.11",
+   "line": "Priya: so the decision is to roll out the new brand assets behind the `brand_ops_enabled` flag, Morgan will implement the Terraform changes and restart Grafana, and Nadia will validate the UI in 2.14.3‑rc1; we'll reconvene Friday to review the test results. thanks everyone.",
+   "accepted": [
+    "task",
+    "calendar_draft"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.54,
+    "ms": 2819,
+    "attempts": 9
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 233
+   }
+  },
+  {
+   "key": "8.0",
+   "line": "Jax: hey team, goal of this call is to pin down the new alert thresholds for telemetry latency and assign who updates what...",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.9400000000000001,
+    "ms": 2801,
+    "attempts": 10
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 318
+   }
+  },
+  {
+   "key": "8.1",
+   "line": "Deepa: 1. we need to define the baseline latency from the last 30‑day window; 2. then decide on warning vs critical levels; 3. finally map those into the DynamoDB alert config—if we set warning at 250 ms and critical at 150 ms then the downstream x‑ray alerts will fire accordingly.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.97,
+    "ms": 2823,
+    "attempts": 10
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 312
+   }
+  },
+  {
+   "key": "8.2",
+   "line": "Morgan: kubectl get configmap telemetry-alerts -o yaml shows current thresholds at 300ms warning, 200ms critical. we can apply a new config with `kubectl apply -f alerts.yaml` after updating the terraform variable.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.91,
+    "ms": 2961,
+    "attempts": 11
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 236
+   }
+  },
+  {
+   "key": "8.3",
+   "line": "Zoe: Just to confirm, are we targeting the same thresholds for all device types, or should we have separate profiles for high‑performance athletes?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 2919,
+    "attempts": 10
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 512
+   }
+  },
+  {
+   "key": "8.4",
+   "line": "Priya: i think the emotional cadence of an alert matters just as much as the raw numbers—users get anxious when a critical tone blares at 180 ms, yet they might appreciate a gentle amber warning at 250 ms that says 'we're still in the green, keep pushing' — aligning thresholds with that user delight will reduce churn.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 3046,
+    "attempts": 8
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 486
+   }
+  },
+  {
+   "key": "8.5",
+   "line": "Yusuf: We should roll this out in staging first, run a week of synthetic load, then promote to prod. Does that timeline work for everyone?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2634,
+    "attempts": 10
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 452
+   }
+  },
+  {
+   "key": "8.6",
+   "line": "Deepa: 4. after we agree, I'll commit the new threshold values to the alert‑config repo; 5. then trigger a CI pipeline that runs `make test-alerts`; 6. finally open a PR for review—if the PR passes the automated checks we can merge and let the terraform apply handle the rest.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.97,
+    "ms": 5765,
+    "attempts": 17
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 232
+   }
+  },
+  {
+   "key": "8.7",
+   "line": "Morgan: terraform plan -var='latency_warning=250' -var='latency_critical=150' shows no drift, so once the PR merges the change will propagate automatically. i’ll watch the apply logs.",
+   "accepted": [
+    "task",
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.56,
+    "ms": 2719,
+    "attempts": 10
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 295
+   }
+  },
+  {
+   "key": "8.8",
+   "line": "Jax: okay, decision: warning threshold 250 ms, critical 150 ms. deepa will update the config repo, morgan will adjust the terraform vars and run the apply, zoe will validate in staging, yusuf will monitor the post‑deploy metrics, priya will draft the user‑facing alert text. meeting adjourned.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.99,
+    "ms": 2786,
+    "attempts": 9
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 287
+   }
+  },
+  {
+   "key": "9.0",
+   "line": "Priya: ok team, the goal of today’s sync is to lock down the brand refresh direction — we need a unified visual language that amplifies user delight while staying true to our performance‑first ethos.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 3046,
+    "attempts": 11
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 228
+   }
+  },
+  {
+   "key": "9.1",
+   "line": "Sophie: got it, Priya. Do we have a target date for the final brand guide rollout?",
+   "accepted": [
+    "none",
+    "answer_question"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.75,
+    "ms": 3020,
+    "attempts": 10
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 300
+   }
+  },
+  {
+   "key": "9.2",
+   "line": "Marc: the timeline is tight; we need the refreshed assets ready for the Q3 launch, so any decisions should be concrete by next Friday.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.93,
+    "ms": 2579,
+    "attempts": 10
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 299
+   }
+  },
+  {
+   "key": "9.3",
+   "line": "Umji: i think we should prioritize the color system first, because it impacts both the app UI and the wearable UI consistently.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2910,
+    "attempts": 10
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 230
+   }
+  },
+  {
+   "key": "9.4",
+   "line": "Chloe: the current type feels generic — we need a font that respects iOS typography conventions, not a copy‑paste from Android.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 4005,
+    "attempts": 13
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 489
+   }
+  },
+  {
+   "key": "9.5",
+   "line": "Jamie: if we change the visual language, we have to measure the impact on user delight scores, otherwise we’re just guessing.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1659,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2474
+   }
+  },
+  {
+   "key": "9.6",
+   "line": "Yusuf: i can pull the last two quarters of delight metrics and map them to the current brand elements for baseline.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.93,
+    "ms": 1095,
+    "attempts": 4
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 435
+   }
+  },
+  {
+   "key": "9.7",
+   "line": "Priya: perfect, Yusuf — having that data will let us quantify the emotional lift. also, the new palette should feel kinetic, like a pulse you can see in the data visualizations.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2588,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 302
+   }
+  },
+  {
+   "key": "9.8",
+   "line": "Sophie: so, should we go with the Vibrant Pulse palette we sketched last week? it has the teal‑green gradient and the amber accent we discussed.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 2333,
+    "attempts": 8
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 302
+   }
+  },
+  {
+   "key": "9.9",
+   "line": "Marc: I’m on board with Vibrant Pulse, but we need to audit all existing assets to replace the old blues before the sprint starts.",
+   "accepted": [
+    "none",
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.79,
+    "ms": 1879,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 219
+   }
+  },
+  {
+   "key": "9.10",
+   "line": "Chloe: i like the palette, but the icon set we used before looks flat; we need a more three‑dimensional style that matches the wearables' depth.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 7162,
+    "attempts": 24
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 6816
+   }
+  },
+  {
+   "key": "9.11",
+   "line": "Priya: agreed, Chloe — let’s iterate on the icon set with a subtle drop‑shadow, keeping it legible at small sizes; we’ll test both versions in the next design review.",
+   "accepted": [
+    "none",
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.68,
+    "ms": 455,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 385
+   }
+  },
+  {
+   "key": "9.12",
+   "line": "Priya: decision: we’ll adopt the Vibrant Pulse palette, update the icon style with a light shadow, and create a brand guide draft by Friday. Sophie will own the guide deck, Marc will audit existing assets, Chloe will prototype the new icons, and Yusuf will deliver the delight baseline report.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.8,
+    "ms": 510,
+    "attempts": 1
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 357
+   }
+  },
+  {
+   "key": "9.13",
+   "line": "Priya: thanks everyone, that wraps it up — action items are assigned, and we’ll reconvene next Monday to review progress.",
+   "accepted": [
+    "calendar_draft",
+    "task",
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.68,
+    "ms": 1316,
+    "attempts": 3
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 237
+   }
+  },
+  {
+   "key": "10.0",
+   "line": "Tom: Alright, everyone, the goal of today’s call is to align the upcoming Apex Marathon event logistics with HR policy requirements and nail down immediate action items.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 3827,
+    "attempts": 12
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 6548
+   }
+  },
+  {
+   "key": "10.1",
+   "line": "Dave: I’ll start by outlining the venue schedule we have tentatively locked for next month, which includes the main stadium on the 12th and a backup gym on the 13th.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 2057,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 229
+   }
+  },
+  {
+   "key": "10.2",
+   "line": "Priya: Sounds good, Dave, and I’m already visualizing how we can weave our brand story into the marathon banners—think vibrant kinetic lines that echo the athletes’ heartbeat, plus a subtle gradient that whispers 'peak performance' without shouting.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1977,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 5368
+   }
+  },
+  {
+   "key": "10.3",
+   "line": "Deepa: 1. We need to verify that the participant data pipeline complies with HR’s privacy guidelines. 2. I’ll draft the schema changes for consent flags. 3. I’ll also set up a sandbox environment for testing the registration flow.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.99,
+    "ms": 2045,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 361
+   }
+  },
+  {
+   "key": "10.4",
+   "line": "Nadia: Wait, did we test the registration flow against the latest HR data protection version, say 2.14.3-rc1, or are we still on the older 2.13.0 build?",
+   "accepted": [
+    "answer_question",
+    "none"
+   ],
+   "jev": {
+    "choice": "answer_question",
+    "p": 0.98,
+    "ms": 2047,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "answer_question",
+    "p": 1,
+    "ms": 4727
+   }
+  },
+  {
+   "key": "10.5",
+   "line": "Sanjay: We’re still on 2.13.0 in staging, so we should schedule a quick upgrade before the event rollout to match the policy version.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.49,
+    "ms": 1991,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 236
+   }
+  },
+  {
+   "key": "10.6",
+   "line": "Tom: Noted, Sanjay. I’ll add the upgrade to the HR compliance checklist and coordinate with the HR ops lead.",
+   "accepted": [
+    "task",
+    "message_draft"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.58,
+    "ms": 1969,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 267
+   }
+  },
+  {
+   "key": "10.7",
+   "line": "Priya: I’d love to add a small interactive element on the event app—a pulse animation that reacts to the runner’s real‑time heart rate, which could really boost user delight and reinforce our brand narrative.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1844,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 410
+   }
+  },
+  {
+   "key": "10.8",
+   "line": "Dave: That’s a nice touch, Priya, but we need to confirm that adding that feature won’t breach the HR policy on biometric data usage.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.95,
+    "ms": 2635,
+    "attempts": 8
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 273
+   }
+  },
+  {
+   "key": "10.9",
+   "line": "Deepa: If we isolate the pulse animation to display only aggregated, anonymized metrics, we stay within compliance; I can implement a toggle in the config to enforce that.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.9,
+    "ms": 1421,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 409
+   }
+  },
+  {
+   "key": "10.10",
+   "line": "Nadia: Just to be safe, can we also run a regression test on the anonymization filter using the 2.14.3‑rc1 privacy suite before we push to production?",
+   "accepted": [
+    "none",
+    "task"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.93,
+    "ms": 1908,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 452
+   }
+  },
+  {
+   "key": "10.11",
+   "line": "Sanjay: I’ll handle the test plan and make sure we have sign‑off from HR before the final deployment.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.99,
+    "ms": 2288,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 632
+   }
+  },
+  {
+   "key": "10.12",
+   "line": "Tom: Action items: Priya will draft the event branding assets by Friday; Deepa will deliver the consent schema and sandbox by Wednesday; Dave will finalize the logistics checklist with venue contracts by Thursday; Nadia will run the privacy regression tests after the upgrade; Sanjay will obtain HR sign‑off on biometric use; I’ll sync with HR ops on policy alignment and schedule the upgrade.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.93,
+    "ms": 1819,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 263
+   }
+  },
+  {
+   "key": "10.13",
+   "line": "Tom: If there’s nothing else, let’s wrap up—decision is to proceed with the outlined plan and each owner will update the shared Confluence page with progress.",
+   "accepted": [
+    "task",
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.66,
+    "ms": 1873,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 445
+   }
+  },
+  {
+   "key": "11.0",
+   "line": "Nadia: Thanks everyone for joining. Our goal is to decide on a test data management strategy that meets compliance and keeps our CI pipelines fast.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2064,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 469
+   }
+  },
+  {
+   "key": "11.1",
+   "line": "Ben: I think we should start by mapping which data sets contain PII and which are purely performance metrics.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2000,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 452
+   }
+  },
+  {
+   "key": "11.2",
+   "line": "Deepa: I can break it into three steps: 1) Identify all source tables and tag them with a sensitivity level. 2) Create a versioned test data lake that stores sanitized snapshots. 3) Build a synthetic data generator for any high‑risk fields.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.83,
+    "ms": 2064,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2315
+   }
+  },
+  {
+   "key": "11.3",
+   "line": "Sarah: We need to lock this down by next sprint, so ACTION: @Ben draft the synthetic generator spec this week, @Deepa provision the lake schema by Friday, and @Patty review the compliance checklist by Thursday.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.95,
+    "ms": 2101,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 2415
+   }
+  },
+  {
+   "key": "11.4",
+   "line": "Elena: Sorry if this sounds naive, but do we have a tool that can automatically mask the fields, or are we building something from scratch??? ✨",
+   "accepted": [
+    "answer_question",
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.87,
+    "ms": 1869,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 236
+   }
+  },
+  {
+   "key": "11.5",
+   "line": "Patty: We have the masking library from version 2.14.3‑rc1 that can handle most fields, but we’ll need custom rules for the new biometric streams.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "answer_question",
+    "p": 0.51,
+    "ms": 1534
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2416
+   }
+  },
+  {
+   "key": "11.6",
+   "line": "Ben: Got it, I’ll align the generator spec with the library’s capabilities and note any gaps for custom development.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.79,
+    "ms": 833
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 404
+   }
+  },
+  {
+   "key": "11.7",
+   "line": "Deepa: If the lake schema is versioned, we can roll back to a known good snapshot in case a test corrupts data, then we just need to add CI hooks to pull the latest version.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 616
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 238
+   }
+  },
+  {
+   "key": "11.8",
+   "line": "Sarah: Make sure the CI hooks are gated behind the compliance flag, otherwise we’ll be leaking data into nightly builds.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.6,
+    "ms": 612
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 233
+   }
+  },
+  {
+   "key": "11.9",
+   "line": "Elena: Probably a silly question, but will the synthetic data include realistic heart‑rate variability patterns, or will it be just random numbers???",
+   "accepted": [
+    "answer_question",
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.97,
+    "ms": 408
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 231
+   }
+  },
+  {
+   "key": "11.10",
+   "line": "Patty: We can seed the generator with statistical profiles from production, so the patterns will look realistic without exposing real user data.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.86,
+    "ms": 454
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 401
+   }
+  },
+  {
+   "key": "11.11",
+   "line": "Nadia: Decision: we’ll adopt a hybrid approach with a versioned test data lake and a synthetic data generator for PII. Action items: @Deepa set up the lake schema by Friday, @Ben deliver the generator spec by next Wednesday, @Patty complete the compliance review by Thursday, and @Elena update the design docs by end of week.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.98,
+    "ms": 1244
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 242
+   }
+  },
+  {
+   "key": "12.0",
+   "line": "Sam: Hey team, thanks for joining. The goal of this meeting is to lock down the backend‑mobile sync approach for the upcoming release, specifically telemetry batching and conflict resolution.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 610
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 309
+   }
+  },
+  {
+   "key": "12.1",
+   "line": "Raj: I think we should keep the Redis cache for near‑real-time counts, but we need Grafana to reflect updates within a minute.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 419
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2300
+   }
+  },
+  {
+   "key": "12.2",
+   "line": "Miki: From a process view, adding a periodic flush every 30 seconds would meet that latency target without overloading the API.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 622
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2345
+   }
+  },
+  {
+   "key": "12.3",
+   "line": "Jamie: My concern is that the extra flush could increase battery consumption on the wearables, especially during long workouts.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 425
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 266
+   }
+  },
+  {
+   "key": "12.4",
+   "line": "Tasha: We can mitigate battery impact by making the flush adaptive based on device activity and power state.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 628
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 6650
+   }
+  },
+  {
+   "key": "12.5",
+   "line": "Priya: The sync feels invisible to the athlete, but if we get jittery UI because of delayed counts——the experience suffers; we need a sub‑second perception of data. A subtle pulse indicator could reassure users without distraction, aligning with our brand promise of seamless performance.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 815
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 420
+   }
+  },
+  {
+   "key": "12.6",
+   "line": "Sam: So we have three options: rely on Redis with Grafana alerts, add a fixed 30‑second flush, or implement adaptive flushing with a battery ceiling. Any objections?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 440
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 233
+   }
+  },
+  {
+   "key": "12.7",
+   "line": "Raj: My only objection to adaptive is the added SDK complexity, which might push the release timeline.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 405
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 231
+   }
+  },
+  {
+   "key": "12.8",
+   "line": "Miki: We can contain that complexity by isolating the logic in its own module and covering it with unit tests.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.96,
+    "ms": 434
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 242
+   }
+  },
+  {
+   "key": "12.9",
+   "line": "Jamie: Can we also set a hard cap of 5% extra battery drain per hour to keep the wearables safe?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 674
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 356
+   }
+  },
+  {
+   "key": "12.10",
+   "line": "Tasha: We can enforce that cap by throttling the flush frequency when battery falls below 20%.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.91,
+    "ms": 404
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 288
+   }
+  },
+  {
+   "key": "12.11",
+   "line": "Priya: I love the dynamic ceiling—it reinforces our brand promise of empowering athletes without distraction——the UI stays fluid, the data feels immediate, and users won’t notice the background work.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 829
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 282
+   }
+  },
+  {
+   "key": "12.12",
+   "line": "Sam: Decision: we’ll implement adaptive flushing with a baseline of 30 seconds, enforce a max 5% battery impact, and add unit tests in a new sync module. Raj will prototype the module, Miki will write the tests, Jamie will validate battery metrics, and Priya will review the UI cue.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 1,
+    "ms": 6018,
+    "attempts": 18
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 2314
+   }
+  },
+  {
+   "key": "12.13",
+   "line": "Sam: I’ll set up a follow‑up sync for next Thursday to check progress; let’s keep the tickets updated accordingly.",
+   "accepted": [
+    "calendar_draft",
+    "ticket_draft",
+    "task"
+   ],
+   "jev": {
+    "choice": "calendar_draft",
+    "p": 0.99,
+    "ms": 2358,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 12647,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "13.0",
+   "line": "Jax: hey everyone, quick sync on terraform state management plan, goal is to decide on remote backend strategy and assign owners.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 2041,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 12537,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "13.1",
+   "line": "Deepa: 1. we need to evaluate s3 backend vs terraform cloud. 2. consider state locking mechanism. 3. define lifecycle policies for state files. 4. outline migration steps.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.86,
+    "ms": 1502,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 12428,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "13.2",
+   "line": "Morgan: terraform init -backend-config='bucket=my-terraform-state' -backend-config='key=prod/terraform.tfstate' will lock via dynamodb; we have a runbook https://runbooks.apex.com/tf-lock for that.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1069
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 13113
+   }
+  },
+  {
+   "key": "13.3",
+   "line": "Chloe: i think using terraform cloud is overkill for our iOS pipeline, stick with s3 + dynamodb, less friction.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2051,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 13498,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "13.4",
+   "line": "Desmond: Just to confirm, are we okay with encrypting the bucket with SSE-KMS and limiting access via IAM role?",
+   "accepted": [
+    "none",
+    "answer_question"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.98,
+    "ms": 2179,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 13443,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "13.5",
+   "line": "Sarah: @Morgan **please verify the KMS key rotation policy** and @Deepa **prepare the migration checklist** by EOD Thursday, we need this for the upcoming sprint.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.77,
+    "ms": 1788,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "doc_draft",
+    "p": 1,
+    "ms": 2354
+   }
+  },
+  {
+   "key": "13.6",
+   "line": "Patty: I can take the IAM policy review and update the repo readme with the backend config.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.99,
+    "ms": 4184,
+    "attempts": 13
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 714
+   }
+  },
+  {
+   "key": "13.7",
+   "line": "Jax: so we’re leaning s3+dynamodb, Morgan will confirm KMS rotation, Deepa will draft migration checklist, Patty handles IAM, Chloe okay with that.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.64,
+    "ms": 2083,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 236
+   }
+  },
+  {
+   "key": "13.8",
+   "line": "Deepa: 1. migration checklist will include: backup current state, enable versioning, apply backend config, run terraform plan -refresh-only, then apply. 2. we’ll run a dry‑run in staging first.",
+   "accepted": [
+    "none",
+    "task"
+   ],
+   "jev": {
+    "choice": "doc_draft",
+    "p": 0.71,
+    "ms": 893
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 14940,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "13.9",
+   "line": "Morgan: got it, I'll run `aws s3api put-bucket-versioning --bucket my-terraform-state --versioning-configuration Status=Enabled` and test lock with `aws dynamodb put-item`.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.99,
+    "ms": 1843,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "ERROR",
+    "p": 0,
+    "ms": 14722,
+    "error": "Error: The model could not complete judgement: HTTP 429"
+   }
+  },
+  {
+   "key": "13.10",
+   "line": "Chloe: just make sure the staging bucket name doesn’t clash with prod, otherwise we'll get weird state collisions.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 1876,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2659
+   }
+  },
+  {
+   "key": "13.11",
+   "line": "Desmond: Do we need a rollback plan if the migration fails? I can draft a simple revert script.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.89,
+    "ms": 2049,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2518
+   }
+  },
+  {
+   "key": "13.12",
+   "line": "Sarah: @Desmond **yes, include that in the checklist**, and make sure it's reviewed by @Jax before the Thursday deadline.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.91,
+    "ms": 2019,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 6801
+   }
+  },
+  {
+   "key": "13.13",
+   "line": "Jax: decision: use s3 backend with dynamodb locking; action items – Morgan verify KMS and run versioning command, Deepa deliver migration checklist with rollback by Thursday, Patty update IAM policies, Desmond add revert script, Chloe watch for naming conflicts. meeting adjourned.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.85,
+    "ms": 1988,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 6908
+   }
+  },
+  {
+   "key": "14.0",
+   "line": "Raj: Thanks everyone, let's get started. Goal is to decide on the core telemetry ingestion pipeline for the next release.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 463
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2580
+   }
+  },
+  {
+   "key": "14.1",
+   "line": "Miki: I think we should keep the existing S3 bucket for raw dumps and add a lightweight Kafka layer for real‑time processing.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2032,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2574
+   }
+  },
+  {
+   "key": "14.2",
+   "line": "Taylor: Kafka sounds good but we need to ensure the pending ops dashboard can still pull from the same source without extra latency.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1962,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 242
+   }
+  },
+  {
+   "key": "14.3",
+   "line": "Jordan: We could have the ops service read from a materialized view that Kafka streams populate, that keeps the latency under 200 ms.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2148,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 474
+   }
+  },
+  {
+   "key": "14.4",
+   "line": "Alex: From a demo perspective, we need the athlete dashboard to get near‑real‑time metrics, so the stream has to push updates within a second.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 888
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 12568
+   }
+  },
+  {
+   "key": "14.5",
+   "line": "Chloe: iOS client already ships telemetry to our endpoint; if we change the endpoint URL we need to bump the version, not ideal. See https://github.com/apex/telemetry-ios/issues/123.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1909,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 455
+   }
+  },
+  {
+   "key": "14.6",
+   "line": "Sam: We can keep the endpoint stable and have the backend forward to Kafka, that way the mobile side stays untouched.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2084
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 6516
+   }
+  },
+  {
+   "key": "14.7",
+   "line": "Elena: Sorry if this is obvious but... do we have a schema versioning plan for the new Kafka messages? 🚀✨ I want to make sure we don't break older devices.",
+   "accepted": [
+    "none",
+    "answer_question"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.92,
+    "ms": 2506,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 13160
+   }
+  },
+  {
+   "key": "14.8",
+   "line": "Chris: We can version the protobuf definition and have the consumer fallback to the old schema if needed.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.98,
+    "ms": 1555,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 12635
+   }
+  },
+  {
+   "key": "14.9",
+   "line": "Kaitlyn: I'll double‑check the alert configs for the new Kafka consumer group so we get notified on lag spikes.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 1,
+    "ms": 1995,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 2323
+   }
+  },
+  {
+   "key": "14.10",
+   "line": "Priya: We should also consider the user delight angle—if telemetry is delayed the athlete sees stale data, which hurts the experience, so the pipeline must guarantee sub‑second delivery.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2156,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 222
+   }
+  },
+  {
+   "key": "14.11",
+   "line": "Marc: Cost‑tagging on the Kafka topics will be needed; we should add a tag for 'telemetry' and set retention to 48 hours.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.64,
+    "ms": 1819,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 426
+   }
+  },
+  {
+   "key": "14.12",
+   "line": "Raj: So to recap, we'll introduce a Kafka layer, keep the S3 bucket for raw storage, version the protobuf schema, and set up alerts. Sam will provision the Kafka cluster, Miki will draft the schema, Chloe will verify the iOS client endpoint compatibility, and Kaitlyn will configure alerts. Anyone object?",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.52,
+    "ms": 1109
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 238
+   }
+  },
+  {
+   "key": "14.13",
+   "line": "Sam: No objections, I can have the cluster up in a week.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.99,
+    "ms": 1977,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 283
+   }
+  },
+  {
+   "key": "14.14",
+   "line": "Miki: I'll have the schema draft ready by Friday.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.82,
+    "ms": 2025,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 238
+   }
+  },
+  {
+   "key": "14.15",
+   "line": "Chloe: I'll test the endpoint change in a feature branch by Thursday.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 1,
+    "ms": 2001
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 415
+   }
+  },
+  {
+   "key": "14.16",
+   "line": "Raj: Great, that's our action items. We'll reconvene next Monday to review progress.",
+   "accepted": [
+    "calendar_draft",
+    "task",
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.56,
+    "ms": 2038,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 242
+   }
+  },
+  {
+   "key": "15.0",
+   "line": "Nadia: Thanks everyone for joining. The goal of this call is to decide how we’ll upgrade our automation framework for the upcoming release, covering version, integration, testing, and compliance steps.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1796,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 232
+   }
+  },
+  {
+   "key": "15.1",
+   "line": "Ben: Right now we’re on Framework 1.8.3 and we’ve been hitting intermittent timeouts in the DB pool during high‑load tests.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2123,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 227
+   }
+  },
+  {
+   "key": "15.2",
+   "line": "Chris: If we move to a newer version, I need to know how it’ll hook into our Jenkins pipelines—any changes to the Gradle scripts?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.94,
+    "ms": 4025,
+    "attempts": 12
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 417
+   }
+  },
+  {
+   "key": "15.3",
+   "line": "Tasha: I’m also worried about data privacy; the new framework logs more raw telemetry, so we’ll need to verify it still meets GDPR guidelines.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1976
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 323
+   }
+  },
+  {
+   "key": "15.4",
+   "line": "Sophie: There’s an open‑source library, AutoCore 2.5.0, that already handles the logging filters we need, and it’s compatible with our Java 11 stack.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1893,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 305
+   }
+  },
+  {
+   "key": "15.5",
+   "line": "Karen: We should think about the timeline—how many sprints do we have before the next production cut, and who can spare capacity for the migration?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2122,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 232
+   }
+  },
+  {
+   "key": "15.6",
+   "line": "Patty: Our QA team can allocate two engineers to update the test suites, but we’ll need a clear test plan before we start.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.9,
+    "ms": 1909,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 541
+   }
+  },
+  {
+   "key": "15.7",
+   "line": "Nadia: So we have three main options: stay on 1.8.3, upgrade to AutoCore 2.5.0 with some custom config, or wait for the next major release. Which direction makes sense given the release schedule?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2147,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 594
+   }
+  },
+  {
+   "key": "15.8",
+   "line": "Ben: I’d vote for upgrading to AutoCore 2.5.0 now, bump the maxPoolSize in HikariCP to 30, and add the logging filter to mask PII.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.97,
+    "ms": 1900,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 417
+   }
+  },
+  {
+   "key": "15.9",
+   "line": "Chris: That sounds reasonable, but we should keep the old framework as a fallback in case the CI build breaks; maybe a feature flag?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1707
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 442
+   }
+  },
+  {
+   "key": "15.10",
+   "line": "Sophie: I can add the feature flag and update the docs; the team has already used similar flags for other components.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.98,
+    "ms": 2323,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 335
+   }
+  },
+  {
+   "key": "15.11",
+   "line": "Tasha: Before we lock it in, can we run a compliance check on the new logging defaults? I’ll need a week to review the data flow.",
+   "accepted": [
+    "task",
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.68,
+    "ms": 1731,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 449
+   }
+  },
+  {
+   "key": "15.12",
+   "line": "Nadia: Okay, the decision point is: we’ll proceed with the AutoCore 2.5.0 upgrade, contingent on Tasha’s compliance sign‑off and a fallback flag in CI.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.81,
+    "ms": 1940,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 350
+   }
+  },
+  {
+   "key": "15.13",
+   "line": "Karen: I’ll update the project timeline to reflect a two‑sprint window and note the compliance checkpoint in the roadmap.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.93,
+    "ms": 2382
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 337
+   }
+  },
+  {
+   "key": "15.14",
+   "line": "Patty: I’ll draft the test automation update plan and share it with the team by Thursday.",
+   "accepted": [
+    "task",
+    "doc_draft"
+   ],
+   "jev": {
+    "choice": "doc_draft",
+    "p": 0.7,
+    "ms": 1915,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 507
+   }
+  },
+  {
+   "key": "15.15",
+   "line": "Nadia: To recap, we’re upgrading to AutoCore 2.5.0 with a fallback flag; Tasha will deliver the compliance sign‑off by next Friday, Patty will provide the test plan by Thursday, Ben will handle the code migration, and Chris will integrate the feature flag into CI. Any final concerns? If not, we’re good.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.68,
+    "ms": 2011,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 324
+   }
+  },
+  {
+   "key": "16.0",
+   "line": "Jax: hey everyone, goal of this call is to lock down the kafka scaling plan for Q3... we need a concrete approach and owners.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 2136,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 582
+   }
+  },
+  {
+   "key": "16.1",
+   "line": "Deepa: 1. assess current broker load via JMX metrics; 2. project peak throughput using 1.5x growth factor; 3. decide on partition count per topic based on target lag < 100ms; if we exceed 80% CPU we add a broker; 4. outline config changes (replication factor, min.insync.replicas) and rollout steps.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.65,
+    "ms": 1918,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 481
+   }
+  },
+  {
+   "key": "16.2",
+   "line": "Morgan: terraform plan shows we have capacity for two additional m5.4xlarge brokers in us-east-2; run `kubectl get pods -n kafka -l app=kafka -o jsonpath='{.items[*].status.phase}'` to confirm all pods are Running before scaling; see runbook https://runbooks.apex/kafka/scale for step‑by‑step.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.85,
+    "ms": 1627
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 462
+   }
+  },
+  {
+   "key": "16.3",
+   "line": "Yusuf: just to confirm, are we targeting a total of 12 partitions per topic after the scale, or should we keep the current 8 and rely on more brokers?",
+   "accepted": [
+    "none",
+    "answer_question"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.96,
+    "ms": 1982,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 436
+   }
+  },
+  {
+   "key": "16.4",
+   "line": "Mike: i think we should increase partitions to 12 to spread the load; that also aligns with the upcoming feature flag rollout that expects higher parallelism.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 2394,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 446
+   }
+  },
+  {
+   "key": "16.5",
+   "line": "Dave: agree with mike, but we need to update the consumer group configs to handle the new partition count, otherwise rebalance could spike latency.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.92,
+    "ms": 1926,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2597
+   }
+  },
+  {
+   "key": "16.6",
+   "line": "Sarah: @Deepa @Morgan please **provide the revised partition count matrix and updated Terraform plan by EOD tomorrow**; @Yusuf verify the consumer lag metrics after the change, and @Mike coordinate the feature flag rollout schedule. sorry typos, sent from mobile",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.71,
+    "ms": 1622,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 6588
+   }
+  },
+  {
+   "key": "16.7",
+   "line": "Jax: so decision: we’ll add two brokers, bump partitions to 12, update configs, and each of you has the follow‑up as i just listed. deepa will draft the steps, morgan will apply terraform, yusuf will monitor lag, mike handles feature flag, dave updates consumer groups. meeting adjourned.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.97,
+    "ms": 1996,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 6703
+   }
+  },
+  {
+   "key": "17.0",
+   "line": "Priya: ok team, let’s lock in the NOC brand narrative today — we need a story that sings the same high‑octane rhythm as our wearables, while also quantifying user delight in a way that feels tangible, not abstract.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.89,
+    "ms": 1307
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 6610
+   }
+  },
+  {
+   "key": "17.1",
+   "line": "Marc: Got it, the goal is clear. We'll focus on aligning the narrative with the performance data angle.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.78,
+    "ms": 1981,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 4233
+   }
+  },
+  {
+   "key": "17.2",
+   "line": "Karen: Thanks for framing that, Priya. I’ll make sure whatever we settle on respects our brand guidelines and the inclusive language policy we’ve been reinforcing.",
+   "accepted": [
+    "none",
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.61,
+    "ms": 2141,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 398
+   }
+  },
+  {
+   "key": "17.3",
+   "line": "Chris: Quick question: are we positioning the NOC as a proactive guardian for athletes, or more as an analytical coach that reacts to data?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2032,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 237
+   }
+  },
+  {
+   "key": "17.4",
+   "line": "Priya: We’re aiming for a hybrid — think of the NOC as a silent sentinel that anticipates strain, then morphs into a data‑driven mentor that delivers actionable insights right when the athlete needs them — that duality is the emotional core.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 932
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 414
+   }
+  },
+  {
+   "key": "17.5",
+   "line": "Jax: i like the sentinel vibe but need to make sure the backend can tag ‘anticipation’ events without blowing up the schema...",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.91,
+    "ms": 2181
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 279
+   }
+  },
+  {
+   "key": "17.6",
+   "line": "Tom: I’ll update the brand guidelines doc with the new narrative and push it to the shared folder by EOD.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.54,
+    "ms": 2066,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 332
+   }
+  },
+  {
+   "key": "17.7",
+   "line": "Marc: Let’s set a deadline for stakeholder review by Wednesday, so we can lock it in before the next sprint.",
+   "accepted": [
+    "none",
+    "calendar_draft"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.51,
+    "ms": 1970,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 364
+   }
+  },
+  {
+   "key": "17.8",
+   "line": "Karen: That works, and I’ll circulate the updated language to the compliance team to double‑check the inclusivity metrics.",
+   "accepted": [
+    "email_draft",
+    "task"
+   ],
+   "jev": {
+    "choice": "email_draft",
+    "p": 0.79,
+    "ms": 1888,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "email_draft",
+    "p": 1,
+    "ms": 417
+   }
+  },
+  {
+   "key": "17.9",
+   "line": "Priya: Great, decision: we’ll adopt the hybrid sentinel‑coach narrative as drafted. Action items — Chris will refine the copy for clarity, Tom will publish the updated guidelines, Jax will audit the event tagging schema, and Karen will run the compliance check; we’ll reconvene Thursday for final sign‑off.",
+   "accepted": [
+    "task",
+    "calendar_draft"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.98,
+    "ms": 2126,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 375
+   }
+  },
+  {
+   "key": "18.0",
+   "line": "Sarah: Alright team, the goal of this call is to nail down the UX for the new export feature—specifically file formats, the modal flow, and who owns each piece.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 2120
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 381
+   }
+  },
+  {
+   "key": "18.1",
+   "line": "Elena: Sorry if this is obvious but... are we targeting coaches who need bulk data or athletes who just want a quick snapshot? 😅✨",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2028,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 476
+   }
+  },
+  {
+   "key": "18.2",
+   "line": "Marc: We already have an export endpoint for CSV used by the analytics dashboard; do we plan to reuse that or build a new one?",
+   "accepted": [
+    "none",
+    "answer_question"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.91,
+    "ms": 1886,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 260
+   }
+  },
+  {
+   "key": "18.3",
+   "line": "Priya: I’ve been visualizing the export interaction as a sleek, two‑step modal that balances user delight with clarity—the first step confirms data range, the second offers format choices, and subtle micro‑animations reassure the user that their data is being packaged securely.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2371,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 289
+   }
+  },
+  {
+   "key": "18.4",
+   "line": "Tom: 1. Max export size 5 GB per request. 2. Must comply with GDPR export‑right. 3. Data must be encrypted at rest for CSV/JSON files.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.78,
+    "ms": 1519,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 422
+   }
+  },
+  {
+   "key": "18.5",
+   "line": "Felix: We should align the UI with the existing API versioning strategy Deepa mentioned, so any new format doesn’t break current consumers.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1962
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 404
+   }
+  },
+  {
+   "key": "18.6",
+   "line": "Sarah: @Elena could you draft the initial wireframes for the modal and **share a Figma link by EOD**? @Marc, please **update the spec to include JSON output** and note the version bump. sent from mobile",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.92,
+    "ms": 2053,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 360
+   }
+  },
+  {
+   "key": "18.7",
+   "line": "Elena: Absolutely! I’ll spin up a quick Figma file, add some happy‑path flows, and ping you all by tonight. 🚀",
+   "accepted": [
+    "task",
+    "message_draft"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.93,
+    "ms": 2115,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 391
+   }
+  },
+  {
+   "key": "18.8",
+   "line": "Marc: Do we need both CSV and JSON, or is one sufficient for the MVP?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1958,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 336
+   }
+  },
+  {
+   "key": "18.9",
+   "line": "Priya: Both are valuable—CSV for quick spreadsheet imports, JSON for programmatic consumption—but we can set CSV as the default to keep the UI simple.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.97,
+    "ms": 1881,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 517
+   }
+  },
+  {
+   "key": "18.10",
+   "line": "Felix: If we add JSON, we’ll need to version the export API separately; I’ll draft a versioning note.",
+   "accepted": [
+    "task",
+    "doc_draft"
+   ],
+   "jev": {
+    "choice": "doc_draft",
+    "p": 0.86,
+    "ms": 2037
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 807
+   }
+  },
+  {
+   "key": "18.11",
+   "line": "Tom: Required fields: user_id, timestamp, metric_name, metric_value, device_id. Optional: notes, location.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.92,
+    "ms": 2301
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 477
+   }
+  },
+  {
+   "key": "18.12",
+   "line": "Sarah: Decision: Export will support CSV and JSON, defaulting to CSV; the modal will have a two‑step flow as Priya described. @Marc will update the spec with JSON and versioning, @Elena will deliver wireframes by Friday, and @Felix will add the version note to the API doc. Thanks, everyone. sent from mobile",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.85,
+    "ms": 2499,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 955
+   }
+  },
+  {
+   "key": "19.0",
+   "line": "Sam: Alright team, the goal of this sync is to nail down the crash reporting flow for the next release—specifically, which data goes to Firebase Crashlytics versus Datadog, and who will implement each piece.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.99,
+    "ms": 1558,
+    "attempts": 5
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 303
+   }
+  },
+  {
+   "key": "19.1",
+   "line": "Chloe: Firebase alone is garbage for iOS, we need Crashlytics. https://github.com/apex/ios-crash-issues/42",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1946,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 584
+   }
+  },
+  {
+   "key": "19.2",
+   "line": "Priya: I’ve been visualizing the athlete’s experience when a crash strikes—there’s that jarring silence, the abrupt halt of data streams, and it shatters the sense of trust we’ve built; we need an elegant fallback that instantly reassures them, maybe a subtle overlay that says ‘We’re processing the issue, stay tuned’.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 2419,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 301
+   }
+  },
+  {
+   "key": "19.3",
+   "line": "Jamie: Do we need to capture the full device state before termination, or is the stack trace sufficient for debugging?",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 1,
+    "ms": 1735,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 509
+   }
+  },
+  {
+   "key": "19.4",
+   "line": "Deepa: 1. Catalog all crash entry points in the app. 2. Map required fields: stack trace, device model, OS version to Crashlytics; performance counters, network latency to Datadog. 3. Build a thin wrapper that routes data accordingly. 4. Validate in the staging environment before merging.",
+   "accepted": [
+    "none"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.7,
+    "ms": 1915,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 423
+   }
+  },
+  {
+   "key": "19.5",
+   "line": "Zoe: What’s the expected latency for crash data to appear in Datadog dashboards? We need to set monitoring thresholds.",
+   "accepted": [
+    "answer_question",
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.74,
+    "ms": 1938
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 517
+   }
+  },
+  {
+   "key": "19.6",
+   "line": "Elena: Sorry if this is obvious but... do we get real‑time alerts in Slack when a crash spikes? 😅✨",
+   "accepted": [
+    "answer_question",
+    "none"
+   ],
+   "jev": {
+    "choice": "none",
+    "p": 0.91,
+    "ms": 2394,
+    "attempts": 7
+   },
+   "qwen": {
+    "choice": "none",
+    "p": 1,
+    "ms": 644
+   }
+  },
+  {
+   "key": "19.7",
+   "line": "Sam: We’ll push stack trace, device model, and OS version to Crashlytics, and send performance metrics like frame drops and network latency to Datadog. Chloe, you’ll add the Crashlytics pod and verify the iOS conventions; Deepa, draft the field‑mapping doc by Friday; Priya, design the in‑app fallback overlay; Zoe, define the Datadog alert thresholds and share them; Elena, set up the Slack webhook for real‑time alerts.",
+   "accepted": [
+    "task"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.98,
+    "ms": 1889
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 313
+   }
+  },
+  {
+   "key": "19.8",
+   "line": "Sam: Decision: split crash data as discussed, with owners assigned. Action items: Chloe on Crashlytics integration, Deepa on mapping doc, Priya on UI fallback, Zoe on alert thresholds, Elena on Slack alerts. We'll reconvene next Monday to review progress.",
+   "accepted": [
+    "task",
+    "calendar_draft"
+   ],
+   "jev": {
+    "choice": "task",
+    "p": 0.95,
+    "ms": 1583,
+    "attempts": 6
+   },
+   "qwen": {
+    "choice": "task",
+    "p": 1,
+    "ms": 307
+   }
+  }
+ ]
+}

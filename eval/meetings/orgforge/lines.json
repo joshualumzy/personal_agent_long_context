@@ -1,0 +1,1407 @@
+[
+ {
+  "sourceId": "zoom_2026-02-27_e3ae6744",
+  "title": "Zoom: review telemetry pipeline architecture (2026-02-27)",
+  "lines": [
+   {
+    "id": "zoom_2026-02-27_e3ae6744#0",
+    "speaker": "Jax",
+    "text": "hey all, goal: quick review of the telemetry pipeline architecture and lock down the core components we’ll ship this sprint."
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#1",
+    "speaker": "Deepa",
+    "text": "i’ll break this down: 1. ingest layer – currently we have kinesis but kafka would give better ordering guarantees; 2. storage – raw events to s3, processed aggregates to dynamodb; 3. processing – flink jobs pulling from kafka; 4. alerting – prometheus exporters feeding datadog. if we shift to kafka we need to re‑wire the producer libs, then we can keep the rest unchanged."
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#2",
+    "speaker": "Morgan",
+    "text": "i ran terraform plan on the s3 bucket changes – it shows a new lifecycle rule `aws_s3_bucket.lifecycle_rule` with `expiration.days = 90`. also `kubectl get svc -n telemetry` confirms the kafka svc is pending. we should apply the runbook #infra‑telemetry‑update before prod rollout."
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#3",
+    "speaker": "Priya",
+    "text": "the data stream is the heartbeat of our athlete experience – it needs to feel seamless, like a silk thread weaving through the UI. if we surface latency metrics in a warm amber tone, users will sense reliability; a cold blue for error spikes will cue urgency. let’s align the visual language with the brand promise of “always on, always precise”."
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#4",
+    "speaker": "Tom",
+    "text": "need clarification on retention: 1. raw s3 retention period, 2. dynamodb ttl config, 3. kafka topic compaction policy."
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#5",
+    "speaker": "Jax",
+    "text": "cost is a factor – kafka clusters eat more budget than kinesis, especially with cross‑region replication… we gotta keep the spend under 5% of ops budget."
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#6",
+    "speaker": "Patty",
+    "text": "just to confirm, are we versioning the event schema in the s3 prefix, or using a separate schema registry?"
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#7",
+    "speaker": "Chris",
+    "text": "we could use the existing confluent schema registry; it integrates with kafka and lets us evolve schemas without breaking consumers."
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#8",
+    "speaker": "Deepa",
+    "text": "so updating the plan: 1. replace kinesis with kafka (i’ll spin up a dev cluster); 2. point the producers to the kafka bootstrap – that’s a code change in the telemetry SDK; 3. keep s3 for raw, add lifecycle rule as Morgan outlined; 4. enable schema registry as Chris suggested. does anyone see a blocker?"
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#9",
+    "speaker": "Morgan",
+    "text": "no blockers on the infra side, just need to schedule the terraform apply after the kafka node is healthy. i’ll add a `terraform apply -target=module.kafka` to the pipeline."
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#10",
+    "speaker": "Priya",
+    "text": "i’ll draft the dashboard mock with the amber/blue palette and share in the design channel by tomorrow."
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#11",
+    "speaker": "Tom",
+    "text": "i’ll verify the ttl settings on dynamodb and confirm the kafka topic compaction config matches the retention policy."
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#12",
+    "speaker": "Jax",
+    "text": "okay, decision: we go with kafka + s3 + dynamodb, use schema registry, and apply the lifecycle rule. deepa owns the kafka prototype, morgan owns the terraform update, tom owns retention verification, priya owns the UI mock. any final thoughts?"
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#13",
+    "speaker": "Patty",
+    "text": "none from me."
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#14",
+    "speaker": "Chris",
+    "text": "all good."
+   },
+   {
+    "id": "zoom_2026-02-27_e3ae6744#15",
+    "speaker": "Jax",
+    "text": "thanks everyone, i’ll post the action items in the ticket and set a follow‑up sync for next wednesday."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-01-29_c9aa5196",
+  "title": "Zoom: branch protection review (2026-01-29)",
+  "lines": [
+   {
+    "id": "zoom_2026-01-29_c9aa5196#0",
+    "speaker": "Jax",
+    "text": "ok folks the goal is to review our branch protection strategy and lock down the core repos..."
+   },
+   {
+    "id": "zoom_2026-01-29_c9aa5196#1",
+    "speaker": "Morgan",
+    "text": "current terraform state shows the codecommit repo protection block missing required_approving_review_count. `terraform plan -target=aws_codecommit_repository.protected` outputs a diff adding that field."
+   },
+   {
+    "id": "zoom_2026-01-29_c9aa5196#2",
+    "speaker": "Hanna",
+    "text": "Which repositories are we targeting with this change?"
+   },
+   {
+    "id": "zoom_2026-01-29_c9aa5196#3",
+    "speaker": "Jax",
+    "text": "we're focusing on the core services repo and the data ingestion repo for now..."
+   },
+   {
+    "id": "zoom_2026-01-29_c9aa5196#4",
+    "speaker": "Priya",
+    "text": "i’m thinking the developer experience could suffer if we make the rules too rigid — we need clear, friendly language in the PR guidelines so the team feels guided rather than constrained."
+   },
+   {
+    "id": "zoom_2026-01-29_c9aa5196#5",
+    "speaker": "Sam",
+    "text": "we should enable required status checks for the CI pipeline and set required_approving_review_count to 2 to keep quality high."
+   },
+   {
+    "id": "zoom_2026-01-29_c9aa5196#6",
+    "speaker": "Morgan",
+    "text": "the terraform snippet would be: \\n\\nresource \\\"aws_codecommit_repository\\\" \\\"protected\\\" {\\n  repository_name = var.repo_name\\n  branch_policy {\\n    required_approving_review_count = 2\\n    strict = true\\n    enforce_admins = true\\n    status_checks = [\\\"ci-build\\\"]\\n  }\\n}\\n"
+   },
+   {
+    "id": "zoom_2026-01-29_c9aa5196#7",
+    "speaker": "Dave",
+    "text": "do we need an exception for hotfix branches that need to go out fast?"
+   },
+   {
+    "id": "zoom_2026-01-29_c9aa5196#8",
+    "speaker": "Jamie",
+    "text": "we can add a separate protection rule for `release/*` branches that only requires one approval and skips the CI check."
+   },
+   {
+    "id": "zoom_2026-01-29_c9aa5196#9",
+    "speaker": "Elena",
+    "text": "sorry if this is obvious but do we also need to update the onboarding docs and the PR template!!! 🚀✨"
+   },
+   {
+    "id": "zoom_2026-01-29_c9aa5196#10",
+    "speaker": "Sam",
+    "text": "i’ll draft the updated docs and push them to the wiki after the terraform change is merged."
+   },
+   {
+    "id": "zoom_2026-01-29_c9aa5196#11",
+    "speaker": "Priya",
+    "text": "i’ll craft the microcopy for the PR template, using a tone that feels supportive — something like “please ensure all checks pass before merging, thank you for keeping the code healthy!”"
+   },
+   {
+    "id": "zoom_2026-01-29_c9aa5196#12",
+    "speaker": "Jax",
+    "text": "so decision: we’ll apply terraform branch protection to core services and ingestion repos with 2 approvals, CI checks, admin override, plus a lighter rule for release/*; Morgan will own the terraform PR, Sam will own the docs update, Priya will own the PR template microcopy, and Elena will coordinate the rollout schedule."
+   },
+   {
+    "id": "zoom_2026-01-29_c9aa5196#13",
+    "speaker": "Jax",
+    "text": "that’s it thanks everyone meeting adjourned."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-03-03_a3c4c0f6",
+  "title": "Zoom: Align UI copy with brand (2026-03-03)",
+  "lines": [
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#0",
+    "speaker": "Priya",
+    "text": "Alright team, thanks for hopping on — our goal today is to align the UI copy with our refreshed brand voice, making sure every button label, tooltip, and error message sings the same tone while still staying crystal‑clear for the athletes."
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#1",
+    "speaker": "Marc",
+    "text": "Sounds good. I can share the current copy inventory and note where it diverges."
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#2",
+    "speaker": "Sophie",
+    "text": "Do we have a deadline for the rollout? The product team needs it before the next sprint."
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#3",
+    "speaker": "Priya",
+    "text": "We're targeting the end of next week so developers can ship the updated strings with the upcoming firmware build."
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#4",
+    "speaker": "Deepa",
+    "text": "1. We'll audit all UI strings in the repo. 2. We'll map each to the new brand guidelines. 3. We'll flag any that need copywriting revisions. 4. We'll push the approved set to the config service."
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#5",
+    "speaker": "Elena",
+    "text": "Sorry if this is obvious but... do we have a shared doc where we can track those flags? 😅✨"
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#6",
+    "speaker": "Dave",
+    "text": "We can use the existing Confluence page; I’ll add a table for the audit."
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#7",
+    "speaker": "Sophie",
+    "text": "Just make sure the table includes a column for the responsible writer so we don’t lose accountability."
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#8",
+    "speaker": "Priya",
+    "text": "Exactly—let's create columns for current copy, proposed copy, tone note, and owner; that way we keep the narrative thread visible."
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#9",
+    "speaker": "Desmond",
+    "text": "What level of formality are we aiming for? The current copy is pretty direct; the brand guide suggests a more motivational vibe."
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#10",
+    "speaker": "Priya",
+    "text": "We want a tone that's energetic yet precise—think 'you’re on track' rather than 'you’re doing okay', while still being concise enough for a smartwatch screen."
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#11",
+    "speaker": "Marc",
+    "text": "I’ll draft a short style cheat sheet that highlights examples for buttons, alerts, and onboarding screens."
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#12",
+    "speaker": "Deepa",
+    "text": "5. Marc delivers the cheat sheet by tomorrow. 6. Sophie reviews and adds any missing edge cases. 7. Dave updates the Confluence table with the audit results. 8. Elena will coordinate with the QA team to verify copy rendering."
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#13",
+    "speaker": "Elena",
+    "text": "Sounds awesome! I'll set up a quick Slack channel for the copy QA so we can ping each other when we spot issues 🚀"
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#14",
+    "speaker": "Jamie",
+    "text": "Who will give the final sign‑off before we push to production?"
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#15",
+    "speaker": "Priya",
+    "text": "Final sign‑off will come from me, as the brand steward, after the cheat sheet and audit are complete."
+   },
+   {
+    "id": "zoom_2026-03-03_a3c4c0f6#16",
+    "speaker": "Priya",
+    "text": "To recap: Marc will draft the cheat sheet by tomorrow, Sophie will review it, Dave will update the Confluence audit table, Elena will create the QA Slack channel, and I’ll give final sign‑off on Friday. Thanks everyone."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-02-27_4cc78c31",
+  "title": "Zoom: Telemetry test strategy alignment (2026-02-27)",
+  "lines": [
+   {
+    "id": "zoom_2026-02-27_4cc78c31#0",
+    "speaker": "Nadia",
+    "text": "Thanks everyone for joining, the goal is to get a concrete alignment on our telemetry test strategy so we can ship the next firmware update without gaps."
+   },
+   {
+    "id": "zoom_2026-02-27_4cc78c31#1",
+    "speaker": "Ben",
+    "text": "Got it. Right now our unit coverage sits around 68% on the sensor stack, but we don't have a clear integration plan for the cloud ingest layer."
+   },
+   {
+    "id": "zoom_2026-02-27_4cc78c31#2",
+    "speaker": "Zoe",
+    "text": "Exactly, the ingestion pipeline has a few edge cases around out‑of‑order packets that aren't exercised in CI yet."
+   },
+   {
+    "id": "zoom_2026-02-27_4cc78c31#3",
+    "speaker": "Chloe",
+    "text": "Mobile SDK telemetry needs its own suite, otherwise we're just testing the backend and ignoring the iOS side."
+   },
+   {
+    "id": "zoom_2026-02-27_4cc78c31#4",
+    "speaker": "Priya",
+    "text": "From a user‑experience angle, the telemetry UI should gracefully handle missing data, so we need tests that simulate intermittent connectivity and verify the placeholder visuals stay on brand."
+   },
+   {
+    "id": "zoom_2026-02-27_4cc78c31#5",
+    "speaker": "Vince",
+    "text": "Do we have parity between our staging and prod environments for the data lake? If not, tests could pass here and fail in the field."
+   },
+   {
+    "id": "zoom_2026-02-27_4cc78c31#6",
+    "speaker": "Sanjay",
+    "text": "Our monitoring alerts currently only flag latency spikes, not data fidelity issues, so we should add an alert for sudden drops in telemetry volume."
+   },
+   {
+    "id": "zoom_2026-02-27_4cc78c31#7",
+    "speaker": "Nadia",
+    "text": "Just to be precise, are we all on version 2.15.0 of the test framework, or are some teams still on 2.14.3‑rc1?"
+   },
+   {
+    "id": "zoom_2026-02-27_4cc78c31#8",
+    "speaker": "Ben",
+    "text": "We're on 2.15.0 across the board. I propose a three‑layer approach: unit tests for sensor firmware, integration tests for the ingestion service, and end‑to‑end tests that include the mobile SDK and UI."
+   },
+   {
+    "id": "zoom_2026-02-27_4cc78c31#9",
+    "speaker": "Zoe",
+    "text": "That makes sense, but who will own the integration pipeline changes? We need a clear owner to avoid the same bottleneck we hit last sprint."
+   },
+   {
+    "id": "zoom_2026-02-27_4cc78c31#10",
+    "speaker": "Chloe",
+    "text": "I can set up a fastlane matrix that runs the SDK tests on iOS 15 and 16, and push the results to the same CI dashboard."
+   },
+   {
+    "id": "zoom_2026-02-27_4cc78c31#11",
+    "speaker": "Priya",
+    "text": "I'll draft the UI test cases that verify the placeholder visuals and make sure the copy follows the brand style guide."
+   },
+   {
+    "id": "zoom_2026-02-27_4cc78c31#12",
+    "speaker": "Vince",
+    "text": "I'll update the documentation to reflect the new three‑layer strategy and add a checklist for the release notes."
+   },
+   {
+    "id": "zoom_2026-02-27_4cc78c31#13",
+    "speaker": "Sanjay",
+    "text": "I'll add a new alert rule for telemetry volume dip and tag it to the test dashboard so we can see failures in real time."
+   },
+   {
+    "id": "zoom_2026-02-27_4cc78c31#14",
+    "speaker": "Nadia",
+    "text": "Alright, decision: we adopt the three‑layer telemetry test strategy. Ben will draft the unit test plan, Zoe will coordinate the integration pipeline, Chloe will implement the mobile SDK matrix, Priya will create UI placeholder tests, Vince will update the docs, and Sanjay will add the volume‑dip alert. We'll reconvene next week to review the first test run results."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-01-23_ef87b79b",
+  "title": "Zoom: Finalize brand narrative for launch (2026-01-23)",
+  "lines": [
+   {
+    "id": "zoom_2026-01-23_ef87b79b#0",
+    "speaker": "Priya",
+    "text": "Alright team, thanks for joining — our goal today is to lock down the brand narrative that will anchor the upcoming product launch, ensuring it resonates with athletes, investors, and the broader market. We'll walk through the core pillars, tone, and the headline tagline, then assign ownership for the final copy. Any quick thoughts before we dive?"
+   },
+   {
+    "id": "zoom_2026-01-23_ef87b79b#1",
+    "speaker": "Marc",
+    "text": "I think we need to be clear on the three pillars we want to highlight: performance data accuracy, seamless integration, and athlete empowerment. Could we confirm those are the ones we’re aligning with?"
+   },
+   {
+    "id": "zoom_2026-01-23_ef87b79b#2",
+    "speaker": "Sophie",
+    "text": "Those pillars match the product roadmap and the user research we did last quarter, so I’m on board. We should also make sure the narrative reflects our sustainability commitments."
+   },
+   {
+    "id": "zoom_2026-01-23_ef87b79b#3",
+    "speaker": "Yusuf",
+    "text": "Just to clarify, are we targeting elite athletes only, or also recreational users in this narrative?"
+   },
+   {
+    "id": "zoom_2026-01-23_ef87b79b#4",
+    "speaker": "Priya",
+    "text": "Good point, Yusuf — the narrative should speak to both elite and serious recreational athletes, emphasizing that the data is actionable for anyone looking to improve, while the brand voice stays aspirational."
+   },
+   {
+    "id": "zoom_2026-01-23_ef87b79b#5",
+    "speaker": "Desmond",
+    "text": "From a tone perspective, we want it confident but not arrogant, using active verbs that inspire action. I’d suggest we avoid jargon that only engineers understand."
+   },
+   {
+    "id": "zoom_2026-01-23_ef87b79b#6",
+    "speaker": "Chloe",
+    "text": "iOS copy needs to stay under 30 characters for the tagline, otherwise it breaks layout — here's the spec: https://github.com/apex/brand-assets/issues/42"
+   },
+   {
+    "id": "zoom_2026-01-23_ef87b79b#7",
+    "speaker": "Sarah",
+    "text": "@Marc **please draft the three pillar statements by EOD tomorrow**. @Priya **prepare the final narrative doc and circulate it for review by Friday**. @Chloe **verify the tagline length on mobile and report any issues**. sent from mobile"
+   },
+   {
+    "id": "zoom_2026-01-23_ef87b79b#8",
+    "speaker": "Priya",
+    "text": "Thanks everyone — we’ve agreed on the three pillars (performance accuracy, integration, empowerment), the inclusive audience scope, and a confident yet accessible tone. Marc will draft the pillar statements, I’ll compile the narrative, and Chloe will validate the mobile tagline. I’ll send a summary by tomorrow morning."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-02-12_da84fda7",
+  "title": "Zoom: Finalize Q1 brand narrative (2026-02-12)",
+  "lines": [
+   {
+    "id": "zoom_2026-02-12_da84fda7#0",
+    "speaker": "Priya",
+    "text": "Alright team, thanks for hopping on — our goal today is to lock down the Q1 brand narrative, align the core message, visual tone, and the key performance indicators that will let us measure user delight across the new wearables launch."
+   },
+   {
+    "id": "zoom_2026-02-12_da84fda7#1",
+    "speaker": "Marc",
+    "text": "Got it, Priya. I’ll keep an eye on the timeline and make sure we surface any dependencies."
+   },
+   {
+    "id": "zoom_2026-02-12_da84fda7#2",
+    "speaker": "Jamie",
+    "text": "Quick question — are we aiming for a single overarching tagline or a set of supporting pillars for the quarter?"
+   },
+   {
+    "id": "zoom_2026-02-12_da84fda7#3",
+    "speaker": "Deepa",
+    "text": "1. We need to define the narrative hierarchy: tagline, pillar statements, and supporting copy. 2. Align each pillar with measurable metrics like activation rate, session length, and NPS. 3. Validate with the data team that our metrics are trackable in the existing dashboard."
+   },
+   {
+    "id": "zoom_2026-02-12_da84fda7#4",
+    "speaker": "Tom",
+    "text": "I have the current asset inventory list ready — 1) logo files, 2) color palette specs, 3) motion graphics templates. Let me know if you need anything added."
+   },
+   {
+    "id": "zoom_2026-02-12_da84fda7#5",
+    "speaker": "Patty",
+    "text": "From a sales perspective, the narrative should highlight performance insights and community competition, because those are the top drivers we hear from prospects."
+   },
+   {
+    "id": "zoom_2026-02-12_da84fda7#6",
+    "speaker": "Chris",
+    "text": "I agree with Patty, and we should also weave in the durability angle since Q1 includes the new water‑resistant model."
+   },
+   {
+    "id": "zoom_2026-02-12_da84fda7#7",
+    "speaker": "Priya",
+    "text": "I’m hearing a pattern — we want a tagline that captures elevation, insight, and resilience — something like ‘Elevate Every Move’ that feels both aspirational and data‑driven, and then pillar statements that flesh out insight, community, and durability."
+   },
+   {
+    "id": "zoom_2026-02-12_da84fda7#8",
+    "speaker": "Marc",
+    "text": "That tagline works for me, and it fits the visual language we’ve been testing."
+   },
+   {
+    "id": "zoom_2026-02-12_da84fda7#9",
+    "speaker": "Jamie",
+    "text": "I can draft the full narrative document with the tagline and three pillars by end of day Thursday, and circulate it for review."
+   },
+   {
+    "id": "zoom_2026-02-12_da84fda7#10",
+    "speaker": "Deepa",
+    "text": "1. I’ll map the three pillars to the metrics I listed earlier. 2. I’ll set up a dashboard view for activation, session length, and NPS. 3. I’ll share the dashboard link with the team by Friday."
+   },
+   {
+    "id": "zoom_2026-02-12_da84fda7#11",
+    "speaker": "Priya",
+    "text": "Great, so the decision is to adopt ‘Elevate Every Move’ as the Q1 tagline, Jamie will deliver the narrative draft Thursday, Deepa will align the metrics dashboard by Friday, and Tom will upload the updated brand assets to the CMS by March 15 — let’s reconvene next week to review the final version."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-01-01_5d887df0",
+  "title": "Zoom: Architect cross‑team data sync (2026-01-01)",
+  "lines": [
+   {
+    "id": "zoom_2026-01-01_5d887df0#0",
+    "speaker": "Chloe",
+    "text": "Alright folks, let's get straight to it: we need to nail down the cross‑team data sync architecture by the end of the sprint, so everyone knows what to build and how we avoid duplicate pipelines."
+   },
+   {
+    "id": "zoom_2026-01-01_5d887df0#1",
+    "speaker": "Raj",
+    "text": "Sounds good. Just to confirm, are we still pulling from the TitanDB layer or moving to a service‑bus model?"
+   },
+   {
+    "id": "zoom_2026-01-01_5d887df0#2",
+    "speaker": "Yusuf",
+    "text": "Right now the mobile team is hitting TitanDB directly, which is causing contention when the analytics service reads the same tables for real‑time insights."
+   },
+   {
+    "id": "zoom_2026-01-01_5d887df0#3",
+    "speaker": "Tasha",
+    "text": "And the schema differences between the wearables telemetry and the coaching dashboard are getting in the way of a clean join."
+   },
+   {
+    "id": "zoom_2026-01-01_5d887df0#4",
+    "speaker": "Chloe",
+    "text": "Exactly, and the current direct DB hack violates iOS conventions – we need a proper contract, not a shared mutable store."
+   },
+   {
+    "id": "zoom_2026-01-01_5d887df0#5",
+    "speaker": "Raj",
+    "text": "What if we introduce a Kafka topic for telemetry events and let both teams consume from it? That would decouple the write path."
+   },
+   {
+    "id": "zoom_2026-01-01_5d887df0#6",
+    "speaker": "Yusuf",
+    "text": "Kafka is solid, but we have a latency budget of under 200 ms for live feedback; pulling from a broker could add jitter we can't afford."
+   },
+   {
+    "id": "zoom_2026-01-01_5d887df0#7",
+    "speaker": "Tasha",
+    "text": "We could add a lightweight batch fallback that runs every few seconds for non‑critical data, keeping the real‑time path lean."
+   },
+   {
+    "id": "zoom_2026-01-01_5d887df0#8",
+    "speaker": "Chloe",
+    "text": "Okay, let's prototype a hybrid: real‑time events go through Kafka with a strict 100 ms SLA, and anything that falls behind gets queued for the batch job. Yusuf, you own the prototype."
+   },
+   {
+    "id": "zoom_2026-01-01_5d887df0#9",
+    "speaker": "Raj",
+    "text": "I'll draft the design doc outlining the topic schema, partition strategy, and fallback triggers, and circulate it by Thursday."
+   },
+   {
+    "id": "zoom_2026-01-01_5d887df0#10",
+    "speaker": "Tasha",
+    "text": "I'll review the schema changes with the data team and make sure the telemetry fields line up with the coaching models."
+   },
+   {
+    "id": "zoom_2026-01-01_5d887df0#11",
+    "speaker": "Chloe",
+    "text": "Great. Decision: hybrid Kafka + batch fallback, prototype by Yusuf, design doc by Raj, schema review by Tasha. We'll reconvene next Monday to assess progress."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-03-13_84ce435c",
+  "title": "Zoom: Align brand guidelines with ops (2026-03-13)",
+  "lines": [
+   {
+    "id": "zoom_2026-03-13_84ce435c#0",
+    "speaker": "Priya",
+    "text": "ok team, today's sprint is to align our brand guidelines with ops—specifically the monitoring dashboards and alert emails—so that every touchpoint feels like the Apex experience, not just the UI layer. we need to surface the brand colors, typography, and tone consistently while keeping latency low for user delight."
+   },
+   {
+    "id": "zoom_2026-03-13_84ce435c#1",
+    "speaker": "Marc",
+    "text": "Got it. Just to confirm, are we focusing only on the internal ops tools or also the external partner portals?"
+   },
+   {
+    "id": "zoom_2026-03-13_84ce435c#2",
+    "speaker": "Priya",
+    "text": "primary focus is internal ops—our dashboard, alert system, and the incident‑response playbooks. external portals can follow in the next quarter once we lock down the core assets."
+   },
+   {
+    "id": "zoom_2026-03-13_84ce435c#3",
+    "speaker": "Morgan",
+    "text": "From an infra side, the dashboards pull styles from the shared S3 bucket; updating the CSS will require a terraform apply—`terraform apply -target=module.brand_assets`—and a rolling restart of the Grafana pods. we need to ensure the bucket policy allows the ops service role read access."
+   },
+   {
+    "id": "zoom_2026-03-13_84ce435c#4",
+    "speaker": "Nadia",
+    "text": "Wait, did we test the new style sheet against version 2.14.3‑rc1 of the ops UI? I want to verify that the contrast ratios meet AA standards before we push to prod."
+   },
+   {
+    "id": "zoom_2026-03-13_84ce435c#5",
+    "speaker": "Jax",
+    "text": "i guess we can just drop the new css in the bucket and hope it works..."
+   },
+   {
+    "id": "zoom_2026-03-13_84ce435c#6",
+    "speaker": "Marc",
+    "text": "I suggest we create a feature flag in the config repo so we can toggle the new branding on a per‑environment basis."
+   },
+   {
+    "id": "zoom_2026-03-13_84ce435c#7",
+    "speaker": "Priya",
+    "text": "yes, a flag named `brand_ops_enabled`—we can wire it into the existing remote‑config loader and have the UI read it at startup, that gives us instant rollback if user delight drops."
+   },
+   {
+    "id": "zoom_2026-03-13_84ce435c#8",
+    "speaker": "Morgan",
+    "text": "I'll add the flag to the Terraform variables file and push a PR by EOD; also will run `kubectl rollout restart deployment/grafana` once merged."
+   },
+   {
+    "id": "zoom_2026-03-13_84ce435c#9",
+    "speaker": "Nadia",
+    "text": "I'll run the visual regression suite on 2.14.3‑rc1 with the flag on and off, and report any AA compliance issues by tomorrow afternoon."
+   },
+   {
+    "id": "zoom_2026-03-13_84ce435c#10",
+    "speaker": "Jax",
+    "text": "sounds fine, i'll keep an eye on the logs for any 500s after the rollout..."
+   },
+   {
+    "id": "zoom_2026-03-13_84ce435c#11",
+    "speaker": "Priya",
+    "text": "so the decision is to roll out the new brand assets behind the `brand_ops_enabled` flag, Morgan will implement the Terraform changes and restart Grafana, and Nadia will validate the UI in 2.14.3‑rc1; we'll reconvene Friday to review the test results. thanks everyone."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-02-26_2e51c84c",
+  "title": "Zoom: adjust alert thresholds (2026-02-26)",
+  "lines": [
+   {
+    "id": "zoom_2026-02-26_2e51c84c#0",
+    "speaker": "Jax",
+    "text": "hey team, goal of this call is to pin down the new alert thresholds for telemetry latency and assign who updates what..."
+   },
+   {
+    "id": "zoom_2026-02-26_2e51c84c#1",
+    "speaker": "Deepa",
+    "text": "1. we need to define the baseline latency from the last 30‑day window; 2. then decide on warning vs critical levels; 3. finally map those into the DynamoDB alert config—if we set warning at 250 ms and critical at 150 ms then the downstream x‑ray alerts will fire accordingly."
+   },
+   {
+    "id": "zoom_2026-02-26_2e51c84c#2",
+    "speaker": "Morgan",
+    "text": "kubectl get configmap telemetry-alerts -o yaml shows current thresholds at 300ms warning, 200ms critical. we can apply a new config with `kubectl apply -f alerts.yaml` after updating the terraform variable."
+   },
+   {
+    "id": "zoom_2026-02-26_2e51c84c#3",
+    "speaker": "Zoe",
+    "text": "Just to confirm, are we targeting the same thresholds for all device types, or should we have separate profiles for high‑performance athletes?"
+   },
+   {
+    "id": "zoom_2026-02-26_2e51c84c#4",
+    "speaker": "Priya",
+    "text": "i think the emotional cadence of an alert matters just as much as the raw numbers—users get anxious when a critical tone blares at 180 ms, yet they might appreciate a gentle amber warning at 250 ms that says 'we're still in the green, keep pushing' — aligning thresholds with that user delight will reduce churn."
+   },
+   {
+    "id": "zoom_2026-02-26_2e51c84c#5",
+    "speaker": "Yusuf",
+    "text": "We should roll this out in staging first, run a week of synthetic load, then promote to prod. Does that timeline work for everyone?"
+   },
+   {
+    "id": "zoom_2026-02-26_2e51c84c#6",
+    "speaker": "Deepa",
+    "text": "4. after we agree, I'll commit the new threshold values to the alert‑config repo; 5. then trigger a CI pipeline that runs `make test-alerts`; 6. finally open a PR for review—if the PR passes the automated checks we can merge and let the terraform apply handle the rest."
+   },
+   {
+    "id": "zoom_2026-02-26_2e51c84c#7",
+    "speaker": "Morgan",
+    "text": "terraform plan -var='latency_warning=250' -var='latency_critical=150' shows no drift, so once the PR merges the change will propagate automatically. i’ll watch the apply logs."
+   },
+   {
+    "id": "zoom_2026-02-26_2e51c84c#8",
+    "speaker": "Jax",
+    "text": "okay, decision: warning threshold 250 ms, critical 150 ms. deepa will update the config repo, morgan will adjust the terraform vars and run the apply, zoe will validate in staging, yusuf will monitor the post‑deploy metrics, priya will draft the user‑facing alert text. meeting adjourned."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-03-05_2bad2cab",
+  "title": "Zoom: Align brand refresh direction (2026-03-05)",
+  "lines": [
+   {
+    "id": "zoom_2026-03-05_2bad2cab#0",
+    "speaker": "Priya",
+    "text": "ok team, the goal of today’s sync is to lock down the brand refresh direction — we need a unified visual language that amplifies user delight while staying true to our performance‑first ethos."
+   },
+   {
+    "id": "zoom_2026-03-05_2bad2cab#1",
+    "speaker": "Sophie",
+    "text": "got it, Priya. Do we have a target date for the final brand guide rollout?"
+   },
+   {
+    "id": "zoom_2026-03-05_2bad2cab#2",
+    "speaker": "Marc",
+    "text": "the timeline is tight; we need the refreshed assets ready for the Q3 launch, so any decisions should be concrete by next Friday."
+   },
+   {
+    "id": "zoom_2026-03-05_2bad2cab#3",
+    "speaker": "Umji",
+    "text": "i think we should prioritize the color system first, because it impacts both the app UI and the wearable UI consistently."
+   },
+   {
+    "id": "zoom_2026-03-05_2bad2cab#4",
+    "speaker": "Chloe",
+    "text": "the current type feels generic — we need a font that respects iOS typography conventions, not a copy‑paste from Android."
+   },
+   {
+    "id": "zoom_2026-03-05_2bad2cab#5",
+    "speaker": "Jamie",
+    "text": "if we change the visual language, we have to measure the impact on user delight scores, otherwise we’re just guessing."
+   },
+   {
+    "id": "zoom_2026-03-05_2bad2cab#6",
+    "speaker": "Yusuf",
+    "text": "i can pull the last two quarters of delight metrics and map them to the current brand elements for baseline."
+   },
+   {
+    "id": "zoom_2026-03-05_2bad2cab#7",
+    "speaker": "Priya",
+    "text": "perfect, Yusuf — having that data will let us quantify the emotional lift. also, the new palette should feel kinetic, like a pulse you can see in the data visualizations."
+   },
+   {
+    "id": "zoom_2026-03-05_2bad2cab#8",
+    "speaker": "Sophie",
+    "text": "so, should we go with the Vibrant Pulse palette we sketched last week? it has the teal‑green gradient and the amber accent we discussed."
+   },
+   {
+    "id": "zoom_2026-03-05_2bad2cab#9",
+    "speaker": "Marc",
+    "text": "I’m on board with Vibrant Pulse, but we need to audit all existing assets to replace the old blues before the sprint starts."
+   },
+   {
+    "id": "zoom_2026-03-05_2bad2cab#10",
+    "speaker": "Chloe",
+    "text": "i like the palette, but the icon set we used before looks flat; we need a more three‑dimensional style that matches the wearables' depth."
+   },
+   {
+    "id": "zoom_2026-03-05_2bad2cab#11",
+    "speaker": "Priya",
+    "text": "agreed, Chloe — let’s iterate on the icon set with a subtle drop‑shadow, keeping it legible at small sizes; we’ll test both versions in the next design review."
+   },
+   {
+    "id": "zoom_2026-03-05_2bad2cab#12",
+    "speaker": "Priya",
+    "text": "decision: we’ll adopt the Vibrant Pulse palette, update the icon style with a light shadow, and create a brand guide draft by Friday. Sophie will own the guide deck, Marc will audit existing assets, Chloe will prototype the new icons, and Yusuf will deliver the delight baseline report."
+   },
+   {
+    "id": "zoom_2026-03-05_2bad2cab#13",
+    "speaker": "Priya",
+    "text": "thanks everyone, that wraps it up — action items are assigned, and we’ll reconvene next Monday to review progress."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-02-16_1e80269b",
+  "title": "Zoom: Event logistics with HR policy (2026-02-16)",
+  "lines": [
+   {
+    "id": "zoom_2026-02-16_1e80269b#0",
+    "speaker": "Tom",
+    "text": "Alright, everyone, the goal of today’s call is to align the upcoming Apex Marathon event logistics with HR policy requirements and nail down immediate action items."
+   },
+   {
+    "id": "zoom_2026-02-16_1e80269b#1",
+    "speaker": "Dave",
+    "text": "I’ll start by outlining the venue schedule we have tentatively locked for next month, which includes the main stadium on the 12th and a backup gym on the 13th."
+   },
+   {
+    "id": "zoom_2026-02-16_1e80269b#2",
+    "speaker": "Priya",
+    "text": "Sounds good, Dave, and I’m already visualizing how we can weave our brand story into the marathon banners—think vibrant kinetic lines that echo the athletes’ heartbeat, plus a subtle gradient that whispers 'peak performance' without shouting."
+   },
+   {
+    "id": "zoom_2026-02-16_1e80269b#3",
+    "speaker": "Deepa",
+    "text": "1. We need to verify that the participant data pipeline complies with HR’s privacy guidelines. 2. I’ll draft the schema changes for consent flags. 3. I’ll also set up a sandbox environment for testing the registration flow."
+   },
+   {
+    "id": "zoom_2026-02-16_1e80269b#4",
+    "speaker": "Nadia",
+    "text": "Wait, did we test the registration flow against the latest HR data protection version, say 2.14.3-rc1, or are we still on the older 2.13.0 build?"
+   },
+   {
+    "id": "zoom_2026-02-16_1e80269b#5",
+    "speaker": "Sanjay",
+    "text": "We’re still on 2.13.0 in staging, so we should schedule a quick upgrade before the event rollout to match the policy version."
+   },
+   {
+    "id": "zoom_2026-02-16_1e80269b#6",
+    "speaker": "Tom",
+    "text": "Noted, Sanjay. I’ll add the upgrade to the HR compliance checklist and coordinate with the HR ops lead."
+   },
+   {
+    "id": "zoom_2026-02-16_1e80269b#7",
+    "speaker": "Priya",
+    "text": "I’d love to add a small interactive element on the event app—a pulse animation that reacts to the runner’s real‑time heart rate, which could really boost user delight and reinforce our brand narrative."
+   },
+   {
+    "id": "zoom_2026-02-16_1e80269b#8",
+    "speaker": "Dave",
+    "text": "That’s a nice touch, Priya, but we need to confirm that adding that feature won’t breach the HR policy on biometric data usage."
+   },
+   {
+    "id": "zoom_2026-02-16_1e80269b#9",
+    "speaker": "Deepa",
+    "text": "If we isolate the pulse animation to display only aggregated, anonymized metrics, we stay within compliance; I can implement a toggle in the config to enforce that."
+   },
+   {
+    "id": "zoom_2026-02-16_1e80269b#10",
+    "speaker": "Nadia",
+    "text": "Just to be safe, can we also run a regression test on the anonymization filter using the 2.14.3‑rc1 privacy suite before we push to production?"
+   },
+   {
+    "id": "zoom_2026-02-16_1e80269b#11",
+    "speaker": "Sanjay",
+    "text": "I’ll handle the test plan and make sure we have sign‑off from HR before the final deployment."
+   },
+   {
+    "id": "zoom_2026-02-16_1e80269b#12",
+    "speaker": "Tom",
+    "text": "Action items: Priya will draft the event branding assets by Friday; Deepa will deliver the consent schema and sandbox by Wednesday; Dave will finalize the logistics checklist with venue contracts by Thursday; Nadia will run the privacy regression tests after the upgrade; Sanjay will obtain HR sign‑off on biometric use; I’ll sync with HR ops on policy alignment and schedule the upgrade."
+   },
+   {
+    "id": "zoom_2026-02-16_1e80269b#13",
+    "speaker": "Tom",
+    "text": "If there’s nothing else, let’s wrap up—decision is to proceed with the outlined plan and each owner will update the shared Confluence page with progress."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-03-11_895a44f3",
+  "title": "Zoom: Test data management strategy (2026-03-11)",
+  "lines": [
+   {
+    "id": "zoom_2026-03-11_895a44f3#0",
+    "speaker": "Nadia",
+    "text": "Thanks everyone for joining. Our goal is to decide on a test data management strategy that meets compliance and keeps our CI pipelines fast."
+   },
+   {
+    "id": "zoom_2026-03-11_895a44f3#1",
+    "speaker": "Ben",
+    "text": "I think we should start by mapping which data sets contain PII and which are purely performance metrics."
+   },
+   {
+    "id": "zoom_2026-03-11_895a44f3#2",
+    "speaker": "Deepa",
+    "text": "I can break it into three steps: 1) Identify all source tables and tag them with a sensitivity level. 2) Create a versioned test data lake that stores sanitized snapshots. 3) Build a synthetic data generator for any high‑risk fields."
+   },
+   {
+    "id": "zoom_2026-03-11_895a44f3#3",
+    "speaker": "Sarah",
+    "text": "We need to lock this down by next sprint, so ACTION: @Ben draft the synthetic generator spec this week, @Deepa provision the lake schema by Friday, and @Patty review the compliance checklist by Thursday."
+   },
+   {
+    "id": "zoom_2026-03-11_895a44f3#4",
+    "speaker": "Elena",
+    "text": "Sorry if this sounds naive, but do we have a tool that can automatically mask the fields, or are we building something from scratch??? ✨"
+   },
+   {
+    "id": "zoom_2026-03-11_895a44f3#5",
+    "speaker": "Patty",
+    "text": "We have the masking library from version 2.14.3‑rc1 that can handle most fields, but we’ll need custom rules for the new biometric streams."
+   },
+   {
+    "id": "zoom_2026-03-11_895a44f3#6",
+    "speaker": "Ben",
+    "text": "Got it, I’ll align the generator spec with the library’s capabilities and note any gaps for custom development."
+   },
+   {
+    "id": "zoom_2026-03-11_895a44f3#7",
+    "speaker": "Deepa",
+    "text": "If the lake schema is versioned, we can roll back to a known good snapshot in case a test corrupts data, then we just need to add CI hooks to pull the latest version."
+   },
+   {
+    "id": "zoom_2026-03-11_895a44f3#8",
+    "speaker": "Sarah",
+    "text": "Make sure the CI hooks are gated behind the compliance flag, otherwise we’ll be leaking data into nightly builds."
+   },
+   {
+    "id": "zoom_2026-03-11_895a44f3#9",
+    "speaker": "Elena",
+    "text": "Probably a silly question, but will the synthetic data include realistic heart‑rate variability patterns, or will it be just random numbers???"
+   },
+   {
+    "id": "zoom_2026-03-11_895a44f3#10",
+    "speaker": "Patty",
+    "text": "We can seed the generator with statistical profiles from production, so the patterns will look realistic without exposing real user data."
+   },
+   {
+    "id": "zoom_2026-03-11_895a44f3#11",
+    "speaker": "Nadia",
+    "text": "Decision: we’ll adopt a hybrid approach with a versioned test data lake and a synthetic data generator for PII. Action items: @Deepa set up the lake schema by Friday, @Ben deliver the generator spec by next Wednesday, @Patty complete the compliance review by Thursday, and @Elena update the design docs by end of week."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-03-02_e3f57efd",
+  "title": "Zoom: Backend-mobile sync meeting (2026-03-02)",
+  "lines": [
+   {
+    "id": "zoom_2026-03-02_e3f57efd#0",
+    "speaker": "Sam",
+    "text": "Hey team, thanks for joining. The goal of this meeting is to lock down the backend‑mobile sync approach for the upcoming release, specifically telemetry batching and conflict resolution."
+   },
+   {
+    "id": "zoom_2026-03-02_e3f57efd#1",
+    "speaker": "Raj",
+    "text": "I think we should keep the Redis cache for near‑real-time counts, but we need Grafana to reflect updates within a minute."
+   },
+   {
+    "id": "zoom_2026-03-02_e3f57efd#2",
+    "speaker": "Miki",
+    "text": "From a process view, adding a periodic flush every 30 seconds would meet that latency target without overloading the API."
+   },
+   {
+    "id": "zoom_2026-03-02_e3f57efd#3",
+    "speaker": "Jamie",
+    "text": "My concern is that the extra flush could increase battery consumption on the wearables, especially during long workouts."
+   },
+   {
+    "id": "zoom_2026-03-02_e3f57efd#4",
+    "speaker": "Tasha",
+    "text": "We can mitigate battery impact by making the flush adaptive based on device activity and power state."
+   },
+   {
+    "id": "zoom_2026-03-02_e3f57efd#5",
+    "speaker": "Priya",
+    "text": "The sync feels invisible to the athlete, but if we get jittery UI because of delayed counts——the experience suffers; we need a sub‑second perception of data. A subtle pulse indicator could reassure users without distraction, aligning with our brand promise of seamless performance."
+   },
+   {
+    "id": "zoom_2026-03-02_e3f57efd#6",
+    "speaker": "Sam",
+    "text": "So we have three options: rely on Redis with Grafana alerts, add a fixed 30‑second flush, or implement adaptive flushing with a battery ceiling. Any objections?"
+   },
+   {
+    "id": "zoom_2026-03-02_e3f57efd#7",
+    "speaker": "Raj",
+    "text": "My only objection to adaptive is the added SDK complexity, which might push the release timeline."
+   },
+   {
+    "id": "zoom_2026-03-02_e3f57efd#8",
+    "speaker": "Miki",
+    "text": "We can contain that complexity by isolating the logic in its own module and covering it with unit tests."
+   },
+   {
+    "id": "zoom_2026-03-02_e3f57efd#9",
+    "speaker": "Jamie",
+    "text": "Can we also set a hard cap of 5% extra battery drain per hour to keep the wearables safe?"
+   },
+   {
+    "id": "zoom_2026-03-02_e3f57efd#10",
+    "speaker": "Tasha",
+    "text": "We can enforce that cap by throttling the flush frequency when battery falls below 20%."
+   },
+   {
+    "id": "zoom_2026-03-02_e3f57efd#11",
+    "speaker": "Priya",
+    "text": "I love the dynamic ceiling—it reinforces our brand promise of empowering athletes without distraction——the UI stays fluid, the data feels immediate, and users won’t notice the background work."
+   },
+   {
+    "id": "zoom_2026-03-02_e3f57efd#12",
+    "speaker": "Sam",
+    "text": "Decision: we’ll implement adaptive flushing with a baseline of 30 seconds, enforce a max 5% battery impact, and add unit tests in a new sync module. Raj will prototype the module, Miki will write the tests, Jamie will validate battery metrics, and Priya will review the UI cue."
+   },
+   {
+    "id": "zoom_2026-03-02_e3f57efd#13",
+    "speaker": "Sam",
+    "text": "I’ll set up a follow‑up sync for next Thursday to check progress; let’s keep the tickets updated accordingly."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-01-20_a83c5e1f",
+  "title": "Zoom: terraform state management plan (2026-01-20)",
+  "lines": [
+   {
+    "id": "zoom_2026-01-20_a83c5e1f#0",
+    "speaker": "Jax",
+    "text": "hey everyone, quick sync on terraform state management plan, goal is to decide on remote backend strategy and assign owners."
+   },
+   {
+    "id": "zoom_2026-01-20_a83c5e1f#1",
+    "speaker": "Deepa",
+    "text": "1. we need to evaluate s3 backend vs terraform cloud. 2. consider state locking mechanism. 3. define lifecycle policies for state files. 4. outline migration steps."
+   },
+   {
+    "id": "zoom_2026-01-20_a83c5e1f#2",
+    "speaker": "Morgan",
+    "text": "terraform init -backend-config='bucket=my-terraform-state' -backend-config='key=prod/terraform.tfstate' will lock via dynamodb; we have a runbook https://runbooks.apex.com/tf-lock for that."
+   },
+   {
+    "id": "zoom_2026-01-20_a83c5e1f#3",
+    "speaker": "Chloe",
+    "text": "i think using terraform cloud is overkill for our iOS pipeline, stick with s3 + dynamodb, less friction."
+   },
+   {
+    "id": "zoom_2026-01-20_a83c5e1f#4",
+    "speaker": "Desmond",
+    "text": "Just to confirm, are we okay with encrypting the bucket with SSE-KMS and limiting access via IAM role?"
+   },
+   {
+    "id": "zoom_2026-01-20_a83c5e1f#5",
+    "speaker": "Sarah",
+    "text": "@Morgan **please verify the KMS key rotation policy** and @Deepa **prepare the migration checklist** by EOD Thursday, we need this for the upcoming sprint."
+   },
+   {
+    "id": "zoom_2026-01-20_a83c5e1f#6",
+    "speaker": "Patty",
+    "text": "I can take the IAM policy review and update the repo readme with the backend config."
+   },
+   {
+    "id": "zoom_2026-01-20_a83c5e1f#7",
+    "speaker": "Jax",
+    "text": "so we’re leaning s3+dynamodb, Morgan will confirm KMS rotation, Deepa will draft migration checklist, Patty handles IAM, Chloe okay with that."
+   },
+   {
+    "id": "zoom_2026-01-20_a83c5e1f#8",
+    "speaker": "Deepa",
+    "text": "1. migration checklist will include: backup current state, enable versioning, apply backend config, run terraform plan -refresh-only, then apply. 2. we’ll run a dry‑run in staging first."
+   },
+   {
+    "id": "zoom_2026-01-20_a83c5e1f#9",
+    "speaker": "Morgan",
+    "text": "got it, I'll run `aws s3api put-bucket-versioning --bucket my-terraform-state --versioning-configuration Status=Enabled` and test lock with `aws dynamodb put-item`."
+   },
+   {
+    "id": "zoom_2026-01-20_a83c5e1f#10",
+    "speaker": "Chloe",
+    "text": "just make sure the staging bucket name doesn’t clash with prod, otherwise we'll get weird state collisions."
+   },
+   {
+    "id": "zoom_2026-01-20_a83c5e1f#11",
+    "speaker": "Desmond",
+    "text": "Do we need a rollback plan if the migration fails? I can draft a simple revert script."
+   },
+   {
+    "id": "zoom_2026-01-20_a83c5e1f#12",
+    "speaker": "Sarah",
+    "text": "@Desmond **yes, include that in the checklist**, and make sure it's reviewed by @Jax before the Thursday deadline."
+   },
+   {
+    "id": "zoom_2026-01-20_a83c5e1f#13",
+    "speaker": "Jax",
+    "text": "decision: use s3 backend with dynamodb locking; action items – Morgan verify KMS and run versioning command, Deepa deliver migration checklist with rollback by Thursday, Patty update IAM policies, Desmond add revert script, Chloe watch for naming conflicts. meeting adjourned."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-01-13_b437ed3e",
+  "title": "Zoom: Telemetry handling architecture (2026-01-13)",
+  "lines": [
+   {
+    "id": "zoom_2026-01-13_b437ed3e#0",
+    "speaker": "Raj",
+    "text": "Thanks everyone, let's get started. Goal is to decide on the core telemetry ingestion pipeline for the next release."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#1",
+    "speaker": "Miki",
+    "text": "I think we should keep the existing S3 bucket for raw dumps and add a lightweight Kafka layer for real‑time processing."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#2",
+    "speaker": "Taylor",
+    "text": "Kafka sounds good but we need to ensure the pending ops dashboard can still pull from the same source without extra latency."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#3",
+    "speaker": "Jordan",
+    "text": "We could have the ops service read from a materialized view that Kafka streams populate, that keeps the latency under 200 ms."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#4",
+    "speaker": "Alex",
+    "text": "From a demo perspective, we need the athlete dashboard to get near‑real‑time metrics, so the stream has to push updates within a second."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#5",
+    "speaker": "Chloe",
+    "text": "iOS client already ships telemetry to our endpoint; if we change the endpoint URL we need to bump the version, not ideal. See https://github.com/apex/telemetry-ios/issues/123."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#6",
+    "speaker": "Sam",
+    "text": "We can keep the endpoint stable and have the backend forward to Kafka, that way the mobile side stays untouched."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#7",
+    "speaker": "Elena",
+    "text": "Sorry if this is obvious but... do we have a schema versioning plan for the new Kafka messages? 🚀✨ I want to make sure we don't break older devices."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#8",
+    "speaker": "Chris",
+    "text": "We can version the protobuf definition and have the consumer fallback to the old schema if needed."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#9",
+    "speaker": "Kaitlyn",
+    "text": "I'll double‑check the alert configs for the new Kafka consumer group so we get notified on lag spikes."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#10",
+    "speaker": "Priya",
+    "text": "We should also consider the user delight angle—if telemetry is delayed the athlete sees stale data, which hurts the experience, so the pipeline must guarantee sub‑second delivery."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#11",
+    "speaker": "Marc",
+    "text": "Cost‑tagging on the Kafka topics will be needed; we should add a tag for 'telemetry' and set retention to 48 hours."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#12",
+    "speaker": "Raj",
+    "text": "So to recap, we'll introduce a Kafka layer, keep the S3 bucket for raw storage, version the protobuf schema, and set up alerts. Sam will provision the Kafka cluster, Miki will draft the schema, Chloe will verify the iOS client endpoint compatibility, and Kaitlyn will configure alerts. Anyone object?"
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#13",
+    "speaker": "Sam",
+    "text": "No objections, I can have the cluster up in a week."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#14",
+    "speaker": "Miki",
+    "text": "I'll have the schema draft ready by Friday."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#15",
+    "speaker": "Chloe",
+    "text": "I'll test the endpoint change in a feature branch by Thursday."
+   },
+   {
+    "id": "zoom_2026-01-13_b437ed3e#16",
+    "speaker": "Raj",
+    "text": "Great, that's our action items. We'll reconvene next Monday to review progress."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-01-12_70f04afc",
+  "title": "Zoom: Plan automation framework upgrade (2026-01-12)",
+  "lines": [
+   {
+    "id": "zoom_2026-01-12_70f04afc#0",
+    "speaker": "Nadia",
+    "text": "Thanks everyone for joining. The goal of this call is to decide how we’ll upgrade our automation framework for the upcoming release, covering version, integration, testing, and compliance steps."
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#1",
+    "speaker": "Ben",
+    "text": "Right now we’re on Framework 1.8.3 and we’ve been hitting intermittent timeouts in the DB pool during high‑load tests."
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#2",
+    "speaker": "Chris",
+    "text": "If we move to a newer version, I need to know how it’ll hook into our Jenkins pipelines—any changes to the Gradle scripts?"
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#3",
+    "speaker": "Tasha",
+    "text": "I’m also worried about data privacy; the new framework logs more raw telemetry, so we’ll need to verify it still meets GDPR guidelines."
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#4",
+    "speaker": "Sophie",
+    "text": "There’s an open‑source library, AutoCore 2.5.0, that already handles the logging filters we need, and it’s compatible with our Java 11 stack."
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#5",
+    "speaker": "Karen",
+    "text": "We should think about the timeline—how many sprints do we have before the next production cut, and who can spare capacity for the migration?"
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#6",
+    "speaker": "Patty",
+    "text": "Our QA team can allocate two engineers to update the test suites, but we’ll need a clear test plan before we start."
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#7",
+    "speaker": "Nadia",
+    "text": "So we have three main options: stay on 1.8.3, upgrade to AutoCore 2.5.0 with some custom config, or wait for the next major release. Which direction makes sense given the release schedule?"
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#8",
+    "speaker": "Ben",
+    "text": "I’d vote for upgrading to AutoCore 2.5.0 now, bump the maxPoolSize in HikariCP to 30, and add the logging filter to mask PII."
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#9",
+    "speaker": "Chris",
+    "text": "That sounds reasonable, but we should keep the old framework as a fallback in case the CI build breaks; maybe a feature flag?"
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#10",
+    "speaker": "Sophie",
+    "text": "I can add the feature flag and update the docs; the team has already used similar flags for other components."
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#11",
+    "speaker": "Tasha",
+    "text": "Before we lock it in, can we run a compliance check on the new logging defaults? I’ll need a week to review the data flow."
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#12",
+    "speaker": "Nadia",
+    "text": "Okay, the decision point is: we’ll proceed with the AutoCore 2.5.0 upgrade, contingent on Tasha’s compliance sign‑off and a fallback flag in CI."
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#13",
+    "speaker": "Karen",
+    "text": "I’ll update the project timeline to reflect a two‑sprint window and note the compliance checkpoint in the roadmap."
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#14",
+    "speaker": "Patty",
+    "text": "I’ll draft the test automation update plan and share it with the team by Thursday."
+   },
+   {
+    "id": "zoom_2026-01-12_70f04afc#15",
+    "speaker": "Nadia",
+    "text": "To recap, we’re upgrading to AutoCore 2.5.0 with a fallback flag; Tasha will deliver the compliance sign‑off by next Friday, Patty will provide the test plan by Thursday, Ben will handle the code migration, and Chris will integrate the feature flag into CI. Any final concerns? If not, we’re good."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-01-26_a86fa642",
+  "title": "Zoom: kafka scaling plan (2026-01-26)",
+  "lines": [
+   {
+    "id": "zoom_2026-01-26_a86fa642#0",
+    "speaker": "Jax",
+    "text": "hey everyone, goal of this call is to lock down the kafka scaling plan for Q3... we need a concrete approach and owners."
+   },
+   {
+    "id": "zoom_2026-01-26_a86fa642#1",
+    "speaker": "Deepa",
+    "text": "1. assess current broker load via JMX metrics; 2. project peak throughput using 1.5x growth factor; 3. decide on partition count per topic based on target lag < 100ms; if we exceed 80% CPU we add a broker; 4. outline config changes (replication factor, min.insync.replicas) and rollout steps."
+   },
+   {
+    "id": "zoom_2026-01-26_a86fa642#2",
+    "speaker": "Morgan",
+    "text": "terraform plan shows we have capacity for two additional m5.4xlarge brokers in us-east-2; run `kubectl get pods -n kafka -l app=kafka -o jsonpath='{.items[*].status.phase}'` to confirm all pods are Running before scaling; see runbook https://runbooks.apex/kafka/scale for step‑by‑step."
+   },
+   {
+    "id": "zoom_2026-01-26_a86fa642#3",
+    "speaker": "Yusuf",
+    "text": "just to confirm, are we targeting a total of 12 partitions per topic after the scale, or should we keep the current 8 and rely on more brokers?"
+   },
+   {
+    "id": "zoom_2026-01-26_a86fa642#4",
+    "speaker": "Mike",
+    "text": "i think we should increase partitions to 12 to spread the load; that also aligns with the upcoming feature flag rollout that expects higher parallelism."
+   },
+   {
+    "id": "zoom_2026-01-26_a86fa642#5",
+    "speaker": "Dave",
+    "text": "agree with mike, but we need to update the consumer group configs to handle the new partition count, otherwise rebalance could spike latency."
+   },
+   {
+    "id": "zoom_2026-01-26_a86fa642#6",
+    "speaker": "Sarah",
+    "text": "@Deepa @Morgan please **provide the revised partition count matrix and updated Terraform plan by EOD tomorrow**; @Yusuf verify the consumer lag metrics after the change, and @Mike coordinate the feature flag rollout schedule. sorry typos, sent from mobile"
+   },
+   {
+    "id": "zoom_2026-01-26_a86fa642#7",
+    "speaker": "Jax",
+    "text": "so decision: we’ll add two brokers, bump partitions to 12, update configs, and each of you has the follow‑up as i just listed. deepa will draft the steps, morgan will apply terraform, yusuf will monitor lag, mike handles feature flag, dave updates consumer groups. meeting adjourned."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-01-07_8d855cab",
+  "title": "Zoom: Finalize NOC brand narrative (2026-01-07)",
+  "lines": [
+   {
+    "id": "zoom_2026-01-07_8d855cab#0",
+    "speaker": "Priya",
+    "text": "ok team, let’s lock in the NOC brand narrative today — we need a story that sings the same high‑octane rhythm as our wearables, while also quantifying user delight in a way that feels tangible, not abstract."
+   },
+   {
+    "id": "zoom_2026-01-07_8d855cab#1",
+    "speaker": "Marc",
+    "text": "Got it, the goal is clear. We'll focus on aligning the narrative with the performance data angle."
+   },
+   {
+    "id": "zoom_2026-01-07_8d855cab#2",
+    "speaker": "Karen",
+    "text": "Thanks for framing that, Priya. I’ll make sure whatever we settle on respects our brand guidelines and the inclusive language policy we’ve been reinforcing."
+   },
+   {
+    "id": "zoom_2026-01-07_8d855cab#3",
+    "speaker": "Chris",
+    "text": "Quick question: are we positioning the NOC as a proactive guardian for athletes, or more as an analytical coach that reacts to data?"
+   },
+   {
+    "id": "zoom_2026-01-07_8d855cab#4",
+    "speaker": "Priya",
+    "text": "We’re aiming for a hybrid — think of the NOC as a silent sentinel that anticipates strain, then morphs into a data‑driven mentor that delivers actionable insights right when the athlete needs them — that duality is the emotional core."
+   },
+   {
+    "id": "zoom_2026-01-07_8d855cab#5",
+    "speaker": "Jax",
+    "text": "i like the sentinel vibe but need to make sure the backend can tag ‘anticipation’ events without blowing up the schema..."
+   },
+   {
+    "id": "zoom_2026-01-07_8d855cab#6",
+    "speaker": "Tom",
+    "text": "I’ll update the brand guidelines doc with the new narrative and push it to the shared folder by EOD."
+   },
+   {
+    "id": "zoom_2026-01-07_8d855cab#7",
+    "speaker": "Marc",
+    "text": "Let’s set a deadline for stakeholder review by Wednesday, so we can lock it in before the next sprint."
+   },
+   {
+    "id": "zoom_2026-01-07_8d855cab#8",
+    "speaker": "Karen",
+    "text": "That works, and I’ll circulate the updated language to the compliance team to double‑check the inclusivity metrics."
+   },
+   {
+    "id": "zoom_2026-01-07_8d855cab#9",
+    "speaker": "Priya",
+    "text": "Great, decision: we’ll adopt the hybrid sentinel‑coach narrative as drafted. Action items — Chris will refine the copy for clarity, Tom will publish the updated guidelines, Jax will audit the event tagging schema, and Karen will run the compliance check; we’ll reconvene Thursday for final sign‑off."
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-01-09_644c6185",
+  "title": "Zoom: Define export feature UX (2026-01-09)",
+  "lines": [
+   {
+    "id": "zoom_2026-01-09_644c6185#0",
+    "speaker": "Sarah",
+    "text": "Alright team, the goal of this call is to nail down the UX for the new export feature—specifically file formats, the modal flow, and who owns each piece."
+   },
+   {
+    "id": "zoom_2026-01-09_644c6185#1",
+    "speaker": "Elena",
+    "text": "Sorry if this is obvious but... are we targeting coaches who need bulk data or athletes who just want a quick snapshot? 😅✨"
+   },
+   {
+    "id": "zoom_2026-01-09_644c6185#2",
+    "speaker": "Marc",
+    "text": "We already have an export endpoint for CSV used by the analytics dashboard; do we plan to reuse that or build a new one?"
+   },
+   {
+    "id": "zoom_2026-01-09_644c6185#3",
+    "speaker": "Priya",
+    "text": "I’ve been visualizing the export interaction as a sleek, two‑step modal that balances user delight with clarity—the first step confirms data range, the second offers format choices, and subtle micro‑animations reassure the user that their data is being packaged securely."
+   },
+   {
+    "id": "zoom_2026-01-09_644c6185#4",
+    "speaker": "Tom",
+    "text": "1. Max export size 5 GB per request. 2. Must comply with GDPR export‑right. 3. Data must be encrypted at rest for CSV/JSON files."
+   },
+   {
+    "id": "zoom_2026-01-09_644c6185#5",
+    "speaker": "Felix",
+    "text": "We should align the UI with the existing API versioning strategy Deepa mentioned, so any new format doesn’t break current consumers."
+   },
+   {
+    "id": "zoom_2026-01-09_644c6185#6",
+    "speaker": "Sarah",
+    "text": "@Elena could you draft the initial wireframes for the modal and **share a Figma link by EOD**? @Marc, please **update the spec to include JSON output** and note the version bump. sent from mobile"
+   },
+   {
+    "id": "zoom_2026-01-09_644c6185#7",
+    "speaker": "Elena",
+    "text": "Absolutely! I’ll spin up a quick Figma file, add some happy‑path flows, and ping you all by tonight. 🚀"
+   },
+   {
+    "id": "zoom_2026-01-09_644c6185#8",
+    "speaker": "Marc",
+    "text": "Do we need both CSV and JSON, or is one sufficient for the MVP?"
+   },
+   {
+    "id": "zoom_2026-01-09_644c6185#9",
+    "speaker": "Priya",
+    "text": "Both are valuable—CSV for quick spreadsheet imports, JSON for programmatic consumption—but we can set CSV as the default to keep the UI simple."
+   },
+   {
+    "id": "zoom_2026-01-09_644c6185#10",
+    "speaker": "Felix",
+    "text": "If we add JSON, we’ll need to version the export API separately; I’ll draft a versioning note."
+   },
+   {
+    "id": "zoom_2026-01-09_644c6185#11",
+    "speaker": "Tom",
+    "text": "Required fields: user_id, timestamp, metric_name, metric_value, device_id. Optional: notes, location."
+   },
+   {
+    "id": "zoom_2026-01-09_644c6185#12",
+    "speaker": "Sarah",
+    "text": "Decision: Export will support CSV and JSON, defaulting to CSV; the modal will have a two‑step flow as Priya described. @Marc will update the spec with JSON and versioning, @Elena will deliver wireframes by Friday, and @Felix will add the version note to the API doc. Thanks, everyone. sent from mobile"
+   }
+  ]
+ },
+ {
+  "sourceId": "zoom_2026-01-21_137d25bd",
+  "title": "Zoom: Discuss crash reporting flow (2026-01-21)",
+  "lines": [
+   {
+    "id": "zoom_2026-01-21_137d25bd#0",
+    "speaker": "Sam",
+    "text": "Alright team, the goal of this sync is to nail down the crash reporting flow for the next release—specifically, which data goes to Firebase Crashlytics versus Datadog, and who will implement each piece."
+   },
+   {
+    "id": "zoom_2026-01-21_137d25bd#1",
+    "speaker": "Chloe",
+    "text": "Firebase alone is garbage for iOS, we need Crashlytics. https://github.com/apex/ios-crash-issues/42"
+   },
+   {
+    "id": "zoom_2026-01-21_137d25bd#2",
+    "speaker": "Priya",
+    "text": "I’ve been visualizing the athlete’s experience when a crash strikes—there’s that jarring silence, the abrupt halt of data streams, and it shatters the sense of trust we’ve built; we need an elegant fallback that instantly reassures them, maybe a subtle overlay that says ‘We’re processing the issue, stay tuned’."
+   },
+   {
+    "id": "zoom_2026-01-21_137d25bd#3",
+    "speaker": "Jamie",
+    "text": "Do we need to capture the full device state before termination, or is the stack trace sufficient for debugging?"
+   },
+   {
+    "id": "zoom_2026-01-21_137d25bd#4",
+    "speaker": "Deepa",
+    "text": "1. Catalog all crash entry points in the app. 2. Map required fields: stack trace, device model, OS version to Crashlytics; performance counters, network latency to Datadog. 3. Build a thin wrapper that routes data accordingly. 4. Validate in the staging environment before merging."
+   },
+   {
+    "id": "zoom_2026-01-21_137d25bd#5",
+    "speaker": "Zoe",
+    "text": "What’s the expected latency for crash data to appear in Datadog dashboards? We need to set monitoring thresholds."
+   },
+   {
+    "id": "zoom_2026-01-21_137d25bd#6",
+    "speaker": "Elena",
+    "text": "Sorry if this is obvious but... do we get real‑time alerts in Slack when a crash spikes? 😅✨"
+   },
+   {
+    "id": "zoom_2026-01-21_137d25bd#7",
+    "speaker": "Sam",
+    "text": "We’ll push stack trace, device model, and OS version to Crashlytics, and send performance metrics like frame drops and network latency to Datadog. Chloe, you’ll add the Crashlytics pod and verify the iOS conventions; Deepa, draft the field‑mapping doc by Friday; Priya, design the in‑app fallback overlay; Zoe, define the Datadog alert thresholds and share them; Elena, set up the Slack webhook for real‑time alerts."
+   },
+   {
+    "id": "zoom_2026-01-21_137d25bd#8",
+    "speaker": "Sam",
+    "text": "Decision: split crash data as discussed, with owners assigned. Action items: Chloe on Crashlytics integration, Deepa on mapping doc, Priya on UI fallback, Zoe on alert thresholds, Elena on Slack alerts. We'll reconvene next Monday to review progress."
+   }
+  ]
+ }
+]
