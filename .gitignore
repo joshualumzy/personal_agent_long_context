@@ -40,3 +40,6 @@ data/
 
 # Local-only Compose overrides (host port differences, etc.)
 docker-compose.override.yml
+
+# cognee embedded stores (Kuzu graph, LanceDB vectors, SQLite metadata)
+orgforge_kb/.cognee/
