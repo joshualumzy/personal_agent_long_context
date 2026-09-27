@@ -924,12 +924,74 @@ def build_owns_domain_edges(cursor) -> int:
     return cursor.rowcount
 
 
-def build_about_domain_edges(cursor) -> int:
-    """item/document -> item(domain), from an incident's own root_domain."""
+# Distinctive terms that name a domain in a title or a root cause. Only terms
+# that belong to one domain: the registry's own system_tags include words like
+# "auth", "service", "cost", "project" and "flow", which would tie half the
+# corpus to every domain. auth-service excludes "legacy auth service", which is
+# a different domain. "cost‑tag" appears with a non-breaking hyphen in the
+# corpus (ENG-112's root cause), hence the character class. Postgres ARE
+# syntax: \m / \M are word boundaries.
+DOMAIN_MENTIONS = (
+    ("titandb", r"\mtitan ?db\M"),
+    ("project_titan", r"\mproject titan\M"),
+    ("kubernetes-deploy", r"\m(kubernetes|k8s|eks)\M"),
+    ("terraform-infra", r"\mterraform\M"),
+    ("redis-cache", r"\mredis\M"),
+    ("oauth2-flow", r"\moauth2?\M"),
+    ("auth-service", r"(?<!legacy )\mauth[-‑ ]service\M"),
+    ("legacy_auth_service", r"\mlegacy auth\M"),
+    ("aws_cost_structure", r"\maws cost\M|\mcost[-‑– ]?tag"),
+    ("mobile_analytics", r"\mmobile analytics\M"),
+)
+
+# Incident titles carry a bracketed list — "[TitanDB, legacy auth service, AWS
+# cost structure, Project Titan undocumented]", "[recurrence of ENG-112]" —
+# that is the departed employee's whole domain list, the same on every
+# incident it is attached to, so it says nothing about this one. Stripped
+# before matching.
+STRIP_BRACKETS = r"\s*\[[^]]*\]"
+
+
+def build_updates_domain_edges(cursor) -> int:
+    """document -> item(domain), from confluence_created.facts.domains_updated:
+    the domains whose documentation the new page counted toward. Names resolve
+    against the registry's name or key, case-insensitively ("AWS cost
+    structure" -> aws_cost_structure)."""
     cursor.execute(
         """
         INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
-        SELECT DISTINCT en.node_id, dn.node_id, 'about_domain'
+        SELECT DISTINCT dn.node_id, dom.node_id, 'updates_domain'
+        FROM source_documents d
+        CROSS JOIN LATERAL jsonb_array_elements_text(d.facts->'domains_updated') AS v(name)
+        JOIN domains reg ON lower(reg.name) = lower(v.name) OR reg.domain_key = v.name
+        JOIN graph_nodes dn ON dn.node_type = 'document'
+                            AND dn.ref_key = d.original_links->>'confluence'
+        JOIN graph_nodes dom ON dom.node_type = 'item' AND dom.node_subtype = 'domain'
+                             AND dom.ref_key = reg.domain_key
+        WHERE d.source_type = 'confluence_created'
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    return cursor.rowcount
+
+
+def build_about_domain_edges(cursor) -> tuple[int, int, int]:
+    """-> item(domain) when the thing names the domain itself.
+
+    Three sources, each recorded on the edge as props.source with the term that
+    matched as props.term, so an edge can always be traced back to the words
+    that made it:
+      registry    an incident's incidents.root_domain, when set (it is not in
+                  this corpus: nothing states it, and it is not guessed)
+      root_cause  an incident event's own root_cause names the domain
+      title       a jira/PR item's or confluence page's title does, bracketed
+                  gap lists removed first (see STRIP_BRACKETS)
+    """
+    cursor.execute(
+        """
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type, props)
+        SELECT DISTINCT en.node_id, dn.node_id, 'about_domain',
+               jsonb_build_object('source', 'registry')
         FROM incidents i
         JOIN graph_nodes en ON en.node_type = 'event' AND en.ref_key = i.incident_key
         JOIN domains d ON d.domain_id = i.root_domain
@@ -937,7 +999,56 @@ def build_about_domain_edges(cursor) -> int:
         ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
         """
     )
-    return cursor.rowcount
+    registry = cursor.rowcount
+
+    keys = [key for key, _ in DOMAIN_MENTIONS]
+    patterns = [pattern for _, pattern in DOMAIN_MENTIONS]
+
+    cursor.execute(
+        """
+        WITH mention AS (SELECT * FROM unnest(%s::text[], %s::text[]) AS m(domain_key, pattern)),
+        incident AS (
+            SELECT node_id, props->>'root_cause' AS text
+            FROM graph_nodes
+            WHERE node_type = 'event' AND node_subtype = 'incident'
+              AND props->>'root_cause' IS NOT NULL
+        )
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type, props)
+        SELECT i.node_id, dn.node_id, 'about_domain',
+               jsonb_build_object('source', 'root_cause',
+                                  'term', (regexp_match(i.text, '(' || m.pattern || ')', 'i'))[1])
+        FROM incident i
+        JOIN mention m ON i.text ~* m.pattern
+        JOIN graph_nodes dn ON dn.node_type = 'item' AND dn.node_subtype = 'domain'
+                            AND dn.ref_key = m.domain_key
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """,
+        (keys, patterns),
+    )
+    root_cause = cursor.rowcount
+
+    cursor.execute(
+        """
+        WITH mention AS (SELECT * FROM unnest(%s::text[], %s::text[]) AS m(domain_key, pattern)),
+        work AS (
+            SELECT node_id, regexp_replace(label, %s, '', 'g') AS text
+            FROM graph_nodes
+            WHERE (node_type = 'item' AND node_subtype IN ('jira', 'pr'))
+               OR (node_type = 'document' AND node_subtype = 'confluence')
+        )
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type, props)
+        SELECT w.node_id, dn.node_id, 'about_domain',
+               jsonb_build_object('source', 'title',
+                                  'term', (regexp_match(w.text, '(' || m.pattern || ')', 'i'))[1])
+        FROM work w
+        JOIN mention m ON w.text ~* m.pattern
+        JOIN graph_nodes dn ON dn.node_type = 'item' AND dn.node_subtype = 'domain'
+                            AND dn.ref_key = m.domain_key
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """,
+        (keys, patterns, STRIP_BRACKETS),
+    )
+    return registry, root_cause, cursor.rowcount
 
 
 # ---------------------------------------------------------------------------
@@ -997,7 +1108,11 @@ def main() -> int:
             print(f"zd_ticket documented_by: {zd_documented_by}", file=sys.stderr)
             print(f"incident recurrence caused_by: {build_incident_recurrence_edges(cursor)}", file=sys.stderr)
             print(f"owns_domain edges:   {build_owns_domain_edges(cursor)}", file=sys.stderr)
-            print(f"about_domain edges:  {build_about_domain_edges(cursor)}", file=sys.stderr)
+            print(f"updates_domain edges: {build_updates_domain_edges(cursor)}", file=sys.stderr)
+            from_registry, from_root_cause, from_title = build_about_domain_edges(cursor)
+            print(f"about_domain <- registry:   {from_registry}", file=sys.stderr)
+            print(f"about_domain <- root_cause: {from_root_cause}", file=sys.stderr)
+            print(f"about_domain <- title:      {from_title}", file=sys.stderr)
 
             cursor.execute("SELECT node_type, count(*) FROM graph_nodes GROUP BY 1 ORDER BY 1")
             print("\nnodes by type:", file=sys.stderr)
