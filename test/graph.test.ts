@@ -88,6 +88,34 @@ const titandbPage: GraphSlice = {
   centre: "item:titandb",
 };
 
+/** The documents web: two pages, their author, a domain, the discussion one
+ * came from, and a "Page created" event that is folded away. */
+const documentsWeb: GraphSlice = {
+    nodes: [
+      node("document", "CONF-1", {
+        subtype: "confluence", label: "TitanDB runbook", props: { occurred_at: "2026-01-10T09:00:00+00:00" },
+      }),
+      node("document", "CONF-2", {
+        subtype: "confluence", label: "TitanDB migration notes", props: { occurred_at: "2026-02-03T09:00:00+00:00" },
+      }),
+      node("person", "Priya", { subtype: "employee" }),
+      node("item", "titandb", { subtype: "domain", label: "TitanDB" }),
+      node("event", "EVT-1", { subtype: "confluence_created", label: "Page created: TitanDB runbook" }),
+      node("event", "DD-1", {
+        subtype: "design_discussion", label: "Discussion: migrate TitanDB", props: { occurred_at: "2026-02-01T09:00:00+00:00" },
+      }),
+    ],
+    edges: [
+      { source: "event:EVT-1", target: "document:CONF-1", type: "produced" },
+      { source: "event:DD-1", target: "document:CONF-2", type: "produced" },
+      { source: "person:Priya", target: "document:CONF-1", type: "wrote" },
+      { source: "person:Priya", target: "document:CONF-2", type: "wrote" },
+      { source: "document:CONF-1", target: "item:titandb", type: "about_domain" },
+      { source: "document:CONF-2", target: "document:CONF-1", type: "cites" },
+    ],
+    truncated: false,
+  };
+
 function graphKnowledge(): CompanyKnowledge {
   return {
     async employee() { return null; },
@@ -121,7 +149,9 @@ describe("the company graph", () => {
 
   /** The /graph page in jsdom, with every request answered by `respond` and
    * recorded in `asked`. */
-  async function open(path: string, respond: (url: URL) => unknown) {
+  /** With `frames`, the page gets animation frames (jsdom has none), so what
+   * animates can be watched. */
+  async function open(path: string, respond: (url: URL) => unknown, { frames = false } = {}) {
     const { base } = await start(graphKnowledge());
     const page = path.split("?")[0];
     const [html, script] = await Promise.all([
@@ -130,6 +160,11 @@ describe("the company graph", () => {
     ]);
     const dom = new JSDOM(html, { url: `${base}${path}`, runScripts: "outside-only" });
     const { window } = dom;
+    if (frames) {
+      window.eval(`
+        window.requestAnimationFrame = (callback) => setTimeout(() => callback(performance.now()), 16);
+        window.cancelAnimationFrame = (handle) => clearTimeout(handle);`);
+    }
     const requests: URL[] = [];
     Object.defineProperty(window, "fetch", {
       value: async (url: string) => {
@@ -155,8 +190,96 @@ describe("the company graph", () => {
     assert.deepEqual(parseGraphNodeId("person:Ana: Ops"), { type: "person", refKey: "Ana: Ops" });
   });
 
-  test("with nothing asked, the page opens on the departments, readable by keyboard and table", async () => {
-    const { window, document, requests } = await open("/graph", () => org);
+  test("with nothing asked, the page opens on the documents web, which items can be pulled around in", async () => {
+    const { window, document, requests } = await open("/graph", () => documentsWeb);
+
+    assert.equal(requests[0]!.pathname, "/api/v1/graph/view/documents");
+    assert.equal(document.querySelector('.view-tab[data-view="documents"]')!.getAttribute("aria-pressed"), "true");
+    // A "Page created" event only repeats the page it made, so it is folded
+    // away with its line; the discussion that led to a page stays.
+    assert.deepEqual(ids(document).sort(), [
+      "document:CONF-1", "document:CONF-2", "event:DD-1", "item:titandb", "person:Priya",
+    ]);
+    // Drawn as arcs.
+    assert.equal(document.querySelectorAll("#canvas path.edge").length, 5);
+    // Laid out by forces: settled, and no two items on the same spot.
+    assert.ok(document.querySelector("#canvas")!.classList.contains("force"));
+    const spots = ids(document).map((id) =>
+      document.querySelector(`.node[data-id="${id}"]`)!.getAttribute("transform"));
+    assert.equal(new Set(spots).size, spots.length);
+
+    // Dragging an item leaves it where it was dropped, and letting go is not
+    // a click that opens it up.
+    const priya = document.querySelector('.node[data-id="person:Priya"]')!;
+    const [x, y] = priya.getAttribute("transform")!.match(/-?[\d.]+/g)!.map(Number);
+    priya.querySelector(".shape")!.dispatchEvent(new window.MouseEvent("pointerdown", { bubbles: true, clientX: 0, clientY: 0 }));
+    window.dispatchEvent(new window.MouseEvent("pointermove", { clientX: 100, clientY: 50 }));
+    window.dispatchEvent(new window.MouseEvent("pointerup", { clientX: 100, clientY: 50 }));
+    priya.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    assert.equal(priya.getAttribute("transform"), `translate(${(x! + 100).toFixed(1)} ${(y! + 50).toFixed(1)})`);
+    const trail = () => [...document.querySelectorAll("#trail button, #trail .trail-here")].map((step) => step.textContent);
+    assert.deepEqual(trail(), ["TitanDB migration notes"], "the drop did not refocus");
+    window.close();
+  });
+
+  test("the documents web opens on one focus, lit with its neighbours, and a click moves the focus", async () => {
+    const { window, document, requests } = await open("/graph", () => documentsWeb);
+    const lit = (id: string) => document.querySelector(`.node[data-id="${id}"]`)!.getAttribute("class")!;
+    // The most connected item is the focus (CONF-1 and CONF-2 tie; by name),
+    // its neighbours are near, the next ring is mid, and its lines are named.
+    assert.match(lit("document:CONF-2"), /the-focus/);
+    for (const id of ["document:CONF-1", "person:Priya", "event:DD-1"]) assert.match(lit(id), /\bnear\b/);
+    assert.match(lit("item:titandb"), /\bmid\b/);
+    // Every line between lit items is named, the neighbours' own links too
+    // (Priya also wrote CONF-1), and points the way it reads.
+    assert.deepEqual([...document.querySelectorAll(".edge-label")].map((label) => label.textContent).sort(),
+      ["cites", "produced", "wrote", "wrote"]);
+    assert.equal(document.querySelectorAll(".edge-arrow.story").length, 4);
+    assert.match(document.querySelector("#details .name")!.textContent!, /TitanDB migration notes/);
+
+    // Clicking a neighbour makes it the focus, with a trail back; it does not
+    // ask the server for more.
+    document.querySelector('.node[data-id="person:Priya"]')!.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    assert.match(lit("person:Priya"), /the-focus/);
+    const trail = () => [...document.querySelectorAll("#trail button, #trail .trail-here")].map((step) => step.textContent);
+    assert.deepEqual(trail(), ["TitanDB migration notes", "Priya"]);
+    assert.ok(!requests.some((url) => url.pathname === "/api/v1/graph/expand"));
+    document.querySelector<HTMLButtonElement>("#trail button")!.dispatchEvent(new window.Event("click"));
+    assert.match(lit("document:CONF-2"), /the-focus/);
+    assert.deepEqual(trail(), ["TitanDB migration notes"]);
+    window.close();
+  });
+
+  test("the settled documents web floats smoothly, its layout still", async () => {
+    const { window, document } = await open("/graph", () => documentsWeb, { frames: true });
+    // The float runs until the window closes, whatever the assertions do.
+    try {
+      await settle(2600);
+      const drawn = (id: string) => document.querySelector(`.node[data-id="${id}"]`)!
+        .getAttribute("transform")!.match(/-?[\d.]+/g)!.map(Number);
+      const samples: Array<{ priya: number[]; page: number[] }> = [];
+      for (let count = 0; count < 6; count += 1) {
+        samples.push({ priya: drawn("person:Priya"), page: drawn("document:CONF-1") });
+        await settle(250);
+      }
+      const xs = samples.map((sample) => sample.priya[0]!);
+      const ys = samples.map((sample) => sample.priya[1]!);
+      // Things move on screen…
+      assert.ok(Math.max(...xs) - Math.min(...xs) > 0.5 || Math.max(...ys) - Math.min(...ys) > 0.5, "it floats");
+      // …within the float's reach, so the layout underneath is not moving…
+      assert.ok(Math.max(...xs) - Math.min(...xs) <= 14 && Math.max(...ys) - Math.min(...ys) <= 14);
+      // …and neighbours sway together: the line between them keeps its length.
+      const length = ({ priya, page }: { priya: number[]; page: number[] }) =>
+        Math.hypot(priya[0]! - page[0]!, priya[1]! - page[1]!);
+      const lengths = samples.map(length);
+      assert.ok(Math.max(...lengths) - Math.min(...lengths) < 2, `line length held: ${lengths.map((value) => value.toFixed(1))}`);
+    } finally {
+      window.close();
+    }
+  });
+
+  test("the departments overview is readable by keyboard and table", async () => {
+    const { window, document, requests } = await open("/graph?view=org", () => org);
 
     assert.equal(requests[0]!.pathname, "/api/v1/graph/view/org");
     const nodes = [...document.querySelectorAll(".node")];
@@ -174,12 +297,14 @@ describe("the company graph", () => {
     // The Departments tab says it is the one showing, and the URL says so too.
     assert.equal(document.querySelector('.view-tab[data-view="org"]')!.getAttribute("aria-pressed"), "true");
     assert.match(window.location.search, /view=org/);
+    // Under the tabs, what the chosen overview answers.
+    assert.match(document.querySelector("#view-about")!.textContent!, /who leads it/);
     window.close();
   });
 
   test("each overview tab asks for its own view", async () => {
     const { window, document, requests } = await open("/graph", () => org);
-    for (const view of ["expertise", "incidents", "documents", "customers", "timeline"]) {
+    for (const view of ["org", "expertise", "incidents", "documents", "customers", "timeline"]) {
       document.querySelector<HTMLButtonElement>(`.view-tab[data-view="${view}"]`)!
         .dispatchEvent(new window.Event("click"));
       await settle(20);
@@ -188,7 +313,7 @@ describe("the company graph", () => {
     window.close();
   });
 
-  test("Where today touched sits first among the views, and is what ?view=today opens on", async () => {
+  test("Where today touched leads the Work group, and is what ?view=today opens on", async () => {
     const today: GraphSlice & { touched: string[] } = {
       nodes: [
         node("query", "Today"),
@@ -207,8 +332,8 @@ describe("the company graph", () => {
       url.pathname === "/api/v1/graph/today" ? today : org);
 
     assert.equal(requests[0]!.pathname, "/api/v1/graph/today");
-    const tabs = [...document.querySelectorAll(".view-tab")].map((button) => button.getAttribute("data-view"));
-    assert.equal(tabs[0], "today");
+    const work = [...document.querySelectorAll('[aria-labelledby="group-work"] .view-tab')].map((button) => button.getAttribute("data-view"));
+    assert.equal(work[0], "today");
     assert.equal(document.querySelector('.view-tab[data-view="today"]')!.getAttribute("aria-pressed"), "true");
 
     // What today touched carries the butter highlight; the centre pill does not.
@@ -242,24 +367,6 @@ describe("the company graph", () => {
     assert.match(answer.headers.get("content-security-policy")!, /frame-ancestors 'self'/);
     assert.equal(answer.headers.get("x-frame-options"), "SAMEORIGIN");
     window.close();
-  });
-
-  test("beside a chat the filters fold behind one button; on its own page they stay out", async () => {
-    const embedded = await open("/graph/answer?q=TitanDB&sources=CONF-ENG-002&embed=1", (url) => (url.pathname === "/api/v1/graph/query" ? asked : titandbNeighbours));
-    const toggle = embedded.document.querySelector<HTMLButtonElement>("#filters-toggle")!;
-    const controls = embedded.document.querySelector<HTMLElement>(".controls")!;
-    assert.equal(toggle.hidden, false);
-    assert.equal(controls.hidden, true, "the picture first");
-    assert.equal(toggle.getAttribute("aria-expanded"), "false");
-    toggle.dispatchEvent(new embedded.window.Event("click"));
-    assert.equal(controls.hidden, false);
-    assert.equal(toggle.getAttribute("aria-expanded"), "true");
-    embedded.window.close();
-
-    const alone = await open("/graph/answer?q=TitanDB", (url) => (url.pathname === "/api/v1/graph/query" ? asked : titandbNeighbours));
-    assert.equal(alone.document.querySelector<HTMLButtonElement>("#filters-toggle")!.hidden, true);
-    assert.equal(alone.document.querySelector<HTMLElement>(".controls")!.hidden, false);
-    alone.window.close();
   });
 
   test("an answer's graph is seeded from the evidence the answer cited", async () => {
@@ -375,6 +482,167 @@ describe("the company graph", () => {
     assert.doesNotMatch(document.querySelector("#details")!.textContent!, /Click anything/, "the rail does not say it twice");
   });
 
+  test("a department's lead is drawn apart from its members", async () => {
+    const { window, document } = await open("/graph?view=org", () => org);
+    const jax = document.querySelector('.node[data-id="person:Jax"]')!;
+    assert.ok(jax.classList.contains("lead"));
+    assert.match(jax.querySelector(".caption")!.textContent!, /Jax · lead/);
+    assert.ok(!document.querySelector('.node[data-id="person:Janice"]')!.classList.contains("lead"));
+    assert.equal(document.querySelectorAll("#canvas line.edge.leads").length, 1);
+    // People sit left of their department, so their names go on the left,
+    // clear of their own lines.
+    assert.ok(document.querySelector('.node[data-id="person:Janice"] .caption')!.classList.contains("left"));
+    assert.match(document.querySelector("#edge-legend")!.textContent!, /Leads/);
+
+    // Hovering an item lights it and what it is joined to, and nothing else.
+    document.querySelector('.node[data-id="item:titandb"]')!.dispatchEvent(new window.Event("mouseenter"));
+    const lit = [...document.querySelectorAll(".node.on")].map((group) => group.getAttribute("data-id")).sort();
+    assert.deepEqual(lit, ["item:titandb", "organization:Engineering_Backend"]);
+    document.querySelector('.node[data-id="item:titandb"]')!.dispatchEvent(new window.Event("mouseleave"));
+    assert.equal(document.querySelectorAll(".node.on").length, 0);
+    window.close();
+  });
+
+  test("opening an item under the pointer does not leave the new picture faded", async () => {
+    const { window, document } = await open("/graph/answer?q=TitanDB", (url) =>
+      url.pathname === "/api/v1/graph/expand" ? titandbNeighbours : asked);
+    const titandb = document.querySelector('.node[data-id="item:titandb"]')!;
+    titandb.dispatchEvent(new window.Event("mouseenter"));
+    assert.ok(document.querySelector("#canvas")!.classList.contains("focus"));
+    titandb.dispatchEvent(new window.Event("click"));
+    await settle();
+    assert.ok(ids(document).includes("person:Yusuf"), "it opened up");
+    assert.ok(!document.querySelector("#canvas")!.classList.contains("focus"));
+    window.close();
+  });
+
+  test("who knows what is a matrix of domains by departments", async () => {
+    const expertise: GraphSlice = {
+      nodes: [
+        node("organization", "Engineering_Backend", { subtype: "department", label: "Engineering Backend" }),
+        node("organization", "Engineering_Mobile", { subtype: "department", label: "Engineering Mobile" }),
+        node("person", "Jax", { subtype: "employee" }),
+        node("person", "Janice", { subtype: "employee" }),
+        node("person", "Chloe", { subtype: "employee" }),
+        node("person", "Bill", { subtype: "employee" }),
+        node("item", "redis-cache", {
+          subtype: "domain", label: "redis-cache",
+          props: { primary_owner: "Jax", former_owner: "Chloe" },
+        }),
+        node("item", "titandb", {
+          subtype: "domain", label: "TitanDB",
+          props: { primary_owner: "Janice", former_owner: "Bill" },
+        }),
+      ],
+      edges: [
+        { source: "person:Jax", target: "organization:Engineering_Backend", type: "member_of" },
+        { source: "person:Janice", target: "organization:Engineering_Backend", type: "member_of" },
+        { source: "person:Chloe", target: "organization:Engineering_Mobile", type: "member_of" },
+        { source: "person:Jax", target: "item:titandb", type: "knows_about" },
+        { source: "person:Chloe", target: "item:redis-cache", type: "knows_about" },
+        { source: "person:Bill", target: "item:titandb", type: "owns_domain" },
+      ],
+      truncated: false,
+    };
+    const { window, document } = await open("/graph?view=expertise", () => expertise);
+
+    assert.ok(document.querySelector("#canvas")!.hasAttribute("hidden"), "no diagram for this view");
+    const rows = [...document.querySelectorAll(".matrix tbody tr")];
+    // Domains by name. OrgForge's own gap flag is the hiring backtest's answer
+    // key (test/gap-boundary.test.ts): the page neither sorts nor tags by it.
+    assert.deepEqual(rows.map((row) => row.querySelector("th")!.textContent), ["redis-cache", "TitanDB"]);
+    assert.equal(document.querySelector(".gap-tag"), null);
+    const titandb = rows[1]!;
+    // One of Backend's two people knows TitanDB; no one in Mobile does.
+    const cells = [...titandb.querySelectorAll("td.cell button")].map((button) => button.textContent);
+    assert.deepEqual(cells, ["50", "0"]);
+    // Bill owned it and is in no department any more; Chloe owned redis-cache
+    // and still works here.
+    const owners = titandb.querySelectorAll("td.owner");
+    assert.match(owners[1]!.textContent!, /Bill.*no longer here/);
+    assert.ok(owners[1]!.classList.contains("left"));
+    assert.ok(!rows[0]!.querySelectorAll("td.owner")[1]!.classList.contains("left"));
+
+    // A cell opens up to the people behind the number.
+    titandb.querySelector<HTMLButtonElement>("td.cell button")!.dispatchEvent(new window.Event("click"));
+    assert.match(document.querySelector("#details")!.textContent!, /TitanDB in Engineering Backend.*1 of 2 people.*Jax/);
+    // The table still lists every relationship.
+    assert.equal(document.querySelectorAll("#edge-rows tr").length, 6);
+    window.close();
+  });
+
+  test("incidents are rows under their cause, and one opens into its own drawing", async () => {
+    const incidents: GraphSlice = {
+      nodes: [
+        node("event", "ENG-112", {
+          subtype: "incident", label: "Incident ENG-112: missing cost tag",
+          props: { opened_at: "2026-01-05T09:00:00+00:00" },
+        }),
+        node("event", "ENG-173", {
+          subtype: "incident", label: "Incident ENG-173: HPA misconfigured",
+          props: { opened_at: "2026-02-04T09:00:00+00:00" },
+        }),
+        node("event", "ZD-101", {
+          subtype: "zd_ticket", label: "ZD-101 from Metro United FC",
+          props: { occurred_at: "2026-02-17T09:00:00+00:00" },
+        }),
+        node("item", "ENG-112", { subtype: "jira", label: "Investigate the cost tag" }),
+        node("item", "PR-106", { subtype: "pr" }),
+        node("item", "kubernetes-deploy", { subtype: "domain" }),
+        node("document", "CONF-ENG-054", { subtype: "confluence", label: "Postmortem: ENG-112" }),
+        node("person", "Sanjay", { subtype: "employee" }),
+        node("person", "Jax", { subtype: "employee" }),
+      ],
+      edges: [
+        { source: "event:ENG-112", target: "person:Sanjay", type: "raised_by" },
+        { source: "event:ENG-112", target: "person:Jax", type: "received_by" },
+        { source: "event:ENG-112", target: "item:ENG-112", type: "tracked_in" },
+        { source: "event:ENG-112", target: "item:PR-106", type: "fixed_by" },
+        { source: "event:ENG-112", target: "document:CONF-ENG-054", type: "produced" },
+        { source: "event:ENG-112", target: "item:kubernetes-deploy", type: "about_domain" },
+        { source: "item:ENG-112", target: "item:kubernetes-deploy", type: "about_domain" },
+        { source: "event:ENG-173", target: "event:ENG-112", type: "caused_by" },
+        { source: "event:ZD-101", target: "event:ENG-173", type: "caused_by" },
+      ],
+      truncated: false,
+    };
+    const { window, document } = await open("/graph?view=incidents", () => incidents);
+
+    // One chain: the cause, then what followed, each a step further in. The
+    // ticket that shares the incident's key is not a row of its own.
+    const groups = document.querySelectorAll(".lane-group");
+    assert.equal(groups.length, 1);
+    const rows = [...groups[0]!.querySelectorAll("button.lane")];
+    assert.deepEqual(rows.map((row) => row.querySelector(".what b")!.textContent), ["ENG-112", "ENG-173", "ZD-101"]);
+    assert.deepEqual(rows.map((row) => (row as HTMLElement).style.getPropertyValue("--depth").trim()), ["0", "1", "2"]);
+    assert.match(rows[0]!.textContent!, /Sanjay → Jax.*PR-106.*CONF-ENG-054.*kubernetes-deploy/);
+    assert.doesNotMatch(rows[0]!.textContent!, /tracked in/);
+    assert.match(groups[0]!.textContent!, /2 more followed from ENG-112/);
+
+    // Choosing it draws it with what it is directly joined to, each line named.
+    rows[0]!.dispatchEvent(new window.Event("click"));
+    assert.ok(!document.querySelector("#canvas")!.hasAttribute("hidden"));
+    assert.deepEqual(ids(document).sort(), [
+      "document:CONF-ENG-054", "event:ENG-112", "event:ENG-173", "item:PR-106",
+      "item:kubernetes-deploy", "person:Jax", "person:Sanjay",
+    ]);
+    assert.equal(
+      document.querySelector('.node[data-id="event:ENG-112"]')!.getAttribute("transform"),
+      "translate(0.0 0.0)",
+    );
+    const labels = [...document.querySelectorAll(".edge-label")].map((label) => label.textContent);
+    assert.ok(labels.includes("fixed by") && labels.includes("caused by"));
+    assert.equal(document.querySelectorAll(".edge-arrow").length, 1, "the chain has an arrowhead");
+
+    // Back to start returns to the rows.
+    const restore = document.querySelector<HTMLButtonElement>("#restore")!;
+    assert.equal(restore.disabled, false);
+    restore.dispatchEvent(new window.Event("click"));
+    assert.ok(document.querySelector("#canvas")!.hasAttribute("hidden"));
+    assert.equal(document.querySelectorAll("button.lane").length, 3);
+    window.close();
+  });
+
   test("the question's evidence is what its details show", async () => {
     const { window, document } = await open("/graph/answer?q=TitanDB", () => asked);
     document.querySelector('.node[data-id="query:TitanDB"]')!.dispatchEvent(new window.Event("focus"));
@@ -402,6 +670,9 @@ describe("the company graph", () => {
     // Nothing of the hidden category is drawn or listed — cluster included.
     assert.ok(ids(document).every((id) => !id!.startsWith("person:") && !id!.startsWith("cluster:people")));
     assert.match(document.querySelector("#status-line")!.textContent!, /hidden by the filters/);
+    // The Show menu's button says a filter is on, once the menu is closed.
+    assert.equal(document.querySelector("#show-summary")!.textContent, "6 of 7");
+    assert.ok(document.querySelector("#show-menu")!.classList.contains("filtered"));
     window.close();
   });
 

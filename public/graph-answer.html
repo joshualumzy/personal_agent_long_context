@@ -19,7 +19,6 @@
     </div>
     <div class="top-actions">
       <a class="quiet standalone-only" href="/graph" target="_top">Company graph</a>
-      <button type="button" class="quiet" id="filters-toggle" aria-expanded="false" aria-controls="categories" hidden>Filter</button>
       <button type="button" class="quiet on" id="tab-picture" aria-pressed="true">Picture</button>
       <button type="button" class="quiet" id="tab-table" aria-pressed="false">Table</button>
     </div>
@@ -27,20 +26,22 @@
 
   <p id="error" class="banner error" role="alert" hidden></p>
 
-  <section class="controls" aria-label="What to draw">
-
-
-    <fieldset class="categories" id="categories">
-      <legend>Show</legend>
-      <!-- Filled from CATEGORIES in app.js, so the list lives in one place. -->
-    </fieldset>
-  </section>
-
   <main class="board">
     <section id="picture" class="picture" aria-label="Diagram">
-      <div class="picture-actions">
-        <button type="button" class="quiet" id="fit">Fit</button>
-        <button type="button" class="quiet" id="restore" disabled>Back to start</button>
+      <div class="picture-bar">
+        <div class="picture-actions">
+          <!-- The page's one filter, beside the frame buttons. A menu, not a
+               row of chips: it is used now and then, not read every time.
+               Filled from CATEGORIES in app.js, so the list lives in one place. -->
+          <details class="show-menu" id="show-menu">
+            <summary>Show: <span id="show-summary">everything</span></summary>
+            <fieldset class="categories" id="categories">
+              <legend class="visually-hidden">Show</legend>
+            </fieldset>
+          </details>
+          <button type="button" class="quiet" id="fit">Fit</button>
+          <button type="button" class="quiet" id="restore" disabled>Back to start</button>
+        </div>
       </div>
       <!-- Focus moves between nodes with Tab; the table carries the same
            relationships for anyone not reading the diagram. -->
@@ -48,6 +49,8 @@
            aria-describedby="canvas-help">
         <title>The question, and what its evidence belongs to</title>
       </svg>
+      <!-- Only the company page draws HTML views; app.js expects it anyway. -->
+      <div id="arranged" class="arranged" hidden></div>
     </section>
 
     <section id="table-view" class="table-view" aria-labelledby="table-heading" hidden>
@@ -79,6 +82,8 @@
           <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-cluster"/></svg>More of one kind</li>
           <li class="legend-note"><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item incident"/></svg>Red outline: part of an incident</li>
         </ul>
+        <!-- Filled from EDGE_STYLES in app.js with the kinds of line on screen. -->
+        <ul class="legend" id="edge-legend"></ul>
       </section>
     </aside>
   </main>
