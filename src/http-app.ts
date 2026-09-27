@@ -42,6 +42,8 @@ import {
 } from "./model-registry.js";
 import { MemoryUpdateQueue } from "./memory-queue.js";
 import { resolveAsOf, type AsOf } from "./as-of.js";
+import { GapHiring, GapHiringError, MemoryGapLedger } from "./gap-hiring.js";
+import { roleStarterFor } from "./recruiting/roles.js";
 
 const DEFAULT_PERSONAS = [
   { employeeId: "jax", displayName: "Jax", role: "Backend Engineer", department: "Engineering_Backend", avatar: "👨‍💻" },
@@ -74,6 +76,11 @@ export interface BuildAppOptions extends ApplicationOptions {
   emergentMemory?: EmergentMemory;
   /** Writes the line under the home's headline. Omitted, the page keeps its own. */
   homeSummarizer?: HomeSummarizer;
+  /**
+   * Hiring proposals from knowledge gaps. Omitted, one is made from the
+   * company knowledge and recruiting board, with an in-memory ledger.
+   */
+  gapHiring?: GapHiring;
   /** Meeting actions (S2). Omitted, its routes are not registered. */
   meetings?: {
     service: MeetingActions;
@@ -909,6 +916,90 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       }
       return reply.send({ ...base, entries: await knowledge.dayPlan(person, resolved.day) });
     };
+  /**
+   * Every knowledge domain's health on a day: owner and whether still here,
+   * the owner's load, who worked in it lately, recent incidents. Visible to
+   * every signed-in employee in the MVP (docs/mvp.md).
+   */
+  app.get<{ Querystring: { asOf?: string } }>("/api/v1/gaps/health", async (request, reply) => {
+    const employee = await requireEmployee(request, reply);
+    if (!employee) return;
+    const knowledge = options.companyKnowledge;
+    if (!knowledge?.domainHealth) {
+      return reply.code(503).send({ message: "Domain health is not configured." });
+    }
+    const resolved = await resolveRequestedDay(request.query.asOf?.trim() || undefined);
+    if (!resolved.ok) return reply.code(resolved.status).send({ error: "invalid_as_of", message: resolved.error });
+    return reply.send({ asOf: resolved.day, domains: await knowledge.domainHealth(resolved.day) });
+  });
+
+  const gapHiring =
+    options.gapHiring ??
+    (options.companyKnowledge
+      ? new GapHiring(
+          options.companyKnowledge,
+          new MemoryGapLedger(),
+          options.recruiting ? roleStarterFor(options.recruiting.board) : undefined,
+        )
+      : undefined);
+
+  const gapFailure = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof GapHiringError) {
+      const status = error.code === "not_found" ? 404 : error.code === "conflict" ? 409 : 503;
+      return reply.code(status).send({ error: error.code, message: error.message });
+    }
+    throw error;
+  };
+
+  /** The hiring proposals open on a day, with what people did about each. Visible to every signed-in employee. */
+  app.get<{ Querystring: { asOf?: string } }>("/api/v1/gaps/proposals", async (request, reply) => {
+    const employee = await requireEmployee(request, reply);
+    if (!employee) return;
+    if (!gapHiring?.available) return reply.code(503).send({ message: "Hiring proposals are not configured." });
+    const resolved = await resolveRequestedDay(request.query.asOf?.trim() || undefined);
+    if (!resolved.ok) return reply.code(resolved.status).send({ error: "invalid_as_of", message: resolved.error });
+    return reply.send({
+      asOf: resolved.day,
+      canOpenRoles: gapHiring.canOpenRoles,
+      proposals: await gapHiring.list(resolved.day),
+    });
+  });
+
+  /** Opens a draft role from a proposal. Nothing is confirmed, searched or sent. */
+  app.post<{ Params: { id: string }; Body: { asOf?: string } | undefined }>(
+    "/api/v1/gaps/proposals/:id/open-role",
+    async (request, reply) => {
+      const employee = await requireEmployee(request, reply);
+      if (!employee) return;
+      if (!gapHiring?.available) return reply.code(503).send({ message: "Hiring proposals are not configured." });
+      const resolved = await resolveRequestedDay(stringOf(request.body?.asOf) || undefined);
+      if (!resolved.ok) return reply.code(resolved.status).send({ error: "invalid_as_of", message: resolved.error });
+      try {
+        const role = await gapHiring.openRole(request.params.id, resolved.day, employee.employeeId);
+        return reply.code(201).send(role);
+      } catch (error) {
+        return gapFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { id: string }; Body: { asOf?: string; reason?: string } | undefined }>(
+    "/api/v1/gaps/proposals/:id/dismiss",
+    async (request, reply) => {
+      const employee = await requireEmployee(request, reply);
+      if (!employee) return;
+      if (!gapHiring?.available) return reply.code(503).send({ message: "Hiring proposals are not configured." });
+      const resolved = await resolveRequestedDay(stringOf(request.body?.asOf) || undefined);
+      if (!resolved.ok) return reply.code(resolved.status).send({ error: "invalid_as_of", message: resolved.error });
+      try {
+        await gapHiring.dismiss(request.params.id, resolved.day, employee.employeeId, stringOf(request.body?.reason));
+        return reply.code(204).send();
+      } catch (error) {
+        return gapFailure(reply, error);
+      }
+    },
+  );
+
   app.get("/api/v1/planner/todo", plannerRoute("todo"));
   app.get("/api/v1/planner/day", plannerRoute("day"));
 

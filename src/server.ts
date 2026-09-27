@@ -10,6 +10,8 @@ import { buildApp } from "./http-app.js";
 import { lettaOptionsFromEnvironment } from "./letta-config.js";
 import { recruitingFromEnvironment } from "./recruiting/config.js";
 import { recruitingExtension } from "./recruiting/chat-tools.js";
+import { roleStarterFor } from "./recruiting/roles.js";
+import { GapHiring, JsonGapLedger } from "./gap-hiring.js";
 import { loadSkills } from "./skills.js";
 import { PostgresCompanyKnowledge } from "./adapters/postgres-company-knowledge.js";
 import { PostgresConversationStore } from "./adapters/postgres-conversations.js";
@@ -71,10 +73,19 @@ const agentSkills = recruiting
     }
   : {};
 
+// Hiring proposals from knowledge gaps: shared by the routes and the agent's
+// tools, so a role opened in either is seen by both.
+const gapHiring = new GapHiring(
+  companyKnowledge,
+  new JsonGapLedger(process.env.GAP_PROPOSALS_PATH ?? "data/gap-proposals.json"),
+  recruiting ? roleStarterFor(recruiting.board) : undefined,
+);
+
 const companyAgent = new SoCLaaSCompanyAgent(companyKnowledge, {
   apiKey: soCLaaSApiKey,
   baseUrl: process.env.SOCLAAS_BASE_URL,
   model: process.env.SOCLAAS_COMPANY_MODEL,
+  gapHiring,
   ...agentSkills,
 });
 
@@ -97,6 +108,7 @@ const sonnetAgent =
         apiKey: gatewayApiKey,
         baseUrl: `${gatewayUrl}/v1`,
         model: gatewayModel,
+        gapHiring,
         ...agentSkills,
       })
     : null;
@@ -184,6 +196,7 @@ const app = buildApp({
   modelRegistry,
   companyKnowledge,
   conversationStore,
+  gapHiring,
   logger: true,
   ...(recruiting ? { recruiting: { board: recruiting.board, gmail: recruiting.gmail } } : {}),
   ...(emergentMemory ? { emergentMemory } : {}),

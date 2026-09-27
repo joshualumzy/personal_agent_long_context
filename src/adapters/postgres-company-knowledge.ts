@@ -2,6 +2,7 @@ import pg from "pg";
 import type {
   CompanyKnowledge,
   DayPlanEntry,
+  RosterEntry,
   TodoItem,
   EmployeeContext,
   EmployeePersona,
@@ -27,6 +28,7 @@ import type { EmbeddingProvider } from "../embeddings.js";
 import { pgVector } from "../embeddings.js";
 import { verifyPassword } from "../auth.js";
 import { asOfCutoff, type AsOf } from "../as-of.js";
+import { assembleHealth, HEALTH_WINDOW_DAYS, type DomainHealth, type DomainHealthInputs } from "../domain-health.js";
 
 type GraphNodeRow = {
   /** BIGINT, which pg returns as a string. Used only inside the adapter: the
@@ -1092,6 +1094,135 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     }));
   }
 
+  async roster(day: AsOf): Promise<RosterEntry[]> {
+    const result = await this.pool.query<{
+      person: string; joined_on: string | null; left_on: string | null;
+      role: string | null; department: string | null; employed: boolean;
+    }>(
+      `SELECT person, joined_on::text AS joined_on, left_on::text AS left_on, role, department,
+              ((joined_on IS NULL OR joined_on <= $1::date) AND (left_on IS NULL OR left_on > $1::date)) AS employed
+       FROM employee_roster ORDER BY person`,
+      [day],
+    );
+    // A join or leave after D is not known on D.
+    return result.rows.map((row) => ({
+      person: row.person,
+      joinedOn: row.joined_on !== null && row.joined_on <= day ? row.joined_on : null,
+      leftOn: row.left_on !== null && row.left_on <= day ? row.left_on : null,
+      role: row.role,
+      department: row.department,
+      employed: row.employed,
+    }));
+  }
+
+  /**
+   * Every knowledge domain's health on day D (see src/domain-health.ts).
+   * Only the graph, the ticket states, the roster and the dated owner history
+   * are read, and only what had happened by the end of D; the evidence named
+   * is limited to artifacts that existed by then.
+   */
+  async domainHealth(day: AsOf): Promise<DomainHealth[]> {
+    // A past day's health never changes until the projections are rebuilt,
+    // which means a restart; proposals read many days, so keep them.
+    let cached = this.healthByDay.get(day);
+    if (!cached) {
+      cached = this.readDomainHealth(day).catch((error: unknown) => {
+        this.healthByDay.delete(day);
+        throw error;
+      });
+      this.healthByDay.set(day, cached);
+    }
+    return cached;
+  }
+
+  private readonly healthByDay = new Map<string, Promise<DomainHealth[]>>();
+
+  private async readDomainHealth(day: AsOf): Promise<DomainHealth[]> {
+    const cutoff = asOfCutoff(day);
+    const [domains, owners, roster, pages, tickets, incidents] = await Promise.all([
+      this.pool.query<{ key: string; name: string; department: string | null }>(
+        `SELECT d.ref_key AS key, d.label AS name, dept.ref_key AS department
+         FROM graph_nodes d
+         LEFT JOIN graph_edges b ON b.src_node_id = d.node_id AND b.edge_type = 'belongs_to'
+         LEFT JOIN graph_nodes dept ON dept.node_id = b.dst_node_id
+         WHERE d.node_type = 'item' AND d.node_subtype = 'domain'`,
+      ),
+      this.pool.query<{ domain: string; owner: string; since: string | null }>(
+        `SELECT domain_key AS domain, owner, valid_from::text AS since
+         FROM domain_owner_history
+         WHERE (valid_from IS NULL OR valid_from <= $1::date) AND (valid_to IS NULL OR valid_to > $1::date)`,
+        [day],
+      ),
+      this.roster(day),
+      // Pages about or updating a domain in the window, with who wrote them.
+      this.pool.query<{ domain: string; person: string; source_id: string }>(
+        `SELECT DISTINCT dom.ref_key AS domain, author.ref_key AS person, page.ref_key AS source_id
+         FROM graph_nodes dom
+         JOIN graph_edges about ON about.dst_node_id = dom.node_id AND about.edge_type IN ('about_domain', 'updates_domain')
+         JOIN graph_nodes page ON page.node_id = about.src_node_id AND page.node_type = 'document'
+         JOIN source_documents doc ON doc.source_id = page.ref_key AND doc.category = 'artifact'
+         JOIN graph_edges wrote ON wrote.dst_node_id = page.node_id AND wrote.edge_type = 'wrote'
+         JOIN graph_nodes author ON author.node_id = wrote.src_node_id AND author.node_type = 'person'
+         WHERE dom.node_subtype = 'domain'
+           AND doc.occurred_at >= $1::timestamptz - make_interval(days => $2) AND doc.occurred_at < $1::timestamptz`,
+        [cutoff, HEALTH_WINDOW_DAYS],
+      ),
+      // Tickets about a domain, with whoever had them at some point in the window.
+      this.pool.query<{ domain: string; person: string; source_id: string }>(
+        `SELECT DISTINCT dom.ref_key AS domain, state.assignee AS person, item.ref_key AS source_id
+         FROM graph_nodes dom
+         JOIN graph_edges about ON about.dst_node_id = dom.node_id AND about.edge_type = 'about_domain'
+         JOIN graph_nodes item ON item.node_id = about.src_node_id AND item.node_type = 'item'
+         JOIN work_item_state state ON state.item_key = item.ref_key AND state.assignee IS NOT NULL
+         WHERE dom.node_subtype = 'domain'
+           AND state.valid_from <= $1::date
+           AND (state.valid_to IS NULL OR state.valid_to > $1::date - $2::int)`,
+        [day, HEALTH_WINDOW_DAYS - 1],
+      ),
+      // Incidents about a domain opened in the window, and the people on them.
+      this.pool.query<{ domain: string; key: string; person: string | null }>(
+        `SELECT dom.ref_key AS domain, incident.ref_key AS key, person.ref_key AS person
+         FROM graph_nodes dom
+         JOIN graph_edges about ON about.dst_node_id = dom.node_id AND about.edge_type = 'about_domain'
+         JOIN graph_nodes incident ON incident.node_id = about.src_node_id AND incident.node_subtype = 'incident'
+         LEFT JOIN graph_edges role ON role.src_node_id = incident.node_id
+                                  AND role.edge_type IN ('involves', 'raised_by', 'received_by', 'led_by')
+         LEFT JOIN graph_nodes person ON person.node_id = role.dst_node_id AND person.node_type = 'person'
+         WHERE dom.node_subtype = 'domain'
+           AND (incident.props->>'occurred_at')::timestamptz >= $1::timestamptz - make_interval(days => $2)
+           AND (incident.props->>'occurred_at')::timestamptz < $1::timestamptz`,
+        [cutoff, HEALTH_WINDOW_DAYS],
+      ),
+    ]);
+
+    const work: DomainHealthInputs["work"] = [
+      ...pages.rows.map((row) => ({ domain: row.domain, person: row.person, sourceId: row.source_id, kind: "page" as const })),
+      ...tickets.rows.map((row) => ({ domain: row.domain, person: row.person, sourceId: row.source_id, kind: "ticket" as const })),
+      ...incidents.rows
+        .filter((row) => row.person)
+        .map((row) => ({ domain: row.domain, person: row.person!, sourceId: row.key, kind: "incident" as const })),
+    ];
+    const health = assembleHealth({
+      domains: domains.rows,
+      owners: owners.rows,
+      employed: new Set(roster.filter((row) => row.employed).map((row) => row.person)),
+      leftOn: new Map(roster.filter((row) => row.leftOn).map((row) => [row.person, row.leftOn!])),
+      work,
+      incidents: incidents.rows.map((row) => ({ domain: row.domain, key: row.key })),
+    });
+
+    // Name as evidence only what an employee could open on D.
+    const named = [...new Set(health.flatMap((row) => [...row.evidence.contributors, ...row.evidence.incidents]))];
+    const visible = new Set((await this.sourcesBefore(named, cutoff)).map((item) => item.sourceId));
+    return health.map((row) => ({
+      ...row,
+      evidence: {
+        contributors: row.evidence.contributors.filter((id) => visible.has(id)),
+        incidents: row.evidence.incidents.filter((id) => visible.has(id)),
+      },
+    }));
+  }
+
   /** This knowledge seen from the end of day D (see src/as-of.ts). */
   asOf(day: AsOf): CompanyKnowledge {
     return new DatedCompanyKnowledge(this, day);
@@ -1157,5 +1288,13 @@ export class DatedCompanyKnowledge implements CompanyKnowledge {
 
   dayPlan(person: string, day: AsOf): Promise<DayPlanEntry[]> {
     return this.knowledge.dayPlan(person, day > this.day ? this.day : day);
+  }
+
+  roster(day: AsOf): Promise<RosterEntry[]> {
+    return this.knowledge.roster(day > this.day ? this.day : day);
+  }
+
+  domainHealth(day: AsOf): Promise<DomainHealth[]> {
+    return this.knowledge.domainHealth(day > this.day ? this.day : day);
   }
 }

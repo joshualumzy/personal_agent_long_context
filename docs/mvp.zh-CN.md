@@ -74,6 +74,15 @@ Memora 是原生 Letta 记忆的第一个评估标准，而不是产品界面。
 
 以英文版「Date-view planner projection」为准。计划助手（选定某个模拟日后的待办和日计划）可以展示离线投影表 `day_plan_entry` 和 `work_item_state` 的内容，它们由 `orgforge_kb/build_timeline.py` 从每日部门计划和工单进度这两类模拟事件生成。规则与图投影相同：只部署投影后的行，不部署原始 `sim_event`；投影行不是公司证据，可以展示给员工、也可以作为计划上下文交给智能体，但公司事实仍只能引用检索到的公司证据。投影行在有对应可引用记录时通过 `derived_from` 链接过去，没有时标注为「来自计划记录」。计划助手只显示当前登录员工自己的数据。
 
+## 知识缺口与招聘提议：数据边界
+
+以英文版「Knowledge gaps and hiring proposals」为准。当某个知识领域有风险（负责人已离职、一人负责过多领域、近期几乎没人在做、事故反复落在这里）时，系统可以提出招聘提议。
+
+- MVP 阶段 recruiting 和招聘提议对所有登录员工可见，暂不设经理角色。
+- 提议只是提议：从提议开岗只生成草稿，确认条件、搜人、联系候选人仍由人来做。
+- 提议只用员工可见的记录、已部署的图，以及两张经批准的离线投影计算：`employee_roster`（谁在哪天入职、离职，不含原因）和 `domain_owner_history`（按登记表与有记录的交接，给每个领域的负责人标上日期）。二者与计划助手投影规则相同：可以展示，但不是公司证据。
+- `knowledge_gap_detected` 事件和领域登记表里的缺口字段（`gap_classification`、`documentation_coverage`、`is_genesis_gap`）是模拟器的输出，评测题就建立在它们上面，只供离线回测（`eval/orgforge/gap_truth.py`）读取，运行时和智能体都不读。
+
 ## 暂缓实现
 
 - 与 Recording Necklace 直接同步；

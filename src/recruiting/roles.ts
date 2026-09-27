@@ -194,3 +194,32 @@ export class RoleBoard {
     return service;
   }
 }
+
+/**
+ * Lets gap hiring (src/gap-hiring.ts) open a draft role on this board. The
+ * role starts exactly as one described in the chat would, with its origin
+ * recorded; nothing is confirmed, searched or sent.
+ */
+export function roleStarterFor(board: RoleBoard) {
+  return {
+    async start(description: string, origin: NonNullable<import("./domain.js").Role["origin"]>) {
+      const { id, service } = board.create();
+      try {
+        await service.start(description, origin);
+      } catch (error) {
+        board.forget(id);
+        throw error;
+      }
+      const snapshot = await service.snapshot();
+      return { roleId: id, title: snapshot.role?.title ?? "New role" };
+    },
+    async exists(roleId: string) {
+      try {
+        await board.get(roleId);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  };
+}

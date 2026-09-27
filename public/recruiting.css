@@ -338,3 +338,8 @@ body.embed .main { margin: 0; height: 100vh; border: 0; border-radius: 0; }
 .node.t75 .dot, .s75 { fill: #8f85e6; background: #8f85e6; }
 .node.t50 .dot, .s50 { fill: #c9c3f3; background: #c9c3f3; }
 .ring { stroke: #dbd7f7; }
+
+/* A role opened from a hiring proposal says where it came from. */
+.role-origin { margin: 4px 0 0; max-width: 72ch; font-size: 13px; line-height: 1.45; color: var(--muted, #666); }
+.role-origin strong { color: var(--ink, inherit); font-weight: 600; }
+.role-origin .origin-evidence { font-family: var(--f-mono, monospace); font-size: 12px; }
