@@ -182,6 +182,18 @@ export interface DayPlanEntry {
   sources: string[];
 }
 
+/** One person on the roster (employee_roster), and whether they were
+ * employed on the day asked about. Never Company Evidence; no reason for
+ * leaving is kept. */
+export interface RosterEntry {
+  person: string;
+  joinedOn: string | null;
+  leftOn: string | null;
+  role: string | null;
+  department: string | null;
+  employed: boolean;
+}
+
 export interface CompanyKnowledge {
   employee(employeeId: string): Promise<EmployeeContext | null>;
   listEmployees?(): Promise<EmployeePersona[]>;
@@ -220,6 +232,8 @@ export interface CompanyKnowledge {
   todo?(person: string, day: AsOf): Promise<TodoItem[]>;
   /** A person's plan for a day, by display name, in plan order. */
   dayPlan?(person: string, day: AsOf): Promise<DayPlanEntry[]>;
+  /** Everyone on the roster, marked employed or not on day D. */
+  roster?(day: AsOf): Promise<RosterEntry[]>;
   close?(): Promise<void>;
 }
 

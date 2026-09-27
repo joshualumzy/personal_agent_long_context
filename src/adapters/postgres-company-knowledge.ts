@@ -2,6 +2,7 @@ import pg from "pg";
 import type {
   CompanyKnowledge,
   DayPlanEntry,
+  RosterEntry,
   TodoItem,
   EmployeeContext,
   EmployeePersona,
@@ -1092,6 +1093,27 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     }));
   }
 
+  async roster(day: AsOf): Promise<RosterEntry[]> {
+    const result = await this.pool.query<{
+      person: string; joined_on: string | null; left_on: string | null;
+      role: string | null; department: string | null; employed: boolean;
+    }>(
+      `SELECT person, joined_on::text AS joined_on, left_on::text AS left_on, role, department,
+              ((joined_on IS NULL OR joined_on <= $1::date) AND (left_on IS NULL OR left_on > $1::date)) AS employed
+       FROM employee_roster ORDER BY person`,
+      [day],
+    );
+    // A join or leave after D is not known on D.
+    return result.rows.map((row) => ({
+      person: row.person,
+      joinedOn: row.joined_on !== null && row.joined_on <= day ? row.joined_on : null,
+      leftOn: row.left_on !== null && row.left_on <= day ? row.left_on : null,
+      role: row.role,
+      department: row.department,
+      employed: row.employed,
+    }));
+  }
+
   /** This knowledge seen from the end of day D (see src/as-of.ts). */
   asOf(day: AsOf): CompanyKnowledge {
     return new DatedCompanyKnowledge(this, day);
@@ -1157,5 +1179,9 @@ export class DatedCompanyKnowledge implements CompanyKnowledge {
 
   dayPlan(person: string, day: AsOf): Promise<DayPlanEntry[]> {
     return this.knowledge.dayPlan(person, day > this.day ? this.day : day);
+  }
+
+  roster(day: AsOf): Promise<RosterEntry[]> {
+    return this.knowledge.roster(day > this.day ? this.day : day);
   }
 }

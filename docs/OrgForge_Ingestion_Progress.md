@@ -172,7 +172,7 @@ docker compose up -d database                       # 起库(healthy 约 4s)
 npx tsx scripts/migrate.ts                          # migration 001–005
 .venv/bin/python scripts/orgforge/ingest.py         # 全量 ingestion(约 1m10s)
 .venv/bin/python orgforge_kb/build_graph.py         # 建图(约 1.3s),可加 --reset
-.venv/bin/python orgforge_kb/build_timeline.py      # 计划助手投影:day_plan_entry / work_item_state(约 2s)
+.venv/bin/python orgforge_kb/build_timeline.py      # 计划助手与名册投影:day_plan_entry / work_item_state / employee_roster(约 2s)
 ```
 
 Embedding 二选一:

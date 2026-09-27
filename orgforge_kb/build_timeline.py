@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Build the date-view planner's projection: day plans and ticket states.
+"""Build the dated projections: day plans, ticket states and the roster.
 
 No language model is involved, and nothing is guessed: every row comes from a
-field the corpus states. Two tables, both rebuilt in full on every run (see
-database/migrations/019_asof_projection.sql):
+field the corpus states. Three tables, all rebuilt in full on every run (see
+database/migrations/019_asof_projection.sql and 020_employee_roster.sql):
 
   day_plan_entry   one row per item of one person's plan for one day, read
                    from dept_plan_created.facts.engineer_plans[].agenda[]
+  employee_roster  who worked here, with join and leave days (no reason);
+                   the staff are everyone in a day plan, dated by hire and
+                   departure events
   work_item_state  one row per interval in which a jira ticket's status and
                    assignee held, read from the jira artifact (its creation,
                    first status, title, points, sprint), ticket_progress
@@ -205,6 +208,44 @@ def _extend(row: dict, events: list[str], cites: list[str]) -> None:
             row["sources"].append(cite)
 
 
+def roster_rows(entries: Iterable[dict], hires: Iterable[dict], departures: Iterable[dict]) -> list[dict]:
+    """Everyone who worked here, and when they joined and left.
+
+    The people named in any day plan are the staff; a hire event gives a
+    join day, a departure event a leave day. Someone with neither was there
+    all along. The department is the one their latest plan names, else the
+    event's. No reason for leaving is kept.
+    """
+    people: dict[str, dict] = {}
+
+    def person(name: str) -> dict:
+        return people.setdefault(name, {
+            "person": name, "joined_on": None, "left_on": None,
+            "role": None, "department": None, "derived_from": [],
+        })
+
+    latest_plan: dict[str, str] = {}
+    for entry in sorted(entries, key=lambda row: (row["day"], row["person"], row["seq"])):
+        person(entry["person"])
+        latest_plan[entry["person"]] = entry.get("department")
+    for hire in hires:
+        row = person(hire["person"])
+        row["joined_on"] = hire["day"]
+        row["role"] = row["role"] or hire.get("role")
+        row["department"] = row["department"] or hire.get("department")
+        row["derived_from"].append(hire["event"])
+    for departure in departures:
+        row = person(departure["person"])
+        row["left_on"] = departure["day"]
+        row["role"] = row["role"] or departure.get("role")
+        row["department"] = row["department"] or departure.get("department")
+        row["derived_from"].append(departure["event"])
+    for name, department in latest_plan.items():
+        if department:
+            people[name]["department"] = department
+    return [people[name] for name in sorted(people)]
+
+
 def plan_changes(entries: Iterable[dict], known: set[str]) -> list[Change]:
     """A day plan listing a ticket says who is working on it that day."""
     return [
@@ -305,7 +346,26 @@ def read(cursor) -> tuple[list[dict], list[dict], dict]:
         """
     )
     undated = cursor.fetchall()
-    return entries, states, {"skipped_progress": skipped, "undated": undated}
+
+    # Joins and departures, for the roster. Only who, when, role and
+    # department are read: the events' other fields are the simulator's own
+    # account of what the departure cost, which runtime code must not see.
+    moves: dict[str, list[dict]] = {"employee_hired": [], "employee_departed": []}
+    for kind in moves:
+        cursor.execute(
+            f"""
+            SELECT source_id, {DAY}, facts->>'name', facts->>'role', facts->>'dept', actors->>0
+            FROM source_documents WHERE source_type = %s AND {DAY} IS NOT NULL
+            ORDER BY occurred_at, source_id
+            """,
+            (kind,),
+        )
+        for event_id, day, name, role, department, actor in cursor.fetchall():
+            if name or actor:
+                moves[kind].append({"person": name or actor, "day": day, "role": role,
+                                    "department": department, "event": event_id})
+    roster = roster_rows(entries, moves["employee_hired"], moves["employee_departed"])
+    return entries, states, {"skipped_progress": skipped, "undated": undated, "roster": roster}
 
 
 def write(cursor, table: str, rows: list[dict], chunk: int = 200) -> None:
@@ -329,6 +389,7 @@ def main() -> int:
             entries, states, report = read(cursor)
             write(cursor, "day_plan_entry", entries)
             write(cursor, "work_item_state", states)
+            write(cursor, "employee_roster", report["roster"])
         connection.commit()
 
     people = len({entry["person"] for entry in entries})
@@ -339,6 +400,9 @@ def main() -> int:
     assigned = len({state["item_key"] for state in states if state["assignee"]})
     print(f"work_item_state: {len(states)} intervals, {tickets} tickets, "
           f"{assigned} ever assigned", file=sys.stderr)
+    roster = report["roster"]
+    print(f"employee_roster: {len(roster)} people, {sum(1 for row in roster if row['joined_on'])} joined, "
+          f"{sum(1 for row in roster if row['left_on'])} left", file=sys.stderr)
     if report["skipped_progress"]:
         print(f"skipped {report['skipped_progress']} progress events for tickets with no jira artifact",
               file=sys.stderr)
