@@ -4,6 +4,13 @@
  *   node --env-file=.env --import tsx eval/orgforge/rejudge.ts <report.json> [more.json ...]
  *
  * Several reports are pooled into one scorecard (e.g. a run split across --type batches).
+ *
+ * Metrics, per question, averaged or counted over the pool:
+ *   accuracy          the judge agrees with the reference conclusion
+ *   grounded          correct, and cites at least one of the question's evidence artifacts
+ *   evidence recall   fraction of the evidence artifacts the agent retrieved at all
+ *   confident errors  the judge disagrees (a committed wrong conclusion, not a hedge)
+ *   citation integrity every cited id was among the retrieved records
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { loadBenchmarkQuestions, getReferenceAnswer } from "./dataset.js";
@@ -57,8 +64,20 @@ async function main(): Promise<void> {
     const subset = pooled.filter((r) => r.questionType === type);
     if (subset.length) console.log(line(type, subset));
   }
-  const inconclusive = pooled.filter((r) => r.judgedAnswer === "inconclusive").length;
-  console.log(`Inconclusive verdicts: ${inconclusive}/${pooled.length}`);
+  const n = pooled.length;
+  const count = (keep: (r: QuestionEvaluationResult) => boolean) => `${pooled.filter(keep).length}/${n}`;
+  const hasEvidence = (r: QuestionEvaluationResult) => r.expectedArtifacts.length > 0;
+  const recall = (r: QuestionEvaluationResult) =>
+    r.expectedArtifacts.filter((id) => r.retrievedArtifacts.includes(id)).length / r.expectedArtifacts.length;
+  const withEvidence = pooled.filter(hasEvidence);
+  const meanRecall = withEvidence.reduce((sum, r) => sum + recall(r), 0) / Math.max(1, withEvidence.length);
+  console.log(`Grounded        : ${count((r) => r.answerCorrect && r.citedArtifacts.some((id) => r.expectedArtifacts.includes(id)))}`);
+  console.log(`Evidence recall : ${Math.round(meanRecall * 100)}% (mean over ${withEvidence.length} questions)`);
+  console.log(`Confident errors: ${count((r) => r.judgedAnswer === "disagrees")}`);
+  console.log(`Inconclusive    : ${count((r) => r.judgedAnswer === "inconclusive")}`);
+  console.log(`Citation integ. : ${count((r) => r.citationIntegrity)}`);
+  const latencies = pooled.map((r) => r.latencyMs).sort((a, b) => a - b);
+  console.log(`Median latency  : ${((latencies[Math.floor(n / 2)] ?? 0) / 1000).toFixed(1)}s`);
 
   const out = paths[0]!.replace(/\.json$/, `-rejudged.json`);
   await writeFile(out, JSON.stringify({ judge: judge.model, sources: paths, results: pooled }, null, 2));
