@@ -10,6 +10,8 @@ interface PageOptions {
   respond?: (url: string, init?: { method?: string; body?: string }) => Response | undefined;
   /** Runs before the page's own script, for storage the page reads as it starts. */
   setup?: (window: JSDOM["window"]) => void;
+  /** The address the page opens at, after the host: "/?asOf=2026-01-06". */
+  path?: string;
 }
 
 async function openSmePage(options: PageOptions = {}) {
@@ -23,7 +25,7 @@ async function openSmePage(options: PageOptions = {}) {
     fetch(`${base}/vendor/dompurify.js`).then((response) => response.text()),
     fetch(`${base}/app.js`).then((response) => response.text()),
   ]);
-  const dom = new JSDOM(html, { url: `${base}/`, runScripts: "outside-only" });
+  const dom = new JSDOM(html, { url: `${base}${options.path ?? "/"}`, runScripts: "outside-only" });
   const { window } = dom;
   const requests: Array<{ url: string; body?: string }> = [];
   Object.defineProperty(window, "fetch", {
@@ -357,3 +359,166 @@ describe("SME Assistant keeping candidates in view", () => {
   });
 });
 
+
+describe("SME Assistant on a chosen day", () => {
+  const DAYS = ["2026-01-02", "2026-01-05", "2026-01-06", "2026-01-07"];
+  const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
+
+  /** A signed-in page whose planner answers by day: the day shows in every title. */
+  async function plannerPage(options: { path?: string; conversations?: unknown; conversation?: unknown; answer?: unknown } = {}) {
+    return openSmePage({
+      ...(options.path ? { path: options.path } : {}),
+      respond: (url, init) => {
+        if (url.startsWith("/api/v1/auth/me")) return json({ authenticated: true, employee: { employeeId: "jax", displayName: "Jax" } });
+        if (url.startsWith("/api/v1/conversations/")) return json(options.conversation ?? { messages: [] });
+        if (url.startsWith("/api/v1/conversations")) return json(options.conversations ?? []);
+        if (url.startsWith("/api/v1/planner/days")) return json({ days: DAYS, first: DAYS[0], last: DAYS.at(-1) });
+        const day = new URLSearchParams(url.split("?")[1] ?? "").get("asOf");
+        if (url.startsWith("/api/v1/planner/todo")) {
+          return json({ asOf: day, person: "Jax", items: [
+            { itemKey: "ENG-107", title: `tagging on ${day}`, status: "In Progress", relation: "assignee", since: "2026-01-02", points: 2, sprintNo: 1, sources: ["ENG-107"] },
+            { itemKey: "ORG-105", title: "VPC review", status: "To Do", relation: "reporter", since: "2026-01-02", points: null, sprintNo: null, sources: [] },
+          ] });
+        }
+        if (url.startsWith("/api/v1/planner/day")) {
+          return json({ asOf: day, person: "Jax", entries: [
+            { seq: 1, title: `refactor on ${day}`, activityType: "deep_work", estHours: 2, collaborators: [], deferred: false, deferReason: null, itemKey: "ENG-107", sources: ["ENG-107"] },
+            { seq: 2, title: "check-in with deepa", activityType: "1on1", estHours: 1, collaborators: ["Deepa"], deferred: true, deferReason: "incident", itemKey: null, sources: [] },
+          ] });
+        }
+        if (url === "/api/v1/agent/chat" && options.answer) {
+          const asOf = JSON.parse(init?.body ?? "{}").asOf;
+          return json({ ...(options.answer as object), ...(asOf ? { asOf } : {}) });
+        }
+        return undefined;
+      },
+    });
+  }
+
+  async function until(check: () => unknown, what: string) {
+    const deadline = Date.now() + 2_000;
+    while (!check()) {
+      if (Date.now() > deadline) throw new Error(`Timed out waiting for ${what}.`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+
+  const plannerAsks = (page: Awaited<ReturnType<typeof openSmePage>>) =>
+    page.requests.map((request) => request.url).filter((url) => /planner\/(todo|day)\?/.test(url));
+
+  test("starts on today, and choosing a day reloads both lists for it", async () => {
+    const page = await plannerPage();
+    after(() => page.close());
+    const doc = page.document;
+    await until(() => doc.querySelector(".todo-item"), "the to-do list");
+
+    assert.equal((doc.querySelector("#as-of") as HTMLElement).hidden, false);
+    assert.equal((doc.querySelector("#as-of-input") as HTMLInputElement).value, "2026-01-07");
+    assert.equal(doc.querySelector("#as-of-caption")!.textContent, "Today");
+    assert.equal(page.window.location.search, "");
+    assert.deepEqual(plannerAsks(page), ["/api/v1/planner/todo?asOf=2026-01-07", "/api/v1/planner/day?asOf=2026-01-07"]);
+
+    // Grouped: what Jax works on, then what Jax raised and nobody picked up.
+    const groups = [...doc.querySelectorAll("#todo-list h4")].map((heading) => heading.textContent);
+    assert.deepEqual(groups, ["In progress · 1", "Raised by you, not picked up · 1"]);
+    // A ticket that can be cited opens; one that cannot is plain text.
+    assert.equal(doc.querySelectorAll("#todo-list button.todo-item").length, 1);
+    // The plan in order, the deferred item struck through with its reason.
+    const plan = [...doc.querySelectorAll("#plan-list .plan-item")];
+    assert.equal(plan.length, 2);
+    assert.ok(plan[1]!.classList.contains("deferred"));
+    assert.match(plan[1]!.textContent!, /1:1 · 1h · with Deepa/);
+    assert.match(plan[1]!.textContent!, /Deferred: incident/);
+
+    const input = doc.querySelector("#as-of-input") as HTMLInputElement;
+    input.value = "2026-01-05";
+    input.dispatchEvent(new page.window.Event("change", { bubbles: true }));
+    await until(() => /2026-01-05/.test(doc.querySelector("#plan-list")!.textContent!), "the new day's plan");
+
+    assert.equal(page.window.location.search, "?asOf=2026-01-05");
+    assert.equal(doc.querySelector("#as-of-caption")!.textContent, "As of");
+    assert.match(doc.querySelector("#today-date")!.textContent!, /As of/);
+    assert.match(doc.querySelector("#todo-list")!.textContent!, /tagging on 2026-01-05/);
+    assert.ok(!/2026-01-07/.test(doc.querySelector("#todo-list")!.textContent!), "nothing of the old day is left");
+    assert.equal((doc.querySelector("#company-graph-link") as HTMLElement).hidden, true);
+
+    // Stepping back a working day skips the weekend; back to now clears the address.
+    (doc.querySelector("#as-of-prev") as HTMLButtonElement).click();
+    await until(() => /2026-01-02/.test(doc.querySelector("#plan-list")!.textContent!), "the previous working day");
+    assert.equal(page.window.location.search, "?asOf=2026-01-02");
+    assert.equal((doc.querySelector("#as-of-prev") as HTMLButtonElement).disabled, true, "the record starts here");
+    (doc.querySelector("#as-of-now") as HTMLButtonElement).click();
+    await until(() => /2026-01-07/.test(doc.querySelector("#plan-list")!.textContent!), "today again");
+    assert.equal(page.window.location.search, "");
+    assert.equal((doc.querySelector("#company-graph-link") as HTMLElement).hidden, false);
+  });
+
+  test("an address with a day opens on it, a weekend on the Friday before", async () => {
+    const page = await plannerPage({ path: "/?asOf=2026-01-04" });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".todo-item"), "the to-do list");
+    assert.equal((page.document.querySelector("#as-of-input") as HTMLInputElement).value, "2026-01-02");
+    assert.equal(page.window.location.search, "?asOf=2026-01-02");
+    assert.equal((page.document.querySelector("#today-panel") as HTMLElement).hidden, false, "a past day opens the panel");
+    assert.deepEqual(plannerAsks(page), ["/api/v1/planner/todo?asOf=2026-01-02", "/api/v1/planner/day?asOf=2026-01-02"]);
+  });
+
+  test("a question asked on a past day carries it, and its answer says so and draws no graph", async () => {
+    const page = await plannerPage({
+      path: "/?asOf=2026-01-06",
+      answer: {
+        answer: "Finish ENG-107 first [source:ENG-107].",
+        runId: "r", toolCalls: [],
+        sources: [{ sourceId: "ENG-107", sourceType: "jira", title: "tagging", excerpt: "…" }],
+      },
+    });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".todo-item"), "the to-do list");
+
+    const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
+    input.value = "What should I do first?";
+    page.document.querySelector("#chat-form")!
+      .dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+    await until(() => page.document.querySelector(".sources-grid"), "the answer");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const sent = page.requests.find((request) => request.url === "/api/v1/agent/chat")!;
+    assert.equal(JSON.parse(sent.body!).asOf, "2026-01-06");
+    assert.match(page.document.querySelector(".as-of-tag")!.textContent!, /As of 2026-01-06/);
+    assert.equal(page.document.querySelector(".answer-graph"), null);
+    assert.ok(!page.requests.some((request) => request.url.startsWith("/api/v1/graph/")));
+  });
+
+  test("opening a conversation moves the picker to the day it was asked on", async () => {
+    const page = await plannerPage({
+      conversations: [{ conversationId: "c1", title: "Back then", updatedAt: "2026-09-27T00:00:00Z" }],
+      conversation: { messages: [
+        { role: "user", content: "what now?", metadata: { asOf: "2026-01-05" } },
+        { role: "assistant", content: "This.", metadata: { asOf: "2026-01-05", sources: [] } },
+      ] },
+    });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "the conversation list");
+    (page.document.querySelector(".conversation-item") as HTMLElement).click();
+    await until(() => page.window.location.search === "?asOf=2026-01-05", "the conversation's day");
+    assert.equal((page.document.querySelector("#as-of-input") as HTMLInputElement).value, "2026-01-05");
+    await until(() => page.document.querySelector(".as-of-tag"), "the answer's day");
+  });
+
+  test("without a planner there is no date control and no panel", async () => {
+    const page = await openSmePage({
+      respond: (url) => {
+        if (url.startsWith("/api/v1/auth/me")) return json({ authenticated: true, employee: { employeeId: "jax", displayName: "Jax" } });
+        if (url.startsWith("/api/v1/conversations")) return json([]);
+        if (url.startsWith("/api/v1/planner/")) return new Response("{}", { status: 503 });
+        return undefined;
+      },
+    });
+    after(() => page.close());
+    await until(() => page.requests.some((request) => request.url.startsWith("/api/v1/planner/days")), "the planner check");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal((page.document.querySelector("#as-of") as HTMLElement).hidden, true);
+    assert.equal((page.document.querySelector("#today-toggle") as HTMLElement).hidden, true);
+    assert.equal((page.document.querySelector("#today-panel") as HTMLElement).hidden, true);
+  });
+});
