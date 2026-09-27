@@ -1858,7 +1858,7 @@ function renderPersonaCards(personas, activeId) {
           <span class="persona-name">${escapeHtml(persona.displayName)}</span>
         </div>
         <span class="persona-role">${escapeHtml(persona.role || "Employee")}</span>
-        <span class="persona-dept-badge">${escapeHtml(persona.department || "Apex Athletics")}</span>
+        <span class="persona-dept-badge">${escapeHtml(persona.department || "Employee")}</span>
       </div>
     `;
 
