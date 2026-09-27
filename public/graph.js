@@ -39,11 +39,24 @@ const CATEGORIES = [
  */
 const VIEWS = {
   query: { layout: "radial" },
-  org: { layout: "columns", columns: ["people", "departments", "domains"] },
-  expertise: { layout: "columns", columns: ["departments", "people", "domains"] },
-  incidents: { layout: "columns", columns: ["people", "events", "work", "documents", "domains"] },
-  documents: { layout: "columns", columns: ["events", "documents", "people", "domains"] },
-  customers: { layout: "columns", columns: ["contacts", "partners", "work", "events", "documents"] },
+  // `hub` is the column whose nodes the others are grouped beside; a `free`
+  // column is joined to many hub nodes at once (a domain many people know),
+  // so it is spread down the side in the order of what it connects to rather
+  // than tied to one of them.
+  org: { layout: "columns", columns: ["people", "departments", "domains"], hub: "departments" },
+  expertise: {
+    layout: "columns", columns: ["departments", "people", "domains"],
+    hub: "departments", free: ["domains"],
+  },
+  incidents: {
+    layout: "columns", columns: ["people", "events", "work", "documents", "domains"],
+    hub: "events", free: ["people", "domains"],
+  },
+  documents: {
+    layout: "columns", columns: ["events", "documents", "people", "domains"],
+    hub: "documents", free: ["people", "domains"],
+  },
+  customers: { layout: "columns", columns: ["contacts", "partners", "work", "events", "documents"], hub: "partners" },
   timeline: { layout: "timeline" },
 };
 
@@ -212,13 +225,16 @@ function columnOf(node) {
 }
 
 /**
- * One column per kind, in the order the view names, then any others. Rows
- * within a column are ordered so that each node sits near what it is joined
- * to in the next column (two barycentre passes, left to right and back),
- * which is what groups people under their department without the view having
- * to know about departments.
+ * One column per kind, in the order the view names, then any others — but a
+ * column of forty people drawn as one line is too tall to read at any zoom.
+ * So one column is the hub (departments in the org view, organizations in
+ * customers, incidents in incidents: the column whose nodes carry the most
+ * edges each), each hub node gets a block, and every other column lays out
+ * the nodes joined to that hub in a small grid beside it. People end up under
+ * their department, a customer's deals and its "+N more" beside the
+ * customer. Nodes joined to no hub go at the bottom of their column.
  */
-function columnsLayout(nodes, edges, columns) {
+function columnsLayout(nodes, edges, columns, hubColumn, freeColumns = []) {
   const byColumn = new Map();
   for (const node of nodes) {
     const column = columnOf(node);
@@ -229,13 +245,6 @@ function columnsLayout(nodes, edges, columns) {
     ...columns.filter((column) => byColumn.has(column)),
     ...[...byColumn.keys()].filter((column) => !columns.includes(column)),
   ];
-  for (const list of byColumn.values()) {
-    // Clusters last in their column, everything else alphabetical to start.
-    list.sort((left, right) =>
-      Number(left.type === "cluster") - Number(right.type === "cluster") ||
-      nameOf(left).localeCompare(nameOf(right)));
-  }
-
   const neighbours = new Map(nodes.map((node) => [node.id, []]));
   for (const edge of edges) {
     if (neighbours.has(edge.source) && neighbours.has(edge.target)) {
@@ -243,41 +252,123 @@ function columnsLayout(nodes, edges, columns) {
       neighbours.get(edge.target).push(edge.source);
     }
   }
-  const rowOf = () => {
-    const rows = new Map();
-    for (const list of byColumn.values()) list.forEach((node, index) => rows.set(node.id, index));
-    return rows;
-  };
-  const reorder = (column, towards) => {
-    const rows = rowOf();
-    const inColumn = new Set(byColumn.get(towards)?.map((node) => node.id) ?? []);
-    const list = byColumn.get(column);
-    const weight = new Map(list.map((node, index) => {
-      const joined = neighbours.get(node.id).filter((id) => inColumn.has(id)).map((id) => rows.get(id));
-      return [node.id, joined.length ? joined.reduce((a, b) => a + b, 0) / joined.length : index];
-    }));
+  const columnOfId = new Map(nodes.map((node) => [node.id, columnOf(node)]));
+
+  // The hub the view names, or else the column with the most edges per node.
+  const hub = hubColumn && byColumn.has(hubColumn) ? hubColumn : [...order].sort((left, right) => {
+    const density = (column) => {
+      const list = byColumn.get(column);
+      const degree = list.reduce((sum, node) => sum + neighbours.get(node.id).length, 0);
+      return list.length > 1 ? degree / list.length : 0;
+    };
+    return density(right) - density(left);
+  })[0];
+  const hubNodes = [...byColumn.get(hub)].sort((left, right) => nameOf(left).localeCompare(nameOf(right)));
+  const hubIndex = new Map(hubNodes.map((node, index) => [node.id, index]));
+
+  // Each non-hub node belongs to the first hub node it is joined to. A node
+  // two steps away (a person's domain, via the department) follows the hub of
+  // whatever it is joined to that already has one.
+  const home = new Map();
+  for (const node of hubNodes) home.set(node.id, node.id);
+  const free = new Set(freeColumns.filter((column) => column !== hub));
+  for (let pass = 0; pass < 3; pass += 1) {
+    for (const node of nodes) {
+      if (home.has(node.id) || free.has(columnOfId.get(node.id))) continue;
+      const owners = neighbours.get(node.id)
+        .map((id) => home.get(id))
+        .filter((id) => id !== undefined)
+        .sort((left, right) => hubIndex.get(left) - hubIndex.get(right));
+      if (owners.length) home.set(node.id, owners[0]);
+    }
+  }
+
+  // Rows per sub-column: enough to keep the whole picture roughly as wide
+  // as it is tall.
+  const largest = Math.max(...order.filter((column) => column !== hub)
+    .map((column) => byColumn.get(column).length), 1);
+  const wrap = Math.min(Math.max(Math.ceil(largest / Math.max(hubNodes.length, 1) / 1.5), 3), 8);
+  const SUB = 150;
+
+  // Block height per hub node: the tallest of its groups.
+  const groups = new Map();
+  for (const node of nodes) {
+    if (columnOfId.get(node.id) === hub || free.has(columnOfId.get(node.id))) continue;
+    const key = `${home.get(node.id) ?? "none"}\u0000${columnOfId.get(node.id)}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(node);
+  }
+  for (const list of groups.values()) {
     list.sort((left, right) =>
       Number(left.type === "cluster") - Number(right.type === "cluster") ||
-      weight.get(left.id) - weight.get(right.id));
-  };
-  for (let index = 1; index < order.length; index += 1) reorder(order[index], order[index - 1]);
-  for (let index = order.length - 2; index >= 0; index -= 1) reorder(order[index], order[index + 1]);
+      nameOf(left).localeCompare(nameOf(right)));
+  }
+  const rowsOf = (owner) => Math.max(1, ...order.map((column) =>
+    Math.min(groups.get(`${owner}\u0000${column}`)?.length ?? 0, wrap)));
 
-  order.forEach((column, columnIndex) => {
-    const x = (columnIndex - (order.length - 1) / 2) * COLUMN_GAP;
-    const list = byColumn.get(column);
-    // A column already on screen keeps its rows; new ones go underneath.
-    const placed = list.filter((node) => state.positions.has(node.id));
-    let nextY = placed.length
-      ? Math.max(...placed.map((node) => state.positions.get(node.id).y)) + ROW_GAP
-      : -((list.length - 1) / 2) * ROW_GAP;
-    const columnX = placed.length ? state.positions.get(placed[0].id).x : x;
-    for (const node of list) {
-      if (state.positions.has(node.id)) continue;
-      state.positions.set(node.id, { x: columnX, y: nextY });
-      nextY += ROW_GAP;
-    }
+  // Columns are as wide as their widest group's sub-columns.
+  const subColumns = new Map(order.map((column) => [column, 1]));
+  for (const [key, list] of groups) {
+    const column = key.split("\u0000")[1];
+    subColumns.set(column, Math.max(subColumns.get(column), Math.ceil(list.length / wrap)));
+  }
+  const hubAt = order.indexOf(hub);
+  const columnX = new Map();
+  let cursor = 0;
+  order.forEach((column) => {
+    columnX.set(column, cursor);
+    cursor += (subColumns.get(column) - 1) * SUB + COLUMN_GAP;
   });
+  const shift = columnX.get(hub);
+
+  const place = (node, point) => {
+    if (!state.positions.has(node.id)) state.positions.set(node.id, point);
+  };
+  let y = 0;
+  const blockTop = new Map();
+  for (const owner of [...hubNodes.map((node) => node.id), "none"]) {
+    const rows = owner === "none"
+      ? Math.max(0, ...order.map((column) => Math.min(groups.get(`none\u0000${column}`)?.length ?? 0, wrap)))
+      : rowsOf(owner);
+    if (rows === 0) continue;
+    blockTop.set(owner, y);
+    if (owner !== "none") {
+      place(nodes.find((node) => node.id === owner), { x: 0, y: y + ((rows - 1) / 2) * ROW_GAP });
+    }
+    for (const column of order) {
+      if (column === hub) continue;
+      const list = groups.get(`${owner}\u0000${column}`) ?? [];
+      // Sub-columns grow away from the hub, so the nearest is the first.
+      const direction = order.indexOf(column) < hubAt ? -1 : 1;
+      list.forEach((node, index) => {
+        const sub = Math.floor(index / wrap);
+        const baseX = columnX.get(column) - shift;
+        place(node, {
+          x: baseX + direction * sub * SUB,
+          y: y + (index % wrap) * ROW_GAP,
+        });
+      });
+    }
+    y += rows * ROW_GAP + ROW_GAP;
+  }
+
+  // Free columns: in the order of the average height of what each node is
+  // joined to, spread over the height the blocks took.
+  const height = Math.max(y - ROW_GAP, ROW_GAP);
+  for (const column of free) {
+    const list = byColumn.get(column);
+    if (!list) continue;
+    const pull = (node) => {
+      const ys = neighbours.get(node.id)
+        .map((id) => state.positions.get(id)?.y)
+        .filter((value) => value !== undefined);
+      return ys.length ? ys.reduce((a, b) => a + b, 0) / ys.length : height;
+    };
+    const sorted = [...list].sort((left, right) => pull(left) - pull(right));
+    const step = Math.max(ROW_GAP, height / Math.max(sorted.length - 1, 1));
+    const top = sorted.length > 1 ? Math.max(0, (height - step * (sorted.length - 1)) / 2) : height / 2;
+    sorted.forEach((node, index) => place(node, { x: columnX.get(column) - shift, y: top + index * step }));
+  }
 }
 
 const TIMELINE_LANES = {
@@ -365,7 +456,7 @@ function placeAround(parentId, nodes) {
   fresh.forEach((node, index) => {
     const fraction = fresh.length === 1 ? 0.5 : index / (fresh.length - (outward === null ? 0 : 1));
     const angle = (outward ?? 0) - (outward === null ? 0 : spread / 2) + fraction * spread;
-    let radius = 120 + (index % 2) * 45;
+    let radius = Math.max(120, fresh.length * 14) + (index % 2) * 45;
     let point = { x: parent.x + Math.cos(angle) * radius, y: parent.y + Math.sin(angle) * radius };
     for (let attempt = 0; attempt < 4 && occupied.some((other) =>
       Math.hypot(other.x - point.x, other.y - point.y) < 22); attempt += 1) {
@@ -382,7 +473,10 @@ function placeNew(parentId) {
   const nodes = state.slice.nodes;
   const layout = VIEWS[state.view].layout;
   if (layout === "timeline") timelineLayout(nodes);
-  else if (layout === "columns" && !parentId) columnsLayout(nodes, state.slice.edges, VIEWS[state.view].columns);
+  else if (layout === "columns" && !parentId) {
+    const view = VIEWS[state.view];
+    columnsLayout(nodes, state.slice.edges, view.columns, view.hub, view.free);
+  }
   else if (layout === "radial" && !parentId) radialLayout(nodes, state.centreId);
   // An expansion's additions go around what was expanded, whatever the view:
   // appending them to a far column would put them out of sight of it.
@@ -400,7 +494,23 @@ function placeNew(parentId) {
 // Drawing
 // ---------------------------------------------------------------------------
 
+/** On the timeline, a day is a bar as tall as the day was busy — eighty
+ * captions in one lane would be unreadable — and a milestone is captioned by
+ * its key ("ENG-112", "Sprint 3") rather than its full title. */
+function timelineShape(node) {
+  const total = Number(node.props?.total ?? 1);
+  const height = Math.max(4, Math.min(48, Math.sqrt(total) * 6));
+  return svg("rect", { x: -3, y: -height, width: 6, height, class: "shape n-day" });
+}
+
+function timelineCaption(node) {
+  if (node.subtype === "incident" || node.subtype === "zd_ticket") return naturalKey(node);
+  if (node.subtype === "sprint_planned") return nameOf(node).split(":")[0];
+  return shortLabel(node, 18);
+}
+
 function shapeFor(node) {
+  if (node.id.startsWith("day:") && VIEWS[state.view].layout === "timeline") return timelineShape(node);
   const incident = node.isIncident ? " incident" : "";
   switch (node.type) {
     case "person":
@@ -428,6 +538,16 @@ function setViewBox(box) {
     "viewBox",
     `${box.x.toFixed(1)} ${box.y.toFixed(1)} ${box.width.toFixed(1)} ${box.height.toFixed(1)}`,
   );
+}
+
+/** Whether everything drawn is inside the current frame. */
+function allInView() {
+  const box = state.viewBox;
+  return visibleNodes().every((node) => {
+    const point = state.positions.get(node.id);
+    return !point || (point.x >= box.x && point.x <= box.x + box.width &&
+      point.y >= box.y && point.y <= box.y + box.height);
+  });
 }
 
 /** Frame everything drawn, with room for captions. */
@@ -468,6 +588,11 @@ function drawPicture() {
   const shown = new Set(nodes.map((node) => node.id));
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const sideCaptions = VIEWS[state.view].layout === "columns";
+  const timeline = VIEWS[state.view].layout === "timeline";
+  // Timeline nodes in time order, so alternating captions alternate between
+  // neighbours on the axis.
+  const laneCount = new Map();
+  if (timeline) nodes.sort((left, right) => (timeOf(left) ?? 0) - (timeOf(right) ?? 0));
 
   const lanes = svg("g");
   drawLaneLabels(lanes);
@@ -499,11 +624,24 @@ function drawPicture() {
       "aria-label": `${nameOf(node)}. ${describeKind(node)}.${expandable(node) ? " Press Enter to open it up." : ""}`,
       "data-id": node.id,
     });
-    const caption = sideCaptions && node.type !== "query"
-      ? svg("text", { x: 12, y: 3, class: "caption side" })
-      : svg("text", { y: node.type === "query" ? 26 : 20, class: `caption${node.type === "query" ? " strong" : ""}` });
-    caption.textContent = shortLabel(node, node.type === "query" ? 60 : sideCaptions ? 32 : 24);
-    group.append(svg("circle", { r: 13, class: "ring" }), shapeFor(node), caption);
+    let caption;
+    if (timeline) {
+      // Alternate above and below, so neighbours on the time axis do not
+      // print over each other.
+      const above = (laneCount.get(laneOf(node)) ?? 0) % 2 === 1;
+      laneCount.set(laneOf(node), (laneCount.get(laneOf(node)) ?? 0) + 1);
+      caption = svg("text", { y: above ? -11 : 19, class: "caption" });
+      caption.textContent = node.id.startsWith("day:") ? "" : timelineCaption(node);
+    } else if (sideCaptions && node.type !== "query") {
+      caption = svg("text", { x: 12, y: 3, class: "caption side" });
+      caption.textContent = shortLabel(node, 32);
+    } else {
+      caption = svg("text", { y: node.type === "query" ? 26 : 20, class: `caption${node.type === "query" ? " strong" : ""}` });
+      caption.textContent = shortLabel(node, node.type === "query" ? 60 : 24);
+    }
+    group.append(svg("title", {}), caption);
+    group.querySelector("title").textContent = `${nameOf(node)} — ${describeKind(node)}`;
+    group.prepend(svg("circle", { r: 13, class: "ring" }), shapeFor(node));
     group.addEventListener("click", (event) => {
       event.stopPropagation();
       activate(node.id);
@@ -821,6 +959,7 @@ async function expand(id) {
     if (pager && spot && !state.positions.has(parentId)) state.positions.set(parentId, spot);
     placeNew(state.positions.has(parentId) ? parentId : null);
     redraw();
+    if (!allInView()) fit();
     select(pager ? parentId : id);
     $("#restore").disabled = false;
   } catch (error) {

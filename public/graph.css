@@ -161,6 +161,8 @@ h2 { margin: 0 0 8px; font-family: Georgia, "Songti SC", serif; font-size: 1.05r
 .n-query { fill: var(--text); }
 .n-cluster { fill: var(--sky-raised); stroke: var(--muted) !important; stroke-width: 1.5; stroke-dasharray: 3 2; }
 .node.kind-cluster .caption { fill: var(--aqua); font-style: italic; }
+.n-day { fill: var(--faint); }
+.node:hover .n-day { fill: var(--aqua); }
 /* The emergent graph has its own taxonomy, so its own pair of shapes. */
 .n-entity { fill: var(--aqua); }
 .n-kind { fill: var(--ochre); }
