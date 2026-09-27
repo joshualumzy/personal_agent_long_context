@@ -257,7 +257,8 @@ describe("Browser surface", () => {
     assert.equal(theme.statusCode, 200);
     assert.match(theme.headers["content-type"] as string, /^text\/css/);
     const fontUrls = [...theme.body.matchAll(/url\(([^)]+)\)/g)].map((match) => match[1] as string);
-    assert.ok(fontUrls.length >= 3);
+    // Figtree for everything, Geist Mono for keys and dates.
+    assert.ok(fontUrls.length >= 2);
     for (const url of fontUrls) {
       assert.match(url, /^\/fonts\//, "fonts must come from this origin; the CSP blocks font CDNs");
       const font = await app.inject({ method: "GET", url });

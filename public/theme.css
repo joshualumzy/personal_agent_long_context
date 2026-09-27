@@ -11,12 +11,6 @@
   font-display: swap;
 }
 @font-face {
-  font-family: "Bricolage Grotesque";
-  src: url(/fonts/bricolage-grotesque.woff2) format("woff2");
-  font-weight: 500 800;
-  font-display: swap;
-}
-@font-face {
   font-family: "Geist Mono";
   src: url(/fonts/geist-mono.woff2) format("woff2");
   font-weight: 400 600;
@@ -63,7 +57,8 @@
   --error-text: #b42318;
   --error-bg: #fdecea;
   --f-ui: "Figtree", "PingFang SC", "Hiragino Sans GB", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --f-display: "Bricolage Grotesque", "Figtree", "PingFang SC", sans-serif;
+  /* One family everywhere: headings are Figtree too, set heavier. */
+  --f-display: "Figtree", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
   --f-mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --radius-pill: 999px;
   --radius-control: 10px;
