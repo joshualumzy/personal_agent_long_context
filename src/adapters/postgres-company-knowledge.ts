@@ -19,7 +19,8 @@ import {
   type GraphCategory,
   type NeighbourCandidate,
 } from "../graph-neighbourhood.js";
-import { GRAPH_NODE_TYPES, graphNodeId, parseGraphNodeId } from "../company-domain.js";
+import { GRAPH_NODE_TYPES, GRAPH_VIEWS, graphNodeId, parseGraphNodeId } from "../company-domain.js";
+import type { GraphViewName } from "../company-domain.js";
 import type { EmbeddingProvider } from "../embeddings.js";
 import { pgVector } from "../embeddings.js";
 
@@ -520,6 +521,201 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
   }
 
   // -------------------------------------------------------------------------
+  // Company overview
+  // -------------------------------------------------------------------------
+
+  /**
+   * One of the fixed overview subgraphs. Each is chosen by a query of its own
+   * that returns the whole relationship it names, rather than an edge type
+   * and a LIMIT, which cut the old layer tabs off at an arbitrary id. Where
+   * the whole relationship is too big to draw (a vendor's 27 tickets), it is
+   * folded per node the same way an expansion is.
+   */
+  async graphView(name: string): Promise<GraphSlice | null> {
+    if (!(GRAPH_VIEWS as readonly string[]).includes(name)) return null;
+    switch (name as GraphViewName) {
+      case "org":
+        // Departments, who is in each (current and former, the edge carries
+        // first/last day) and who leads it, and the domains each is
+        // responsible for.
+        return this.viewOf(
+          `SELECT node_id FROM graph_nodes WHERE node_type = 'organization' AND node_subtype = 'department'
+           UNION SELECT e.src_node_id FROM graph_edges e WHERE e.edge_type IN ('member_of', 'leads', 'belongs_to')`,
+          ["member_of", "leads", "belongs_to"],
+        );
+      case "expertise":
+        // Who owns and who knows each domain, with each person's department so
+        // the view can group them.
+        return this.viewOf(
+          `SELECT node_id FROM graph_nodes WHERE node_type = 'item' AND node_subtype = 'domain'
+           UNION SELECT e.src_node_id FROM graph_edges e WHERE e.edge_type IN ('knows_about', 'owns_domain')
+           UNION SELECT e.dst_node_id FROM graph_edges e
+                 WHERE e.edge_type = 'member_of'
+                   AND e.src_node_id IN (SELECT src_node_id FROM graph_edges WHERE edge_type IN ('knows_about', 'owns_domain'))`,
+          ["knows_about", "owns_domain", "member_of"],
+        );
+      case "incidents":
+        // Every incident with what it recurred from, the ticket it was
+        // tracked in, the PR that fixed it, its postmortem, its domains, the
+        // customer tickets that escalated into it, and who raised and received
+        // the escalation.
+        return this.viewOf(
+          `WITH incident AS (
+             SELECT node_id FROM graph_nodes WHERE node_type = 'event' AND node_subtype = 'incident'
+           )
+           SELECT node_id FROM incident
+           UNION SELECT e.dst_node_id FROM graph_edges e JOIN incident i ON i.node_id = e.src_node_id
+                 WHERE e.edge_type IN ('tracked_in', 'fixed_by', 'produced', 'about_domain', 'caused_by', 'raised_by', 'received_by')
+           UNION SELECT e.src_node_id FROM graph_edges e JOIN incident i ON i.node_id = e.dst_node_id
+                 WHERE e.edge_type = 'caused_by'`,
+          ["caused_by", "tracked_in", "fixed_by", "produced", "about_domain", "raised_by", "received_by", "documented_by"],
+        );
+      case "documents":
+        return this.documentsView();
+      case "customers":
+        return this.partnersView();
+      case "timeline":
+        return this.timelineView();
+    }
+  }
+
+  /** A view from a set of node ids: the nodes, and every edge of the given
+   * types with both ends among them. */
+  private async viewOf(nodeIdsSql: string, edgeTypes: string[]): Promise<GraphSlice> {
+    const result = await this.pool.query<GraphNodeRow>(
+      `SELECT node_id::text AS node_id, ref_key, node_type, node_subtype, label, props
+       FROM graph_nodes WHERE node_id IN (${nodeIdsSql})`,
+    );
+    const edges = await this.edgesWithin(result.rows.map((row) => row.node_id), edgeTypes);
+    const nodes = result.rows.map(graphNode);
+    // A node the query chose but no edge of the view reaches (a department
+    // with no members) is noise on a diagram about relationships.
+    const touched = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
+    return { nodes: nodes.filter((node) => touched.has(node.id)), edges, truncated: false };
+  }
+
+  /**
+   * The document chain for the pages that matter most to it: the 30 pages
+   * most connected by it (cited by other pages, written up from an incident
+   * or a ticket, about a domain), each with the event that produced it, its
+   * author, the domains it is about, and the citations among them. Not all
+   * 479: that many pages drawn at once is a wall, and every page is a
+   * query or an expansion away.
+   */
+  private async documentsView(): Promise<GraphSlice> {
+    return this.viewOf(
+      `WITH page AS (
+         SELECT d.node_id
+         FROM graph_nodes d
+         WHERE d.node_type = 'document'
+         ORDER BY (
+           SELECT count(*) FROM graph_edges e
+           WHERE (e.dst_node_id = d.node_id AND e.edge_type IN ('cites', 'documented_by', 'produced'))
+              OR (e.src_node_id = d.node_id AND e.edge_type IN ('cites', 'about_domain'))
+         ) DESC, d.ref_key
+         LIMIT 30
+       )
+       SELECT node_id FROM page
+       UNION SELECT e.src_node_id FROM graph_edges e JOIN page p ON p.node_id = e.dst_node_id
+             WHERE e.edge_type IN ('produced', 'wrote')
+       UNION SELECT e.dst_node_id FROM graph_edges e JOIN page p ON p.node_id = e.src_node_id
+             WHERE e.edge_type IN ('about_domain', 'cites')
+               AND e.dst_node_id IN (SELECT node_id FROM graph_nodes WHERE node_type = 'item' OR node_id IN (SELECT node_id FROM page))`,
+      ["produced", "wrote", "about_domain", "cites", "part_of"],
+    );
+  }
+
+  /**
+   * Customers and vendors, the people who write in for them, and the work
+   * that is about them: deals, invoices, surveys, customer tickets, and the
+   * tickets vendor mail opened. A vendor opened up to 27 tickets, so each
+   * organization's work is budgeted and the rest folded into a cluster that
+   * expands like any other.
+   */
+  private async partnersView(): Promise<GraphSlice> {
+    const organizations = await this.pool.query<GraphNodeRow>(
+      `SELECT o.node_id::text AS node_id, o.ref_key, o.node_type, o.node_subtype, o.label, o.props
+       FROM graph_nodes o
+       WHERE o.node_type = 'organization' AND o.node_subtype IN ('customer', 'vendor')
+         AND EXISTS (SELECT 1 FROM graph_edges e
+                     WHERE e.dst_node_id = o.node_id
+                       AND e.edge_type IN ('for_customer', 'from_vendor', 'contact_for'))
+       ORDER BY o.node_subtype, o.ref_key`,
+    );
+    const nodes = new Map<string, GraphNode>();
+    const edges: GraphEdge[] = [];
+    for (const row of organizations.rows) {
+      const organization = graphNode(row);
+      nodes.set(organization.id, organization);
+      const candidates = (await this.neighbours(row.node_id, false)).filter((candidate) =>
+        candidate.edges.some((edge) =>
+          ["for_customer", "from_vendor", "contact_for"].includes(edge.type)));
+      for (const candidate of candidates) {
+        candidate.edges = candidate.edges.filter((edge) =>
+          ["for_customer", "from_vendor", "contact_for"].includes(edge.type));
+      }
+      const kept = budgetNeighbours(organization.id, candidates, { budget: 4 });
+      for (const node of kept.nodes) if (!nodes.has(node.id)) nodes.set(node.id, node);
+      edges.push(...kept.edges);
+    }
+    return { nodes: [...nodes.values()], edges, truncated: false };
+  }
+
+  /**
+   * What happened when, across the whole simulation. The milestones are
+   * drawn as themselves — the incidents, the sprints, the customer tickets
+   * — with the recurrence edges between incidents. Everything else that
+   * happened on a day (page creations, discussions, ticket progress, plans:
+   * about 2,300 events) is one summary node per day saying how many of what,
+   * which expands like a cluster would.
+   */
+  private async timelineView(): Promise<GraphSlice> {
+    const milestones = await this.viewOrEmpty(
+      `SELECT node_id FROM graph_nodes
+       WHERE node_type = 'event' AND node_subtype IN ('incident', 'sprint_planned', 'zd_ticket')`,
+    );
+    const days = await this.pool.query<{ day: string; first_at: Date; counts: Record<string, number> }>(
+      `WITH daily AS (
+         SELECT (props->>'occurred_at')::timestamptz::date AS day, node_subtype, count(*) AS n,
+                min((props->>'occurred_at')::timestamptz) AS first_at
+         FROM graph_nodes
+         WHERE node_type = 'event'
+           AND node_subtype NOT IN ('incident', 'sprint_planned', 'zd_ticket')
+           AND props->>'occurred_at' IS NOT NULL
+         GROUP BY 1, 2
+       )
+       SELECT day::text AS day, min(first_at) AS first_at, jsonb_object_agg(node_subtype, n) AS counts
+       FROM daily GROUP BY day ORDER BY day`,
+    );
+    const summaries: GraphNode[] = days.rows.map((row) => {
+      const total = Object.values(row.counts).reduce((sum, value) => sum + Number(value), 0);
+      return {
+        id: `day:${row.day}`,
+        refKey: row.day,
+        type: "cluster",
+        label: `${row.day}: ${total} events`,
+        props: { occurred_at: row.first_at.toISOString(), day: row.day, counts: row.counts, total },
+      };
+    });
+    return {
+      nodes: [...milestones.nodes, ...summaries],
+      edges: milestones.edges,
+      truncated: false,
+    };
+  }
+
+  /** viewOf without dropping nodes no edge touches: a timeline's milestones
+   * stand on their own. */
+  private async viewOrEmpty(nodeIdsSql: string): Promise<GraphSlice> {
+    const result = await this.pool.query<GraphNodeRow>(
+      `SELECT node_id::text AS node_id, ref_key, node_type, node_subtype, label, props
+       FROM graph_nodes WHERE node_id IN (${nodeIdsSql})`,
+    );
+    const edges = await this.edgesWithin(result.rows.map((row) => row.node_id), ["caused_by"]);
+    return { nodes: result.rows.map(graphNode), edges, truncated: false };
+  }
+
+  // -------------------------------------------------------------------------
   // Query graph
   // -------------------------------------------------------------------------
 
@@ -655,6 +851,10 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     // Only a cluster pages: its node carried how far the previous page reached.
     const offset = cluster ? Math.max(request.offset ?? 0, 0) : 0;
 
+    if (parentId.startsWith("day:")) {
+      return this.expandDay(parentId, pageBudget, offset, request.includePlans === true);
+    }
+
     const { type, refKey } = parseGraphNodeId(parentId);
     const parentRows = await this.pool.query<GraphNodeRow>(
       `SELECT node_id::text AS node_id, ref_key, node_type, node_subtype, label, props
@@ -679,6 +879,40 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
       truncated: kept.folded.length > 0,
       centre: parent.id,
     };
+  }
+
+  /**
+   * A timeline day summary's events: everything that happened that day
+   * except the milestones the timeline already draws, budgeted like any
+   * other neighbourhood (a busy day has 60 events). Each is joined to the day
+   * by an 'on_day' edge, since a day is not a stored node.
+   */
+  private async expandDay(
+    dayId: string,
+    budget: number,
+    offset: number,
+    includePlans: boolean,
+  ): Promise<GraphSlice> {
+    const day = dayId.slice("day:".length);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { nodes: [], edges: [], truncated: false };
+    const result = await this.pool.query<GraphNodeRow & { degree: string }>(
+      `SELECT n.node_id::text AS node_id, n.ref_key, n.node_type, n.node_subtype, n.label, n.props,
+              (SELECT count(*) FROM graph_edges x
+               WHERE x.src_node_id = n.node_id OR x.dst_node_id = n.node_id) AS degree
+       FROM graph_nodes n
+       WHERE n.node_type = 'event'
+         AND n.node_subtype NOT IN ('incident', 'sprint_planned', 'zd_ticket')
+         AND ($2::boolean OR NOT (n.node_subtype = ANY($3::text[])))
+         AND (n.props->>'occurred_at')::timestamptz::date = $1::date`,
+      [day, includePlans, PLAN_SUBTYPES],
+    );
+    const candidates: NeighbourCandidate[] = result.rows.map((row) => {
+      const node = graphNode(row);
+      return { node, edges: [{ source: dayId, target: node.id, type: "on_day" }], degree: Number(row.degree) };
+    });
+    const centre: GraphNode = { id: dayId, refKey: day, type: "cluster", label: day, props: { day } };
+    const kept = budgetNeighbours(dayId, candidates, { budget, offset });
+    return { nodes: [centre, ...kept.nodes], edges: kept.edges, truncated: kept.folded.length > 0, centre: dayId };
   }
 
   private async neighbours(nodeId: string, includePlans: boolean): Promise<NeighbourCandidate[]> {

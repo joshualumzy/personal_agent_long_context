@@ -523,6 +523,9 @@ def build_incident_event_nodes(cursor) -> int:
             'Incident ' || i.incident_key || coalesce(': ' || i.root_cause, ''),
             jsonb_build_object(
                 'opened_at', i.opened_at,
+                -- The same key every other event carries its time under, so
+                -- a timeline or a recency ranking needs no special case.
+                'occurred_at', i.opened_at,
                 'resolved_at', i.resolved_at,
                 'root_cause', i.root_cause,
                 'root_domain', dm.domain_key,

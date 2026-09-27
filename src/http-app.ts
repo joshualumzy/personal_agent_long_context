@@ -542,6 +542,17 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     return reply.send({ sourceId: top.sourceId, label: top.title });
   });
 
+  /** One of the fixed company-overview subgraphs, by name. */
+  app.get<{ Params: { name: string } }>("/api/v1/graph/view/:name", async (request, reply) => {
+    const knowledge = options.companyKnowledge;
+    if (!knowledge?.graphView) {
+      return reply.code(503).send({ message: "The graph is not configured." });
+    }
+    const slice = await knowledge.graphView(request.params.name);
+    if (!slice) return reply.code(404).send({ message: "There is no view by that name." });
+    return reply.send(slice);
+  });
+
   /**
    * A question's graph: the question as a centre node, linked to the graph
    * nodes its evidence belongs to and the ones it names outright. Only the

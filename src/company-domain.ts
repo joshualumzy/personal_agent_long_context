@@ -98,6 +98,17 @@ export interface GraphSlice {
   evidence?: Evidence[];
 }
 
+/** The fixed company-overview subgraphs, which need no question. */
+export const GRAPH_VIEWS = [
+  "org",
+  "timeline",
+  "customers",
+  "expertise",
+  "incidents",
+  "documents",
+] as const;
+export type GraphViewName = (typeof GRAPH_VIEWS)[number];
+
 /** A query graph: the question, and the graph nodes its evidence and its own
  * words point at. */
 export interface GraphQueryRequest {
@@ -180,6 +191,9 @@ export interface CompanyKnowledge {
   graphQuery?(request: GraphQueryRequest): Promise<GraphSlice>;
   /** One node's neighbourhood, by category, ranked and budgeted. */
   graphExpand?(request: GraphExpandRequest): Promise<GraphSlice>;
+  /** One of the fixed company-overview subgraphs (see GRAPH_VIEWS), or null
+   * for a name that is not one. */
+  graphView?(name: string): Promise<GraphSlice | null>;
   close?(): Promise<void>;
 }
 

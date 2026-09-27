@@ -156,6 +156,9 @@ describe("the query and expand routes", () => {
         expansions.push(request);
         return request.id === "person:Nobody" ? { nodes: [], edges: [], truncated: false } : answer;
       },
+      async graphView(name) {
+        return name === "org" ? answer : null;
+      },
     };
   }
 
@@ -188,9 +191,18 @@ describe("the query and expand routes", () => {
     assert.equal((await fetch(`${base}/api/v1/graph/expand`)).status, 400);
   });
 
-  test("without the graph configured both routes say so", async () => {
+  test("an overview view is served by name, and an unknown name is a 404", async () => {
+    const base = await start(knowledge([], []));
+    const response = await fetch(`${base}/api/v1/graph/view/org`);
+    assert.equal(response.status, 200);
+    assert.equal(((await response.json()) as GraphSlice).nodes.length, 2);
+    assert.equal((await fetch(`${base}/api/v1/graph/view/nope`)).status, 404);
+  });
+
+  test("without the graph configured every route says so", async () => {
     const base = await start();
     assert.equal((await fetch(`${base}/api/v1/graph/query?q=x`)).status, 503);
     assert.equal((await fetch(`${base}/api/v1/graph/expand?id=x`)).status, 503);
+    assert.equal((await fetch(`${base}/api/v1/graph/view/org`)).status, 503);
   });
 });
