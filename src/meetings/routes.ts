@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
-import type { ActionPayload, MeetingActions, MeetingEvent } from "./domain.js";
+import type { ActionPayload, MeetingActions, MeetingEvent, MeetingParticipant } from "./domain.js";
 import { MeetingError } from "./domain.js";
 import type { Transcribe } from "./speech.js";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -19,7 +19,12 @@ export interface RegisterMeetingRoutesOptions {
   /** Loads an OrgForge meeting to replay. Absent means replay is not configured. */
   loadReplay?: (
     sourceId: string,
-  ) => Promise<{ title: string; segments: Array<{ speaker: string; text: string; at?: string }> } | null>;
+  ) => Promise<{
+    title: string;
+    segments: Array<{ speaker: string; text: string; at?: string }>;
+    /** The invite list, when the source has one. */
+    participants?: MeetingParticipant[];
+  } | null>;
   /** Feeds segments into the meeting over time, in the background. Not awaited by the route. */
   replay?: (
     meetingId: string,
@@ -222,7 +227,12 @@ export function registerMeetingRoutes(
           ? body.employeeId.trim().slice(0, 200)
           : DEFAULT_REPLAY_EMPLOYEE_ID;
 
-      const meeting = await meetings.start({ title: loaded.title, employeeId, sourceId });
+      const meeting = await meetings.start({
+        title: loaded.title,
+        employeeId,
+        sourceId,
+        ...(loaded.participants?.length ? { participants: loaded.participants } : {}),
+      });
       options.replay?.(meeting.meetingId, loaded.segments, intervalMs);
       return { status: 201, body: meeting };
     }),

@@ -75,7 +75,6 @@ let currentUser = {
   displayName: "Jax",
   role: "Backend Engineer",
   department: "Engineering_Backend",
-  avatar: "👨‍💻",
 };
 
 let selectedPersonaId = "jax";
@@ -115,6 +114,39 @@ const failedQuestions = new Map();
 
 function scrollToBottom() {
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
+}
+
+// Line icons in the same stroke style as the sidebar toggle. Emoji are never used as icons.
+const LINE_ICONS = {
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+  trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  message: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
+  save: '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>',
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  book: '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
+  stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
+  external: '<path d="M7 17 17 7"/><path d="M7 7h10v10"/>',
+  pin: '<path d="M12 17v5"/><path d="M9 10.76V6h6v4.76a2 2 0 0 0 1.11 1.79l1.78.9A2 2 0 0 1 19 15.24V17H5v-1.76a2 2 0 0 1 1.11-1.79l1.78-.9A2 2 0 0 0 9 10.76Z"/><path d="M8 3h8"/>',
+};
+
+function lineIcon(name, size = 14) {
+  return `<svg class="line-icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${LINE_ICONS[name] ?? ""}</svg>`;
+}
+
+/** A person is shown by their initial; the directory's emoji avatars are not used. */
+function initialOf(name) {
+  return (String(name || "").trim()[0] || "?").toUpperCase();
+}
+
+function avatarMarkup(person) {
+  return escapeHtml(initialOf(person?.displayName));
+}
+
+/** Where a page sent the visitor from to sign in; only a path on this site is followed. */
+function returnAddress() {
+  const next = new URLSearchParams(location.search).get("next");
+  return next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : null;
 }
 
 function escapeHtml(text) {
@@ -634,7 +666,7 @@ function formatRuntime(durationMs) {
   if (typeof durationMs !== "number" || isNaN(durationMs)) return null;
   const totalStr = durationMs < 1000 ? `${durationMs}ms` : `${(durationMs / 1000).toFixed(1)}s`;
   return {
-    label: `⏱️ ${totalStr}`,
+    label: totalStr,
     tooltip: `Response time: ${totalStr}`,
   };
 }
@@ -733,16 +765,73 @@ function renderBlocks(bubble, blocks, live) {
   open.href = block.roleId ? `/recruiting?role=${encodeURIComponent(block.roleId)}` : "/recruiting";
   open.target = "_blank";
   open.rel = "noopener";
-  open.textContent = "Open full page ↗";
-  head.append(label, open);
+  open.innerHTML = `Open full page ${lineIcon("external", 12)}`;
+  head.append(label);
+  if (block.roleId) {
+    const pin = document.createElement("button");
+    pin.type = "button";
+    pin.className = "pin-panel";
+    pin.innerHTML = `${lineIcon("pin", 12)}Pin beside the chat`;
+    pin.addEventListener("click", () => pinPanel(block));
+    head.append(pin);
+  }
+  head.append(open);
 
   const body = document.createElement("div");
   body.className = "chat-block-body";
   container.append(head, body);
   bubble.appendChild(container);
-  if (live) mountPanel(container, block);
+  if (showsPinned(block)) markShownOnRight(container);
+  else if (live) mountPanel(container, block);
   else foldPanel(container, block);
 }
+
+// ------------------------------------------------------------- pinned panel
+
+/**
+ * A role's candidates can stay beside the chat while the conversation goes
+ * on: choices, questions and follow-ups on the left, the people found on the
+ * right. While pinned, the same candidates are not repeated inline.
+ */
+let pinnedRole = null;
+const pinnedPanel = document.querySelector("#pinned-panel");
+
+function showsPinned(block) {
+  return Boolean(pinnedRole) && block.roleId === pinnedRole && (block.view || "pool") === "pool";
+}
+
+function markShownOnRight(container) {
+  const note = document.createElement("p");
+  note.className = "chat-block-note";
+  note.textContent = "Shown on the right";
+  container.querySelector(".chat-block-body").replaceChildren(note);
+  container.classList.remove("live");
+}
+
+function pinPanel(block) {
+  pinnedRole = block.roleId;
+  const frame = document.createElement("iframe");
+  frame.src = panelSource({ roleId: block.roleId, view: "pool" });
+  frame.title = "Pinned hiring panel: Candidates";
+  pinnedPanel.querySelector(".pinned-body").replaceChildren(frame);
+  pinnedPanel.hidden = false;
+  document.body.classList.add("has-pinned");
+  document.querySelectorAll(".chat-block").forEach((container) => {
+    if (container.recruitingBlock && showsPinned(container.recruitingBlock)) markShownOnRight(container);
+  });
+}
+
+function unpinPanel() {
+  pinnedRole = null;
+  pinnedPanel.hidden = true;
+  pinnedPanel.querySelector(".pinned-body").replaceChildren();
+  document.body.classList.remove("has-pinned");
+  document.querySelectorAll(".chat-block").forEach((container) => {
+    if (container.recruitingBlock && container.querySelector(".chat-block-note")) foldPanel(container, container.recruitingBlock);
+  });
+}
+
+pinnedPanel?.querySelector(".unpin-panel").addEventListener("click", unpinPanel);
 
 function attachAssistantMeta(bubble, data) {
   renderBlocks(bubble, data.blocks, !data.fromHistory);
@@ -756,7 +845,7 @@ function attachAssistantMeta(bubble, data) {
   if (data.model) {
     const modelTag = document.createElement("span");
     modelTag.className = `context-tag model-badge ${data.model}`;
-    modelTag.textContent = data.model === "sonnet" ? "⚡ Claude Sonnet" : "⚙️ SoCLaaS Qwen";
+    modelTag.textContent = data.model === "sonnet" ? "Claude Sonnet" : "SoCLaaS Qwen";
     modelTag.title =
       data.model === "sonnet"
         ? "Answered using Claude 3.5 Sonnet on AWS Bedrock"
@@ -767,7 +856,7 @@ function attachAssistantMeta(bubble, data) {
   if (data.stopped) {
     const stopTag = document.createElement("span");
     stopTag.className = "context-tag";
-    stopTag.textContent = "⏹️ Stopped";
+    stopTag.innerHTML = `${lineIcon("stop", 12)}Stopped`;
     stopTag.title = "Response generation was cancelled by user";
     contextTags.appendChild(stopTag);
   }
@@ -785,19 +874,19 @@ function attachAssistantMeta(bubble, data) {
     if (data.personalMemory.memoryUpdated) {
       const tag = document.createElement("span");
       tag.className = "context-tag updated";
-      tag.textContent = "💾 Working memory updated";
+      tag.innerHTML = `${lineIcon("save", 12)}Working memory updated`;
       contextTags.appendChild(tag);
     }
     if (data.personalMemory.status === "unavailable") {
       const tag = document.createElement("span");
       tag.className = "context-tag unavailable";
-      tag.textContent = "⚠️ Personal memory unavailable";
+      tag.innerHTML = `${lineIcon("alert", 12)}Personal memory unavailable`;
       if (data.personalMemory.reason) tag.title = data.personalMemory.reason;
       contextTags.appendChild(tag);
     } else if (data.personalMemory.answer && data.personalMemory.answer.trim().length > 0) {
       const tag = document.createElement("span");
       tag.className = "context-tag referenced";
-      tag.textContent = "🧠 Working context referenced";
+      tag.innerHTML = `${lineIcon("book", 12)}Working context referenced`;
       tag.title = data.personalMemory.answer;
       contextTags.appendChild(tag);
     }
@@ -848,7 +937,7 @@ function appendErrorMessage(message) {
 function showConfirmDialog({
   title = "Are you sure?",
   message = "This action cannot be undone.",
-  icon = "🗑️",
+  icon = "trash",
   confirmText = "Delete",
   destructive = true,
 } = {}) {
@@ -865,7 +954,7 @@ function showConfirmDialog({
 
   if (titleEl) titleEl.textContent = title;
   if (messageEl) messageEl.textContent = message;
-  if (iconEl) iconEl.textContent = icon;
+  if (iconEl) iconEl.innerHTML = lineIcon(icon, 22);
   if (actionBtn) {
     actionBtn.textContent = confirmText;
     actionBtn.className = destructive ? "confirm-btn destructive" : "confirm-btn secondary";
@@ -945,12 +1034,12 @@ async function loadConversations() {
 
       item.innerHTML = `
         <div class="conv-main">
-          <span class="conv-icon">💬</span>
+          <span class="conv-icon">${lineIcon("message", 14)}</span>
           <span class="conv-title" title="${escapeHtml(conv.title)}">${escapeHtml(conv.title)}</span>
         </div>
         <div class="conv-meta">
           <span class="conv-date">${escapeHtml(formatRelativeTime(conv.updatedAt))}</span>
-          <button type="button" class="conv-delete-btn" title="Delete conversation" aria-label="Delete conversation">✕</button>
+          <button type="button" class="conv-delete-btn" title="Delete conversation" aria-label="Delete conversation">${lineIcon("x", 13)}</button>
         </div>
       `;
 
@@ -1485,7 +1574,7 @@ function handleAuthRequired() {
   selectedPersonaId = "jax";
   if (sidebarUserName) sidebarUserName.textContent = "Signed out";
   if (sidebarUserRole) sidebarUserRole.textContent = "Please sign in";
-  if (sidebarUserAvatar) sidebarUserAvatar.textContent = "👤";
+  if (sidebarUserAvatar) sidebarUserAvatar.textContent = "?";
   if (conversationsList) {
     conversationsList.innerHTML = '<div class="conversations-empty">Sign in to view saved chats</div>';
   }
@@ -1517,7 +1606,7 @@ function updateUserDisplay(user) {
     localStorage.setItem("sme_current_user", JSON.stringify(user));
   } catch (_) {}
 
-  if (sidebarUserAvatar) sidebarUserAvatar.textContent = user.avatar || "👤";
+  if (sidebarUserAvatar) sidebarUserAvatar.innerHTML = avatarMarkup(user);
   if (sidebarUserName) sidebarUserName.textContent = user.displayName;
   if (sidebarUserRole) sidebarUserRole.textContent = user.role || user.department || "Employee";
 
@@ -1555,7 +1644,7 @@ function renderPersonaCards(personas, activeId) {
     card.dataset.employeeId = persona.employeeId;
 
     card.innerHTML = `
-      <div class="persona-avatar">${escapeHtml(persona.avatar || "👤")}</div>
+      <div class="persona-avatar">${avatarMarkup(persona)}</div>
       <div class="persona-info">
         <div class="persona-name-row">
           <span class="persona-name">${escapeHtml(persona.displayName)}</span>
@@ -1627,11 +1716,11 @@ async function openLoginDialog() {
 
   if (!Array.isArray(availablePersonas) || availablePersonas.length === 0) {
     availablePersonas = [
-      { employeeId: "jax", displayName: "Jax", role: "Backend Engineer", department: "Engineering_Backend", avatar: "👨‍💻" },
-      { employeeId: "priya", displayName: "Priya", role: "Product Designer", department: "Design", avatar: "🎨" },
-      { employeeId: "chloe", displayName: "Chloe", role: "Product Manager", department: "Product", avatar: "📋" },
-      { employeeId: "marcus", displayName: "Marcus", role: "Staff Systems Engineer", department: "Engineering_Backend", avatar: "🛠️" },
-      { employeeId: "deepa", displayName: "Deepa", role: "People Operations Lead", department: "HR_Ops", avatar: "🤝" },
+      { employeeId: "jax", displayName: "Jax", role: "Backend Engineer", department: "Engineering_Backend" },
+      { employeeId: "priya", displayName: "Priya", role: "Product Designer", department: "Design" },
+      { employeeId: "chloe", displayName: "Chloe", role: "Product Manager", department: "Product" },
+      { employeeId: "marcus", displayName: "Marcus", role: "Staff Systems Engineer", department: "Engineering_Backend" },
+      { employeeId: "deepa", displayName: "Deepa", role: "People Operations Lead", department: "HR_Ops" },
     ];
   }
 
@@ -1719,6 +1808,12 @@ if (loginForm) {
       }
 
       if (data.employee) {
+        const next = returnAddress();
+        if (next) {
+          // Sent here to sign in from another page: go back to it.
+          location.assign(next);
+          return;
+        }
         const prevId = currentUser?.employeeId;
         updateUserDisplay(data.employee);
 
@@ -1735,6 +1830,7 @@ if (loginForm) {
           startNewChat();
         }
         await loadConversations();
+        takeOverFromMeeting();
       }
     } catch (err) {
       if (loginErrorMsg) {
@@ -1775,8 +1871,14 @@ async function initAuth() {
     if (res.ok) {
       const data = await res.json();
       if (data.authenticated && data.employee) {
+        const next = returnAddress();
+        if (next) {
+          location.assign(next);
+          return;
+        }
         updateUserDisplay(data.employee);
         await loadConversations();
+        takeOverFromMeeting();
         return;
       }
     }
@@ -1784,6 +1886,28 @@ async function initAuth() {
 
   // 401 or failure: authoritative sign-in required
   handleAuthRequired();
+}
+
+/**
+ * A meeting handed something over (a hiring need): start a chat with it, once.
+ * It arrives in this tab's storage rather than the address, so no outside link
+ * can start a conversation on someone's behalf; anything older than a few
+ * minutes was not just clicked and is dropped.
+ */
+const HANDOFF_FRESH_MS = 5 * 60 * 1000;
+
+function takeOverFromMeeting() {
+  let handoff = null;
+  try {
+    handoff = JSON.parse(sessionStorage.getItem("assistant-handoff") || "null");
+    sessionStorage.removeItem("assistant-handoff");
+  } catch (_) {
+    return;
+  }
+  if (!handoff || typeof handoff.message !== "string" || Date.now() - Number(handoff.at) > HANDOFF_FRESH_MS) return;
+  startNewChat();
+  messageInput.value = handoff.message;
+  chatForm.requestSubmit();
 }
 
 let soboRiveInstance = null;
@@ -1816,7 +1940,7 @@ function initSoboMascot() {
           console.warn("Rive mascot failed to load, falling back to icon", err);
           canvas.style.display = "none";
           const wrapper = document.querySelector("#empty-avatar-wrapper");
-          if (wrapper) wrapper.innerHTML = '<div class="empty-icon">🤖</div>';
+          if (wrapper) wrapper.innerHTML = '<svg class="empty-icon" viewBox="0 0 40 40" width="72" height="72" aria-hidden="true"><rect x="2" y="2" width="36" height="36" rx="13" fill="#4b3fd1"/><rect x="8" y="10" width="24" height="18" rx="8" fill="#fbfaff"/><circle cx="15" cy="19" r="2.4" fill="#1c1a33"/><circle cx="25" cy="19" r="2.4" fill="#1c1a33"/><path d="M16.5 24 q3.5 2.6 7 0" stroke="#1c1a33" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>';
         },
       });
 

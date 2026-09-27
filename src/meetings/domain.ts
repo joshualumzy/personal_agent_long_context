@@ -36,6 +36,12 @@ export interface Assignment {
   owner: string;
   task: string;
   due?: string;
+  /**
+   * The dedupeKey of the action this task is part of ("I'll send the invite"
+   * for an invite being drafted; "I'll fold that into the follow-up" for an
+   * email), so the task is not listed as a promise of its own.
+   */
+  partOf?: string;
   segmentIndex: number;
   speaker: string;
   at: string;
@@ -45,6 +51,8 @@ export interface Assignment {
 export interface MeetingMinutes {
   status: "writing" | "ready" | "failed";
   markdown?: string;
+  /** The final decisions, each with the line it was settled on when that line is known. */
+  decisions?: Array<{ text: string; segmentIndex?: number }>;
   at: string;
 }
 
@@ -60,6 +68,14 @@ export interface MeetingSummary {
   actionCount: number;
 }
 
+/** Someone on the meeting's invite, with the address the invite carries. */
+export interface MeetingParticipant {
+  name: string;
+  email: string;
+  /** Their organisation, when it is not the employee's own. */
+  org?: string;
+}
+
 export interface MeetingState {
   meetingId: string;
   title: string;
@@ -70,6 +86,8 @@ export interface MeetingState {
   endedAt?: string;
   sourceId?: string;
   segments: TranscriptSegment[];
+  /** Who was invited, as the calendar invite lists them; absent for a meeting started by hand. */
+  participants?: MeetingParticipant[];
   /** Decisions heard in this meeting, used to spot conflicts in later ones. */
   decisions: Decision[];
   /** Tasks people took on that the agent cannot carry out; absent on older meetings. */
@@ -340,9 +358,6 @@ export interface AnswerStream {
 }
 
 /** S3: the recruiting agent. RecruitingService satisfies it. */
-export interface HiringHandoff {
-  start(requirement: string): Promise<{ message: string }>;
-}
 
 
 /**
@@ -386,7 +401,7 @@ export interface MeetingStore {
 
 /** The surface HTTP routes use. */
 export interface MeetingActions {
-  start(input: { title: string; employeeId: string; sourceId?: string }): Promise<MeetingState>;
+  start(input: { title: string; employeeId: string; sourceId?: string; participants?: MeetingParticipant[] }): Promise<MeetingState>;
   /** Adds heard segments (index assigned by the service) and processes them in the background. */
   append(meetingId: string, segments: Array<{ speaker: string; text: string; at?: string }>): Promise<TranscriptSegment[]>;
   end(meetingId: string): Promise<MeetingState>;

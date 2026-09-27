@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
+import { JSDOM } from "jsdom";
 import { DeterministicMemoryProvider } from "../src/adapters/deterministic-memory.js";
 import { buildApp } from "../src/http-app.js";
 import { privateRemarksIn } from "../src/recruiting/agent.js";
@@ -843,6 +844,22 @@ describe("recruiting as a chat skill", () => {
       ["Hire a designer in Jakarta.", "Replace the Founding backend engineer role?"],
     );
     assert.match(result.answer, /Replaced/);
+  });
+
+  test("sits in the shared shell, though the sidebar no longer lists it", async () => {
+    const { board } = boardSetup();
+    const app = buildApp({ memory: new DeterministicMemoryProvider(), recruiting: { board, gmail: null } });
+    const html = (await app.inject({ method: "GET", url: "/recruiting" })).body;
+    await app.close();
+    const document = new JSDOM(html).window.document;
+
+    assert.deepEqual(
+      [...document.querySelectorAll(".app-nav a")].map((link) => link.getAttribute("href")),
+      ["/meetings", "/"],
+    );
+    // Hiring now happens in the assistant's chat; this page stays reachable but is not in the sidebar.
+    assert.equal(document.querySelector('.app-nav a[aria-current="page"]'), null);
+    assert.equal(document.querySelector('link[rel="stylesheet"]')?.getAttribute("href"), "/theme.css");
   });
 
   test("only the recruiting page may be framed, and only by this origin", async () => {

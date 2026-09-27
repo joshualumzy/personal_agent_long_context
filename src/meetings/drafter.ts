@@ -14,6 +14,7 @@ import type {
   EmailPayload,
   EscalationPayload,
   HiringPayload,
+  MeetingParticipant,
   MeetingState,
   MessagePayload,
   QuestionAnswerer,
@@ -21,6 +22,7 @@ import type {
   TicketPayload,
 } from "./domain.js";
 import { checkAvailability } from "./availability.js";
+import { personName } from "./contacts.js";
 import { mustEscalate } from "./policy.js";
 import { ModelWhenReader, resolveWhen, type WhenReader } from "./when.js";
 
@@ -285,6 +287,24 @@ function structuralGaps(kind: CandidateAction["kind"], payload: ActionPayload, c
   }
 }
 
+const ADDRESSED_KINDS = new Set<CandidateAction["kind"]>(["email_draft", "message_draft", "calendar_draft"]);
+
+/** Asks for someone's email, phone or other contact detail. */
+function asksForContact(gap: Gap): boolean {
+  return /\b(e-?mail|phone|number|whatsapp|contact|address)\b/i.test(gap.need);
+}
+
+/**
+ * What a draft still lacks. For drafts that go to people, whether each has an
+ * address is checked on the payload itself; a model's request for a contact
+ * detail beyond that check (often a vague "email address") is dropped.
+ */
+function gapsFor(kind: CandidateAction["kind"], payload: ActionPayload, candidate: CandidateAction, modelGaps: Gap[]): Gap[] {
+  const structural = structuralGaps(kind, payload, candidate);
+  const fromModel = ADDRESSED_KINDS.has(kind) ? modelGaps.filter((gap) => !asksForContact(gap)) : modelGaps;
+  return mergeGaps(structural, fromModel);
+}
+
 /** Two gaps are the same when they name the same need or person, both ask for a contact detail and one names no one, or both ask when. */
 function sameNeed(a: Gap, b: Gap): boolean {
   const contact = (gap: Gap) => /\b(e-?mail|phone|number|whatsapp|contact)\b/i.test(gap.need);
@@ -363,15 +383,15 @@ export class ActionDrafter {
     stream?: AnswerStream,
   ): Promise<DraftResult> {
     const first = await this.draftOnce(candidate, meeting, [], stream);
-    const gaps = mergeGaps(structuralGaps(candidate.kind, first.payload, candidate), first.gaps ?? []);
+    const gaps = gapsFor(candidate.kind, first.payload, candidate, first.gaps ?? []);
     if (gaps.length === 0) {
       return { payload: first.payload, evidence: first.evidence, title: first.title, ...(first.notes ? { notes: first.notes } : {}) };
     }
 
-    const { found, lookups } = await this.lookUp(gaps.slice(0, MAX_GAPS_LOOKED_UP), first.evidence);
+    const { found, lookups } = await this.lookUp(gaps.slice(0, MAX_GAPS_LOOKED_UP), first.evidence, meeting);
     const final = found.length > 0 ? await this.draftOnce(candidate, meeting, found) : first;
     const remaining =
-      final === first ? gaps : mergeGaps(structuralGaps(candidate.kind, final.payload, candidate), final.gaps ?? []);
+      final === first ? gaps : gapsFor(candidate.kind, final.payload, candidate, final.gaps ?? []);
     return {
       payload: final.payload,
       evidence: final.evidence,
@@ -382,7 +402,7 @@ export class ActionDrafter {
     };
   }
 
-  private async lookUp(gaps: Gap[], known: Evidence[]): Promise<{ found: Evidence[]; lookups: string[] }> {
+  private async lookUp(gaps: Gap[], known: Evidence[], meeting: MeetingState): Promise<{ found: Evidence[]; lookups: string[] }> {
     const seen = new Set(known.map((item) => item.sourceId));
     const found: Evidence[] = [];
     const lookups: string[] = [];
@@ -397,6 +417,13 @@ export class ActionDrafter {
     const mailbox = this.deps.contacts && (await this.deps.contacts.connected().catch(() => false)) ? this.deps.contacts : null;
 
     for (const gap of gaps) {
+      // Someone on the invite needs no search: the invite carries their address.
+      const invited = gap.person ? participantNamed(meeting, gap.person) : null;
+      if (invited) {
+        const count = keep([participantEvidence(invited)]);
+        lookups.push(`Found "${gap.person}" on the meeting's invite: ${count ? invited.email : "already known"}.`);
+        continue;
+      }
       // Keyword search needs every word to match, so a person is also searched
       // by name alone: "Lena Gomez" finds her emails, "Lena Gomez email" does not.
       for (const query of new Set([gap.search, gap.person].filter(Boolean))) {
@@ -462,7 +489,7 @@ export class ActionDrafter {
           citedSourceIds: answer.sources.map((source) => source.sourceId),
         } satisfies AnswerPayload,
         evidence: answer.sources,
-        title: `Answer: ${question}`.slice(0, 120),
+        title: titleOf(`Answer: ${question}`),
       };
     }
     // No S1 answer: search on the agent's own behalf so the employee sees
@@ -477,7 +504,7 @@ export class ActionDrafter {
         citedSourceIds: [],
       } satisfies AnswerPayload,
       evidence,
-      title: `Answer: ${question}`.slice(0, 120),
+      title: titleOf(`Answer: ${question}`),
     };
   }
 
@@ -534,7 +561,7 @@ export class ActionDrafter {
       payload: { to, subject, body } satisfies EmailPayload,
       evidence,
       gaps: gapsIn(record),
-      title: `Email: ${subject}`.slice(0, 120),
+      title: titleOf(`Email: ${subject}`),
     };
   }
 
@@ -568,7 +595,7 @@ export class ActionDrafter {
       ...(text(record.due) ? { due: text(record.due) } : {}),
       ...(text(record.project) ? { project: text(record.project) } : {}),
     };
-    return { payload, evidence, gaps: gapsIn(record), title: `Ticket: ${title}`.slice(0, 120) };
+    return { payload, evidence, gaps: gapsIn(record), title: titleOf(`Ticket: ${title}`) };
   }
 
   private async draftCalendar(candidate: CandidateAction, meeting: MeetingState, extra: Evidence[]): Promise<RawDraft> {
@@ -627,7 +654,7 @@ export class ActionDrafter {
       evidence,
       gaps: mergeGaps(whenGaps, gapsIn(record)),
       ...(reading ? { notes: [reading.options ? reading.explanation : `"${said}": ${reading.explanation}`] } : {}),
-      title: `Calendar: ${title}`.slice(0, 120),
+      title: titleOf(`Calendar: ${title}`),
     };
   }
 
@@ -669,7 +696,7 @@ export class ActionDrafter {
       address,
       text: stripUnknownCitations(text(record.text) || candidate.summary, retrievedIds),
     };
-    return { payload, evidence, gaps: gapsIn(record), title: `Message${recipient ? ` to ${recipient}` : ""}: ${candidate.summary}`.slice(0, 120) };
+    return { payload, evidence, gaps: gapsIn(record), title: titleOf(`Message${recipient ? ` to ${recipient}` : ""}: ${candidate.summary}`) };
   }
 
   private async draftDoc(candidate: CandidateAction, meeting: MeetingState, extra: Evidence[]): Promise<RawDraft> {
@@ -699,7 +726,7 @@ export class ActionDrafter {
       title,
       body: stripUnknownCitations(text(record.body) || candidate.summary, retrievedIds),
     };
-    return { payload, evidence, gaps: gapsIn(record), title: `Document: ${title}`.slice(0, 120) };
+    return { payload, evidence, gaps: gapsIn(record), title: titleOf(`Document: ${title}`) };
   }
 
   private async draftSheet(candidate: CandidateAction, meeting: MeetingState, extra: Evidence[]): Promise<RawDraft> {
@@ -728,7 +755,7 @@ export class ActionDrafter {
       .map((row) => row.slice(0, 12).map((cell) => (cell === null || cell === undefined ? "" : String(cell))));
     const title = text(record.title) || candidate.summary.slice(0, 78);
     const payload: SheetPayload = { title, rows: rows.length > 0 ? rows : [[candidate.summary]] };
-    return { payload, evidence, gaps: gapsIn(record), title: `Spreadsheet: ${title}`.slice(0, 120) };
+    return { payload, evidence, gaps: gapsIn(record), title: titleOf(`Spreadsheet: ${title}`) };
   }
 
   private async draftEscalation(candidate: CandidateAction, meeting: MeetingState): Promise<DraftResult> {
@@ -757,7 +784,7 @@ export class ActionDrafter {
       reason: stripUnknownCitations(text(record.reason) || candidate.summary, retrievedIds),
       requiredApprover: text(record.requiredApprover) || "Founder",
     };
-    return { payload, evidence, title: `Escalation: ${subject}`.slice(0, 120) };
+    return { payload, evidence, title: titleOf(`Escalation: ${subject}`) };
   }
 
   private async draftHiring(candidate: CandidateAction): Promise<DraftResult> {
@@ -779,7 +806,8 @@ export class ActionDrafter {
     return {
       payload: { requirement } satisfies HiringPayload,
       evidence: [],
-      title: `Hiring: ${requirement}`.slice(0, 120),
+      // The commitment names the need in a line; the requirement below says it in full.
+      title: titleOf(`Hiring: ${candidate.summary || requirement}`),
     };
   }
 }
@@ -846,4 +874,34 @@ export async function checkConflicts(
     } satisfies ConflictPayload;
   }
   return null;
+}
+
+/** The invited person a name refers to: by full name, or by first name when only one invitee has it. */
+function participantNamed(meeting: MeetingState, person: string): MeetingParticipant | null {
+  const participants = meeting.participants ?? [];
+  const name = personName(person).toLowerCase();
+  if (!name) return null;
+  const exact = participants.find((participant) => participant.name.toLowerCase() === name);
+  if (exact) return exact;
+  const first = name.split(/\s+/)[0]!;
+  const byFirst = participants.filter((participant) => participant.name.toLowerCase().split(/\s+/)[0] === first);
+  return byFirst.length === 1 ? byFirst[0]! : null;
+}
+
+function participantEvidence(participant: MeetingParticipant): Evidence {
+  return {
+    sourceId: `participant:${participant.email}`,
+    sourceType: "meeting_participant",
+    title: `On the invite: ${participant.name}`,
+    excerpt: `${participant.name} <${participant.email}>${participant.org ? ` (${participant.org})` : ""} is on this meeting's invite.`,
+  };
+}
+
+/** A card title of at most 120 characters, cut at a word rather than inside one. */
+export function titleOf(value: string, max = 120): string {
+  const clean = value.replace(/\s+/g, " ").trim();
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max - 1);
+  const atWord = cut.lastIndexOf(" ");
+  return `${(atWord > max / 2 ? cut.slice(0, atWord) : cut).replace(/[\s,.;:–-]+$/, "")}…`;
 }

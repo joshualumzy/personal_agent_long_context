@@ -135,20 +135,6 @@ const meetings = meetingsFromEnvironment(process.env, {
         },
       }
     : {}),
-  // A hiring need heard in a meeting opens a new role, as the chat does.
-  hiring: recruiting
-    ? {
-        async start(requirement: string) {
-          const { id, service } = recruiting.board.create();
-          try {
-            return await service.start(requirement);
-          } catch (error) {
-            recruiting.board.forget(id);
-            throw error;
-          }
-        },
-      }
-    : null,
   log: (context, error) => logMeetingFailure(context, error),
 });
 const app = buildApp({

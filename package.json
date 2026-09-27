@@ -20,6 +20,7 @@
     "db:up": "docker compose up -d database",
     "db:down": "docker compose down",
     "db:migrate": "node --env-file=.env --import tsx scripts/migrate.ts",
+    "meetings:tour": "node --env-file=.env --import tsx scripts/seed-product-tour.ts",
     "orgforge:ingest": "set -a; . ./.env; set +a; HF_HOME=tmp/orgforge/hf-cache .venv/bin/python scripts/orgforge/ingest.py",
     "test:orgforge": ".venv/bin/python scripts/orgforge/test_ingest.py",
     "orgforge:embed": "node --env-file=.env --import tsx scripts/orgforge/embed.ts",
@@ -37,6 +38,7 @@
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1139.0",
     "@letta-ai/letta-agent-sdk": "0.8.12",
+    "@shoelace-style/shoelace": "^2.20.1",
     "dompurify": "^3.3.0",
     "fastify": "5.12.5",
     "mammoth": "^1.12.3",

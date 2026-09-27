@@ -108,6 +108,72 @@ describe("looking up what a draft is missing", () => {
     assert.ok(result.lookups?.some((line) => line.includes("Gmail")));
   });
 
+  test("someone on the meeting's invite is addressed from it, before any mailbox or record is searched", async () => {
+    const invited = {
+      ...meeting,
+      participants: [
+        { name: "Priya Tan", email: "priya.tan@acme.test", org: "Acme" },
+        { name: "Jax", email: "jax@stellar.test" },
+      ],
+    } as MeetingState;
+    const knowledge = knowledgeWith(() => []);
+    const model = emailModel();
+    const drafter = new ActionDrafter({ model, knowledge });
+    const result = await drafter.draft(candidate, invited);
+
+    assert.equal((result.payload as EmailPayload).to, "priya.tan@acme.test");
+    assert.equal(result.missing, undefined);
+    assert.ok(result.evidence.some((item) => item.sourceId === "participant:priya.tan@acme.test"));
+    assert.ok(result.lookups?.some((line) => line.includes("invite")));
+    assert.equal(knowledge.queries.includes("Priya Tan"), false, "she was not searched for by name");
+  });
+
+  test("a participant named with their company in the transcript is still found by name", async () => {
+    const invited = { ...meeting, participants: [{ name: "Owen", email: "owen@notc.example", org: "National Olympic Training Center" }] } as MeetingState;
+    const owenModel: JsonModel = {
+      async json<T>({ input }: { input: unknown }): Promise<T> {
+        const evidence = (input as { evidence: Array<{ excerpt: string }> }).evidence;
+        const address = evidence.map((item) => /<([^>]+)>/.exec(item.excerpt)?.[1]).find(Boolean) ?? "";
+        return {
+          to: address,
+          subject: "Follow-up",
+          body: "Hi Owen",
+          missing: address ? [] : [{ need: "Owen's email address", search: "", person: "Owen (National Olympic Training Center)" }],
+        } as T;
+      },
+    };
+    const drafter = new ActionDrafter({ model: owenModel, knowledge: knowledgeWith(() => []) });
+    const result = await drafter.draft({ ...candidate, details: { recipient: "Owen" } }, invited);
+    assert.equal((result.payload as EmailPayload).to, "owen@notc.example");
+  });
+
+  test("an invite whose every guest has an address is not held up by a vague request for one", async () => {
+    const vague: JsonModel = {
+      async json<T>(): Promise<T> {
+        return {
+          title: "Checkpoint",
+          attendees: ["owen@notc.example", "marcus@apexathletics.com"],
+          durationMinutes: 30,
+          missing: [
+            { need: "email address", search: "", person: "" },
+            { need: "Agenda for the checkpoint", search: "", person: "" },
+          ],
+        } as T;
+      },
+    };
+    const invite: CandidateAction = {
+      kind: "calendar_draft",
+      trigger: { segmentIndex: 0, speaker: "Jax", quote: "I'll email Priya Tan the root cause today." },
+      summary: "Checkpoint",
+      dedupeKey: "calendar_draft:checkpoint",
+      details: {},
+    };
+    const drafter = new ActionDrafter({ model: vague, knowledge: knowledgeWith(() => []) });
+    const result = await drafter.draft(invite, meeting);
+    assert.equal(result.missing?.some((need) => /e-?mail|address/i.test(need)), false, "no address is asked for");
+    assert.ok(result.missing?.includes("Agenda for the checkpoint"), "what is really missing is still asked for");
+  });
+
   test("company records are searched too, and what is still not found is reported, not guessed", async () => {
     const knowledge = knowledgeWith(() => []);
     const model = emailModel();
@@ -163,3 +229,28 @@ describe("looking up what a draft is missing", () => {
     assert.equal(personName("Priya (ops)"), "Priya");
   });
 });
+
+describe("draft titles", () => {
+  test("a hiring draft is titled by the commitment, and a long title ends on a whole word", async () => {
+    const longRequirement =
+      "Hire a Backend Engineer to cover the Kafka on-call load. The role requires strong backend skills, specifically in Kafka operations and incident response, to relieve the current team.";
+    const model: JsonModel = { json: async <T>() => ({ requirement: longRequirement }) as T };
+    const drafter = new ActionDrafter({ model, knowledge: knowledgeWith(() => []) });
+    const hiring: CandidateAction = {
+      kind: "hiring_request",
+      trigger: { segmentIndex: 0, speaker: "Jax", quote: "I'll email Priya Tan the root cause today." },
+      summary: "Hire a backend engineer for Kafka on-call",
+      dedupeKey: "hiring_request:kafka",
+      details: {},
+    };
+    const short = await drafter.draft(hiring, meeting);
+    assert.equal(short.title, "Hiring: Hire a backend engineer for Kafka on-call");
+
+    const long = await drafter.draft({ ...hiring, summary: longRequirement }, meeting);
+    assert.ok(long.title.length <= 120);
+    assert.ok(long.title.endsWith("…"));
+    const lastWord = long.title.slice(0, -1).trim().split(" ").at(-1)!;
+    assert.ok(longRequirement.split(/\s+/).includes(lastWord), `"${lastWord}" is a whole word`);
+  });
+});
+

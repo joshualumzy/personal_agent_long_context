@@ -11,6 +11,12 @@
     "zoom_2026-01-28_546e41ce",
     "zoom_2026-02-27_e3ae6744"
   ],
+  "participants": [
+    {"name": "Jax", "email": "jax@apexathletics.com"},
+    {"name": "Deepa", "email": "deepa@apexathletics.com"},
+    {"name": "Morgan", "email": "morgan@apexathletics.com"},
+    {"name": "Priya", "email": "priya@apexathletics.com"}
+  ],
   "segments": [
     { "speaker": "Jax", "text": "Morning all — quick internal follow-up on ENG-210 before the NOC checkpoint next Tuesday." },
     { "speaker": "Morgan", "text": "Decision: as agreed, we go with approach A for the offset-commit fix — exactly-once semantics across the whole consumer group." },

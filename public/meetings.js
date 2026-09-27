@@ -32,46 +32,49 @@ const KIND_LABELS = {
   message_draft: "Chat message",
   doc_draft: "New document",
   sheet_draft: "New spreadsheet",
-  escalation: "Escalation",
   blocked: "Blocked",
 };
 
-const TIERS = ["auto", "approval", "escalate", "blocked"];
+// Answers and conflicts are the only kinds done without you, and they are in the notes.
+const TIERS = ["approval", "blocked"];
 
 // Fields a human can change before approving. Only kinds that change the
 // world (tier "approval") get edit controls; the rest render read-only.
+// Fields a human can change before approving, and where each sits in the
+// draft: "title" and "body" are bare text like a document, "row" is a
+// labelled line like a mail header, "chip" is a small property below.
 const EDITABLE_FIELDS = {
   email_draft: [
-    { key: "to", label: "To", type: "text" },
-    { key: "subject", label: "Subject", type: "text" },
-    { key: "body", label: "Body", type: "textarea" },
+    { key: "to", label: "To", type: "text", layout: "row" },
+    { key: "subject", label: "Subject", type: "text", layout: "row" },
+    { key: "body", label: "Message", type: "textarea", layout: "body" },
   ],
   ticket_draft: [
-    { key: "title", label: "Title", type: "text" },
-    { key: "description", label: "Description", type: "textarea" },
-    { key: "assignee", label: "Assignee", type: "text" },
-    { key: "due", label: "Due", type: "text" },
+    { key: "title", label: "Ticket title", type: "text", layout: "title" },
+    { key: "description", label: "Add a description", type: "textarea", layout: "body" },
+    { key: "assignee", label: "Assignee", type: "text", layout: "chip" },
+    { key: "due", label: "Due", type: "text", layout: "chip" },
   ],
   calendar_draft: [
-    { key: "title", label: "Title", type: "text" },
-    { key: "attendees", label: "Attendees (comma separated)", type: "list" },
-    { key: "proposedStart", label: "Start (ISO time)", type: "text" },
-    { key: "durationMinutes", label: "Duration (minutes)", type: "number" },
+    { key: "title", label: "Event title", type: "text", layout: "title" },
+    { key: "attendees", label: "Guests", type: "list", layout: "chip" },
+    { key: "proposedStart", label: "Starts", type: "text", layout: "chip" },
+    { key: "durationMinutes", label: "Minutes", type: "number", layout: "chip" },
   ],
   message_draft: [
-    { key: "recipient", label: "To", type: "text" },
-    { key: "address", label: "Phone or work email (optional)", type: "text" },
-    { key: "text", label: "Message", type: "textarea" },
+    { key: "recipient", label: "To", type: "text", layout: "row" },
+    { key: "address", label: "Phone or email", type: "text", layout: "row" },
+    { key: "text", label: "Message", type: "textarea", layout: "body" },
   ],
   doc_draft: [
-    { key: "title", label: "Title", type: "text" },
-    { key: "body", label: "Draft (Markdown)", type: "textarea" },
+    { key: "title", label: "Document title", type: "text", layout: "title" },
+    { key: "body", label: "Draft (Markdown)", type: "textarea", layout: "body" },
   ],
   sheet_draft: [
-    { key: "title", label: "Title", type: "text" },
-    { key: "rows", label: "Rows (one per line, cells separated by |, first line is the header)", type: "table" },
+    { key: "title", label: "Spreadsheet title", type: "text", layout: "title" },
+    { key: "rows", label: "Rows, one per line, cells separated by |", type: "table", layout: "body" },
   ],
-  hiring_request: [{ key: "requirement", label: "Requirement", type: "textarea" }],
+  hiring_request: [{ key: "requirement", label: "Requirement", type: "textarea", layout: "body" }],
 };
 
 const READONLY_FIELDS = {
@@ -81,10 +84,6 @@ const READONLY_FIELDS = {
     ["statement", "Statement"],
     ["priorDecision", "Prior decision"],
     ["explanation", "Why this conflicts"],
-  ],
-  escalation: [
-    ["subject", "Subject"],
-    ["reason", "Reason"],
   ],
   blocked: [["reason", "Reason"]],
   message_draft: [
@@ -185,10 +184,11 @@ function renderMeetingList() {
           {
             type: "button",
             class: state.current?.meetingId === meeting.meetingId ? "current" : "",
+            "aria-current": state.current?.meetingId === meeting.meetingId ? "true" : undefined,
             onclick: () => openMeeting(meeting.meetingId),
           },
-          h("span", {}, meeting.title),
-          h("span", { class: "status" }, meeting.status === "live" ? "live" : "ended"),
+          meeting.status === "live" ? h("span", { class: "live-dot", title: "Live" }) : null,
+          h("span", { class: "meeting-name" }, meeting.title),
         ),
       ),
     );
@@ -199,15 +199,21 @@ function renderReplaySelect() {
   const select = $("#replay-select");
   const button = $("#replay-btn");
   select.replaceChildren();
-  if (state.replays.length === 0) {
-    select.append(h("option", { value: "" }, "No replays found"));
-    button.disabled = true;
-    return;
-  }
+  select.disabled = state.replays.length === 0;
+  button.disabled = state.replays.length === 0;
+  select.placeholder = state.replays.length ? "Choose a meeting" : "No replays found";
   for (const replay of state.replays) {
-    select.append(h("option", { value: replay.sourceId }, replay.title));
+    select.append(h("sl-option", { value: replay.sourceId }, replay.title));
   }
-  button.disabled = false;
+  if (!state.replays.length) return;
+  // A value set before the component and its options are ready is dropped, so set it once they are.
+  const first = state.replays[0].sourceId;
+  select.value = first;
+  Promise.all([customElements.whenDefined("sl-select"), customElements.whenDefined("sl-option")])
+    .then(() => select.updateComplete)
+    .then(() => {
+      if (!select.value) select.value = first;
+    });
 }
 
 // ------------------------------------------------------------------ opening a meeting (SSE)
@@ -219,8 +225,11 @@ function closeStream() {
   }
 }
 
-function openMeeting(meetingId) {
+function openMeeting(meetingId, { fromAddress = false } = {}) {
   document.body.classList.add("in-meeting");
+  // The address names the meeting, so a refresh or a shared link comes back to it.
+  const address = `/meetings/${encodeURIComponent(meetingId)}`;
+  if (!fromAddress && location.pathname !== address) history.pushState({ meetingId }, "", address);
   stopRecording();
   closeStream();
   state.current = null;
@@ -230,6 +239,8 @@ function openMeeting(meetingId) {
   editDrafts.clear();
   showError("");
   $("#board").hidden = false;
+  $("#no-meeting").hidden = true;
+  $("#tx-toggle").hidden = false;
 
   const source = new EventSource(`/api/v1/meetings/${encodeURIComponent(meetingId)}/events`);
   state.source = source;
@@ -244,6 +255,7 @@ function openMeeting(meetingId) {
     const payload = JSON.parse(event.data);
     state.current.segments.push(...payload.segments);
     renderTranscript();
+    renderDocMeta();
   });
   source.addEventListener("action", (event) => {
     if (!state.current) return;
@@ -368,11 +380,24 @@ function renderBoard() {
 function renderMeetingHead() {
   if (!state.current) return;
   $("#meeting-title-heading").textContent = state.current.title;
-  $("#status-line").textContent = `${state.current.title} — ${state.current.status === "live" ? "live" : "ended"}`;
-  $("#end-meeting-btn").disabled = state.current.status !== "live";
+  $("#doc-title").textContent = state.current.title;
+  $("#status-line").textContent = state.current.status === "live" ? "Live" : "Ended";
+  renderDocMeta();
   for (const element of $("#live-form").elements) element.disabled = state.current.status !== "live";
   if (state.current.status !== "live" && recording.active) stopRecording();
   renderRecording();
+}
+
+// When it started and who has spoken so far, in the order they first spoke.
+function renderDocMeta() {
+  const current = state.current;
+  const started = new Date(current.startedAt);
+  const when = Number.isNaN(started.getTime())
+    ? ""
+    : started.toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  const speakers = [...new Set(current.segments.map((segment) => segment.speaker))];
+  const parts = [when, speakers.length ? speakers.join(", ") : null, current.status === "live" ? "live" : "ended"];
+  $("#doc-meta").textContent = parts.filter(Boolean).join(" · ");
 }
 
 function triggeredSegmentIndices() {
@@ -423,7 +448,9 @@ function renderActions() {
   const actions = state.current.actions;
   // Answers are the assistant looking things up for the room, so they stay
   // open and newest first rather than folding into the handled list.
-  const leads = new Set(["flag_conflict", "answer_question"]);
+  // A call that belongs to someone above the employee has nothing for them to
+  // press, so it is listed with the promises rather than a row in the tray.
+  const leads = new Set(["flag_conflict", "answer_question", "escalation"]);
   const groups = {
     alerts: actions.filter((action) => action.kind === "flag_conflict"),
     answers: actions.filter((action) => action.kind === "answer_question").reverse(),
@@ -433,14 +460,38 @@ function renderActions() {
   };
   for (const [group, members] of Object.entries(groups)) {
     const container = $(`#cards-${group}`);
-    container.replaceChildren(...members.map((action) => renderCard(action, group === "auto" || group === "blocked")));
+    container.replaceChildren(...members.map((action) => renderCard(action, group === "blocked")));
     container.closest(".tier-group").hidden = members.length === 0;
   }
+  renderTray(groups);
+  renderLedger();
   refreshEmpty();
   for (const action of actions) seenActions.add(action.id);
 }
 
 const seenActions = new Set();
+
+// The agent often starts a title with its kind ("Email: ..."); the kind is
+// already shown beside the title, so it is not repeated.
+const TITLE_PREFIX = /^(email|ticket|calendar|invite|hiring|escalation|approval required|message|chat|doc|document|sheet|spreadsheet|answer|conflict)\s*:\s*/i;
+
+function displayTitle(action) {
+  // Prefixes can stack ("Escalation: Approval required: ..."), so peel them all.
+  let title = action.title;
+  while (TITLE_PREFIX.test(title)) title = title.replace(TITLE_PREFIX, "");
+  return title || action.title;
+}
+
+// The tray says how many drafts wait on you; what the agent did on its own
+// and what it was not allowed to do fold into counts at its foot.
+function renderTray(groups) {
+  const waiting = groups.approval.filter((action) => action.status === "proposed").length;
+  $("#tray-title").textContent = waiting
+    ? `${waiting} thing${waiting > 1 ? "s" : ""} need${waiting > 1 ? "" : "s"} you`
+    : "Nothing needs you right now";
+  $("#blocked-count").textContent = `Blocked · ${groups.blocked.length}`;
+  $(".tray-foot").hidden = groups.blocked.length === 0 || $("#tray-toggle").getAttribute("aria-expanded") !== "true";
+}
 
 // The empty-room hint goes as soon as the assistant has anything to show.
 function refreshEmpty() {
@@ -450,96 +501,198 @@ function refreshEmpty() {
     (current?.decisions?.length ?? 0) > 0 ||
     (current?.assignments?.length ?? 0) > 0 ||
     Boolean(current?.minutes) ||
+    (current?.assignments?.length ?? 0) > 0 ||
     !$("#assistant-pending").hidden;
   $("#assistant-empty").hidden = shown;
 }
 
 // ------------------------------------------------------------------ notes and minutes
 
-// What was decided and who took what on, as the meeting goes. Assignments are
-// tasks the agent cannot do itself, so they are noted here rather than drafted.
+// What was decided. While the meeting runs this is the running log; once the
+// minutes are written it is their final list, since a decision can be reversed
+// later in the same meeting. Who took what on is in the promises above.
 function renderNotes() {
   if (!state.current) return;
-  const decisions = state.current.decisions ?? [];
-  const assignments = state.current.assignments ?? [];
   const box = $("#notes");
-  box.replaceChildren();
-  if (decisions.length) {
-    box.append(
-      h("h4", {}, "Decided"),
-      h(
-        "ul",
-        {},
-        decisions.map((decision) =>
-          h(
-            "li",
-            { onclick: () => highlightSegment(decision.segmentIndex) },
-            decision.text,
-            h("span", { class: "who" }, ` ${decision.speaker}`),
-          ),
-        ),
-      ),
-    );
-  }
-  if (assignments.length) {
-    box.append(
-      h("h4", {}, "Who's on it"),
-      h(
-        "ul",
-        {},
-        assignments.map((entry) =>
-          h(
-            "li",
-            { onclick: () => highlightSegment(entry.segmentIndex) },
-            h("strong", {}, entry.owner),
-            `: ${entry.task}`,
-            entry.due ? h("span", { class: "who" }, ` by ${entry.due}`) : null,
-          ),
-        ),
-      ),
-    );
-  }
-  box.closest(".tier-group").hidden = decisions.length + assignments.length === 0;
+  // Each decision leads to the line where it was settled, when that line is known.
+  const item = (text, segmentIndex, speaker) =>
+    Number.isInteger(segmentIndex)
+      ? h(
+          "li",
+          {
+            class: "jumps",
+            tabindex: 0,
+            onclick: () => highlightSegment(segmentIndex),
+            onmouseenter: () => highlightSegment(segmentIndex),
+          },
+          text,
+          speaker ? h("span", { class: "who" }, ` ${speaker}`) : null,
+        )
+      : h("li", {}, text);
+  const minutes = state.current.minutes?.status === "ready" ? state.current.minutes : null;
+  // Older minutes carry their decisions only as Markdown text.
+  const fromMarkdown = minutesSection(minutes, ["Decisions", "决策"])
+    ?.filter((line) => /^\s*[-*]\s+/.test(line))
+    .map((line) => ({ text: line.replace(/^\s*[-*]\s+/, "") }));
+  const final = minutes?.decisions ?? fromMarkdown;
+  const items = final
+    ? final.map((decision) => item(decision.text, decision.segmentIndex))
+    : (state.current.decisions ?? []).map((decision) => item(decision.text, decision.segmentIndex, decision.speaker));
+  box.replaceChildren(items.length ? h("ul", {}, items) : "");
+  box.closest(".tier-group").hidden = items.length === 0;
+  renderLedger();
   refreshEmpty();
 }
 
-function renderMinutes() {
-  const box = $("#minutes-box");
-  const minutes = state.current?.minutes;
-  box.hidden = !minutes;
-  refreshEmpty();
-  if (!minutes) return;
-  if (minutes.status !== "ready") {
-    box.replaceChildren(
-      h(
-        "p",
-        { class: "pending-head" },
-        minutes.status === "writing" ? h("span", { class: "busy-dot" }) : null,
-        minutes.status === "writing" ? "Writing the minutes…" : "The minutes could not be written.",
-      ),
-    );
-    return;
+// The bullet lines under one "## Heading" of the minutes, or null before they exist.
+function minutesSection(minutes, headings) {
+  if (minutes?.status !== "ready" || !minutes.markdown) return null;
+  const lines = minutes.markdown.split("\n");
+  const start = lines.findIndex((line) => headings.some((heading) => line.trim() === `## ${heading}`));
+  if (start === -1) return null;
+  const body = [];
+  for (const line of lines.slice(start + 1)) {
+    if (line.startsWith("## ")) break;
+    body.push(line);
   }
-  const markdown = minutes.markdown ?? "";
-  const copy = h("button", { type: "button", class: "quiet" }, "Copy");
-  copy.addEventListener("click", async () => {
-    await copyRich(markdown, "markdown");
-    copy.textContent = "Copied";
-  });
-  const download = h(
-    "a",
-    {
-      class: "quiet",
-      download: `${state.current.title.replace(/[\\/:*?"<>|]+/g, " ").trim() || "minutes"}.md`,
-      href: `data:text/markdown;charset=utf-8,${encodeURIComponent(markdown)}`,
-    },
-    "Download .md",
-  );
-  box.replaceChildren(
-    h("div", { class: "minutes-head" }, h("h3", {}, "Minutes"), copy, download),
-    renderValue("answer", markdown),
-  );
+  return body;
 }
+
+// ------------------------------------------------------------------ promises
+
+const PROMISE_KINDS = new Set([
+  "email_draft", "ticket_draft", "calendar_draft", "message_draft", "doc_draft", "sheet_draft", "hiring_request", "escalation",
+]);
+
+/**
+ * Every promise made in the meeting and where it stands: the drafts the
+ * assistant wrote, the calls that belong to someone else, and the tasks people
+ * took on that the assistant cannot do. This is what the meeting produced.
+ */
+function renderLedger() {
+  if (!state.current) return;
+  const actions = state.current.actions.filter((action) => PROMISE_KINDS.has(action.kind) && action.status !== "superseded");
+  const covered = new Set(actions.map((action) => action.trigger.segmentIndex));
+  // A task that is part of a listed draft ("I'll send the invite") is that promise, not another one.
+  const keys = new Set(actions.map((action) => action.dedupeKey));
+  const rows = [
+    ...actions.map((action) => ({
+      at: action.trigger.segmentIndex,
+      who: action.trigger.speaker,
+      what: displayTitle(action),
+      status: promiseStatus(action),
+      action,
+    })),
+    ...(state.current.assignments ?? [])
+      .filter((entry) => !covered.has(entry.segmentIndex) && !(entry.partOf && keys.has(entry.partOf)))
+      .map((entry) => ({
+        at: entry.segmentIndex,
+        who: entry.owner,
+        what: entry.task,
+        due: entry.due,
+        status: { label: "Noted", tone: "noted" },
+      })),
+  ].sort((left, right) => left.at - right.at);
+
+  $("#ledger-list").replaceChildren(
+    ...rows.map((row) =>
+      h(
+        "li",
+        {
+          class: `promise tone-${row.status.tone}`,
+          tabindex: 0,
+          onclick: () => openPromise(row),
+          // Pointing at a promise shows its line; clicking also opens its draft.
+          onmouseenter: () => highlightSegment(row.at),
+          onkeydown: (event) => {
+            if (event.key === "Enter") openPromise(row);
+          },
+        },
+        h("span", { class: "promise-who" }, row.who.replace(/\s*\(.*\)$/, "")),
+        h("span", { class: "promise-what" }, row.what),
+        row.due ? h("span", { class: "promise-due" }, row.due) : null,
+        h("span", { class: "promise-status" }, row.status.label),
+      ),
+    ),
+  );
+  $("#ledger-list").closest(".tier-group").hidden = rows.length === 0;
+}
+
+function promiseStatus(action) {
+  const missing = action.missing?.length ?? 0;
+  switch (action.status) {
+    case "proposed":
+      return {
+        label: `Draft ready for you${missing ? ` · ${missing} detail${missing > 1 ? "s" : ""} missing` : ""}`,
+        tone: "waiting",
+      };
+    case "escalated":
+      return { label: `Needs ${action.payload.requiredApprover || "someone else"}`, tone: "elsewhere" };
+    case "executing":
+      return { label: "Working on it", tone: "waiting" };
+    case "executed":
+      return { label: "Done", tone: "done" };
+    case "rejected":
+      return { label: "Dropped", tone: "noted" };
+    case "failed":
+      return { label: "Failed", tone: "failed" };
+    default:
+      return { label: action.status, tone: "noted" };
+  }
+}
+
+// A promise shows the line it came from; a draft also opens in the tray.
+function openPromise(row) {
+  highlightSegment(row.at);
+  if (!row.action || row.action.tier !== "approval") return;
+  if ($("#tray-toggle").getAttribute("aria-expanded") !== "true") $("#tray-toggle").click();
+  if (state.selectedActionId !== row.action.id) selectAction(row.action.id);
+  document.querySelector(`#tray [data-action-id="${row.action.id}"]`)?.scrollIntoView({ block: "nearest" });
+}
+
+// Once written, the minutes lead the page as a sentence or two; the whole
+// document is a copy or a download away in the top bar.
+function renderMinutes() {
+  const minutes = state.current?.minutes;
+  const ready = minutes?.status === "ready";
+  $("#minutes-copy").hidden = !ready;
+  $("#minutes-download").hidden = !ready;
+  const lead = $("#doc-lead");
+  if (minutes && !ready) {
+    lead.hidden = false;
+    lead.classList.add("writing");
+    lead.replaceChildren(
+      minutes.status === "writing" ? h("span", { class: "busy-dot" }) : "",
+      minutes.status === "writing" ? "Writing the minutes…" : "The minutes could not be written.",
+    );
+  } else {
+    // A sentence or two: the promises below are the point of the page.
+    const summary = (minutesSection(minutes, ["Summary", "摘要"]) ?? [])
+      .filter((line) => line.trim())
+      .join(" ")
+      .split(/(?<=[.!?。！？])\s*/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .join(" ")
+      .trim();
+    lead.hidden = !summary;
+    lead.classList.remove("writing");
+    lead.textContent = summary;
+  }
+  refreshEmpty();
+  if (state.current) renderNotes();
+  if (!ready) return;
+  const markdown = minutes.markdown ?? "";
+  const copy = $("#minutes-copy");
+  copy.onclick = async () => {
+    await copyRich(markdown, "markdown");
+    copy.title = "Copied";
+  };
+  const download = $("#minutes-download");
+  download.download = `${state.current.title.replace(/[\\/:*?"<>|]+/g, " ").trim() || "minutes"}.md`;
+  download.href = `data:text/markdown;charset=utf-8,${encodeURIComponent(markdown)}`;
+}
+
 
 function currentDraft(action) {
   if (!editDrafts.has(action.id)) {
@@ -556,6 +709,8 @@ function renderCard(action, compact = false) {
       state.selectedActionId === action.id ? " selected" : ""
     }${compact ? " compact" : ""}${fresh ? " fresh" : ""}`,
     "data-tier": action.tier,
+    "data-kind": action.kind,
+    "data-status": action.status,
     "data-action-id": action.id,
   });
 
@@ -568,7 +723,7 @@ function renderCard(action, compact = false) {
     h(
       "div",
       { class: "card-head" },
-      h("span", { class: "card-title" }, action.title),
+      h("span", { class: "card-title", title: displayTitle(action) }, displayTitle(action)),
       h("span", { class: "kind-label" }, KIND_LABELS[action.kind] ?? action.kind),
     ),
     h(
@@ -630,6 +785,10 @@ function renderCard(action, compact = false) {
   }
 
   if (action.missing?.length && (action.status === "proposed" || action.status === "escalated")) {
+    const [first, ...rest] = action.missing;
+    card.append(
+      h("p", { class: "missing-summary" }, `Still needed: ${first}${rest.length ? ` +${rest.length} more` : ""}`),
+    );
     card.append(
       h(
         "div",
@@ -640,20 +799,9 @@ function renderCard(action, compact = false) {
     );
   }
 
-  if (action.tier === "escalate" && action.payload.requiredApprover) {
-    card.append(h("p", { class: "required-approver" }, `Needs approval from: ${action.payload.requiredApprover}`));
-  }
 
-  if (action.kind === "hiring_request") {
-    card.append(
-      h(
-        "p",
-        { class: "hiring-note" },
-        "Approving opens this requirement in ",
-        h("a", { href: "/recruiting" }, "Recruiting"),
-        ".",
-      ),
-    );
+  if (action.kind === "hiring_request" && action.status === "proposed") {
+    card.append(h("p", { class: "hiring-note" }, "Approving continues in the assistant, which opens the role and asks what it needs."));
   }
 
   const thoughts = action.kind === "answer_question" && state.thoughts[action.trigger.segmentIndex];
@@ -738,6 +886,20 @@ async function copyRich(text, format) {
   await navigator.clipboard.writeText(text);
 }
 
+// The arrow on links that open another app, drawn like the page's other line icons.
+function externalIcon() {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  for (const [key, value] of Object.entries({ viewBox: "0 0 24 24", width: 12, height: 12, fill: "none", stroke: "currentColor", "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", class: "external-icon" })) {
+    svg.setAttribute(key, String(value));
+  }
+  for (const d of ["M7 17 17 7", "M7 7h10v10"]) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
+}
+
 function renderHandoff(action) {
   const { handoffUrl, handoffCopy } = action.result;
   const status = h("span", { class: "handoff-status" }, handoffStatus.get(action.id) ?? "");
@@ -745,12 +907,14 @@ function renderHandoff(action) {
     handoffStatus.set(action.id, message);
     status.textContent = message;
   };
+  // A role in Recruiting is part of this app, so it opens here; everything else is another tool.
+  const inApp = handoffUrl.startsWith("/");
   const open = h(
     "a",
     {
       href: handoffUrl,
-      target: "_blank",
-      rel: "noopener",
+      target: inApp ? undefined : "_blank",
+      rel: inApp ? undefined : "noopener",
       onclick: handoffCopy
         ? () => {
             // The write lands at once, but its promise can stay pending while
@@ -767,12 +931,23 @@ function renderHandoff(action) {
           }
         : undefined,
     },
-    action.kind === "sheet_draft"
-      ? "Copy table and open a blank spreadsheet \u2197"
+    action.kind === "hiring_request"
+      ? "Continue in the assistant"
+      : action.kind === "sheet_draft"
+      ? "Copy table and open a blank spreadsheet"
       : handoffCopy
-        ? "Copy draft and open a blank document \u2197"
-        : "Open to confirm \u2197",
+        ? "Copy draft and open a blank document"
+        : "Open to confirm",
   );
+  open.append(externalIcon());
+  if (action.kind === "hiring_request") {
+    // The assistant opens the role and asks what it needs; the requirement goes
+    // over in this tab's storage, so no outside link can start a chat for someone.
+    open.addEventListener("click", () => {
+      const message = `We need to hire: ${action.payload.requirement}. This came up in the meeting "${state.current.title}".`;
+      sessionStorage.setItem("assistant-handoff", JSON.stringify({ message, at: Date.now() }));
+    });
+  }
   const row = h("p", { class: "handoff" }, open);
   if (action.kind === "calendar_draft") {
     row.append(" \u00b7 ", h("a", { href: icsDataUrl(action.payload), download: "invite.ics" }, "Download .ics"));
@@ -903,9 +1078,8 @@ function renderTable(rows) {
 function renderEditableFields(action) {
   const spec = EDITABLE_FIELDS[action.kind];
   const draft = currentDraft(action);
-  const wrap = h("div", { class: "editable-fields" });
-  const dirtyHint = h("p", { class: "dirty-hint" }, "Edited — click Edit to save before approving.");
-  dirtyHint.hidden = !draft.dirty;
+  const wrap = h("div", { class: "draft" });
+  const chips = h("div", { class: "draft-chips" });
 
   for (const field of spec) {
     const rawValue = draft.values[field.key];
@@ -915,18 +1089,39 @@ function renderEditableFields(action) {
         : field.type === "table"
           ? Array.isArray(rawValue) ? rawValue.map((row) => row.join(" | ")).join("\n") : ""
           : rawValue ?? "";
-    const control =
-      field.type === "textarea" || field.type === "table"
-        ? h("textarea", { oninput: (event) => markDirty(action, field, event.target.value) })
-        : h("input", {
-            type: field.type === "number" ? "number" : "text",
-            oninput: (event) => markDirty(action, field, event.target.value),
-          });
+    const multiline = field.type === "textarea" || field.type === "table";
+    const control = multiline
+      ? h("textarea", { rows: 1, class: field.type === "table" ? "mono" : null })
+      : h("input", { type: field.type === "number" ? "number" : "text" });
     control.value = value;
-    wrap.append(h("div", { class: "field-row" }, h("label", {}, field.label), control));
+    control.dataset.field = field.key;
+    control.setAttribute("aria-label", field.label);
+    control.addEventListener("input", (event) => {
+      if (multiline) grow(event.target);
+      markDirty(action, field, event.target.value);
+    });
+
+    if (field.layout === "row") {
+      wrap.append(h("label", { class: "draft-row" }, h("span", {}, field.label), control));
+    } else if (field.layout === "chip") {
+      control.placeholder = "Add";
+      control.size = Math.max(4, Math.min(24, String(value).length || 4));
+      chips.append(h("label", { class: "draft-chip" }, h("span", {}, field.label), control));
+    } else {
+      control.placeholder = field.label;
+      control.classList.add(field.layout === "title" ? "draft-title" : "draft-body");
+      wrap.append(control);
+    }
+    if (multiline) requestAnimationFrame(() => grow(control));
   }
-  wrap.append(dirtyHint);
+  if (chips.childElementCount) wrap.append(chips);
   return wrap;
+}
+
+// A bare text area grows with what is typed, like the body of a document.
+function grow(area) {
+  area.style.height = "auto";
+  area.style.height = `${area.scrollHeight}px`;
 }
 
 function markDirty(action, field, rawValue) {
@@ -949,10 +1144,10 @@ function markDirty(action, field, rawValue) {
   draft.dirty = true;
 
   const card = document.querySelector(`[data-action-id="${action.id}"]`);
-  const hint = card?.querySelector(".dirty-hint");
-  if (hint) hint.hidden = false;
   const approveBtn = card?.querySelector(".approve-btn");
-  if (approveBtn) approveBtn.disabled = true;
+  if (approveBtn) approveBtn.textContent = "Save and approve";
+  const discard = card?.querySelector(".discard-btn");
+  if (discard) discard.hidden = false;
 }
 
 function renderEvidence(evidence) {
@@ -978,54 +1173,63 @@ function renderEvidence(evidence) {
   return h("details", { class: "evidence" }, h("summary", {}, `Sources (${evidence.length})`), list);
 }
 
+// One primary action, bottom right. Edits ride along with it: approving an
+// edited draft saves the edit first, then approves exactly what was saved.
 function renderApprovalButtons(action) {
   const draft = currentDraft(action);
 
   const approveBtn = h(
     "button",
     { type: "button", class: "primary approve-btn", onclick: () => approveAction(action) },
-    "Approve",
+    draft.dirty ? "Save and approve" : "Approve",
   );
-  approveBtn.disabled = draft.dirty;
-
-  const editBtn = h("button", { type: "button", class: "quiet", onclick: () => submitEdit(action) }, "Edit");
-  const rejectBtn = h(
+  const discardBtn = h(
     "button",
-    { type: "button", class: "quiet warn", onclick: () => toggleRejectRow(action) },
-    "Reject",
+    {
+      type: "button",
+      class: "ghost discard-btn",
+      onclick: () => {
+        editDrafts.delete(action.id);
+        renderActions();
+      },
+    },
+    "Discard changes",
   );
+  discardBtn.hidden = !draft.dirty;
+  const rejectBtn = h("button", { type: "button", class: "ghost warn reject-btn", onclick: () => toggleRejectRow(action) }, "Reject");
 
-  const reasonInput = h("input", { type: "text", placeholder: "Reason (optional)" });
+  const reasonInput = h("input", { type: "text", placeholder: "Why not? (optional)", "aria-label": "Reason for rejecting" });
   const rejectRow = h(
     "div",
     { class: "reject-row", id: `reject-row-${action.id}` },
     reasonInput,
-    h(
-      "button",
-      { type: "button", class: "quiet warn", onclick: () => rejectAction(action, reasonInput.value) },
-      "Confirm reject",
-    ),
+    h("button", { type: "button", class: "ghost", onclick: () => toggleRejectRow(action) }, "Cancel"),
+    h("button", { type: "button", class: "quiet warn confirm-reject", onclick: () => rejectAction(action, reasonInput.value) }, "Reject draft"),
   );
   rejectRow.hidden = true;
 
-  const wrap = h("div", { class: "approval-controls" });
-  wrap.append(h("div", { class: "card-actions" }, approveBtn, editBtn, rejectBtn), rejectRow);
-  return wrap;
+  return h(
+    "div",
+    { class: "approval-controls" },
+    rejectRow,
+    h("div", { class: "card-actions" }, rejectBtn, h("span", { class: "bar-space" }), discardBtn, approveBtn),
+  );
 }
 
 function toggleRejectRow(action) {
   const row = document.getElementById(`reject-row-${action.id}`);
-  if (row) row.hidden = !row.hidden;
+  if (!row) return;
+  row.hidden = !row.hidden;
+  if (!row.hidden) row.querySelector("input").focus();
 }
 
 async function approveAction(action) {
   try {
-    // The exact, unchanged payloadHash this card was rendered with. If the
-    // fields were edited, the Edit button already sent that change and
-    // replaced this action with a new version, so this is always the
-    // payload the employee is currently looking at.
+    // An edited draft is saved first; the save returns a new version whose
+    // hash is what gets approved, so the approval covers exactly the edit.
+    const target = editDrafts.get(action.id)?.dirty ? await saveEdit(action) : action;
     const updated = await postJSON(`/api/v1/meetings/${state.current.meetingId}/actions/${action.id}/approve`, {
-      payloadHash: action.payloadHash,
+      payloadHash: target.payloadHash,
     });
     upsertAction(updated);
     renderActions();
@@ -1034,17 +1238,13 @@ async function approveAction(action) {
   }
 }
 
-async function submitEdit(action) {
+async function saveEdit(action) {
   const draft = currentDraft(action);
-  try {
-    const updated = await postJSON(`/api/v1/meetings/${state.current.meetingId}/actions/${action.id}/edit`, {
-      payload: draft.values,
-    });
-    upsertAction(updated);
-    renderActions();
-  } catch (error) {
-    showError(error.message);
-  }
+  const updated = await postJSON(`/api/v1/meetings/${state.current.meetingId}/actions/${action.id}/edit`, {
+    payload: draft.values,
+  });
+  upsertAction(updated);
+  return updated;
 }
 
 async function rejectAction(action, reason) {
@@ -1189,10 +1389,10 @@ const recording = {
   queue: Promise.resolve(),
 };
 
-async function startRecording() {
+// source: "tab" records a browser tab (the call) and the mic; "mic" the mic alone.
+async function startRecording(source = "tab") {
   if (!state.current || state.current.status !== "live" || recording.active) return;
   showError("");
-  const source = $("#mic-source").value;
   const streams = [];
   // Made before the share dialog, while the click still counts as a user gesture;
   // made after it, Chrome can leave it suspended, and it then hears only silence.
@@ -1258,7 +1458,7 @@ const STREAM_RATE = 16_000;
 const STREAM_CHUNK_SAMPLES = STREAM_RATE / 5;
 
 function streamAudio() {
-  const params = new URLSearchParams({ speaker: $("#mic-speaker").value.trim() || "Meeting" });
+  const params = new URLSearchParams({ speaker: RECORDED_SPEAKER });
   const scheme = location.protocol === "https:" ? "wss" : "ws";
   const socket = new WebSocket(`${scheme}://${location.host}/api/v1/meetings/${recording.meetingId}/stream?${params}`);
   socket.binaryType = "arraybuffer";
@@ -1348,11 +1548,12 @@ function recordClip() {
   };
 }
 
+// Recorded lines carry one label; the recogniser handles Chinese mixed with English.
+const RECORDED_SPEAKER = "Meeting";
+const RECORDED_LANGUAGE = "zh";
+
 function audioParams(extra = {}) {
-  const params = new URLSearchParams({ speaker: $("#mic-speaker").value.trim() || "Meeting", ...extra });
-  const language = $("#mic-lang").value;
-  if (language) params.set("language", language);
-  return params;
+  return new URLSearchParams({ speaker: RECORDED_SPEAKER, language: RECORDED_LANGUAGE, ...extra });
 }
 
 // Previews wait while a final clip is transcribing and never overlap, so they
@@ -1425,13 +1626,13 @@ function stopRecording() {
   renderRecording();
 }
 
+// Start and end are one control in two states: a live meeting that is not
+// recording can start; while recording it can end; an ended meeting offers neither.
 function renderRecording() {
   const live = state.current?.status === "live";
-  const button = $("#mic-btn");
-  button.textContent = recording.active ? "Stop recording" : "Start recording";
-  button.classList.toggle("recording", recording.active);
-  button.disabled = !live && !recording.active;
-  for (const id of ["#mic-source", "#mic-lang", "#mic-speaker"]) $(id).disabled = !live || recording.active;
+  $("#mic-start").hidden = !live || recording.active;
+  $("#end-meeting-btn").hidden = !live || !recording.active;
+  $("#rec-dot").hidden = !recording.active;
   const parts = [];
   if (recording.active) parts.push(recording.hearing ? "Recording, hearing sound" : "Recording, silent");
   if (recording.pending) parts.push(`transcribing ${recording.pending} clip${recording.pending > 1 ? "s" : ""}`);
@@ -1465,7 +1666,30 @@ function init() {
   });
 
   $("#end-meeting-btn").addEventListener("click", endMeeting);
-  $("#mic-btn").addEventListener("click", () => (recording.active ? stopRecording() : startRecording()));
+  // Choosing what to record is what starts it.
+  $("#mic-menu").addEventListener("sl-select", (event) => startRecording(event.detail.item.value));
+
+  // The tray folds to its title, so the notes behind it get the whole page.
+  $("#tray-toggle").addEventListener("click", () => {
+    const open = $("#tray-toggle").getAttribute("aria-expanded") !== "true";
+    $("#tray-toggle").setAttribute("aria-expanded", String(open));
+    $(".tray-body").hidden = !open;
+    // The foot only shows when something was blocked, so it is recomputed rather than simply shown.
+    if (state.current) renderActions();
+    else $(".tray-foot").hidden = true;
+    $("#tray").classList.toggle("folded", !open);
+  });
+
+  $("#blocked-toggle").addEventListener("click", () => {
+    const list = $("#blocked-list");
+    list.hidden = !list.hidden;
+    $("#blocked-toggle").setAttribute("aria-expanded", String(!list.hidden));
+  });
+
+  $("#tx-toggle").addEventListener("click", () => {
+    const off = $("#board").classList.toggle("tx-off");
+    $("#tx-toggle").setAttribute("aria-pressed", String(!off));
+  });
 
   $("#trace-clear").addEventListener("click", () => {
     state.selectedActionId = null;
@@ -1476,6 +1700,18 @@ function init() {
   loadMeetingList();
   loadReplayList();
   loadIntegrations();
+
+  const fromAddress = meetingIdInAddress();
+  if (fromAddress) openMeeting(fromAddress, { fromAddress: true });
+  window.addEventListener("popstate", () => {
+    const meetingId = meetingIdInAddress();
+    if (meetingId && meetingId !== state.current?.meetingId) openMeeting(meetingId, { fromAddress: true });
+  });
+}
+
+function meetingIdInAddress() {
+  const match = location.pathname.match(/^\/meetings\/([^/]+)$/);
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 // ------------------------------------------------------------ integrations

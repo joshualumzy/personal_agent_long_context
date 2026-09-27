@@ -8,6 +8,7 @@ import {
   type ActionPayload,
   type MeetingActions,
   type MeetingEvent,
+  type MeetingParticipant,
   type MeetingState,
   type MeetingSummary,
   type ProposedAction,
@@ -60,9 +61,10 @@ class FakeMeetings implements MeetingActions {
     this.meetings.set(meeting.meetingId, meeting);
   }
 
-  async start(input: { title: string; employeeId: string; sourceId?: string }): Promise<MeetingState> {
+  async start(input: { title: string; employeeId: string; sourceId?: string; participants?: MeetingParticipant[] }): Promise<MeetingState> {
     this.counter += 1;
     const meeting = emptyMeeting(`m${this.counter}`, input.title, input.employeeId, input.sourceId);
+    if (input.participants) meeting.participants = input.participants;
     this.meetings.set(meeting.meetingId, meeting);
     return meeting;
   }
@@ -371,6 +373,19 @@ describe("meeting routes: replay", () => {
       segments: [{ speaker: "Alice", text: "Let's start." }],
       intervalMs: 250,
     });
+  });
+
+  test("a replayed meeting keeps its invite list, so drafts can address the people on it", async () => {
+    const meetings = new FakeMeetings();
+    const participants = [{ name: "Owen", email: "owen@notc.example", org: "National Olympic Training Center" }];
+    const app = buildTestApp(meetings, {
+      loadReplay: async () => ({ title: "NOC sync", segments: [{ speaker: "Owen", text: "Hi." }], participants }),
+      replay: () => {},
+    });
+    after(() => app.close());
+    const response = await app.inject({ method: "POST", url: "/api/v1/meetings/replay", payload: { sourceId: "noc" } });
+    assert.equal(response.statusCode, 201);
+    assert.deepEqual((response.json() as MeetingState).participants, participants);
   });
 
   test("lists replays via listReplays(), or an empty array when it is not configured", async () => {

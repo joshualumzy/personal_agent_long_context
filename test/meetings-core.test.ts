@@ -239,7 +239,11 @@ function fakeModel(): JsonModel & { calls: string[] } {
         case "meeting minutes":
           return {
             summary: "The team settled hosting.",
-            decisions: ["Use vendor B for hosting."],
+            // Each final decision points at the line it was settled on; a line that does not exist is not trusted.
+            decisions: [
+              { text: "Use vendor B for hosting.", segmentIndex: 1 },
+              { text: "Review hosting costs monthly.", segmentIndex: 99 },
+            ],
             owners: [{ owner: "Dana", task: "run the load test", due: "Friday" }],
             openQuestions: [],
           } as T;
@@ -669,6 +673,69 @@ describe("explicit decision backstop", () => {
   });
 });
 
+describe("tasks that belong to a draft", () => {
+  test("a task that is part of an open draft is linked to it, and a link to no draft is dropped", async () => {
+    const replies: JsonModel = {
+      json: async <T>() =>
+        ({
+          candidates: [
+            { kind: "email_draft", segmentIndex: 1, speaker: "Jax", quote: "I'll send Owen a follow-up email", summary: "Follow-up to Owen", dedupeKey: "email:owen-follow-up", details: {} },
+          ],
+          decisions: [],
+          assignments: [
+            { segmentIndex: 2, owner: "I", task: "send the calendar invite", partOf: "calendar:tuesday-sync" },
+            { segmentIndex: 3, owner: "I", task: "fold ZD-102 into the follow-up", partOf: "email:owen-follow-up" },
+            { segmentIndex: 4, owner: "Deepa", task: "update the runbook", partOf: "doc:made-up" },
+          ],
+        }) as T,
+    };
+    const extractor = new ModelCommitmentExtractor(replies);
+    const segments = [
+      { index: 0, speaker: "Owen", text: "Let's sync again next Tuesday." },
+      { index: 1, speaker: "Jax", text: "I'll send Owen a follow-up email today." },
+      { index: 2, speaker: "Marcus", text: "I'll send the invite." },
+      { index: 3, speaker: "Marcus", text: "I'll fold the ZD-102 answer into that follow-up." },
+      { index: 4, speaker: "Deepa", text: "I'll update the runbook." },
+    ];
+    const openCalendar = {
+      id: "a1",
+      meetingId: "m",
+      kind: "calendar_draft",
+      tier: "approval",
+      status: "proposed",
+      title: "Tuesday sync",
+      trigger: { segmentIndex: 0, speaker: "Owen", quote: "Let's sync again next Tuesday." },
+      payload: { title: "Tuesday sync", attendees: [], durationMinutes: 30 },
+      payloadHash: "h",
+      version: 1,
+      evidence: [],
+      dedupeKey: "calendar:tuesday-sync",
+      createdAt: "2026-09-25T00:00:00.000Z",
+    } as ProposedAction;
+    const meeting = {
+      meetingId: "m",
+      title: "t",
+      employeeId: "jax",
+      status: "live" as const,
+      startedAt: "2026-09-25T00:00:00.000Z",
+      segments,
+      decisions: [],
+      actions: [openCalendar],
+      trace: [],
+    };
+    const result = await extractor.extract({ meeting, newSegments: segments.slice(1) });
+
+    assert.deepEqual(
+      result.assignments!.map(({ owner, task, partOf }) => ({ owner, task, partOf })),
+      [
+        { owner: "Marcus", task: "send the calendar invite", partOf: "calendar:tuesday-sync" },
+        { owner: "Marcus", task: "fold ZD-102 into the follow-up", partOf: "email:owen-follow-up" },
+        { owner: "Deepa", task: "update the runbook", partOf: undefined },
+      ],
+    );
+  });
+});
+
 // ------------------------------------------------------------------- notes and minutes
 
 describe("notes and minutes", () => {
@@ -703,6 +770,10 @@ describe("notes and minutes", () => {
     assert.match(minutes!.markdown!, /## Decisions\n\n- Use vendor B for hosting\./);
     assert.doesNotMatch(minutes!.markdown!, /vendor A/, "a reversed decision is left out");
     assert.match(minutes!.markdown!, /\*\*Dana\*\*: run the load test \(due Friday\)/);
+    assert.deepEqual(minutes!.decisions, [
+      { text: "Use vendor B for hosting.", segmentIndex: 1 },
+      { text: "Review hosting costs monthly." },
+    ], "the page can lead each final decision back to its line");
   });
 
   test("an ended meeting takes no new lines", async () => {
