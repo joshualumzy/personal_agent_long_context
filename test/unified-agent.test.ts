@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DeterministicMemoryProvider } from "../src/adapters/deterministic-memory.js";
-import { extractWorkingContextFromHumanMd } from "../src/adapters/letta-memory.js";
+import {
+  extractWorkingContextFromHumanMd,
+  workingContextPrompt,
+} from "../src/adapters/letta-memory.js";
 import { createSessionToken } from "../src/auth.js";
 import { buildApp } from "../src/http-app.js";
 import { InMemoryConversationStore } from "../src/adapters/postgres-conversations.js";
@@ -169,6 +172,28 @@ description: Personal context
     { sourceId: "jax-note-001", label: "system/human.md" },
     { sourceId: "jax", label: "system/human.md" },
   ]);
+});
+
+test("workingContextPrompt directs writes to the section getWorkingContextFast reads", () => {
+  const prompt = workingContextPrompt({ userId: "marcus", message: "I now own the billing migration." });
+
+  // The fast read only looks at system/human.md, under "### Current".
+  assert.match(prompt, /system\/human\.md/);
+  assert.match(prompt, /## Working context \(SME employee\)/);
+  assert.match(prompt, /### Current/);
+  assert.match(prompt, /### History/);
+
+  // A file written the way the prompt describes is one the fast read understands.
+  const written = `## Working context (SME employee)
+### Current
+- Owns the billing service migration. [marcus, workplace message, 2026-09-27]
+
+### History (superseded / cancelled)
+(none)
+`;
+  const result = extractWorkingContextFromHumanMd(written);
+  assert.ok(result);
+  assert.match(result.contextConsidered, /billing service migration/);
 });
 
 test("unified route uses getWorkingContextFast when provider supports it and triggers async update", async () => {
