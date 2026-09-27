@@ -252,3 +252,21 @@ body:has(> .shell) { margin: 0; height: 100vh; overflow: hidden; background: var
   --slate: #3d32b8;
   --indigo: #a79fec;
 }
+
+/* Drawn like the design: pale violet shapes with a violet outline (kinds told
+   apart by shape and shade), pale violet links, dashed links from the question,
+   the question in indigo; a red outline still marks part of an incident. */
+.node .shape { stroke: #8f85e6; stroke-width: 1.3; }
+.n-person { fill: #e4e0fa; }
+.n-organization { fill: #dad5f8; }
+.n-item { fill: #eeedfb; }
+.n-event { fill: #e4e0fa; }
+.n-document { fill: #f3f1fd; }
+.n-query { fill: var(--accent); }
+.shape.incident, .node .shape.incident { stroke: var(--danger); stroke-width: 2; }
+.n-cluster { fill: #ffffff; stroke: #b9b2ee !important; }
+.node:hover .shape, .node.selected .shape { stroke: var(--accent); stroke-width: 2.2; }
+.node.selected .shape.incident { stroke: var(--danger); }
+.edge { stroke: #d9d5f6; stroke-opacity: 1; }
+.edge.matches { stroke: #b9b2ee; stroke-opacity: 1; stroke-dasharray: 4 4; }
+.key .n-person, .key .n-organization, .key .n-item, .key .n-event, .key .n-document { stroke: #8f85e6; stroke-width: 1.3; }

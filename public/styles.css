@@ -2053,3 +2053,15 @@ body.has-pinned .header-action-label { display: none; }
   --k-event: #b3abee;
   --k-document: #a79fec;
 }
+
+/* The answer's graph, drawn like the design: pale violet shapes with a violet
+   outline, pale links, dashed links from the question, the question in indigo. */
+.ag-person, .ag-organization, .ag-item, .ag-event, .ag-document { stroke: #8f85e6; stroke-width: 1; }
+.ag-person { fill: #e4e0fa; }
+.ag-organization { fill: #dad5f8; }
+.ag-item { fill: #eeedfb; }
+.ag-event { fill: #e4e0fa; }
+.ag-document { fill: #f3f1fd; }
+.ag-query { fill: var(--accent); }
+.ag-edge { stroke: #d9d5f6; stroke-opacity: 1; }
+.ag-edge.matches { stroke: #b9b2ee; stroke-opacity: 1; stroke-dasharray: 3 3; }
