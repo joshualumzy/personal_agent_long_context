@@ -152,6 +152,10 @@ function showDay(day) {
   const shown = day ?? workingDays[workingDays.length - 1] ?? "";
   if (asOfInput) asOfInput.value = shown;
   if (asOfCaption) asOfCaption.textContent = day ? "As of" : "Today";
+  const label = document.querySelector("#as-of-label");
+  if (label && shown) {
+    label.textContent = new Date(`${shown}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  }
   if (asOfGroup) asOfGroup.classList.toggle("past", Boolean(day));
   if (asOfNow) asOfNow.hidden = !day;
   const index = workingDays.indexOf(shown);
@@ -266,7 +270,8 @@ function renderTodo(items) {
     heading.textContent = `${group.title} · ${members.length}`;
     const list = document.createElement("ul");
     // What others were meant to pick up can run long; the first few are enough to see it.
-    const shown = group.relation === "reporter" ? 5 : members.length;
+    // What others were meant to pick up is not the day's work: folded, one click away.
+    const shown = group.relation === "reporter" ? 0 : members.length;
     members.forEach((item, index) => {
       const row = document.createElement("li");
       const citable = Boolean(item.sources?.includes(item.itemKey) && plateSourceHandler);
@@ -357,7 +362,8 @@ async function loadTodayPanel() {
   if (!todayPanel || !workingDays.length) return;
   const epoch = plannerEpoch;
   const day = viewDay ?? workingDays[workingDays.length - 1];
-  todayDate.textContent = viewDay ? `As of ${formatDay(day)}` : formatDay(day);
+  // The record ends before today, so its day is named even when it is the present.
+  todayDate.textContent = `As of ${formatDay(day)}`;
   document.querySelector("#today-title").textContent = viewDay ? "That day" : "Today";
   todoList.setAttribute("aria-busy", "true");
   // The old day's lists must not linger under the new day's heading.
@@ -446,13 +452,36 @@ const HOME_KINDS = {
 /** A title without the kind the icon already shows ("Email: ", "Escalation:
  * Approval required: "). */
 function taskTitle(title) {
-  const plain = String(title || "")
-    .replace(/^(email|ticket|calendar|hiring|escalation|answer|message|doc|document|sheet|heads up|conflict)\s*:\s*/i, "")
-    .replace(/^approval required\s*:\s*/i, "");
+  // A model sometimes writes the kind twice ("Escalation: Escalation: …"); take off every one.
+  const KIND = /^(email|ticket|calendar|hiring|escalation|answer|message|doc|document|sheet|heads up|conflict|approval required)\s*:\s*/i;
+  let plain = String(title || "").trim();
+  while (KIND.test(plain)) plain = plain.replace(KIND, "");
   return plain.charAt(0).toUpperCase() + plain.slice(1);
 }
 
-function homeTask({ action, meeting }, part, oneMeeting = false) {
+/**
+ * What waits on someone else, one row per person who decides: the same ask
+ * comes up again in later meetings, and a list that repeats it reads as noise.
+ * The most recent ask names the row; the rest are counted.
+ */
+function groupWaiting(waiting) {
+  const groups = new Map();
+  for (const item of waiting) {
+    const who = item.action.payload?.requiredApprover || taskTitle(item.action.title);
+    const group = groups.get(who) ?? [];
+    group.push(item);
+    groups.set(who, group);
+  }
+  const latest = (item) => String(item.action.createdAt || item.meeting.startedAt || "");
+  return [...groups.values()]
+    .map((items) => {
+      const sorted = [...items].sort((a, b) => latest(b).localeCompare(latest(a)));
+      return { ...sorted[0], asks: items.length, meetingCount: new Set(items.map((item) => item.meeting.meetingId)).size };
+    })
+    .sort((a, b) => latest(b).localeCompare(latest(a)));
+}
+
+function homeTask({ action, meeting, asks = 1, meetingCount = 1 }, part, oneMeeting = false) {
   const [kindLabel, icon] = HOME_KINDS[action.kind] ?? ["Action", "check"];
   const row = document.createElement("a");
   row.className = `task ${part}`;
@@ -466,6 +495,9 @@ function homeTask({ action, meeting }, part, oneMeeting = false) {
   }
   if (part === "waiting" && action.payload?.requiredApprover) {
     tag = `<span class="task-tag waiting" title="${escapeHtml(action.payload.reason ?? "")}">${escapeHtml(action.payload.requiredApprover)}</span>`;
+  }
+  if (asks > 1) {
+    tag += `<span class="task-count">${asks} asks · ${meetingCount} ${meetingCount === 1 ? "meeting" : "meetings"}</span>`;
   }
   const go = part === "needs" ? '<span class="task-go">Review</span>' : lineIcon("chevron", 14);
   row.innerHTML = `
@@ -527,6 +559,7 @@ async function loadPlateNeeds() {
   // Everything from one meeting: a headline that names it does not need the rows to repeat it.
   const oneMeeting = new Set([...needs, ...waiting, ...done].map((item) => item.meeting.meetingId)).size <= 1;
   fillHomeGroup("#home-needs", needs, "needs", oneMeeting);
-  fillHomeGroup("#home-waiting", waiting, "waiting", oneMeeting);
-  return { asked, meetings, needs, waiting, done, oneMeeting };
+  const waitingGroups = groupWaiting(waiting);
+  fillHomeGroup("#home-waiting", waitingGroups, "waiting", oneMeeting);
+  return { asked, meetings, needs, waiting: waitingGroups, done, oneMeeting };
 }

@@ -975,6 +975,23 @@ describe("SME Assistant on a chosen day", () => {
     await until(() => page.document.querySelector(".as-of-tag"), "the answer's day");
   });
 
+  test("on the plate the tickets you raised start folded, and the list says which day of the record it shows", async () => {
+    const page = await plannerPage();
+    after(() => page.close());
+    const doc = page.document;
+    await until(() => doc.querySelector(".todo-item"), "the to-do list");
+
+    // What others were meant to pick up is not the day's work: folded, one click away.
+    const raised = [...doc.querySelectorAll("#todo-list li")].filter((row) => /VPC review/.test(row.textContent!));
+    assert.equal(raised.length, 1);
+    assert.equal((raised[0] as HTMLElement).hidden, true);
+    assert.match(doc.querySelector("#todo-list .today-more")!.textContent!, /Show 1/);
+    // The planner's record ends before today: its day is named, even when it is the present.
+    assert.match(doc.querySelector("#today-date")!.textContent!, /As of .*2026/);
+    // The picker reads as a day, not as a form field.
+    assert.match(doc.querySelector("#as-of-label")!.textContent!, /7 Jan/);
+  });
+
   test("without a planner there is no date control and no panel", async () => {
     const page = await openSmePage({
       respond: (url) => {
@@ -989,5 +1006,42 @@ describe("SME Assistant on a chosen day", () => {
     await new Promise((resolve) => setTimeout(resolve, 30));
     assert.equal((page.document.querySelector("#as-of") as HTMLElement).hidden, true);
     assert.equal((page.document.querySelector("#today-panel") as HTMLElement).hidden, true);
+  });
+});
+
+describe("SME Assistant plate, as shown on camera", () => {
+  test("what waits on the same person is one row, however many meetings raised it, and a title never repeats its kind", async () => {
+    const at = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+    const esc = (id: string, meetingId: string, title: string, approver: string) => ({
+      ...action(id, "escalation", "escalate", "escalated", title, { payload: { subject: title, reason: "Pricing", requiredApprover: approver } }),
+      meetingId,
+    });
+    const page = await openSmePage({ respond: signedIn((url) => {
+      if (url === "/api/v1/meetings") {
+        return json([
+          { meetingId: "m1", title: NOC, status: "ended", startedAt: at(300), actionCount: 1 },
+          { meetingId: "m2", title: "0209", status: "ended", startedAt: at(200), actionCount: 2 },
+          { meetingId: "m3", title: "0212", status: "ended", startedAt: at(100), actionCount: 2 },
+        ]);
+      }
+      if (url === "/api/v1/meetings/m1") return json({ meetingId: "m1", title: NOC, status: "ended", actions: [esc("e1", "m1", "Escalation: Approval required: 20% discount for NOTC", "Finance lead")] });
+      if (url === "/api/v1/meetings/m2") return json({ meetingId: "m2", title: "0209", status: "ended", actions: [esc("e2", "m2", "Escalation: Discount approval required for NOTC", "Finance lead"), esc("e3", "m2", "Escalation: Contract change", "Legal")] });
+      if (url === "/api/v1/meetings/m3") return json({ meetingId: "m3", title: "0212", status: "ended", actions: [esc("e4", "m3", "Escalation: Escalation: Discount Confirmation", "Finance lead")] });
+      return undefined;
+    }) });
+    after(() => page.close());
+    await until(() => page.document.querySelectorAll("#home-waiting .task").length > 0, "what waits on others");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    const rows = [...page.document.querySelectorAll("#home-waiting .task")];
+    assert.equal(rows.length, 2, "Finance lead once, Legal once");
+    const finance = rows.find((row) => /Finance lead/.test(row.textContent!))!;
+    // The most recent ask names the row; the count says how many there are and from how many meetings.
+    assert.equal(finance.querySelector(".task-title")!.textContent, "Discount Confirmation");
+    assert.match(finance.textContent!, /3 asks · 3 meetings/);
+    assert.equal(page.document.querySelector("#home-waiting .count")!.textContent, "2");
+    for (const title of page.document.querySelectorAll("#home-waiting .task-title")) {
+      assert.doesNotMatch(title.textContent!, /^(Escalation|Approval required):/i);
+    }
   });
 });
