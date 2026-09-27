@@ -91,6 +91,11 @@ PERSON_ROLE_EDGE_TYPES = (
     "authored_by", "reviewed_by", "led_by", "assigned_to", "raised_by", "received_by",
 )
 
+# The same partition for organizations: a document naming a customer or
+# vendor in its actors list gets 'involves' only where no typed edge already
+# says how it relates to that organization.
+ORGANIZATION_EDGE_TYPES = ("for_customer", "from_vendor")
+
 
 # Who belongs to which department, and when, straight from the department
 # plans: every dept_plan_created row lists the department's people in
@@ -139,9 +144,11 @@ def build_person_nodes(cursor) -> int:
     makes 'Ethan' and 'Ethan Patel' one node: the view already resolves an
     alias to the actor it was merged into (migration 008).
 
-    Restricted to actor_kind = 'employee' so a customer organization named in
-    actors — 'Metro United FC', for instance — becomes an 'organization' node
-    below instead of a 'person' one.
+    Restricted to people — actor_kind 'employee', and 'external_contact' for
+    someone who writes in on behalf of a vendor or customer (migration 017),
+    kept apart by node_subtype — so a customer organization named in actors,
+    'Metro United FC' for instance, becomes an 'organization' node below
+    instead of a 'person' one.
 
     dept comes from the department plans when actors.dept is empty, which it
     is for nearly everyone: the plans list each department's people every day
@@ -166,7 +173,7 @@ def build_person_nodes(cursor) -> int:
         )
         INSERT INTO graph_nodes (node_type, node_subtype, ref_key, label, props)
         SELECT DISTINCT
-            'person', 'employee', a.name, a.name,
+            'person', a.actor_kind, a.name, a.name,
             jsonb_build_object('role', a.role, 'dept', coalesce(a.dept, latest.dept))
             || jsonb_strip_nulls(jsonb_build_object(
                 'hired_day', hr.hired_day,
@@ -176,7 +183,7 @@ def build_person_nodes(cursor) -> int:
         JOIN actors a ON a.actor_id = ai.actor_id
         LEFT JOIN latest ON latest.person = a.name
         LEFT JOIN hr ON hr.name = a.name
-        WHERE a.actor_kind = 'employee'
+        WHERE a.actor_kind IN ('employee', 'external_contact')
         ON CONFLICT (node_type, ref_key) DO UPDATE SET
             label = EXCLUDED.label, props = EXCLUDED.props
         """
@@ -502,6 +509,112 @@ def build_incident_event_nodes(cursor) -> int:
 # ---------------------------------------------------------------------------
 # Edges
 # ---------------------------------------------------------------------------
+# A vendor's own name in inbound mail (facts.org, "Kafka") is not the name its
+# organization node has (actors.name, "Confluent"). The corpus gives the
+# mapping itself: external_contact_summarized names both, as facts.org and
+# facts.external_party. A customer writes under its own account name, which is
+# its node's name already.
+ORGANIZATION_OF_MAIL_SQL = """
+    SELECT DISTINCT e.facts->>'source' AS contact,
+           e.facts->>'category'       AS category,
+           coalesce(s.facts->>'external_party', e.facts->>'org') AS organization
+    FROM source_documents e
+    LEFT JOIN source_documents s
+           ON s.source_type = 'external_contact_summarized'
+          AND s.facts->>'org' = e.facts->>'org'
+    WHERE e.source_type = 'inbound_external_email'
+      AND e.facts->>'category' IN ('vendor', 'customer')
+      AND e.facts->>'source' <> e.facts->>'org'
+"""
+
+
+def build_customer_vendor_edges(cursor) -> dict[str, int]:
+    """Typed relationships to customer and vendor organizations, each from a
+    field that names the organization:
+
+      contact_for   person(external_contact) -> organization: inbound mail's
+                    facts.source writing for facts.org. "Ethan" writes for both
+                    Firebase and Metro United FC, and gets both edges.
+      from_vendor   item(jira) -> organization(vendor): the 110 tickets opened
+                    from vendor mail name the contact in facts.vendor, whose
+                    vendor is found as above.
+      for_customer  -> organization(customer):
+                      sf_opp item        facts.account_name
+                      jira item          facts.account (sales outreach)
+                      zd_ticket item     facts.org_name
+                      zd_ticket event    props.org_name (from zd_ticket_opened)
+                      invoice/nps item   its actors list, which names the account
+                                         and nothing else ("Invoice INV-... -
+                                         Metro United FC")
+    """
+    counts: dict[str, int] = {}
+    cursor.execute(
+        f"""
+        WITH mail AS ({ORGANIZATION_OF_MAIL_SQL})
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type, props)
+        SELECT DISTINCT pn.node_id, onode.node_id, 'contact_for',
+               jsonb_build_object('as', mail.category)
+        FROM mail
+        JOIN graph_nodes pn ON pn.node_type = 'person' AND pn.ref_key = mail.contact
+        JOIN graph_nodes onode ON onode.node_type = 'organization'
+                               AND onode.node_subtype = mail.category
+                               AND onode.ref_key = mail.organization
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    counts["contact_for"] = cursor.rowcount
+
+    cursor.execute(
+        f"""
+        WITH mail AS ({ORGANIZATION_OF_MAIL_SQL})
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+        SELECT DISTINCT tn.node_id, onode.node_id, 'from_vendor'
+        FROM source_documents d
+        JOIN mail ON mail.contact = d.facts->>'vendor' AND mail.category = 'vendor'
+        JOIN graph_nodes tn ON tn.node_type = 'item' AND tn.ref_key = d.source_id
+        JOIN graph_nodes onode ON onode.node_type = 'organization'
+                               AND onode.node_subtype = 'vendor'
+                               AND onode.ref_key = mail.organization
+        WHERE d.source_type = 'jira' AND d.facts ? 'vendor'
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    counts["from_vendor"] = cursor.rowcount
+
+    cursor.execute(
+        """
+        WITH named AS (
+            SELECT 'item' AS node_type, source_id AS ref_key,
+                   coalesce(facts->>'account_name', facts->>'account', facts->>'org_name') AS account
+            FROM source_documents
+            WHERE source_type IN ('sf_opp', 'jira', 'zd_ticket')
+              AND coalesce(facts->>'account_name', facts->>'account', facts->>'org_name') IS NOT NULL
+          UNION
+            SELECT 'event', ref_key, props->>'org_name'
+            FROM graph_nodes
+            WHERE node_type = 'event' AND node_subtype = 'zd_ticket'
+              AND props->>'org_name' IS NOT NULL
+          UNION
+            SELECT 'item', d.source_id, a.name
+            FROM source_documents d
+            JOIN document_actors da ON da.source_id = d.source_id
+            JOIN actors a ON a.actor_id = da.actor_id AND a.actor_kind = 'customer'
+            WHERE d.source_type IN ('invoice', 'nps_survey')
+        )
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+        SELECT DISTINCT sn.node_id, onode.node_id, 'for_customer'
+        FROM named
+        JOIN graph_nodes sn ON sn.node_type = named.node_type AND sn.ref_key = named.ref_key
+        JOIN graph_nodes onode ON onode.node_type = 'organization'
+                               AND onode.node_subtype = 'customer'
+                               AND onode.ref_key = named.account
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    counts["for_customer"] = cursor.rowcount
+    return counts
+
+
 def build_involves_edges(cursor) -> int:
     """event/document -> person/organization, from the normalized actor
     junction — but only where no role edge has already said what the person
@@ -542,7 +655,7 @@ def build_involves_edges(cursor) -> int:
         )
         ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
         """,
-        (list(PERSON_ROLE_EDGE_TYPES),),
+        (list(PERSON_ROLE_EDGE_TYPES + ORGANIZATION_EDGE_TYPES),),
     )
     return cursor.rowcount
 
@@ -1172,6 +1285,9 @@ def main() -> int:
             print(f"leads edges:         {leads}", file=sys.stderr)
             print(f"belongs_to edges:    {domain_depts}", file=sys.stderr)
 
+            # Before 'involves', which is what the typed edges leave uncovered.
+            for label, count in build_customer_vendor_edges(cursor).items():
+                print(f"{label} edges: {count}", file=sys.stderr)
             print(f"involves edges:      {build_involves_edges(cursor)}", file=sys.stderr)
             dp_engineers, dp_collaborators = build_dept_plan_involves_edges(cursor)
             print(f"dept_plan engineer involves:     {dp_engineers}", file=sys.stderr)

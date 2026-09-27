@@ -14,7 +14,13 @@ prefix of the full ("Ethan" / "Ethan Patel"). It is proposed only when:
   1. the two share at least one department in document_actors, AND
   2. the short name is not itself a domain's known_by/owner entry under a
      different full form (which would mean the corpus is already treating the
-     short name as its own identity, not a shorthand for this one)
+     short name as its own identity, not a shorthand for this one), AND
+  3. the short name is not an external sender — someone inbound mail names as
+     writing on behalf of a vendor or customer. The department check in (1)
+     reads the department of the *documents* a name is on, and external mail
+     is routed to a department, so on its own it merged a Firebase sales
+     contact ("Ethan", writing from day 2) into an engineer hired on day 26
+     ("Ethan Patel"). See migration 017.
 
 Evidence is graded, not merged into one bucket:
   - 'asserted': domain_registry.json names the full form as a domain owner or
@@ -81,8 +87,28 @@ def domains_naming(cursor, name: str) -> set[str]:
     return {row[0] for row in cursor.fetchall()}
 
 
+def is_external_sender(cursor, name: str) -> bool:
+    """Whether inbound mail names this person as writing on behalf of a vendor
+    or customer organization other than themselves."""
+    cursor.execute(
+        """
+        SELECT 1 FROM source_documents
+        WHERE source_type = 'inbound_external_email'
+          AND facts->>'category' IN ('vendor', 'customer')
+          AND facts->>'source' = %s
+          AND facts->>'org' <> %s
+        LIMIT 1
+        """,
+        (name, name),
+    )
+    return cursor.fetchone() is not None
+
+
 def evaluate(cursor, short: str, full: str) -> tuple[bool, str, str] | tuple[bool, None, None]:
     """Returns (accept, confidence, evidence) or (False, None, None)."""
+    if is_external_sender(cursor, short):
+        return False, None, None
+
     short_depts = departments_of(cursor, short)
     full_depts = departments_of(cursor, full)
     shared = short_depts & full_depts
@@ -155,8 +181,9 @@ def main() -> int:
                     accepted += 1
                 else:
                     print(f"REJECT  {short!r} -> {full!r}  "
-                          f"(no shared department, or the short form has its "
-                          f"own domain-registry identity)", file=sys.stderr)
+                          f"(no shared department, the short form has its own "
+                          f"domain-registry identity, or it is an external "
+                          f"sender)", file=sys.stderr)
 
             print(f"\n{accepted}/{len(candidates)} candidate pairs accepted.",
                   file=sys.stderr)
