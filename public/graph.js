@@ -3,7 +3,10 @@
  * script (the page's <body data-mode> says which):
  *   - company (/graph): the company overviews — Departments, Who knows what,
  *     Incidents, Documents, Customers & vendors, Timeline — each from
- *     /api/v1/graph/view/:name, a fixed subgraph that needs no question;
+ *     /api/v1/graph/view/:name, a fixed subgraph that needs no question, plus
+ *     Where today touched, from /api/v1/graph/today: the signed-in
+ *     employee's own day, drawn around what it cited, with those nodes
+ *     highlighted (see state.touched);
  *   - answer (/graph/answer?q=…&sources=…): one chat answer's graph, from
  *     /api/v1/graph/query with the question in the middle and the things its
  *     cited evidence belongs to around it. The chat opens it in a dialog from
@@ -41,6 +44,10 @@ const CATEGORIES = [
  */
 const VIEWS = {
   query: { layout: "radial" },
+  // The centre is a "Today" question node like a query graph's, its seeds
+  // are what the signed-in employee's day cited, and those seeds are what
+  // the picture highlights (see state.touched).
+  today: { layout: "radial" },
   // `hub` is the column whose nodes the others are grouped beside; a `free`
   // column is joined to many hub nodes at once (a domain many people know),
   // so it is spread down the side in the order of what it connects to rather
@@ -83,6 +90,10 @@ const state = {
   positions: new Map(),
   expanded: new Set(),
   hidden: new Set(),
+  /** Node ids the "Where today touched" view highlights. Empty on every
+   * other view, and never grown by expanding: only what today itself cited
+   * is touched, not what an expansion reaches from it. */
+  touched: new Set(),
   selected: null,
   evidenceCache: new Map(),
   /** The time scale the timeline was first drawn at, kept so expanding a day
@@ -175,6 +186,12 @@ function describeKind(node) {
  * expand. */
 function isPager(node) {
   return node.type === "cluster" && typeof node.props?.parent === "string";
+}
+
+/** Whether today's evidence touched this node (see state.touched). The
+ * question at the centre is never marked, even on the "Today" question. */
+function isTouched(node) {
+  return node.type !== "query" && node.type !== "cluster" && state.touched.has(node.id);
 }
 
 function expandable(node) {
@@ -520,19 +537,20 @@ function timelineCaption(node) {
 function shapeFor(node, size = 1) {
   if (node.id.startsWith("day:") && VIEWS[state.view].layout === "timeline") return timelineShape(node);
   const incident = node.isIncident ? " incident" : "";
+  const touched = isTouched(node) ? " touched" : "";
   const k = (value) => +(value * size).toFixed(1);
   const points = (pairs) => pairs.map(([x, y]) => `${k(x)},${k(y)}`).join(" ");
   switch (node.type) {
     case "person":
-      return svg("polygon", { points: points([[0, -7], [7, 0], [0, 7], [-7, 0]]), class: `shape n-person${incident}` });
+      return svg("polygon", { points: points([[0, -7], [7, 0], [0, 7], [-7, 0]]), class: `shape n-person${incident}${touched}` });
     case "organization":
-      return svg("polygon", { points: points([[-4, -7], [4, -7], [7, 0], [4, 7], [-4, 7], [-7, 0]]), class: `shape n-organization${incident}` });
+      return svg("polygon", { points: points([[-4, -7], [4, -7], [7, 0], [4, 7], [-4, 7], [-7, 0]]), class: `shape n-organization${incident}${touched}` });
     case "item":
-      return svg("circle", { r: k(7), class: `shape n-item${incident}` });
+      return svg("circle", { r: k(7), class: `shape n-item${incident}${touched}` });
     case "event":
-      return svg("rect", { x: k(-6), y: k(-6), width: k(12), height: k(12), class: `shape n-event${incident}` });
+      return svg("rect", { x: k(-6), y: k(-6), width: k(12), height: k(12), class: `shape n-event${incident}${touched}` });
     case "document":
-      return svg("polygon", { points: points([[0, -7], [7, 6], [-7, 6]]), class: `shape n-document${incident}` });
+      return svg("polygon", { points: points([[0, -7], [7, 6], [-7, 6]]), class: `shape n-document${incident}${touched}` });
     case "query":
       return svg("circle", { r: 11, class: "shape n-query" });
     case "cluster":
@@ -942,7 +960,9 @@ async function load(view) {
           ...(onOrigin() && state.sources.length ? { sources: state.sources.join(",") } : {}),
           ...(state.hidden.size ? { categories: enabledCategories().join(",") } : {}),
         })}`
-      : `/api/v1/graph/view/${encodeURIComponent(view)}`;
+      : view === "today"
+        ? "/api/v1/graph/today"
+        : `/api/v1/graph/view/${encodeURIComponent(view)}`;
     const slice = await fetchJSON(url);
     if (generation !== state.generation) return;
     state.slice = slice;
@@ -952,15 +972,25 @@ async function load(view) {
     state.expanded = new Set();
     state.timeScale = null;
     state.selected = null;
+    // Only the "Today" route sends this; every other view touches nothing.
+    state.touched = new Set(Array.isArray(slice.touched) ? slice.touched : []);
     placeNew(null);
     fit();
     redraw();
     // Re-centred on something else, Back to start returns to the answer.
     $("#restore").disabled = MODE !== "answer" || onOrigin();
-    $("#details").replaceChildren(h("p", { class: "empty" },
-      view === "query"
-        ? "Pick an item to see what it is."
-        : "Click anything to open it up."));
+    if (view === "today" && slice.nodes.length === 0) {
+      // Nothing to draw is a real answer, not a loading state that forgot to
+      // finish — say so plainly instead of leaving an empty canvas.
+      $("#status-line").textContent = "Nothing from today yet.";
+      $("#details").replaceChildren(h("p", { class: "empty" },
+        "Nothing from today has touched the company graph yet. Run a meeting or ask Kaki something, and it will show up here."));
+    } else {
+      $("#details").replaceChildren(h("p", { class: "empty" },
+        view === "query"
+          ? "Pick an item to see what it is."
+          : "Click anything to open it up."));
+    }
   } catch (error) {
     if (generation !== state.generation) return;
     showError(error instanceof Error ? error.message : String(error));
