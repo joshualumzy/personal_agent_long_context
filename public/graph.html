@@ -25,25 +25,44 @@
 
   <section class="controls" aria-label="What to draw">
 
+    <!-- Six overviews in three groups, by what they are about; the documents
+         web, the most graph-like, first. -->
     <nav class="view-tabs" id="view-tabs" aria-label="Graph">
-      <button type="button" class="view-tab" data-view="org" aria-pressed="false">Departments</button>
-      <button type="button" class="view-tab" data-view="expertise" aria-pressed="false">Who knows what</button>
-      <button type="button" class="view-tab" data-view="incidents" aria-pressed="false">Incidents</button>
-      <button type="button" class="view-tab" data-view="documents" aria-pressed="false">Documents</button>
-      <button type="button" class="view-tab" data-view="customers" aria-pressed="false">Customers &amp; vendors</button>
-      <button type="button" class="view-tab" data-view="timeline" aria-pressed="false">Timeline</button>
+      <div class="view-group" role="group" aria-labelledby="group-knowledge">
+        <span class="view-group-label" id="group-knowledge">Knowledge</span>
+        <button type="button" class="view-tab" data-view="documents" aria-pressed="false">Documents</button>
+        <button type="button" class="view-tab" data-view="expertise" aria-pressed="false">Who knows what</button>
+      </div>
+      <div class="view-group" role="group" aria-labelledby="group-work">
+        <span class="view-group-label" id="group-work">Work</span>
+        <button type="button" class="view-tab" data-view="incidents" aria-pressed="false">Incidents</button>
+        <button type="button" class="view-tab" data-view="timeline" aria-pressed="false">Timeline</button>
+      </div>
+      <div class="view-group" role="group" aria-labelledby="group-organizations">
+        <span class="view-group-label" id="group-organizations">Organizations</span>
+        <button type="button" class="view-tab" data-view="org" aria-pressed="false">Departments</button>
+        <button type="button" class="view-tab" data-view="customers" aria-pressed="false">Customers &amp; vendors</button>
+      </div>
     </nav>
 
-    <fieldset class="categories" id="categories">
-      <legend>Show</legend>
-      <!-- Filled from CATEGORIES in app.js, so the list lives in one place. -->
-    </fieldset>
+    <!-- A menu, not a row of chips: it is used now and then, not read every
+         time. Filled from CATEGORIES in app.js, so the list lives in one place. -->
+    <details class="show-menu" id="show-menu">
+      <summary>Show: <span id="show-summary">everything</span></summary>
+      <fieldset class="categories" id="categories">
+        <legend class="visually-hidden">Show</legend>
+      </fieldset>
+    </details>
+    <!-- What the chosen overview answers, from VIEWS in app.js. -->
+    <p class="view-about" id="view-about"></p>
   </section>
 
   <main class="board">
     <section id="picture" class="picture" aria-labelledby="picture-heading">
       <div class="picture-bar">
         <h2 id="picture-heading">Diagram</h2>
+        <!-- In the documents web: the items put in the middle so far. -->
+        <nav id="trail" class="trail" aria-label="Focused so far" hidden></nav>
         <div class="picture-actions">
           <button type="button" class="quiet" id="fit">Fit</button>
           <button type="button" class="quiet" id="restore" disabled>Back to start</button>
@@ -55,6 +74,9 @@
            aria-describedby="canvas-help">
         <title>People, work, events and documents, joined by how they relate</title>
       </svg>
+      <!-- Views whose data is table-shaped (who knows what, incidents) are
+           drawn here as HTML instead of on the canvas. -->
+      <div id="arranged" class="arranged" hidden></div>
       <p id="canvas-help" class="hint-line">
         Click an item to open it up: its neighbours are added around it, a few of each kind,
         and a “+N more” item stands for the rest — click that for the next few.
@@ -69,6 +91,8 @@
         <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-cluster"/></svg>More of one kind</li>
         <li class="legend-note"><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item incident"/></svg>A red outline means it is part of an incident</li>
       </ul>
+      <!-- Filled from EDGE_STYLES in app.js with the kinds of line on screen. -->
+      <ul class="legend" id="edge-legend"></ul>
     </section>
 
     <section id="table-view" class="table-view" aria-labelledby="table-heading" hidden>
