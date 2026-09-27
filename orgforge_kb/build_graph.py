@@ -23,6 +23,10 @@ never nodes of their own. See issue #11 for the reasoning.
   document    confluence pages — the only artifact type left as a document,
               because a person genuinely cites "CONF-ENG-022" by name
 
+organization also covers the seven departments that have a daily plan
+(subtype 'department'), with person -> department member_of / leads edges read
+from dept_plan_created, and domain -> department belongs_to from the registry.
+
 organization covers the seven customer accounts named in crm_touchpoint,
 proactive_outreach_initiated, and zd_ticket_opened — actors the corpus had
 already recorded, but with actor_kind left at its 'employee' default (migration
@@ -88,6 +92,39 @@ PERSON_ROLE_EDGE_TYPES = (
 )
 
 
+# Who belongs to which department, and when, straight from the department
+# plans: every dept_plan_created row lists the department's people in
+# facts.engineer_plans[] for that day. One row per (person, department), with
+# the first and last day they were listed. Names resolve through
+# actor_identity to the canonical actor, as every other name lookup here does.
+# Verified against the corpus: nobody is listed under two departments, and the
+# first/last days agree with employee_hired / employee_departed.
+MEMBERSHIP_SQL = """
+    SELECT canon.name AS person, d.facts->>'dept' AS dept,
+           min(d.simulation_day) AS first_day, max(d.simulation_day) AS last_day,
+           count(DISTINCT d.simulation_day) AS days
+    FROM source_documents d
+    CROSS JOIN LATERAL jsonb_array_elements(d.facts->'engineer_plans') AS ep
+    JOIN actor_identity ai ON ai.alias = ep->>'name'
+    JOIN actors canon ON canon.actor_id = ai.actor_id
+    WHERE d.source_type = 'dept_plan_created'
+    GROUP BY 1, 2
+"""
+
+# Who led each department, and when: dept_plan_created.facts.lead, the same
+# rows as above. In this corpus every department keeps one lead for all 60
+# days, but the first/last day are kept so a change of lead would show.
+LEADERSHIP_SQL = """
+    SELECT canon.name AS person, d.facts->>'dept' AS dept,
+           min(d.simulation_day) AS first_day, max(d.simulation_day) AS last_day
+    FROM source_documents d
+    JOIN actor_identity ai ON ai.alias = d.facts->>'lead'
+    JOIN actors canon ON canon.actor_id = ai.actor_id
+    WHERE d.source_type = 'dept_plan_created'
+    GROUP BY 1, 2
+"""
+
+
 def reset_graph(cursor) -> None:
     cursor.execute("TRUNCATE graph_edges, graph_nodes RESTART IDENTITY CASCADE")
 
@@ -105,15 +142,40 @@ def build_person_nodes(cursor) -> int:
     Restricted to actor_kind = 'employee' so a customer organization named in
     actors — 'Metro United FC', for instance — becomes an 'organization' node
     below instead of a 'person' one.
+
+    dept comes from the department plans when actors.dept is empty, which it
+    is for nearly everyone: the plans list each department's people every day
+    (see department_membership). hired_day / departed_day come from the
+    corpus's own employee_hired / employee_departed events, so the org view
+    can tell a current member from a former one.
     """
     cursor.execute(
-        """
+        f"""
+        WITH membership AS ({MEMBERSHIP_SQL}),
+        latest AS (
+            SELECT DISTINCT ON (person) person, dept
+            FROM membership ORDER BY person, last_day DESC
+        ),
+        hr AS (
+            SELECT facts->>'name' AS name,
+                   min(simulation_day) FILTER (WHERE source_type = 'employee_hired')    AS hired_day,
+                   max(simulation_day) FILTER (WHERE source_type = 'employee_departed') AS departed_day
+            FROM source_documents
+            WHERE source_type IN ('employee_hired', 'employee_departed')
+            GROUP BY 1
+        )
         INSERT INTO graph_nodes (node_type, node_subtype, ref_key, label, props)
         SELECT DISTINCT
             'person', 'employee', a.name, a.name,
-            jsonb_build_object('role', a.role, 'dept', a.dept)
+            jsonb_build_object('role', a.role, 'dept', coalesce(a.dept, latest.dept))
+            || jsonb_strip_nulls(jsonb_build_object(
+                'hired_day', hr.hired_day,
+                'departed_day', hr.departed_day
+            ))
         FROM actor_identity ai
         JOIN actors a ON a.actor_id = ai.actor_id
+        LEFT JOIN latest ON latest.person = a.name
+        LEFT JOIN hr ON hr.name = a.name
         WHERE a.actor_kind = 'employee'
         ON CONFLICT (node_type, ref_key) DO UPDATE SET
             label = EXCLUDED.label, props = EXCLUDED.props
@@ -142,6 +204,86 @@ def build_organization_nodes(cursor) -> int:
         """
     )
     return cursor.rowcount
+
+
+def build_department_nodes(cursor) -> int:
+    """One organization node per department that has a plan — the departments
+    the corpus actually staffs. ref_key is the corpus's own department key
+    ("Engineering_Backend"), which is what source_documents.department and
+    domains.dept already use, so anything carrying a department can be joined
+    to its node by that string.
+
+    'CEO' and 'Finance' also appear in source_documents.department (four
+    standups and eight invoices) but never have a plan, a member, a lead, or a
+    domain, so they would be nodes with nothing to connect to and are left out.
+    """
+    cursor.execute(
+        f"""
+        WITH plans AS (
+            SELECT facts->>'dept' AS dept, max(simulation_day) AS last_day
+            FROM source_documents
+            WHERE source_type = 'dept_plan_created'
+            GROUP BY 1
+        ),
+        membership AS ({MEMBERSHIP_SQL})
+        INSERT INTO graph_nodes (node_type, node_subtype, ref_key, label, props)
+        SELECT
+            'organization', 'department', p.dept, replace(p.dept, '_', ' '),
+            jsonb_build_object(
+                'dept', p.dept,
+                'current_members', (
+                    SELECT count(*) FROM membership m
+                    WHERE m.dept = p.dept AND m.last_day = p.last_day
+                ),
+                'all_members', (SELECT count(*) FROM membership m WHERE m.dept = p.dept)
+            )
+        FROM plans p
+        ON CONFLICT (node_type, ref_key) DO UPDATE SET
+            label = EXCLUDED.label, props = EXCLUDED.props
+        """
+    )
+    return cursor.rowcount
+
+
+def build_department_edges(cursor) -> tuple[int, int, int]:
+    """member_of and leads (person -> department), each carrying the first and
+    last day the plans list it, and belongs_to (domain -> department) from the
+    registry's own domains.dept."""
+    counts = []
+    for edge_type, source in (("member_of", MEMBERSHIP_SQL), ("leads", LEADERSHIP_SQL)):
+        cursor.execute(
+            f"""
+            WITH rel AS ({source})
+            INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type, props)
+            SELECT pn.node_id, dn.node_id, %s,
+                   jsonb_build_object('first_day', rel.first_day, 'last_day', rel.last_day)
+            FROM rel
+            JOIN graph_nodes pn ON pn.node_type = 'person' AND pn.ref_key = rel.person
+            JOIN graph_nodes dn ON dn.node_type = 'organization'
+                                AND dn.node_subtype = 'department'
+                                AND dn.ref_key = rel.dept
+            ON CONFLICT (src_node_id, dst_node_id, edge_type) DO UPDATE SET
+                props = EXCLUDED.props
+            """,
+            (edge_type,),
+        )
+        counts.append(cursor.rowcount)
+
+    cursor.execute(
+        """
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+        SELECT DISTINCT dom.node_id, dn.node_id, 'belongs_to'
+        FROM domains d
+        JOIN graph_nodes dom ON dom.node_type = 'item' AND dom.node_subtype = 'domain'
+                             AND dom.ref_key = d.domain_key
+        JOIN graph_nodes dn ON dn.node_type = 'organization'
+                            AND dn.node_subtype = 'department'
+                            AND dn.ref_key = d.dept
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    counts.append(cursor.rowcount)
+    return counts[0], counts[1], counts[2]
 
 
 def build_domain_item_nodes(cursor) -> int:
@@ -823,6 +965,7 @@ def main() -> int:
 
             print(f"person nodes:      {build_person_nodes(cursor)}", file=sys.stderr)
             print(f"organization nodes: {build_organization_nodes(cursor)}", file=sys.stderr)
+            print(f"department nodes:  {build_department_nodes(cursor)}", file=sys.stderr)
             print(f"domain item nodes: {build_domain_item_nodes(cursor)}", file=sys.stderr)
             print(f"work item nodes:   {build_work_item_nodes(cursor)}", file=sys.stderr)
             print(f"document nodes:    {build_confluence_document_nodes(cursor)}", file=sys.stderr)
@@ -838,6 +981,10 @@ def main() -> int:
             print(f"  raised_by <- escalation_chain: {esc_raised}", file=sys.stderr)
             print(f"  received_by <- escalation_chain: {esc_received}", file=sys.stderr)
             print(f"knows_about edges:   {build_knows_about_edges(cursor)}", file=sys.stderr)
+            members, leads, domain_depts = build_department_edges(cursor)
+            print(f"member_of edges:     {members}", file=sys.stderr)
+            print(f"leads edges:         {leads}", file=sys.stderr)
+            print(f"belongs_to edges:    {domain_depts}", file=sys.stderr)
 
             print(f"involves edges:      {build_involves_edges(cursor)}", file=sys.stderr)
             dp_engineers, dp_collaborators = build_dept_plan_involves_edges(cursor)

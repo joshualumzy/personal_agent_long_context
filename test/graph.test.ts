@@ -273,6 +273,59 @@ describe("the company graph", () => {
     window.close();
   });
 
+  test("the Departments tab asks for membership, leadership and domain ownership", async () => {
+    const org: GraphSlice = {
+      nodes: [
+        { id: "organization:Engineering_Backend", refKey: "Engineering_Backend", type: "organization", subtype: "department", label: "Engineering Backend" },
+        { id: "person:Jax", refKey: "Jax", type: "person", label: "Jax" },
+        { id: "person:Janice", refKey: "Janice", type: "person", label: "Janice" },
+        { id: "item:titandb", refKey: "titandb", type: "item", subtype: "domain", label: "TitanDB" },
+      ],
+      edges: [
+        { source: "person:Jax", target: "organization:Engineering_Backend", type: "leads" },
+        { source: "person:Jax", target: "organization:Engineering_Backend", type: "member_of" },
+        { source: "person:Janice", target: "organization:Engineering_Backend", type: "member_of" },
+        { source: "item:titandb", target: "organization:Engineering_Backend", type: "belongs_to" },
+      ],
+      truncated: false,
+    };
+
+    const { base } = await start(knowledgeWithGraph([]));
+    const [html, script] = await Promise.all([
+      fetch(`${base}/graph`).then((response) => response.text()),
+      fetch(`${base}/graph/app.js`).then((response) => response.text()),
+    ]);
+    const dom = new JSDOM(html, { url: `${base}/graph`, runScripts: "outside-only" });
+    const { window } = dom;
+    const asked: string[] = [];
+    Object.defineProperty(window, "fetch", {
+      value: async (url: string) => {
+        asked.push(String(url));
+        return new Response(JSON.stringify(String(url).includes("member_of") ? org : slice), { status: 200 });
+      },
+      configurable: true,
+    });
+    window.eval(script);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    const document = window.document;
+    document.querySelector("#layer-org")!.dispatchEvent(new window.Event("click"));
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    const request = asked.find((url) => url.includes("edgeTypes="));
+    assert.ok(request, "the tab should ask for a relationship layer");
+    assert.equal(
+      new URL(request!, base).searchParams.get("edgeTypes"),
+      "member_of,leads,belongs_to",
+    );
+    assert.equal(document.querySelectorAll(".node").length, 4);
+    const department = document.querySelector('.node[data-id="organization:Engineering_Backend"]')!;
+    assert.match(department.getAttribute("aria-label")!, /Department/);
+    assert.equal(document.querySelectorAll("#edge-rows tr").length, 4);
+
+    window.close();
+  });
+
   test("each question gets its own graph, and it says which question that is", async () => {
     const index = {
       graphs: [

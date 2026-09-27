@@ -37,6 +37,9 @@ const LAYER_EDGE_TYPES = {
   person: ["involves"],
   causal: ["caused_by", "escalated_via"],
   domain: ["knows_about", "owns_domain"],
+  // Departments, who is in each and who leads it, and which knowledge domains
+  // each one is responsible for.
+  org: ["member_of", "leads", "belongs_to"],
 };
 
 // The layers that are a filter over edge types, as opposed to the main tab
@@ -59,7 +62,7 @@ const state = {
   // (one entry, since there is no seed to vary) and by seed id for main
   // (one entry per node visited, so returning to a node already seen does
   // not re-fetch it).
-  cache: { main: new Map(), person: null, causal: null, domain: null, timeline: null },
+  cache: { main: new Map(), person: null, causal: null, domain: null, org: null, timeline: null },
   // The main tab's own starting slice — what "Restore original" returns to —
   // kept separate from state.cache.main because that map grows as the user
   // clicks around; this is specifically the first one drawn.
@@ -150,7 +153,7 @@ function describeKind(node) {
   const incident = node.isIncident ? ", part of an incident" : "";
   switch (nodeKind(node)) {
     case "person": return "Person";
-    case "organization": return "Organization";
+    case "organization": return node.subtype === "department" ? "Department" : "Organization";
     case "item": return `Item${incident}`;
     case "event": return `Event${incident}`;
     case "document": return `Document${incident}`;
