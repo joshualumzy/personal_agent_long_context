@@ -74,6 +74,10 @@ The runtime evidence store must reject:
 
 Those raw sources may be read only by the offline graph builder or a separate evaluation runner. Neither component is callable by the runtime agent. Expected answers, scores, and evaluation-only labels must never influence the deployed graph projection.
 
+### Date-view planner projection
+
+The date-view planner (to-do list and day plan as of a chosen simulated day) may display rows from an approved offline projection, `day_plan_entry` and `work_item_state`, built by `orgforge_kb/build_timeline.py` from daily department plans and ticket progress simulation events. The same rules as the graph projection apply: only the projected rows are deployed, never the raw `sim_event` rows, and a projected row is never Company Evidence. It may be shown to the employee and handed to the agent as planning context, but a company factual claim still cites only retrieved Company Evidence; a projected row links to citable artifacts through its `derived_from` keys where they exist, and is otherwise labelled as coming from the plan record. The planner shows only the signed-in employee's own rows.
+
 ## MVP Acceptance Criteria
 
 - One documented command starts PostgreSQL (`npm run db:up`) and one applies migrations (`npm run db:migrate`).

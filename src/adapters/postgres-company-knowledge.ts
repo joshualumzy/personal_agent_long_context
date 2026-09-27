@@ -1,6 +1,8 @@
 import pg from "pg";
 import type {
   CompanyKnowledge,
+  DayPlanEntry,
+  TodoItem,
   EmployeeContext,
   EmployeePersona,
   Evidence,
@@ -24,6 +26,7 @@ import type { GraphViewName } from "../company-domain.js";
 import type { EmbeddingProvider } from "../embeddings.js";
 import { pgVector } from "../embeddings.js";
 import { verifyPassword } from "../auth.js";
+import { asOfCutoff, type AsOf } from "../as-of.js";
 
 type GraphNodeRow = {
   /** BIGINT, which pg returns as a string. Used only inside the adapter: the
@@ -271,10 +274,20 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
   }
 
   async search(query: string, limit: number): Promise<Evidence[]> {
+    return this.searchBefore(query, limit, null);
+  }
+
+  /**
+   * search, seeing only evidence that occurred before `cutoff` (an ISO
+   * instant, see asOfCutoff) — or everything, undated rows included, when it
+   * is null. The date is applied inside each query rather than to its results,
+   * so a date early in the record still gets a full page of what existed then.
+   */
+  async searchBefore(query: string, limit: number, cutoff: string | null): Promise<Evidence[]> {
     const normalizedLimit = Math.min(Math.max(limit, 1), 12);
     const potentialIds = extractPotentialSourceIds(query);
-    const exactPromise = potentialIds.length > 0 ? this.sources(potentialIds) : Promise.resolve([]);
-    const keywordPromise = this.keywordSearch(query, normalizedLimit);
+    const exactPromise = potentialIds.length > 0 ? this.sourcesBefore(potentialIds, cutoff) : Promise.resolve([]);
+    const keywordPromise = this.keywordSearch(query, normalizedLimit, cutoff);
     if (!this.embeddings) {
       const [keywordResult, exactResult] = await Promise.all([keywordPromise, exactPromise]);
       return fuseEvidence(keywordResult, [], normalizedLimit, exactResult);
@@ -286,7 +299,7 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
         exactPromise,
         this.embeddings.embed([query], "query"),
       ]);
-      const semanticResult = await this.semanticSearch(vectors[0]!, normalizedLimit);
+      const semanticResult = await this.semanticSearch(vectors[0]!, normalizedLimit, cutoff);
       return fuseEvidence(keywordResult, semanticResult, normalizedLimit, exactResult);
     } catch {
       // Keyword retrieval remains available when a hosted embedding provider is unavailable.
@@ -295,7 +308,7 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     }
   }
 
-  private async keywordSearch(query: string, limit: number): Promise<Evidence[]> {
+  private async keywordSearch(query: string, limit: number, cutoff: string | null): Promise<Evidence[]> {
     const result = await this.pool.query<EvidenceRow>(
       `WITH requested AS (SELECT websearch_to_tsquery('english', $1) AS query),
        ranked AS (
@@ -314,6 +327,7 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
          FROM document_chunks c
          JOIN source_documents d USING (source_id), requested
          WHERE (c.search_vector || to_tsvector('english', coalesce(d.title, '') || ' ' || coalesce(d.source_type, '') || ' ' || coalesce(d.source_id, '') || ' ' || coalesce(d.actors::text, ''))) @@ requested.query
+           AND ($3::timestamptz IS NULL OR d.occurred_at < $3::timestamptz)
        )
        SELECT d.source_id, d.source_type, d.title,
               ranked.content AS excerpt, d.occurred_at, d.department, ranked.score
@@ -321,12 +335,12 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
        WHERE ranked.source_rank = 1
        ORDER BY ranked.score DESC, d.occurred_at DESC NULLS LAST
        LIMIT $2`,
-      [query, limit],
+      [query, limit, cutoff],
     );
     return result.rows.map(evidence);
   }
 
-  private async semanticSearch(vector: number[], limit: number): Promise<Evidence[]> {
+  private async semanticSearch(vector: number[], limit: number, cutoff: string | null): Promise<Evidence[]> {
     const result = await this.pool.query<EvidenceRow>(
       `WITH ranked AS (
          SELECT c.source_id, c.content,
@@ -336,7 +350,9 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
                   ORDER BY c.embedding <=> $1::vector ASC
                 ) AS source_rank
          FROM document_chunks c
+         JOIN source_documents cd ON cd.source_id = c.source_id
          WHERE c.embedding IS NOT NULL
+           AND ($3::timestamptz IS NULL OR cd.occurred_at < $3::timestamptz)
        )
        SELECT d.source_id, d.source_type, d.title,
               ranked.content AS excerpt, d.occurred_at, d.department, ranked.score
@@ -344,12 +360,16 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
        WHERE ranked.source_rank = 1
        ORDER BY ranked.score DESC, d.occurred_at DESC NULLS LAST
        LIMIT $2`,
-      [pgVector(vector), limit],
+      [pgVector(vector), limit, cutoff],
     );
     return result.rows.map(evidence);
   }
 
   async related(sourceIds: string[], limit: number): Promise<Evidence[]> {
+    return this.relatedBefore(sourceIds, limit, null);
+  }
+
+  async relatedBefore(sourceIds: string[], limit: number, cutoff: string | null): Promise<Evidence[]> {
     if (sourceIds.length === 0) return [];
     const result = await this.pool.query<EvidenceRow>(
       `WITH related_ids AS (
@@ -364,9 +384,10 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
               NULL::double precision AS score
        FROM related_ids r JOIN source_documents d USING (source_id)
        WHERE d.category = 'artifact'
+         AND ($3::timestamptz IS NULL OR d.occurred_at < $3::timestamptz)
        ORDER BY d.occurred_at DESC NULLS LAST
        LIMIT $2`,
-      [sourceIds, Math.min(Math.max(limit, 1), 12)],
+      [sourceIds, Math.min(Math.max(limit, 1), 12), cutoff],
     );
     return result.rows.map(evidence);
   }
@@ -420,13 +441,18 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
   }
 
   async sources(sourceIds: string[]): Promise<Evidence[]> {
+    return this.sourcesBefore(sourceIds, null);
+  }
+
+  async sourcesBefore(sourceIds: string[], cutoff: string | null): Promise<Evidence[]> {
     if (sourceIds.length === 0) return [];
     const result = await this.pool.query<EvidenceRow>(
       `SELECT source_id, source_type, title, body AS excerpt,
               occurred_at, department, NULL::double precision AS score
        FROM source_documents
-       WHERE source_id = ANY($1::text[]) AND category = 'artifact'`,
-      [sourceIds],
+       WHERE source_id = ANY($1::text[]) AND category = 'artifact'
+         AND ($2::timestamptz IS NULL OR occurred_at < $2::timestamptz)`,
+      [sourceIds, cutoff],
     );
     return result.rows.map(evidence);
   }
@@ -992,7 +1018,144 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     return result.rows.map(evidence);
   }
 
+  /**
+   * The working days the planner projection covers — the days with a
+   * department plan — oldest first. Read once: the projection only changes
+   * when build_timeline.py is re-run, which means a restart anyway.
+   */
+  async workingDays(): Promise<string[]> {
+    this.workingDaysCache ??= this.pool
+      .query<{ day: string }>("SELECT DISTINCT day::text AS day FROM day_plan_entry ORDER BY 1")
+      .then((result) => result.rows.map((row) => row.day))
+      .catch((error: unknown) => {
+        this.workingDaysCache = undefined;
+        throw error;
+      });
+    return this.workingDaysCache;
+  }
+
+  private workingDaysCache: Promise<string[]> | undefined;
+
+  async todo(person: string, day: AsOf): Promise<TodoItem[]> {
+    const result = await this.pool.query<{
+      item_key: string; title: string | null; status: string; relation: "assignee" | "reporter";
+      since: string; department: string | null; points: number | null; sprint_no: number | null;
+      reporter: string | null; sources: string[];
+    }>(
+      `SELECT item_key, title, status, valid_from::text AS since, department, points, sprint_no,
+              reporter, sources,
+              CASE WHEN assignee = $1 THEN 'assignee' ELSE 'reporter' END AS relation
+       FROM work_item_state
+       WHERE valid_from <= $2::date AND (valid_to IS NULL OR valid_to > $2::date)
+         AND status <> 'Done'
+         AND (assignee = $1 OR (assignee IS NULL AND reporter = $1))
+       ORDER BY (assignee = $1) DESC,
+                CASE status WHEN 'In Progress' THEN 0 WHEN 'In Review' THEN 1 ELSE 2 END,
+                valid_from, item_key`,
+      [person, day],
+    );
+    return result.rows.map((row) => ({
+      itemKey: row.item_key,
+      title: row.title,
+      status: row.status,
+      relation: row.relation,
+      since: row.since,
+      department: row.department,
+      points: row.points,
+      sprintNo: row.sprint_no,
+      reporter: row.reporter,
+      sources: row.sources,
+    }));
+  }
+
+  async dayPlan(person: string, day: AsOf): Promise<DayPlanEntry[]> {
+    const result = await this.pool.query<{
+      seq: number; title: string; activity_type: string | null; est_hours: string | null;
+      collaborators: string[]; deferred: boolean; defer_reason: string | null;
+      item_key: string | null; sources: string[];
+    }>(
+      `SELECT seq, title, activity_type, est_hours, collaborators, deferred, defer_reason, item_key, sources
+       FROM day_plan_entry WHERE person = $1 AND day = $2::date ORDER BY seq`,
+      [person, day],
+    );
+    return result.rows.map((row) => ({
+      seq: row.seq,
+      title: row.title,
+      activityType: row.activity_type,
+      // numeric comes back as a string
+      estHours: row.est_hours === null ? null : Number(row.est_hours),
+      collaborators: row.collaborators,
+      deferred: row.deferred,
+      deferReason: row.defer_reason,
+      itemKey: row.item_key,
+      sources: row.sources,
+    }));
+  }
+
+  /** This knowledge seen from the end of day D (see src/as-of.ts). */
+  asOf(day: AsOf): CompanyKnowledge {
+    return new DatedCompanyKnowledge(this, day);
+  }
+
   async close(): Promise<void> {
     await this.pool.end();
+  }
+}
+
+/**
+ * Company knowledge as it stood at the end of one working day.
+ *
+ * Retrieval sees only evidence that had occurred by then. Everything not yet
+ * filtered by date is left out rather than passed through — the graph, and
+ * relatedThroughEvents, which walks it — so a caller that asks for them finds
+ * them missing, the same as on a deployment without the graph, instead of
+ * being handed something from the future. Who the employees are does not
+ * depend on the day.
+ */
+export class DatedCompanyKnowledge implements CompanyKnowledge {
+  private readonly cutoff: string;
+
+  constructor(
+    private readonly knowledge: PostgresCompanyKnowledge,
+    readonly day: AsOf,
+  ) {
+    this.cutoff = asOfCutoff(day);
+  }
+
+  employee(employeeId: string): Promise<EmployeeContext | null> {
+    return this.knowledge.employee(employeeId);
+  }
+
+  listEmployees(): Promise<EmployeePersona[]> {
+    return this.knowledge.listEmployees();
+  }
+
+  verifyEmployeePassword(employeeId: string, password: string): Promise<EmployeePersona | null> {
+    return this.knowledge.verifyEmployeePassword(employeeId, password);
+  }
+
+  search(query: string, limit: number): Promise<Evidence[]> {
+    return this.knowledge.searchBefore(query, limit, this.cutoff);
+  }
+
+  related(sourceIds: string[], limit: number): Promise<Evidence[]> {
+    return this.knowledge.relatedBefore(sourceIds, limit, this.cutoff);
+  }
+
+  sources(sourceIds: string[]): Promise<Evidence[]> {
+    return this.knowledge.sourcesBefore(sourceIds, this.cutoff);
+  }
+
+  workingDays(): Promise<string[]> {
+    return this.knowledge.workingDays();
+  }
+
+  /** An earlier day may be looked back at; a later one is read as this one. */
+  todo(person: string, day: AsOf): Promise<TodoItem[]> {
+    return this.knowledge.todo(person, day > this.day ? this.day : day);
+  }
+
+  dayPlan(person: string, day: AsOf): Promise<DayPlanEntry[]> {
+    return this.knowledge.dayPlan(person, day > this.day ? this.day : day);
   }
 }

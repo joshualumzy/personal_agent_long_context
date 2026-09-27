@@ -8,6 +8,7 @@ import type {
   Evidence,
 } from "./company-domain.js";
 import type { Skill } from "./skills.js";
+import { asOfInstruction, resolveAsOf, type AsOf } from "./as-of.js";
 
 type Message =
   | { role: "system" | "user"; content: string }
@@ -159,6 +160,49 @@ const companyTools = [
           limit: { type: "integer", minimum: 1, maximum: 10 },
         },
         required: ["source_ids"],
+        additionalProperties: false,
+      },
+    },
+  },
+] as const;
+
+/**
+ * The planner's two reads, offered when the knowledge has the projection.
+ * Both are about the signed-in employee only: there is no person argument.
+ */
+const plannerTools = [
+  {
+    type: "function",
+    function: {
+      name: "today_todo",
+      description:
+        "List the open tickets on the employee's own list today: the ones they are working on, then any they raised that nobody has picked up. Use for questions like what should I work on, what is on my plate, what is still open.",
+      parameters: {
+        type: "object",
+        properties: {
+          date: {
+            type: "string",
+            description: "An earlier day to look at instead, YYYY-MM-DD. Omit for today. Never later than today.",
+          },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "day_plan",
+      description:
+        "The employee's own plan for today, in order: each item's activity type, estimated hours, collaborators, and whether it was deferred. Use for questions about today's schedule, plan, or priorities.",
+      parameters: {
+        type: "object",
+        properties: {
+          date: {
+            type: "string",
+            description: "An earlier day to look at instead, YYYY-MM-DD. Omit for today. Never later than today.",
+          },
+        },
         additionalProperties: false,
       },
     },
@@ -626,7 +670,11 @@ export class GatewayCompanyAgent {
   }
 
   async answer(input: CompanyQuestion, callbacks?: CompanyAgentCallbacks): Promise<CompanyAnswer> {
-    const employee = await this.knowledge.employee(input.employeeId);
+    // Standing on a past day, every read goes through the dated view, which
+    // sees nothing after it and leaves out what it cannot yet filter.
+    const knowledge =
+      input.asOf && this.knowledge.asOf ? this.knowledge.asOf(input.asOf) : this.knowledge;
+    const employee = await knowledge.employee(input.employeeId);
     if (!employee) throw new Error("Unknown employee.");
 
     const runId = randomUUID();
@@ -646,8 +694,10 @@ export class GatewayCompanyAgent {
       if (last?.role === "assistant" && !last.tool_calls) last.content = text;
       else messages.push({ role: "assistant", content: text });
     };
+    const hasPlanner = Boolean(knowledge.todo && knowledge.dayPlan && knowledge.workingDays);
     const offeredTools = (): readonly unknown[] => [
       ...companyTools,
+      ...(hasPlanner ? plannerTools : []),
       ...(skills.length ? [loadSkillTool] : []),
       ...(this.options.extensions ?? [])
         .filter((extension) => loadedSkills.has(extension.skill))
@@ -688,25 +738,29 @@ export class GatewayCompanyAgent {
         entry.tools.some((definition) => definition.function.name === call.function.name),
       );
       if (unloaded) return `Call load_skill with name "${unloaded.skill}" before using ${call.function.name}.`;
+      if (call.function.name === "today_todo" || call.function.name === "day_plan") {
+        if (!hasPlanner) throw new Error(`There is no tool named ${call.function.name}.`);
+        return runPlannerTool(call.function.name, args);
+      }
       let result: Evidence[];
       if (call.function.name === "search_company_knowledge") {
         if (typeof args.query !== "string" || !args.query.trim()) {
           throw new Error("search_company_knowledge requires a non-empty query.");
         }
-        result = await this.knowledge.search(args.query.trim(), limitOf(args.limit));
+        result = await knowledge.search(args.query.trim(), limitOf(args.limit));
       } else if (call.function.name === "get_related_sources") {
         if (!Array.isArray(args.source_ids) || !args.source_ids.every((id) => typeof id === "string")) {
           throw new Error("get_related_sources requires source_ids.");
         }
         const allowedSeeds = args.source_ids.filter((id) => retrieved.has(id));
         const wanted = limitOf(args.limit);
-        result = await this.knowledge.related(allowedSeeds, wanted);
+        result = await knowledge.related(allowedSeeds, wanted);
         // Most explicit links run through the event that produced several
         // artifacts. If direct links leave seats open, include those siblings
         // without returning the event itself or repeating an existing result.
-        if (result.length < wanted && this.knowledge.relatedThroughEvents) {
+        if (result.length < wanted && knowledge.relatedThroughEvents) {
           const seen = new Set([...allowedSeeds, ...result.map((item) => item.sourceId)]);
-          const siblings = await this.knowledge.relatedThroughEvents(
+          const siblings = await knowledge.relatedThroughEvents(
             allowedSeeds,
             wanted - result.length,
           );
@@ -739,7 +793,48 @@ export class GatewayCompanyAgent {
     // The last call run, to tell a repeat of it (even in the model's next reply) from a new call.
     let previous = null as { key: string; content: string } | null;
 
-    const corporateDate = this.options.corporateDate ?? process.env.CORPORATE_DATE ?? "2026-03-25";
+    const corporateDate = input.asOf ?? this.options.corporateDate ?? process.env.CORPORATE_DATE ?? "2026-03-25";
+
+    /**
+     * today_todo and day_plan. The day is the question's own (or the
+     * corporate date, snapped to a working day), or an earlier day the model
+     * names — never a later one. Rows are plan records, not evidence: the
+     * artifacts they name are fetched through the same dated view and added
+     * to what may be cited, so a ticket on the list can be cited by its id.
+     */
+    async function runPlannerTool(name: "today_todo" | "day_plan", args: Record<string, unknown>): Promise<string> {
+      const days = await knowledge.workingDays!();
+      const today = resolveAsOf(corporateDate, days);
+      if (!today.ok) return JSON.stringify({ error: today.error });
+      let day: AsOf = today.day;
+      if (typeof args.date === "string" && args.date.trim()) {
+        const asked = resolveAsOf(args.date, days);
+        if (!asked.ok) return JSON.stringify({ error: asked.error });
+        if (asked.day > today.day) {
+          return JSON.stringify({ error: `${args.date} is after today (${today.day}); nothing is known about it yet.` });
+        }
+        day = asked.day;
+      }
+      const person = employee!.displayName;
+      callbacks?.onStatus?.(name === "today_todo" ? "Checking your open tickets…" : "Reading your plan for the day…");
+      const rows = name === "today_todo"
+        ? await knowledge.todo!(person, day)
+        : await knowledge.dayPlan!(person, day);
+      const cited = [...new Set(rows.flatMap((row) => row.sources))];
+      const found = cited.length ? await knowledge.sources(cited) : [];
+      for (const item of found) retrieved.set(item.sourceId, item);
+      const citable = new Set(found.map((item) => item.sourceId));
+      return JSON.stringify({
+        date: day,
+        person,
+        note: "Planner records, not company evidence. Cite only the ids in each row's cite list, as [source:ID]; a row with none comes from the plan record and is described without a citation.",
+        [name === "today_todo" ? "tickets" : "plan"]: rows.map((row) => ({
+          ...row,
+          sources: undefined,
+          cite: row.sources.filter((id) => citable.has(id)),
+        })),
+      });
+    }
 
     const messages: Message[] = [
       {
@@ -755,6 +850,7 @@ export class GatewayCompanyAgent {
           "Conversational memory: Treat prior conversational context as your own stateful recall of past discussions with this person (e.g., 'As you mentioned in our last chat...', 'Earlier you noted...'). Never refer to it as 'your personal notes' or 'your personal memory', and do not cite it with [source:...]. When describing their current role, focus, or situation, lead with what they communicated to you directly.",
           "Situational discrepancy handling: Handle mismatches between what the employee communicated and what company records show with situational intelligence: (1) Where a natural workplace explanation applies (such as HR directories or documentation lagging behind recent promotions or in-flight initiatives), mention that context helpfully. (2) Where there is a genuine technical conflict, policy mismatch, or potential misunderstanding, present the tension plainly and objectively without making excuses, allowing the employee to assess the discrepancy.",
           "When the request is ambiguous in a way that would change what you do, ask one short clarifying question that names the likely options instead of guessing. Earlier turns of this conversation are included, so you will see the answer.",
+          ...(input.asOf ? [asOfInstruction(input.asOf)] : []),
           "Always reply in the language of the user's latest message, even when tool results and instructions are in another language.",
           "Structure responses cleanly with concise headings or bullet points so they are effortless to scan, offering practical next steps where relevant.",
           "Default to 250-300 words unless the employee requests deeper detail. Do not add an 'Answer' heading. Use ordinary Markdown only (never emit HTML or HTML entities).",

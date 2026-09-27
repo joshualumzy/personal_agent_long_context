@@ -172,6 +172,7 @@ docker compose up -d database                       # 起库(healthy 约 4s)
 npx tsx scripts/migrate.ts                          # migration 001–005
 .venv/bin/python scripts/orgforge/ingest.py         # 全量 ingestion(约 1m10s)
 .venv/bin/python orgforge_kb/build_graph.py         # 建图(约 1.3s),可加 --reset
+.venv/bin/python orgforge_kb/build_timeline.py      # 计划助手投影:day_plan_entry / work_item_state(约 2s)
 ```
 
 Embedding 二选一:
@@ -208,6 +209,7 @@ ingestion、建图、向量同步都是幂等的,可反复重跑。
 | `scripts/orgforge/ingest.py` | parser + chunker + 全量 ingestion |
 | `scripts/orgforge/embed.ts` | Bedrock embedding 回填(增量 + 预算护栏) |
 | `orgforge_kb/build_graph.py` | 确定性图构建(零 LLM) |
+| `orgforge_kb/build_timeline.py` | 计划助手投影(每人每日计划、工单按日期的状态),零 LLM;测试 `test_build_timeline.py` |
 | `orgforge_kb/sync_embeddings.py` | 从共享库拉取 Titan 向量(只读对方) |
 | `orgforge_kb/export_graph.py` | 导出图切片为 JSON(可视化 / 交换) |
 | `orgforge_kb/query_slice.py` | 选出一个 question 相关的切片(全文 + 图 + 语义三条腿) |

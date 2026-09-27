@@ -484,3 +484,4 @@ body.in-meeting #picker { display: none; }
 #picker .side-label { font: 500 13px/1.4 var(--f-ui); color: var(--muted); margin: 18px 0 6px; }
 #picker .meeting-list button { font-size: 14px; padding: 9px 10px; }
 body:not(.in-meeting) .no-meeting { margin: 56px auto 0; }
+.topbar { box-sizing: border-box; height: 56px; padding-top: 0; padding-bottom: 0; }
