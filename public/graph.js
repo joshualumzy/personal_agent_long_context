@@ -1129,18 +1129,23 @@ function shapeFor(node, size = 1) {
   const incident = node.isIncident ? " incident" : "";
   const touched = isTouched(node) ? " touched" : "";
   const k = (value) => +(value * size).toFixed(1);
-  const points = (pairs) => pairs.map(([x, y]) => `${k(x)},${k(y)}`).join(" ");
+  // Soft corners throughout, like the rest of the page: every point is rounded off.
+  const rounded = (pairs, radius) => svg("path", { d: roundedPath(pairs.map(([x, y]) => [k(x), k(y)]), k(radius)) });
+  const shaped = (element, kind) => {
+    element.setAttribute("class", `shape ${kind}${incident}${touched}`);
+    return element;
+  };
   switch (node.type) {
     case "person":
-      return svg("polygon", { points: points([[0, -7], [7, 0], [0, 7], [-7, 0]]), class: `shape n-person${incident}${touched}` });
+      return shaped(rounded([[0, -7.5], [7.5, 0], [0, 7.5], [-7.5, 0]], 2.2), "n-person");
     case "organization":
-      return svg("polygon", { points: points([[-4, -7], [4, -7], [7, 0], [4, 7], [-4, 7], [-7, 0]]), class: `shape n-organization${incident}${touched}` });
+      return shaped(rounded([[-4, -7], [4, -7], [7.5, 0], [4, 7], [-4, 7], [-7.5, 0]], 1.8), "n-organization");
     case "item":
       return svg("circle", { r: k(7), class: `shape n-item${incident}${touched}` });
     case "event":
-      return svg("rect", { x: k(-6), y: k(-6), width: k(12), height: k(12), class: `shape n-event${incident}${touched}` });
+      return svg("rect", { x: k(-6), y: k(-6), width: k(12), height: k(12), rx: k(3), class: `shape n-event${incident}${touched}` });
     case "document":
-      return svg("polygon", { points: points([[0, -7], [7, 6], [-7, 6]]), class: `shape n-document${incident}${touched}` });
+      return shaped(rounded([[0, -7.5], [7.8, 6.2], [-7.8, 6.2]], 2.6), "n-document");
     case "query":
       return svg("circle", { r: 11, class: "shape n-query" });
     case "cluster":
@@ -1148,6 +1153,29 @@ function shapeFor(node, size = 1) {
     default:
       return svg("circle", { r: k(7), class: "shape n-item" });
   }
+}
+
+/**
+ * A closed path through `points` with each corner rounded off by `radius`: the
+ * line stops short of the corner and curves round it (a quadratic through the
+ * corner itself), so a triangle or a diamond keeps its shape but loses its point.
+ */
+function roundedPath(points, radius) {
+  const n = points.length;
+  const toward = (from, to, distance) => {
+    const length = Math.hypot(to[0] - from[0], to[1] - from[1]) || 1;
+    const d = Math.min(distance, length / 2);
+    return [from[0] + ((to[0] - from[0]) / length) * d, from[1] + ((to[1] - from[1]) / length) * d];
+  };
+  const parts = [];
+  for (let i = 0; i < n; i++) {
+    const corner = points[i];
+    const before = toward(corner, points[(i - 1 + n) % n], radius);
+    const after = toward(corner, points[(i + 1) % n], radius);
+    parts.push(`${i === 0 ? "M" : "L"}${before[0].toFixed(2)},${before[1].toFixed(2)}`,
+      `Q${corner[0].toFixed(2)},${corner[1].toFixed(2)} ${after[0].toFixed(2)},${after[1].toFixed(2)}`);
+  }
+  return `${parts.join(" ")} Z`;
 }
 
 /** The question at the centre of a radial picture: an indigo pill with its

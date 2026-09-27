@@ -290,8 +290,11 @@ describe("the company graph", () => {
     assert.match(document.querySelector('.node[data-id="organization:Engineering_Backend"]')!
       .getAttribute("aria-label")!, /Department/);
     // One shape per kind, so the picture reads without colour.
-    assert.equal(document.querySelectorAll(".node polygon.n-person").length, 2);
-    assert.equal(document.querySelectorAll(".node polygon.n-organization").length, 1);
+    assert.equal(document.querySelectorAll(".node .shape.n-person").length, 2);
+    assert.equal(document.querySelectorAll(".node .shape.n-organization").length, 1);
+    // Corners are soft, as the rest of the picture is: drawn as rounded paths, never sharp polygons.
+    assert.equal(document.querySelectorAll(".node polygon.shape").length, 0);
+    assert.match(document.querySelector(".node path.n-person")!.getAttribute("d")!, /Q/);
     assert.equal(document.querySelectorAll(".node circle.n-item").length, 1);
     // The table carries the same relationships.
     assert.equal(document.querySelectorAll("#edge-rows tr").length, 4);

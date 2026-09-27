@@ -474,3 +474,5 @@ body[data-mode="company"]:has(.app-layout.kaki) { margin: 0; height: 100vh; over
 #canvas.force.focus .edge.on { stroke: #8f85e6; stroke-opacity: .8; stroke-width: 1.5; stroke-linecap: round; }
 #canvas.force .edge-arrow.story, #canvas.focusing .edge-arrow.story:not(.on) { fill: #8f85e6; opacity: .9; }
 #canvas.force .edge-label { fill: var(--muted); }
+/* Soft corners: the shapes' outlines, and the legend's keys, turn round rather than meet in a point. */
+.shape, .key polygon, .key rect { stroke-linejoin: round; }
