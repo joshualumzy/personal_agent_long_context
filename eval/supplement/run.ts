@@ -1,7 +1,7 @@
 /**
  * Runs the pre-registered supplementary cases (eval/supplement/cases.json).
  *
- *   node --env-file=.env --import tsx eval/supplement/run.ts
+ *   node --env-file=.env --import tsx eval/supplement/run.ts [hard_cases.json]
  *
  * - honest_uncertainty: the fixed judge compares the answer with the case's
  *   reference; it passes only on "agrees" (said it could not find it, stated
@@ -20,6 +20,7 @@ import { embeddingProviderFromEnvironment } from "../../src/embeddings.js";
 import { SoCLaaSCompanyAgent } from "../../src/soclaas-company-agent.js";
 import { judgeAgainstReference, judgeOptionsFromEnvironment, type Verdict } from "../orgforge/judge.js";
 import type { HonestyCase, PlateCase } from "./build_cases.js";
+import type { FalsePremiseCase } from "./build_hard_cases.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const IS_ITEM = /^(?:ENG|OUTREACH)-\d+$/;
@@ -54,8 +55,9 @@ interface CaseResult {
 }
 
 async function main(): Promise<void> {
-  const { cases } = JSON.parse(await readFile(path.join(__dirname, "cases.json"), "utf-8")) as {
-    cases: Array<HonestyCase | PlateCase>;
+  const casesFile = process.argv[2] ?? "cases.json";
+  const { cases } = JSON.parse(await readFile(path.join(__dirname, casesFile), "utf-8")) as {
+    cases: Array<HonestyCase | FalsePremiseCase | PlateCase>;
   };
   const knowledge = new PostgresCompanyKnowledge(process.env.DATABASE_URL!, embeddingProviderFromEnvironment(process.env));
   const agent = new SoCLaaSCompanyAgent(knowledge, {
@@ -80,7 +82,7 @@ async function main(): Promise<void> {
         });
         const cited = reply.sources.map((s) => s.sourceId);
         const common = { ...base, answer: reply.answer, cited, toolCalls: reply.toolCalls, latencyMs: Date.now() - started };
-        if (c.category === "honest_uncertainty") {
+        if (c.category === "honest_uncertainty" || c.category === "false_premise") {
           const verdict = await judgeAgainstReference(judge, c.question, c.reference, reply.answer);
           results.push({ ...common, verdict, passed: verdict === "agrees" });
         } else {
@@ -106,8 +108,9 @@ async function main(): Promise<void> {
   }
 
   console.log("\nSupplement scorecard");
-  for (const category of ["honest_uncertainty", "my_plate"]) {
+  for (const category of ["honest_uncertainty", "false_premise", "my_plate"]) {
     const rows = results.filter((r) => r.category === category);
+    if (rows.length === 0) continue;
     console.log(`  ${category.padEnd(20)} ${rows.filter((r) => r.passed).length}/${rows.length} passed`);
   }
   const plates = results.filter((r) => r.category === "my_plate" && !r.error);
@@ -117,7 +120,7 @@ async function main(): Promise<void> {
 
   const outDir = path.join(__dirname, "../../docs/evaluation");
   await mkdir(outDir, { recursive: true });
-  const file = path.join(outDir, `supplement-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
+  const file = path.join(outDir, `supplement-${casesFile.replace(/\.json$/, "")}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`);
   await writeFile(file, `${JSON.stringify({ model: process.env.SOCLAAS_COMPANY_MODEL ?? "qwen3.8:27b", judge: judge.model, results }, null, 2)}\n`);
   console.log(`\nReport: ${file}`);
 }

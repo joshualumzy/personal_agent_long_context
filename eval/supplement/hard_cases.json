@@ -1,0 +1,155 @@
+{
+  "seed": 20260929,
+  "builtFrom": "knowledge base at build time",
+  "cases": [
+    {
+      "id": "premise-1",
+      "category": "false_premise",
+      "kind": "closed_open",
+      "employeeId": "deepa",
+      "question": "When was ENG-160 closed, and who signed off on it?",
+      "ticket": "ENG-160",
+      "reference": "ENG-160 was never closed: at the end of the records it is still In Review, worked by Deepa. A correct answer says it has not been closed (or that it found no closure) and does not give a closing date or a sign-off."
+    },
+    {
+      "id": "premise-2",
+      "category": "false_premise",
+      "kind": "closed_open",
+      "employeeId": "yusuf",
+      "question": "When was ENG-210 closed, and who signed off on it?",
+      "ticket": "ENG-210",
+      "reference": "ENG-210 was never closed: at the end of the records it is still In Progress, worked by Yusuf. A correct answer says it has not been closed (or that it found no closure) and does not give a closing date or a sign-off."
+    },
+    {
+      "id": "premise-3",
+      "category": "false_premise",
+      "kind": "closed_open",
+      "employeeId": "miki",
+      "question": "When was ENG-128 closed, and who signed off on it?",
+      "ticket": "ENG-128",
+      "reference": "ENG-128 was never closed: at the end of the records it is still In Review, worked by Miki. A correct answer says it has not been closed (or that it found no closure) and does not give a closing date or a sign-off."
+    },
+    {
+      "id": "premise-4",
+      "category": "false_premise",
+      "kind": "closed_open",
+      "employeeId": "deepa",
+      "question": "When was ENG-132 closed, and who signed off on it?",
+      "ticket": "ENG-132",
+      "reference": "ENG-132 was never closed: at the end of the records it is still In Review, worked by Deepa. A correct answer says it has not been closed (or that it found no closure) and does not give a closing date or a sign-off."
+    },
+    {
+      "id": "premise-5",
+      "category": "false_premise",
+      "kind": "wrong_owner",
+      "employeeId": "kaitlyn",
+      "question": "Why did Tasha take over ENG-101 from Kaitlyn?",
+      "ticket": "ENG-101",
+      "reference": "Nothing records Tasha taking over ENG-101; it was worked by Kaitlyn, and at the end of the records Kaitlyn still has it. A correct answer says there is no record of that hand-over and does not invent one or a reason for it."
+    },
+    {
+      "id": "premise-6",
+      "category": "false_premise",
+      "kind": "wrong_owner",
+      "employeeId": "liam",
+      "question": "Why did Ben take over ENG-133 from Liam?",
+      "ticket": "ENG-133",
+      "reference": "Nothing records Ben taking over ENG-133; it was worked by Liam, and at the end of the records Liam still has it. A correct answer says there is no record of that hand-over and does not invent one or a reason for it."
+    },
+    {
+      "id": "premise-7",
+      "category": "false_premise",
+      "kind": "wrong_owner",
+      "employeeId": "raj",
+      "question": "Why did Zoe take over ENG-251 from Raj?",
+      "ticket": "ENG-251",
+      "reference": "Nothing records Zoe taking over ENG-251; it was worked by Raj, and at the end of the records Raj still has it. A correct answer says there is no record of that hand-over and does not invent one or a reason for it."
+    },
+    {
+      "id": "premise-8",
+      "category": "false_premise",
+      "kind": "wrong_owner",
+      "employeeId": "sanjay",
+      "question": "Why did Blake take over ENG-217 from Sanjay?",
+      "ticket": "ENG-217",
+      "reference": "Nothing records Blake taking over ENG-217; it was worked by Sanjay, and at the end of the records Sanjay still has it. A correct answer says there is no record of that hand-over and does not invent one or a reason for it."
+    },
+    {
+      "id": "plate-hard-1",
+      "category": "my_plate",
+      "employeeId": "chloe",
+      "asOf": "2026-03-02",
+      "question": "What should I focus on today?",
+      "expectedItems": [
+        "ORG-101",
+        "ORG-110",
+        "ORG-120",
+        "ORG-124",
+        "ORG-135",
+        "ORG-143",
+        "ORG-162",
+        "ORG-166",
+        "ORG-169",
+        "ORG-176"
+      ]
+    },
+    {
+      "id": "plate-hard-2",
+      "category": "my_plate",
+      "employeeId": "deepa",
+      "asOf": "2026-02-25",
+      "question": "Anything I'm on the hook for right now?",
+      "expectedItems": [
+        "ORG-112",
+        "ORG-128",
+        "ORG-145",
+        "ENG-148",
+        "ENG-173",
+        "ENG-132",
+        "ENG-160",
+        "ENG-192"
+      ]
+    },
+    {
+      "id": "plate-hard-3",
+      "category": "my_plate",
+      "employeeId": "nadia",
+      "asOf": "2026-02-16",
+      "question": "What's still open on my side?",
+      "expectedItems": [
+        "ORG-111",
+        "ORG-116",
+        "ORG-125",
+        "ORG-127",
+        "ORG-136",
+        "ORG-139",
+        "ORG-144",
+        "ORG-146",
+        "ORG-148",
+        "ORG-150",
+        "ORG-157",
+        "QA-142"
+      ]
+    },
+    {
+      "id": "plate-hard-4",
+      "category": "my_plate",
+      "employeeId": "nadia",
+      "asOf": "2026-02-23",
+      "question": "Give me a rundown of my open work.",
+      "expectedItems": [
+        "ORG-111",
+        "ORG-116",
+        "ORG-125",
+        "ORG-127",
+        "ORG-136",
+        "ORG-139",
+        "ORG-144",
+        "ORG-146",
+        "ORG-148",
+        "ORG-150",
+        "ORG-157"
+      ]
+    }
+  ]
+}
