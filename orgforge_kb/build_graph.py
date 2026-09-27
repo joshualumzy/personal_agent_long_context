@@ -223,6 +223,58 @@ def build_confluence_document_nodes(cursor) -> int:
     return cursor.rowcount
 
 
+def build_zd_ticket_event_nodes(cursor) -> int:
+    """One node per Zendesk ticket, merging zd_ticket_opened, zd_tickets_escalated,
+    and zd_tickets_resolved — the same three-rows-one-thing shape as the incident
+    merge above, keyed by the ticket id each of the three names directly
+    (zd_ticket_opened.facts.ticket_id; the other two list it in ticket_ids).
+
+    Only one of the two tickets in this corpus (ZD-101) is ever escalated or
+    resolved; ZD-102 stays open with no incident and no postmortem, and gets a
+    node with those two fields null rather than being skipped.
+
+    This node is distinct from item(zd_ticket): the item is the ticket as a
+    thing that exists, already built above; this is the event of it moving
+    through its lifecycle, the same distinction build_incident_event_nodes
+    already draws against item(jira).
+    """
+    cursor.execute(
+        """
+        WITH opened AS (
+            SELECT facts->>'ticket_id' AS ticket_id, source_id, title, occurred_at,
+                   facts->>'org_name' AS org_name
+            FROM source_documents WHERE source_type = 'zd_ticket_opened'
+        ),
+        escalated AS (
+            SELECT jsonb_array_elements_text(facts->'ticket_ids') AS ticket_id,
+                   facts->>'incident_id' AS incident_id
+            FROM source_documents WHERE source_type = 'zd_tickets_escalated'
+        ),
+        resolved AS (
+            SELECT jsonb_array_elements_text(facts->'ticket_ids') AS ticket_id,
+                   facts->>'postmortem_link' AS postmortem_link
+            FROM source_documents WHERE source_type = 'zd_tickets_resolved'
+        )
+        INSERT INTO graph_nodes (node_type, node_subtype, ref_key, label, props)
+        SELECT
+            'event', 'zd_ticket', o.ticket_id,
+            coalesce(nullif(o.title, ''), o.ticket_id),
+            jsonb_build_object(
+                'occurred_at', o.occurred_at,
+                'org_name', o.org_name,
+                'incident_id', e.incident_id,
+                'postmortem_link', r.postmortem_link
+            )
+        FROM opened o
+        LEFT JOIN escalated e ON e.ticket_id = o.ticket_id
+        LEFT JOIN resolved r ON r.ticket_id = o.ticket_id
+        ON CONFLICT (node_type, ref_key) DO UPDATE SET
+            label = EXCLUDED.label, props = EXCLUDED.props
+        """
+    )
+    return cursor.rowcount
+
+
 def build_standalone_event_nodes(cursor) -> int:
     """One node per row for the sim_event types that are not part of the
     incident merge below."""
@@ -418,6 +470,62 @@ def build_escalated_via_edges(cursor) -> int:
     return cursor.rowcount
 
 
+def build_zd_ticket_edges(cursor) -> tuple[int, int, int]:
+    """The merged zd_ticket event's three edges, each from a field the node
+    already carries in props (built above from the corpus's own ticket_id/
+    incident_id/postmortem_link, not inferred):
+
+      produced       -> item(zd_ticket): the ticket itself
+      caused_by      -> event(incident): only when this ticket was escalated
+      documented_by  -> document(confluence): only when it was resolved with
+                        a postmortem on record
+
+    ZD-102 never escalated or was resolved, so it gets a 'produced' edge and
+    nothing else — not a caused_by/documented_by edge pointing at null.
+    """
+    cursor.execute(
+        """
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+        SELECT DISTINCT en.node_id, tn.node_id, 'produced'
+        FROM graph_nodes en
+        JOIN graph_nodes tn ON tn.node_type = 'item' AND tn.node_subtype = 'zd_ticket'
+                            AND tn.ref_key = en.ref_key
+        WHERE en.node_type = 'event' AND en.node_subtype = 'zd_ticket'
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    produced = cursor.rowcount
+
+    cursor.execute(
+        """
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+        SELECT DISTINCT en.node_id, cn.node_id, 'caused_by'
+        FROM graph_nodes en
+        JOIN graph_nodes cn ON cn.node_type = 'event'
+                            AND cn.ref_key = en.props->>'incident_id'
+        WHERE en.node_type = 'event' AND en.node_subtype = 'zd_ticket'
+          AND en.props->>'incident_id' IS NOT NULL
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    caused_by = cursor.rowcount
+
+    cursor.execute(
+        """
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+        SELECT DISTINCT en.node_id, dn.node_id, 'documented_by'
+        FROM graph_nodes en
+        JOIN graph_nodes dn ON dn.node_type = 'document'
+                            AND dn.ref_key = en.props->>'postmortem_link'
+        WHERE en.node_type = 'event' AND en.node_subtype = 'zd_ticket'
+          AND en.props->>'postmortem_link' IS NOT NULL
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    documented_by = cursor.rowcount
+    return produced, caused_by, documented_by
+
+
 def build_owns_domain_edges(cursor) -> int:
     """person -> item(domain), from the registry's primary/former owner."""
     cursor.execute(
@@ -480,10 +588,15 @@ def main() -> int:
             print(f"document nodes:    {build_confluence_document_nodes(cursor)}", file=sys.stderr)
             print(f"standalone events: {build_standalone_event_nodes(cursor)}", file=sys.stderr)
             print(f"incident events:   {build_incident_event_nodes(cursor)}", file=sys.stderr)
+            print(f"zd_ticket events:  {build_zd_ticket_event_nodes(cursor)}", file=sys.stderr)
 
             print(f"involves edges:      {build_involves_edges(cursor)}", file=sys.stderr)
             print(f"produced edges:      {build_produced_edges(cursor)}", file=sys.stderr)
             print(f"escalated_via edges: {build_escalated_via_edges(cursor)}", file=sys.stderr)
+            zd_produced, zd_caused_by, zd_documented_by = build_zd_ticket_edges(cursor)
+            print(f"zd_ticket produced:      {zd_produced}", file=sys.stderr)
+            print(f"zd_ticket caused_by:     {zd_caused_by}", file=sys.stderr)
+            print(f"zd_ticket documented_by: {zd_documented_by}", file=sys.stderr)
             print(f"owns_domain edges:   {build_owns_domain_edges(cursor)}", file=sys.stderr)
             print(f"about_domain edges:  {build_about_domain_edges(cursor)}", file=sys.stderr)
 
