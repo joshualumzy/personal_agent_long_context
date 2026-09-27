@@ -184,6 +184,8 @@ export interface Role {
     kind: "knowledge_gap";
     proposalId: string;
     domain: string;
+    /** The domain as people call it ("TitanDB"); domain is its key. */
+    name?: string;
     reasons: string[];
     evidence: string[];
     asOf: string;

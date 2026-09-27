@@ -76,6 +76,7 @@ export interface GapRoleOrigin {
   kind: "knowledge_gap";
   proposalId: string;
   domain: string;
+  name?: string;
   reasons: string[];
   evidence: string[];
   asOf: string;
@@ -159,6 +160,7 @@ export class GapHiring {
       kind: "knowledge_gap",
       proposalId: listed.id,
       domain: listed.domain,
+      name: listed.name,
       reasons: listed.reasons.map((reason) => reason.text),
       evidence: listed.evidence,
       asOf: day,
