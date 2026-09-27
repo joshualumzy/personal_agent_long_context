@@ -147,6 +147,9 @@ h1 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: clamp(1.7re
 .assistant-pending .pending-head { display: flex; align-items: center; color: var(--accent-dark); font-size: .85rem; }
 .assistant-pending q { color: var(--muted); font-size: .86rem; border-left: 2px solid var(--line); padding-left: 8px; }
 .assistant-pending q::before, .assistant-pending q::after { content: ""; }
+.deeper-status { margin: 0; display: flex; align-items: center; font-size: .84rem; color: var(--accent-dark); }
+.deeper { border-top: 1px dashed var(--line); padding-top: 8px; }
+.deeper h4 { margin: 0 0 4px; font-size: .82rem; font-weight: 600; color: var(--accent-dark); }
 .thinking-step { margin: 0; color: var(--faint); font-size: .84rem; font-style: italic; white-space: pre-wrap; }
 .thinking summary { font-size: .82rem; color: var(--muted); cursor: pointer; }
 .thinking { display: grid; gap: 4px; }

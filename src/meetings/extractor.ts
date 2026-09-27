@@ -101,6 +101,7 @@ export class ModelCommitmentExtractor implements CommitmentExtractor {
         "quote must be copied character for character from the cited segment's text. Never paraphrase, translate, or shorten it.",
         "dedupeKey names the underlying commitment so a repeated mention updates the same action instead of duplicating it. If openActions already lists the same commitment, reuse its dedupeKey exactly; two different questions or commitments never share a key. Adding a topic to a message already promised (\"I'll fold that into the same follow-up note\") is the same commitment: reuse its key. Otherwise invent a short new one shaped like \"kind:short-slug\".",
         "details holds whatever drafting will need as plain strings, for example recipient, assignee, amount, date, or the question text.",
+        "For \"answer_question\", details also has searchQueries: 2 or 3 short keyword queries in English, the language of the company records, that would find the answer (for example [\"telemetry P1 incident root cause\", \"ENG-230\"]); keep any ticket or document ID as its own query.",
         'Reply as {"candidates": [{"kind": string, "segmentIndex": number, "speaker": string, "quote": string, "summary": string, "dedupeKey": string, "details": object}], "decisions": [{"segmentIndex": number, "speaker": string, "text": string}], "assignments": [{"segmentIndex": number, "owner": string, "task": string, "due": string}]}.',
       ].join("\n"),
       input: {

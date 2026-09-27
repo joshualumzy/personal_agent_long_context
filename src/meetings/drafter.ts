@@ -451,8 +451,10 @@ export class ActionDrafter {
 
   private async draftAnswer(candidate: CandidateAction, meeting: MeetingState, stream?: AnswerStream): Promise<DraftResult> {
     const question = detailText(candidate.details, "question") || candidate.summary;
+    const queries = candidate.details.searchQueries;
+    const searchQueries = Array.isArray(queries) ? queries.filter((query): query is string => typeof query === "string") : [];
     if (this.deps.answerer) {
-      const answer = await this.answerWithRetry(meeting.employeeId, question, stream);
+      const answer = await this.answerWithRetry(meeting.employeeId, question, searchQueries, candidate.trigger.quote, stream);
       if (answer) return {
         payload: {
           question,
@@ -480,11 +482,20 @@ export class ActionDrafter {
   }
 
   /** The S1 model occasionally returns an empty turn; one retry covers most of those. */
-  private async answerWithRetry(employeeId: string, question: string, stream?: AnswerStream) {
+  private async answerWithRetry(
+    employeeId: string,
+    question: string,
+    searchQueries: string[],
+    asked: string,
+    stream?: AnswerStream,
+  ) {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       if (attempt > 0) stream?.onResetTokens?.();
       try {
-        return await this.deps.answerer!.answer({ employeeId, question }, stream);
+        return await this.deps.answerer!.answer(
+          { employeeId, question, asked, ...(searchQueries.length ? { searchQueries } : {}) },
+          stream,
+        );
       } catch {
         // fall through to the next attempt, then to plain retrieval
       }

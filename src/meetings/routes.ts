@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ActionPayload, MeetingActions, MeetingEvent } from "./domain.js";
 import { MeetingError } from "./domain.js";
 import type { Transcribe } from "./speech.js";
+import { WebSocketServer, type WebSocket } from "ws";
+import { openDoubaoStream, type LiveAsrConfig } from "./doubao.js";
 
 export interface GoogleStatus {
   connected: boolean;
@@ -28,7 +30,12 @@ export interface RegisterMeetingRoutesOptions {
   listReplays?: () => Promise<Array<{ sourceId: string; title: string }>>;
   /** Speech to text for recorded meeting audio. Omitted, the audio route answers 503. */
   transcribe?: Transcribe;
+  /** Streaming recognition for live audio. Omitted, the page falls back to clips on /audio. */
+  liveAsr?: LiveAsrConfig;
 }
+
+/** A pause this long ends a sentence, which then goes to the agent at once. */
+const LIVE_SENTENCE_PAUSE_MS = 500;
 
 const DEFAULT_REPLAY_EMPLOYEE_ID = "jax";
 const DEFAULT_REPLAY_INTERVAL_MS = 1_500;
@@ -155,11 +162,14 @@ export function registerMeetingRoutes(
     route(app, async () => ({ status: 200, body: await meetings.list() })),
   );
 
+  if (options.liveAsr) registerLiveAudio(app, meetings, options.liveAsr);
+
   app.get(
     "/api/v1/meetings/integrations",
     route(app, async () => ({
       status: 200,
       body: {
+        liveAsr: Boolean(options.liveAsr),
         google: options.googleStatus
           ? { ...(await options.googleStatus()), connectUrl: "/api/recruiting/gmail/connect?return=/meetings" }
           : null,
@@ -349,4 +359,64 @@ export function registerMeetingRoutes(
       reply.raw.on("close", cleanup);
     },
   );
+}
+
+/**
+ * WebSocket /api/v1/meetings/:id/stream. The page sends 16 kHz mono 16-bit PCM
+ * as binary messages and the text "end" when it stops; it gets back
+ * {"type":"partial","text"} for the sentence being spoken and {"type":"error"}.
+ * Each final sentence is appended to the meeting like any other line, so the
+ * transcript and the agent see it through the usual events. The recognition
+ * key stays on the server.
+ */
+function registerLiveAudio(app: FastifyInstance, meetings: MeetingActions, config: LiveAsrConfig): void {
+  const server = new WebSocketServer({ noServer: true });
+  app.server.on("upgrade", (request, socket, head) => {
+    const match = /^\/api\/v1\/meetings\/([^/?]+)\/stream(?:\?(.*))?$/.exec(request.url ?? "");
+    if (!match) return;
+    const query = new URLSearchParams(match[2] ?? "");
+    server.handleUpgrade(request, socket, head, (client) =>
+      relay(client, decodeURIComponent(match[1]!), (query.get("speaker") ?? "").trim().slice(0, 80) || "Meeting"),
+    );
+  });
+
+  async function relay(client: WebSocket, meetingId: string, speaker: string): Promise<void> {
+    const tell = (message: object) => {
+      if (client.readyState === client.OPEN) client.send(JSON.stringify(message));
+    };
+    const meeting = await meetings.get(meetingId).catch(() => null);
+    if (!meeting || meeting.status !== "live") {
+      tell({ type: "error", message: "This meeting is not live." });
+      client.close();
+      return;
+    }
+    // Sentences are appended one at a time, in the order they were heard.
+    let appending: Promise<unknown> = Promise.resolve();
+    const upstream = openDoubaoStream(
+      config,
+      { speakers: false, endWindowMs: LIVE_SENTENCE_PAUSE_MS },
+      {
+        onPartial: (text) => tell({ type: "partial", text }),
+        onFinal: (sentence) => {
+          appending = appending.then(() =>
+            meetings.append(meetingId, [{ speaker, text: sentence.text }]).catch((error: unknown) => {
+              tell({ type: "error", message: error instanceof Error ? error.message : String(error) });
+            }),
+          );
+        },
+        onError: (error) => {
+          app.log.error({ meetingId, reason: error.message }, "Live speech recognition failed");
+          tell({ type: "error", message: error.message });
+        },
+        onClose: () => {
+          void appending.finally(() => client.close());
+        },
+      },
+    );
+    client.on("message", (data, isBinary) => {
+      if (isBinary) upstream.send(Buffer.from(data as Buffer));
+      else if (data.toString() === "end") upstream.finish();
+    });
+    client.on("close", () => upstream.finish());
+  }
 }

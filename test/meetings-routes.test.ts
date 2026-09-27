@@ -439,6 +439,7 @@ describe("meeting routes: integrations", () => {
     const response = await app.inject({ method: "GET", url: "/api/v1/meetings/integrations" });
     assert.equal(response.statusCode, 200);
     assert.deepEqual(response.json(), {
+      liveAsr: false,
       google: { connected: true, mailbox: true, calendar: false, connectUrl: "/api/recruiting/gmail/connect?return=/meetings" },
     });
   });
@@ -447,6 +448,6 @@ describe("meeting routes: integrations", () => {
     const app = buildTestApp(new FakeMeetings());
     after(() => app.close());
     const response = await app.inject({ method: "GET", url: "/api/v1/meetings/integrations" });
-    assert.deepEqual(response.json(), { google: null });
+    assert.deepEqual(response.json(), { liveAsr: false, google: null });
   });
 });

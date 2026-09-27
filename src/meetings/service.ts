@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { CompanyKnowledge } from "../company-domain.js";
+import type { CompanyKnowledge, Evidence } from "../company-domain.js";
 import { detectProhibitedData } from "../prohibited-data.js";
 import type { JsonModel } from "../recruiting/llm.js";
 import { checkConflicts, type DraftResult } from "./drafter.js";
@@ -28,6 +28,7 @@ import {
   type MeetingSummary,
   type MessagePayload,
   type ProposedAction,
+  type QuestionAnswerer,
   type Tier,
   type TraceEvent,
   type TraceStep,
@@ -54,6 +55,8 @@ export interface MeetingServiceDependencies {
   onError?: (context: string, error: unknown) => void;
   /** Checks a new decision against earlier ones; defaults to the meeting model (checkConflicts). */
   conflictChecker?: ConflictChecker;
+  /** Follows each quick answer with a slower one that searches further. Omitted, the quick answer stands alone. */
+  deepAnswerer?: QuestionAnswerer;
 }
 
 /** Statuses a repeated mention of the same commitment should never touch
@@ -66,6 +69,10 @@ interface Runtime {
   chain: Promise<unknown>;
   listeners: Set<(event: MeetingEvent) => void>;
   busy: boolean;
+  /** A batch is with the extractor now; the next one waits for it. */
+  processing: boolean;
+  /** Questions being answered, which run beside the queue rather than in it. */
+  answering: Set<Promise<void>>;
   /** Batches of ok segments waiting for the extractor, so a burst of
    * append() calls never runs the extractor twice at once for one meeting. */
   queue: TranscriptSegment[][];
@@ -125,7 +132,15 @@ export class MeetingService implements MeetingActions {
   private runtimeFor(meetingId: string): Runtime {
     let runtime = this.runtimes.get(meetingId);
     if (!runtime) {
-      runtime = { chain: Promise.resolve(), listeners: new Set(), busy: false, queue: [], idleWaiters: [] };
+      runtime = {
+        chain: Promise.resolve(),
+        listeners: new Set(),
+        busy: false,
+        processing: false,
+        answering: new Set(),
+        queue: [],
+        idleWaiters: [],
+      };
       this.runtimes.set(meetingId, runtime);
     }
     return runtime;
@@ -408,16 +423,19 @@ export class MeetingService implements MeetingActions {
   private enqueue(meetingId: string, segments: TranscriptSegment[]): void {
     const runtime = this.runtimeFor(meetingId);
     runtime.queue.push(segments);
-    if (!runtime.busy) this.drainQueue(meetingId);
+    this.drainQueue(meetingId);
   }
 
   private drainQueue(meetingId: string): void {
     const runtime = this.runtimeFor(meetingId);
+    if (runtime.processing) return;
     // Everything heard while the last batch was being handled goes to the
     // model as one batch: one call per segment fell minutes behind a live meeting.
     const pending = runtime.queue.splice(0);
     const next = pending.length > 0 ? pending.flat() : undefined;
     if (!next) {
+      // Answers still being written keep the meeting busy, but not the queue.
+      if (runtime.answering.size > 0) return;
       if (runtime.busy) {
         runtime.busy = false;
         this.emitEvent(meetingId, { type: "busy", meetingId, busy: false });
@@ -430,14 +448,18 @@ export class MeetingService implements MeetingActions {
       runtime.busy = true;
       this.emitEvent(meetingId, { type: "busy", meetingId, busy: true });
     }
+    runtime.processing = true;
     void this.processBatch(meetingId, next)
       .catch((error) => this.fail(meetingId, "Processing meeting segments", error))
-      .finally(() => this.drainQueue(meetingId));
+      .finally(() => {
+        runtime.processing = false;
+        this.drainQueue(meetingId);
+      });
   }
 
   async idle(meetingId: string): Promise<void> {
     const runtime = this.runtimeFor(meetingId);
-    if (!runtime.busy && runtime.queue.length === 0) return;
+    if (!runtime.busy && runtime.queue.length === 0 && runtime.answering.size === 0) return;
     await new Promise<void>((resolve) => runtime.idleWaiters.push(resolve));
   }
 
@@ -470,7 +492,7 @@ export class MeetingService implements MeetingActions {
       });
     }
 
-    for (const candidate of candidates) {
+    const handle = async (candidate: CandidateAction) => {
       try {
         await this.processCandidate(meetingId, candidate);
       } catch (error) {
@@ -483,6 +505,21 @@ export class MeetingService implements MeetingActions {
           `Could not prepare ${candidate.kind}: ${error instanceof Error ? error.message : String(error)}`.slice(0, 300),
         ).catch(() => undefined);
       }
+    };
+    // Answering a question takes seconds of searching and writing. Answers run
+    // on their own, side by side, so the next lines heard (and the next
+    // question) are not held behind them; the meeting stays busy until they finish.
+    const runtime = this.runtimeFor(meetingId);
+    for (const candidate of candidates) {
+      if (candidate.kind !== "answer_question") {
+        await handle(candidate);
+        continue;
+      }
+      const answering = handle(candidate).finally(() => {
+        runtime.answering.delete(answering);
+        this.drainQueue(meetingId);
+      });
+      runtime.answering.add(answering);
     }
     for (const decision of result.decisions) {
       try {
@@ -664,6 +701,55 @@ export class MeetingService implements MeetingActions {
     });
     this.emitEvent(meetingId, { type: "action", meetingId, action: this.cloneAction(action) });
     for (const trace of traceEvents) this.emitEvent(meetingId, { type: "trace", meetingId, trace });
+    if (action.kind === "answer_question" && action.status === "executed" && this.deps.deepAnswerer) {
+      void this.deepen(meetingId, action.id, candidate.trigger.quote).catch((error) =>
+        this.fail(meetingId, "Looking deeper into a question", error),
+      );
+    }
+  }
+
+  /**
+   * The quick answer comes from one search so the room gets it in seconds.
+   * This then asks the full company agent, which searches several times and
+   * follows related records, and adds its answer under the quick one. It runs
+   * on its own: the meeting does not wait for it.
+   */
+  private async deepen(meetingId: string, actionId: string, asked: string): Promise<void> {
+    const setDeeper = async (deeper: NonNullable<AnswerPayload["deeper"]>, evidence: Evidence[] = []) => {
+      const action = await this.mutate(meetingId, (state) => {
+        const target = state.actions.find((entry) => entry.id === actionId);
+        if (!target) return null;
+        const payload = { ...(target.payload as AnswerPayload), deeper };
+        target.payload = payload;
+        target.payloadHash = hashPayload(payload);
+        const known = new Set(target.evidence.map((item) => item.sourceId));
+        target.evidence.push(...evidence.filter((item) => !known.has(item.sourceId)));
+        return target;
+      });
+      if (action) this.emitEvent(meetingId, { type: "action", meetingId, action: this.cloneAction(action) });
+    };
+    await setDeeper({ status: "looking" });
+    const meeting = await this.current(meetingId);
+    // The agent sometimes runs out of steps before writing, answering without
+    // sources; an answer that cites nothing adds nothing to the quick one, so
+    // it gets one more try and is otherwise left off the card.
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        // The words as said, so the agent answers in the asker's language.
+        const deep = await this.deps.deepAnswerer!.answer({ employeeId: meeting.employeeId, question: asked });
+        if (deep.sources.length === 0) continue;
+        await setDeeper(
+          { status: "ready", answer: deep.answer, citedSourceIds: deep.sources.map((source) => source.sourceId) },
+          deep.sources,
+        );
+        return;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    await setDeeper({ status: "failed" });
+    if (lastError) throw lastError;
   }
 
   private buildConflictAction(

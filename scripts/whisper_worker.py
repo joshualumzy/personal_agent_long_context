@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 
 import mlx_whisper
 import numpy as np
@@ -25,6 +26,9 @@ HALLUCINATIONS = {
     "thank you.", "thanks for watching!", "thank you for watching.", "you", "bye.", "obrigado.",
     "谢谢观看", "谢谢大家", "请不吝点赞 订阅 转发 打赏支持明镜与点点栏目",
 }
+
+# Where each clip's timings go, so a slow one can be traced to decoding, Whisper, or SenseVoice.
+TIMING_LOG = os.environ.get("WHISPER_TIMING_LOG", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tmp", "whisper-timing.jsonl"))
 
 # The same word or short phrase four or more times in a row is a Whisper loop.
 REPEAT = re.compile(r"((?:\S+?\s?){1,3}?)\1{3,}")
@@ -64,13 +68,20 @@ def preview(path):
     return stream.result.text.strip()
 
 
-def final(path, language):
+def final(path, language, timing):
+    started = time.time()
+    # One decoding pass with a token cap: a clip is a few seconds long, and a
+    # Whisper loop on noisy audio would otherwise run to the model's limit and
+    # hold up every clip queued behind it.
     result = mlx_whisper.transcribe(
         path,
         path_or_hf_repo=WHISPER_MODEL,
         language=language or None,
         condition_on_previous_text=False,
+        temperature=0.0,
+        sample_len=96,
     )
+    timing["whisper_ms"] = int((time.time() - started) * 1000)
     kept = [
         segment["text"].strip()
         for segment in result.get("segments", [])
@@ -78,19 +89,23 @@ def final(path, language):
         and segment.get("avg_logprob", 0) > -1.0
         and segment.get("compression_ratio", 0) < 2.2
     ]
-    text = REPEAT.sub(r"\1", " ".join(part for part in kept if part)).strip()
+    # SenseVoice hears the same clip and does not invent captions the way
+    # Whisper does ("中文字幕志愿者 李宗盛"), so it is the check: nothing heard
+    # means nothing kept, and a Whisper sentence whose characters SenseVoice
+    # mostly did not hear is dropped, even when the rest of the clip is real.
+    started = time.time()
+    heard = preview(path)
+    timing["sensevoice_ms"] = int((time.time() - started) * 1000)
+    if not heard:
+        return ""
+    kept = [part for part in kept if part and overlap(heard, part) >= 0.3]
+    text = REPEAT.sub(r"\1", " ".join(kept)).strip()
     if text.lower() in HALLUCINATIONS:
         text = ""
-    # Whisper sometimes swaps a whole clip for text it has seen in training
-    # (video credits, subtitle notices). When its text shares little with what
-    # SenseVoice heard in the same clip, SenseVoice's text is kept instead.
-    # Whisper can invent text over silence, so a clip where SenseVoice heard
-    # nothing is dropped.
-    fallback = preview(path)
-    if not fallback:
-        return ""
-    if overlap(text, fallback) < 0.4:
-        return fallback
+    # When Whisper's text as a whole shares little with what SenseVoice heard,
+    # SenseVoice's text is kept instead.
+    if overlap(text, heard) < 0.4:
+        return heard
     return text
 
 
@@ -117,17 +132,30 @@ def overlap(text, reference):
     return hits / len(wanted)
 
 
+def log_timing(entry):
+    try:
+        with open(TIMING_LOG, "a", encoding="utf-8") as file:
+            file.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError:
+        pass
+
+
 def main():
     for line in sys.stdin:
         request = json.loads(line)
+        started = time.time()
+        timing = {"at": round(started, 1), "preview": bool(request.get("preview"))}
         try:
             if request.get("preview"):
                 text = preview(request["path"])
             else:
-                text = final(request["path"], request.get("language"))
+                text = final(request["path"], request.get("language"), timing)
             reply = {"id": request["id"], "text": text}
         except Exception as error:  # one bad clip must not stop the worker
             reply = {"id": request["id"], "error": str(error)}
+        timing["total_ms"] = int((time.time() - started) * 1000)
+        timing["chars"] = len(reply.get("text", ""))
+        log_timing(timing)
         sys.stdout.write(json.dumps(reply, ensure_ascii=False) + "\n")
         sys.stdout.flush()
 

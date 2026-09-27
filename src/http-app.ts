@@ -23,6 +23,7 @@ import type { MeetingActions } from "./meetings/domain.js";
 import { replayTranscript, type ReplaySource } from "./meetings/replay.js";
 import { registerMeetingRoutes, type GoogleStatus } from "./meetings/routes.js";
 import type { Transcribe } from "./meetings/speech.js";
+import type { LiveAsrConfig } from "./meetings/doubao.js";
 import type { RecruitingService } from "./recruiting/service.js";
 import {
   EmployeeIdentity,
@@ -68,6 +69,7 @@ export interface BuildAppOptions extends ApplicationOptions {
     replays?: ReplaySource;
     googleStatus?: () => Promise<GoogleStatus>;
     transcribe?: Transcribe;
+    liveAsr?: LiveAsrConfig;
   };
 }
 
@@ -1058,10 +1060,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   }
 
   if (options.meetings) {
-    const { service, replays, googleStatus, transcribe } = options.meetings;
+    const { service, replays, googleStatus, transcribe, liveAsr } = options.meetings;
     registerMeetingRoutes(app, service, {
       ...(googleStatus ? { googleStatus } : {}),
       ...(transcribe ? { transcribe } : {}),
+      ...(liveAsr ? { liveAsr } : {}),
       ...(replays
         ? {
             listReplays: () => replays.list(),

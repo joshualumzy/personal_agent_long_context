@@ -117,6 +117,8 @@ export interface AnswerPayload {
   question: string;
   answer: string;
   citedSourceIds: string[];
+  /** A slower, multi-search answer that follows the quick one on the same card. */
+  deeper?: { status: "looking" | "ready" | "failed"; answer?: string; citedSourceIds?: string[] };
 }
 
 export interface ConflictPayload {
@@ -323,7 +325,10 @@ export interface CommitmentExtractor {
 
 /** S1: the company-context agent. SoCLaaSCompanyAgent satisfies it. */
 export interface QuestionAnswerer {
-  answer(input: CompanyQuestion, callbacks?: AnswerStream): Promise<CompanyAnswer>;
+  answer(
+    input: CompanyQuestion & { searchQueries?: string[]; /** The words as said in the meeting. */ asked?: string },
+    callbacks?: AnswerStream,
+  ): Promise<CompanyAnswer>;
 }
 
 /** Progress while an answer is written, so the room sees it arrive word by word. */

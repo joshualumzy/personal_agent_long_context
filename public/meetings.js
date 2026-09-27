@@ -588,6 +588,8 @@ function renderCard(action, compact = false) {
 
   const canEdit = EDITABLE_FIELDS[action.kind] && action.tier === "approval" && action.status === "proposed";
   card.append(canEdit ? renderEditableFields(action) : renderReadonlyFields(action));
+  const deeper = action.kind === "answer_question" && action.payload.deeper && renderDeeper(action.payload.deeper);
+  if (deeper) card.append(deeper);
 
   if (
     action.kind === "calendar_draft" &&
@@ -845,6 +847,16 @@ function renderStartOptions(action) {
       action.payload.startOptions.map((option) => h("button", { type: "button", class: "quiet", onclick: () => pick(option) }, label(option))),
     ),
   );
+}
+
+// The quick answer comes from one search; the deeper one follows on the same
+// card once the full agent has searched further.
+function renderDeeper(deeper) {
+  if (deeper.status === "looking") {
+    return h("p", { class: "deeper-status" }, h("span", { class: "busy-dot" }), "Looking deeper…");
+  }
+  if (deeper.status !== "ready" || !deeper.answer) return null;
+  return h("div", { class: "deeper" }, h("h4", {}, "Deeper look"), renderValue("answer", deeper.answer));
 }
 
 function renderReadonlyFields(action) {
@@ -1167,6 +1179,7 @@ const recording = {
   streams: [],
   context: null,
   tap: null,
+  socket: null,
   mixed: null,
   recorder: null,
   pending: 0,
@@ -1233,8 +1246,65 @@ async function startRecording() {
     tap,
     mixed: destination.stream,
   });
-  recordClip();
+  if (state.liveAsr) streamAudio();
+  else recordClip();
   renderRecording();
+}
+
+// With streaming recognition on the server, audio goes out continuously: the
+// mix is resampled to 16 kHz mono 16-bit PCM and sent every 200 ms. Partial
+// text comes back on the socket; final sentences arrive as transcript events.
+const STREAM_RATE = 16_000;
+const STREAM_CHUNK_SAMPLES = STREAM_RATE / 5;
+
+function streamAudio() {
+  const params = new URLSearchParams({ speaker: $("#mic-speaker").value.trim() || "Meeting" });
+  const scheme = location.protocol === "https:" ? "wss" : "ws";
+  const socket = new WebSocket(`${scheme}://${location.host}/api/v1/meetings/${recording.meetingId}/stream?${params}`);
+  socket.binaryType = "arraybuffer";
+  recording.socket = socket;
+  socket.addEventListener("message", (event) => {
+    const message = JSON.parse(event.data);
+    if (message.type === "partial") setInterim(message.text);
+    else if (message.type === "error") showError(`Live transcription: ${message.message}`);
+  });
+  socket.addEventListener("close", () => {
+    if (recording.socket === socket) {
+      // Closed from the far side while still recording: say so rather than go quiet.
+      showError("Live transcription stopped. Stop and start recording again.");
+      recording.socket = null;
+    }
+    setInterim("");
+  });
+
+  const ratio = recording.context.sampleRate / STREAM_RATE;
+  let pending = new Int16Array(STREAM_CHUNK_SAMPLES);
+  let filled = 0;
+  recording.tap.onaudioprocess = (event) => {
+    const input = event.inputBuffer.getChannelData(0);
+    let loud = 0;
+    // Averaging each group of input samples is enough of a low-pass for speech.
+    for (let position = 0; position + ratio <= input.length; position += ratio) {
+      let sum = 0;
+      const start = Math.floor(position);
+      const end = Math.floor(position + ratio);
+      for (let i = start; i < end; i += 1) sum += input[i];
+      const sample = Math.max(-1, Math.min(1, sum / (end - start)));
+      loud = Math.max(loud, Math.abs(sample));
+      pending[filled] = sample * 0x7fff;
+      filled += 1;
+      if (filled === STREAM_CHUNK_SAMPLES) {
+        if (socket.readyState === WebSocket.OPEN) socket.send(pending.buffer);
+        pending = new Int16Array(STREAM_CHUNK_SAMPLES);
+        filled = 0;
+      }
+    }
+    const hearing = loud > SILENCE_LEVEL * 3;
+    if (hearing !== recording.hearing) {
+      recording.hearing = hearing;
+      renderRecording();
+    }
+  };
 }
 
 function recordClip() {
@@ -1342,6 +1412,11 @@ function stopRecording() {
   if (!recording.active) return;
   recording.active = false;
   if (recording.tap) recording.tap.onaudioprocess = null;
+  if (recording.socket) {
+    // The server finishes the last sentence, then closes the socket.
+    if (recording.socket.readyState === WebSocket.OPEN) recording.socket.send("end");
+    recording.socket = null;
+  }
   if (recording.recorder?.state === "recording") recording.recorder.stop();
   for (const stream of recording.streams) for (const track of stream.getTracks()) track.stop();
   recording.context?.close();
@@ -1414,7 +1489,9 @@ async function loadIntegrations() {
   const outcome = new URLSearchParams(location.search).get("google");
   if (outcome) history.replaceState(null, "", location.pathname);
   try {
-    state.google = (await getJSON("/api/v1/meetings/integrations")).google;
+    const integrations = await getJSON("/api/v1/meetings/integrations");
+    state.google = integrations.google;
+    state.liveAsr = Boolean(integrations.liveAsr);
   } catch {
     state.google = null;
   }

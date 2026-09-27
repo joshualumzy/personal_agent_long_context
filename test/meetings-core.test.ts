@@ -250,7 +250,7 @@ function fakeModel(): JsonModel & { calls: string[] } {
   };
 }
 
-function setup() {
+function setup(extra: { deepAnswerer?: QuestionAnswerer } = {}) {
   const model = fakeModel();
   const knowledge = new FakeKnowledge();
   const answerer = new FakeAnswerer();
@@ -270,6 +270,7 @@ function setup() {
     clock: () => new Date("2026-09-25T02:00:00.000Z"),
     id: () => `id-${(idCounter += 1)}`,
     onError: (context, error) => errors.push({ context, error }),
+    ...extra,
   });
   return { service, model, knowledge, answerer, executor, store, errors };
 }
@@ -730,5 +731,38 @@ describe("notes and minutes", () => {
     const addressed = await service.edit(meeting.meetingId, proposed.id, { ...payload, to: "vendor@example.test" });
     const approved = await service.approve(meeting.meetingId, addressed.id, addressed.payloadHash);
     assert.equal(approved.status, "executed");
+  });
+});
+
+describe("deeper answers", () => {
+  test("a quick answer is followed on the same card by a deeper one, asked in the words said", async () => {
+    const asked: string[] = [];
+    const { service } = setup({
+      deepAnswerer: {
+        async answer(input) {
+          asked.push(input.question);
+          return {
+            answer: "Deeper: on-call hands off Monday 9am; the rota lives in the SRE handbook. [source:ev2]",
+            sources: [{ sourceId: "ev2", sourceType: "doc", title: "SRE handbook", excerpt: "Rota" }],
+            runId: "deep-1",
+            toolCalls: [],
+          };
+        },
+      },
+    });
+    const meeting = await service.start({ title: "Infra sync", employeeId: "emp-1" });
+    await service.append(meeting.meetingId, [{ speaker: "Ana", text: "What is our on-call rotation for the infra team?" }]);
+    await service.idle(meeting.meetingId);
+    let answer = await actionFor(service, meeting.meetingId, "answer:oncall-rotation");
+    for (let tries = 0; (answer?.payload as { deeper?: { status: string } }).deeper?.status !== "ready" && tries < 50; tries += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      answer = await actionFor(service, meeting.meetingId, "answer:oncall-rotation");
+    }
+    const payload = answer!.payload as { answer: string; deeper?: { status: string; answer?: string } };
+    assert.match(payload.answer, /weekly on-call rotation/, "the quick answer stays");
+    assert.equal(payload.deeper?.status, "ready");
+    assert.match(payload.deeper!.answer!, /SRE handbook/);
+    assert.deepEqual(asked, ["What is our on-call rotation for the infra team"]);
+    assert.ok(answer!.evidence.some((item) => item.sourceId === "ev2"), "the deeper answer's sources join the card's");
   });
 });

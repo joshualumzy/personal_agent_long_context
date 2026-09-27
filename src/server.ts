@@ -15,6 +15,7 @@ import { meetingsFromEnvironment } from "./meetings/config.js";
 import { googleAvailability } from "./meetings/availability.js";
 import { gmailContactDirectory } from "./meetings/contacts.js";
 import { localWhisper } from "./meetings/speech.js";
+import { QuickMeetingAnswerer } from "./meetings/quick-answer.js";
 
 import { validateAuthConfig } from "./auth.js";
 
@@ -72,6 +73,15 @@ const companyAgent = new SoCLaaSCompanyAgent(companyKnowledge, {
   ...agentSkills,
 });
 
+// Answers during a meeting: the question itself is the search, then one
+// streamed call writes a short answer. The room is waiting, so this skips the
+// chat agent's planning step and its skills.
+const meetingAnswerer = new QuickMeetingAnswerer(companyKnowledge, {
+  apiKey: soCLaaSApiKey,
+  baseUrl: process.env.SOCLAAS_BASE_URL ?? "https://soclaas-api.comp.nus.edu.sg/v1",
+  name: process.env.SOCLAAS_COMPANY_MODEL ?? "qwen3.8:27b",
+});
+
 const gatewayUrl = (process.env.LLM_GATEWAY_URL || process.env.LM_GATEWAY_URL)?.replace(/\/$/, "");
 const gatewayApiKey = process.env.LLM_GATEWAY_API_KEY || process.env.LM_GATEWAY_API_KEY;
 const gatewayModel = process.env.LLM_MODEL ?? "global.anthropic.claude-sonnet-4-5-20250929-v1:0";
@@ -103,7 +113,13 @@ let logMeetingFailure: (context: string, error: unknown) => void = () => {};
 const meetings = meetingsFromEnvironment(process.env, {
   pool: companyKnowledge.pool,
   knowledge: companyKnowledge,
-  answerer: companyAgent,
+  answerer: meetingAnswerer,
+  // After the quick answer, the full company agent searches further for the same card.
+  deepAnswerer: new SoCLaaSCompanyAgent(companyKnowledge, {
+    apiKey: soCLaaSApiKey,
+    baseUrl: process.env.SOCLAAS_BASE_URL,
+    model: process.env.SOCLAAS_COMPANY_MODEL,
+  }),
   contacts: recruiting?.gmail ? gmailContactDirectory(recruiting.gmail) : null,
   availability: recruiting?.gmail ? googleAvailability(recruiting.gmail) : null,
   ...(recruiting?.gmail
@@ -145,7 +161,24 @@ const app = buildApp({
   conversationStore,
   logger: true,
   ...(recruiting ? { recruiting: { board: recruiting.board, gmail: recruiting.gmail } } : {}),
-  ...(meetings ? { meetings: { ...meetings, transcribe: localWhisper() } } : {}),
+  ...(meetings
+    ? {
+        meetings: {
+          ...meetings,
+          transcribe: localWhisper(),
+          // With a Doubao key the page streams audio for live recognition;
+          // without one it records clips for the local models.
+          ...(process.env.VOLC_ASR_API_KEY
+            ? {
+                liveAsr: {
+                  apiKey: process.env.VOLC_ASR_API_KEY,
+                  resourceId: process.env.VOLC_ASR_RESOURCE_ID ?? "volc.seedasr.sauc.duration",
+                },
+              }
+            : {}),
+        },
+      }
+    : {}),
 });
 logMeetingFailure = (context, error) =>
   app.log.error(
