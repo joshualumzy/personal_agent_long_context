@@ -27,6 +27,8 @@ export interface OrgForgeBenchmarkQuestion {
 
 export interface LoadQuestionFilter {
   limit?: number;
+  offset?: number;
+  random?: boolean;
   type?: "PERSPECTIVE" | "SILENCE" | "COUNTERFACTUAL";
   questionId?: string;
 }
@@ -53,8 +55,20 @@ export async function loadBenchmarkQuestions(
     questions = questions.filter((q) => q.question_id === filter.questionId);
   }
 
+  if (filter.random) {
+    for (let i = questions.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const temp = questions[i]!;
+      questions[i] = questions[j]!;
+      questions[j] = temp;
+    }
+  }
+
+  const offset = filter.offset ?? 0;
   if (filter.limit && filter.limit > 0) {
-    questions = questions.slice(0, filter.limit);
+    questions = questions.slice(offset, offset + filter.limit);
+  } else if (offset > 0) {
+    questions = questions.slice(offset);
   }
 
   return questions;
@@ -85,13 +99,20 @@ export function getExpectedArtifacts(question: OrgForgeBenchmarkQuestion): strin
 export function getExpectedBooleanAnswer(question: OrgForgeBenchmarkQuestion): boolean | null {
   const gt = question.ground_truth;
   if (typeof gt.could_actor_have_known === "boolean") {
-    return gt.could_actor_have_known;
+    // Questions asking if someone was "outside visibility" or had a "blind spot":
+    // If they could NOT have known (false), then YES (true) they were outside visibility / had a blind spot.
+    const text = question.question_text.toLowerCase();
+    const isNegative = text.includes("outside") || text.includes("blind spot") || text.includes("unaware") || text.includes("lack");
+    return isNegative ? !gt.could_actor_have_known : gt.could_actor_have_known;
   }
   if (typeof gt.answer === "boolean") {
     return gt.answer;
   }
   if (typeof gt.outcome_changed === "boolean") {
-    return gt.outcome_changed;
+    // In causal counterfactual questions ("Would X still have occurred without Y?"):
+    // outcome_changed = true means without Y, X did NOT occur -> surface answer: false (no).
+    // outcome_changed = false means without Y, X STILL occurred -> surface answer: true (yes).
+    return !gt.outcome_changed;
   }
   return null;
 }

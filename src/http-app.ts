@@ -485,7 +485,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         }
       } else if (typeof options.memory.processWorkingContext === "function") {
         try {
-          const memRes = await options.memory.processWorkingContext({ userId, message });
+          const memRes = await options.memory.processWorkingContext({ userId, message, history });
           if (memRes.contextConsidered && memRes.contextConsidered.trim()) {
             memoryStatus = "available";
             contextConsidered = memRes.contextConsidered;
@@ -520,7 +520,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       if (typeof options.memory.processWorkingContext === "function") {
         memoryUpdateQueue.enqueue(userId, async () => {
           try {
-            const res = await options.memory.processWorkingContext!({ userId, message });
+            const res = await options.memory.processWorkingContext!({ userId, message, history });
             memoryUpdated = res.memoryUpdated;
           } catch (err) {
             request.log.warn({ err }, "Background working context update failed");
@@ -928,7 +928,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       return reply.code(400).send({ message: "Provide valid userId, employeeId, and question values." });
     }
 
-    return handleAgentTurn(userId, employeeId, question, request, reply);
+    const requestedConversationId =
+      typeof fields.conversationId === "string" && fields.conversationId.trim()
+        ? fields.conversationId.trim()
+        : undefined;
+
+    return handleAgentTurn(userId, employeeId, question, request, reply, requestedConversationId);
   });
 
   app.get<{ Params: { sourceId: string } }>(
@@ -964,7 +969,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
    * nodes its evidence belongs to and the ones it names outright. Only the
    * centre and its seeds — the rest is reached by expanding.
    */
-  app.get<{ Querystring: { q?: string; categories?: string; seeds?: string } }>(
+  app.get<{ Querystring: { q?: string; categories?: string; seeds?: string; sources?: string } }>(
     "/api/v1/graph/query",
     async (request, reply) => {
       const knowledge = options.companyKnowledge;
@@ -978,6 +983,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         query,
         ...(request.query.categories ? { categories: splitList(request.query.categories) } : {}),
         ...(Number.isFinite(seeds) && seeds > 0 ? { seeds } : {}),
+        // An answer's own sources: its graph is built from what it cited.
+        ...(request.query.sources ? { evidence: splitList(request.query.sources) } : {}),
       });
       return reply.send(slice);
     },
@@ -1270,6 +1277,24 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.get("/sme.css", serve("styles.css", "text/css; charset=utf-8"));
 
   app.get("/graph", serve("graph.html", "text/html; charset=utf-8"));
+  // One chat answer's graph. The chat opens it in a dialog over the
+  // conversation, so like the hiring panel it may be framed by this origin
+  // and nothing else.
+  app.get("/graph/answer", async (_request, reply) => {
+    const content = await readFile(`${publicDirectory}graph-answer.html`);
+    return reply
+      .headers({
+        ...securityHeaders,
+        "cache-control": "no-cache",
+        "content-security-policy": securityHeaders["content-security-policy"].replace(
+          "frame-ancestors 'none'",
+          "frame-ancestors 'self'",
+        ),
+        "x-frame-options": "SAMEORIGIN",
+      })
+      .type("text/html; charset=utf-8")
+      .send(content);
+  });
   app.get("/graph/app.js", serve("graph.js", "text/javascript; charset=utf-8"));
   app.get("/graph/styles.css", serve("graph.css", "text/css; charset=utf-8"));
   // The emergent graph, on a page of its own: it shares nothing with the

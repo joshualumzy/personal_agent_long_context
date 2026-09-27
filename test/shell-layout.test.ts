@@ -10,7 +10,8 @@ import { MemoryRoleRepository, RoleBoard } from "../src/recruiting/roles.js";
 // Switching between the three apps must not move the sidebar: the same
 // pieces sit at the same pixels on every page. jsdom has no layout, so this
 // measures in a real browser.
-const PAGES = ["/", "/meetings", "/recruiting", "/graph", "/graph/emergent"];
+// /graph is drawn without the shell: it opens inside the chat's dialog.
+const PAGES = ["/", "/meetings", "/recruiting", "/graph/emergent"];
 
 const MEASURE = `(() => {
   const rect = (element) => {
@@ -98,11 +99,12 @@ describe("Shared shell layout", () => {
     }
   });
 
-  test("the company graph pages sit in the shell, with the graph as the current page", async () => {
+  test("the company graph pages use the shared theme; the emergent one sits in the shell", async () => {
     for (const url of ["/graph", "/graph/emergent"]) {
       const html = (await app.inject({ method: "GET", url })).body;
       assert.match(html, /<link rel="stylesheet" href="\/theme.css">/, url);
-      assert.match(html, /<a href="\/graph" aria-current="page">/, url);
     }
+    const emergent = (await app.inject({ method: "GET", url: "/graph/emergent" })).body;
+    assert.match(emergent, /<a href="\/graph" aria-current="page">/);
   });
 });

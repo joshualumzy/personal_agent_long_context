@@ -121,6 +121,13 @@ export interface GraphQueryRequest {
   categories?: string[];
   /** How many seeds at most. */
   seeds?: number;
+  /**
+   * The evidence to place on the graph, as source ids, most relevant first —
+   * an answer's own sources, so its graph shows what the answer was drawn
+   * from rather than what a fresh search would find. Omitted, the question is
+   * searched for.
+   */
+  evidence?: string[];
 }
 
 /** One node's neighbourhood, or the next page of a cluster's. */
@@ -183,6 +190,7 @@ export interface CompanyQuestion {
 export interface CompanyAnswer {
   answer: string;
   sources: Evidence[];
+  retrievedSources?: Evidence[];
   runId: string;
   toolCalls: Array<{ name: string; arguments: unknown }>;
   /** Live panels to show under the answer, in the order the model asked. */

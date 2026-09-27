@@ -160,6 +160,85 @@ describe("SME Assistant conversational rendering", () => {
     assert.match(contextTags.textContent ?? "", /Working context referenced/);
   });
 
+  test("an answer with evidence shows how that evidence connects, and opens it larger", async () => {
+    const graph = {
+      nodes: [
+        { id: "query:What is the latest project?", refKey: "What is the latest project?", type: "query", label: "What is the latest project?" },
+        { id: "item:titandb", refKey: "titandb", type: "item", subtype: "domain", label: "TitanDB" },
+        { id: "document:CONF-ENG-239", refKey: "CONF-ENG-239", type: "document", label: "Remote config design" },
+      ],
+      edges: [
+        { source: "query:What is the latest project?", target: "item:titandb", type: "matches" },
+        { source: "query:What is the latest project?", target: "document:CONF-ENG-239", type: "matches" },
+        { source: "document:CONF-ENG-239", target: "item:titandb", type: "about_domain" },
+      ],
+      truncated: false,
+      centre: "query:What is the latest project?",
+    };
+    const page = await openSmePage({
+      respond: (url) => url.startsWith("/api/v1/graph/query")
+        ? new Response(JSON.stringify(graph), { status: 200, headers: { "content-type": "application/json" } })
+        : undefined,
+    });
+    after(() => page.close());
+
+    const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
+    input.value = "What is the latest project?";
+    page.document.querySelector("#chat-form")!
+      .dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+    const deadline = Date.now() + 2_000;
+    while (!page.document.querySelector(".answer-graph:not(.loading)")) {
+      if (Date.now() > deadline) throw new Error("Timed out waiting for the answer's graph.");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+
+    // Asked for with the answer's own question and the evidence it cited.
+    const asked = page.requests.map((request) => request.url).find((url) => url.startsWith("/api/v1/graph/query"))!;
+    const parameters = new URLSearchParams(asked.split("?")[1]);
+    assert.equal(parameters.get("q"), "What is the latest project?");
+    assert.equal(parameters.get("sources"), "CONF-ENG-239");
+
+    // Above the evidence cards, drawn: the question and the two things it points to.
+    const assistantRow = page.document.querySelector(".message-row.assistant")!;
+    const preview = assistantRow.querySelector(".answer-graph")!;
+    const cards = assistantRow.querySelector(".sources-grid")!;
+    assert.ok(preview.compareDocumentPosition(cards) & page.window.Node.DOCUMENT_POSITION_FOLLOWING);
+    assert.equal(preview.querySelectorAll("svg g").length, 3);
+    assert.match(preview.textContent!, /2 things it points to/);
+
+    // Clicking opens the answer's graph page in a dialog, same question, same sources.
+    (preview as HTMLButtonElement).click();
+    const dialog = page.document.querySelector("#answer-graph-dialog")!;
+    assert.ok(dialog.hasAttribute("open"));
+    const frame = new URL(dialog.querySelector("iframe")!.getAttribute("src")!, "http://x");
+    assert.equal(frame.pathname, "/graph/answer");
+    assert.equal(frame.searchParams.get("q"), "What is the latest project?");
+    assert.equal(frame.searchParams.get("sources"), "CONF-ENG-239");
+    assert.equal(frame.searchParams.get("embed"), "1");
+    assert.match(dialog.textContent!, /What is the latest project\?/);
+  });
+
+  test("an answer whose evidence places nothing on the graph shows no picture", async () => {
+    const page = await openSmePage({
+      respond: (url) => url.startsWith("/api/v1/graph/query")
+        ? new Response(JSON.stringify({ nodes: [{ id: "query:x", type: "query", label: "x" }], edges: [], truncated: false }), { status: 200 })
+        : undefined,
+    });
+    after(() => page.close());
+    const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
+    input.value = "x";
+    page.document.querySelector("#chat-form")!
+      .dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+    const deadline = Date.now() + 2_000;
+    while (!page.document.querySelector(".sources-grid")) {
+      if (Date.now() > deadline) throw new Error("Timed out waiting for the answer.");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(page.document.querySelector(".answer-graph"), null);
+    assert.ok(page.document.querySelector(".source-card"), "the evidence itself is still there");
+  });
+
   test("the graph entry sits with the other apps in the sidebar and leads somewhere", async () => {
     const app = buildApp({ memory: new DeterministicMemoryProvider() });
     try {

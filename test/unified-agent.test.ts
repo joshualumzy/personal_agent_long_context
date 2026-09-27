@@ -1,9 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DeterministicMemoryProvider } from "../src/adapters/deterministic-memory.js";
-import { extractWorkingContextFromHumanMd } from "../src/adapters/letta-memory.js";
+import {
+  extractWorkingContextFromHumanMd,
+  workingContextPrompt,
+} from "../src/adapters/letta-memory.js";
 import { createSessionToken } from "../src/auth.js";
 import { buildApp } from "../src/http-app.js";
+import { InMemoryConversationStore } from "../src/adapters/postgres-conversations.js";
 import type { CompanyAnswer } from "../src/company-domain.js";
 
 const TEST_SECRET = "test-auth-session-secret-key-32chars-min";
@@ -170,6 +174,28 @@ description: Personal context
   ]);
 });
 
+test("workingContextPrompt directs writes to the section getWorkingContextFast reads", () => {
+  const prompt = workingContextPrompt({ userId: "marcus", message: "I now own the billing migration." });
+
+  // The fast read only looks at system/human.md, under "### Current".
+  assert.match(prompt, /system\/human\.md/);
+  assert.match(prompt, /## Working context \(SME employee\)/);
+  assert.match(prompt, /### Current/);
+  assert.match(prompt, /### History/);
+
+  // A file written the way the prompt describes is one the fast read understands.
+  const written = `## Working context (SME employee)
+### Current
+- Owns the billing service migration. [marcus, workplace message, 2026-09-27]
+
+### History (superseded / cancelled)
+(none)
+`;
+  const result = extractWorkingContextFromHumanMd(written);
+  assert.ok(result);
+  assert.match(result.contextConsidered, /billing service migration/);
+});
+
 test("unified route uses getWorkingContextFast when provider supports it and triggers async update", async () => {
   let fastCalled = false;
   let updateCalled = false;
@@ -228,5 +254,86 @@ test("unified route uses getWorkingContextFast when provider supports it and tri
   assert.equal(receivedPersonalMemory, "Fast context for jax");
   await new Promise((resolve) => setTimeout(resolve, 30));
   assert.equal(updateCalled, true);
+  await app.close();
+});
+
+test("unified route passes conversation history to processWorkingContext", async () => {
+  let capturedInput: {
+    userId: string;
+    message: string;
+    history?: Array<{ role: "user" | "assistant"; content: string }>;
+  } | undefined;
+
+  const memory = {
+    async processWorkingContext(input: {
+      userId: string;
+      message: string;
+      history?: Array<{ role: "user" | "assistant"; content: string }>;
+    }) {
+      capturedInput = input;
+      return { contextConsidered: "Working on infra", memoryUpdated: false, sources: [] };
+    },
+    async ask() {
+      return { answer: "fallback", runRef: "ref", sources: [] };
+    },
+    async inspect() {
+      return { userId: "jax", items: [] };
+    },
+    async ingest() {
+      return { agentRef: "agent" };
+    },
+  };
+
+  const companyAgent = {
+    async answer() {
+      return {
+        answer: "I recommend classifying TitanDB migration as P0. [source:S1]",
+        sources: [{ sourceId: "S1", sourceType: "jira" as const, title: "T", excerpt: "E" }],
+        runId: "run-1",
+        toolCalls: [],
+      };
+    },
+  };
+
+  const conversationStore = new InMemoryConversationStore();
+  const app = buildApp({
+    sessionConfig: { secret: TEST_SECRET },
+    memory: memory as never,
+    companyAgent: companyAgent as never,
+    conversationStore,
+  });
+
+  // Turn 1
+  const res1 = await app.inject({
+    method: "POST",
+    url: "/api/v1/agent/questions",
+    headers: { cookie: `sme_session=${createSessionToken("jax", TEST_SECRET)}` },
+    payload: { question: "What priority should TitanDB have?" },
+  });
+  assert.equal(res1.statusCode, 200);
+  const conversationId = res1.json().conversationId;
+  assert.ok(conversationId);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+
+  // Turn 2: User agrees / confirms
+  const res2 = await app.inject({
+    method: "POST",
+    url: "/api/v1/agent/questions",
+    headers: { cookie: `sme_session=${createSessionToken("jax", TEST_SECRET)}` },
+    payload: { question: "ok that sounds good", conversationId },
+  });
+  for (let i = 0; i < 30 && (!capturedInput?.history || capturedInput.history.length === 0); i++) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+
+  assert.ok(capturedInput);
+  assert.equal(capturedInput.userId, "jax");
+  assert.equal(capturedInput.message, "ok that sounds good");
+  assert.ok(capturedInput.history && capturedInput.history.length > 0);
+  assert.equal(capturedInput.history[0]?.role, "user");
+  assert.equal(capturedInput.history[0]?.content, "What priority should TitanDB have?");
+  assert.equal(capturedInput.history[1]?.role, "assistant");
+  assert.match(capturedInput.history[1]?.content ?? "", /TitanDB/);
+
   await app.close();
 });

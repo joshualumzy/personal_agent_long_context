@@ -77,6 +77,7 @@ export interface MemoryProvider {
   processWorkingContext?(input: {
     userId: string;
     message: string;
+    history?: Array<{ role: "user" | "assistant"; content: string }>;
   }): Promise<WorkingContextResult>;
   close?(): Promise<void>;
 }

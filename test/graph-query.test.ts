@@ -171,6 +171,14 @@ describe("the query and expand routes", () => {
     assert.deepEqual(queries[0], { query: "TitanDB", categories: ["domains", "people"], seeds: 5 });
   });
 
+  test("an answer's sources become the evidence its graph is seeded from, in order", async () => {
+    const queries: GraphQueryRequest[] = [];
+    const base = await start(knowledge(queries, []));
+    const response = await fetch(`${base}/api/v1/graph/query?q=why&sources=${encodeURIComponent("DD-ENG-237, CONF-ENG-129,,slack_x")}`);
+    assert.equal(response.status, 200);
+    assert.deepEqual(queries[0], { query: "why", evidence: ["DD-ENG-237", "CONF-ENG-129", "slack_x"] });
+  });
+
   test("a query without words is refused rather than answered with everything", async () => {
     const base = await start(knowledge([], []));
     assert.equal((await fetch(`${base}/api/v1/graph/query?q=%20`)).status, 400);
