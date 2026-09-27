@@ -1284,7 +1284,8 @@ describe("SME Assistant plate, as shown on camera", () => {
   });
 });
 
-describe("SME Assistant knowledge gaps on the plate", () => {
+// Hidden for now: the panel is commented out in index.html. Restore both together.
+describe.skip("SME Assistant knowledge gaps on the plate", () => {
   const DAYS = ["2026-02-16", "2026-02-17", "2026-02-18"];
   const proposal = (id: string, extra: Record<string, unknown> = {}) => ({
     id,
