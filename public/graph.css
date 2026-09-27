@@ -47,16 +47,42 @@ button, .quiet { font: inherit; cursor: pointer; }
 .quiet:hover { border-color: var(--muted); }
 .quiet.on { border-color: var(--aqua); color: var(--aqua); }
 
-/* Layer tabs: a separate row from Picture/Table — those switch how the
-   current layer is rendered, these switch which layer it is. */
-.layer-tabs { display: flex; gap: 6px; margin: 0; }
-.layer-tab {
+/* The two ways in: a question, or one of the fixed overviews. One row of
+   tabs for both, since "your question" is just another picture to look at. */
+.ask { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; }
+.ask input[type="search"] {
+  flex: 1 1 420px; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-control);
+  padding: 9px 12px; background: var(--sky-raised); color: var(--text); font: inherit;
+}
+.ask input[type="search"]:focus { outline: none; border-color: var(--gold); }
+.examples { color: var(--muted); font-size: .82rem; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.example {
+  border: 1px dashed var(--line); border-radius: 999px; padding: 2px 10px;
+  background: transparent; color: var(--aqua); font-size: .82rem;
+}
+.example:hover { border-color: var(--aqua); }
+
+.view-tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 100%; }
+.view-divider { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+.view-tab {
   border: 1px solid var(--line); border-radius: var(--radius-control);
   padding: 6px 12px; background: var(--sky-raised); color: var(--muted);
   font: inherit; font-size: .88rem; cursor: pointer;
 }
-.layer-tab:hover { border-color: var(--muted); }
-.layer-tab.on { border-color: var(--gold); color: var(--gold); background: var(--sky-high); font-weight: 600; }
+.view-tab:hover:not(:disabled) { border-color: var(--muted); }
+.view-tab:disabled { opacity: .45; cursor: default; }
+.view-tab.on { border-color: var(--gold); color: var(--gold); background: var(--sky-high); font-weight: 600; }
+
+/* Category filters: what is shown, and what an expansion asks for. */
+.categories { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 100%; }
+.categories legend { float: left; margin-right: 6px; color: var(--muted); font-size: .82rem; padding: 0; }
+.chip {
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px 3px 6px;
+  font-size: .82rem; color: var(--text); background: var(--sky-raised);
+}
+.chip input { accent-color: var(--gold); margin: 0; }
+.chip:has(input:not(:checked)) { color: var(--faint); background: transparent; }
 
 /* Header */
 .top {
@@ -78,8 +104,8 @@ h2 { margin: 0 0 8px; font-family: Georgia, "Songti SC", serif; font-size: 1.05r
 
 /* Controls */
 .controls {
-  width: min(1320px, calc(100% - 32px)); margin: 10px auto 0;
-  display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end;
+  width: min(1320px, calc(100% - 32px)); margin: 10px auto 0; box-sizing: border-box;
+  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
   padding: 14px; background: var(--sky-raised);
   border: 1px solid var(--line); border-radius: var(--radius-surface);
 }
@@ -106,7 +132,11 @@ h2 { margin: 0 0 8px; font-family: Georgia, "Songti SC", serif; font-size: 1.05r
   background: var(--sky-raised); border: 1px solid var(--line);
   border-radius: var(--radius-surface); padding: 12px;
 }
-#canvas { display: block; width: 100%; height: min(60vh, 560px); }
+#canvas { display: block; width: 100%; height: min(68vh, 680px); cursor: grab; touch-action: none; }
+#canvas.dragging { cursor: grabbing; }
+.picture-bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 6px; }
+.picture-bar h2 { margin: 0; }
+.picture-actions { display: flex; gap: 6px; }
 .hint-line { margin: 6px 2px 0; color: var(--muted); font-size: .82rem; }
 
 .legend { list-style: none; display: flex; flex-wrap: wrap; gap: 14px; margin: 10px 2px 0; padding: 0; color: var(--muted); font-size: .82rem; }
@@ -126,6 +156,11 @@ h2 { margin: 0 0 8px; font-family: Georgia, "Songti SC", serif; font-size: 1.05r
 .n-event { fill: var(--ochre); }
 .n-document { fill: var(--indigo); }
 .shape.incident { stroke: var(--danger); stroke-width: 2.5; }
+/* Two kinds the query API makes up rather than stores: the question at the
+   centre, and a "+N more" standing for a category not drawn yet. */
+.n-query { fill: var(--text); }
+.n-cluster { fill: var(--sky-raised); stroke: var(--muted) !important; stroke-width: 1.5; stroke-dasharray: 3 2; }
+.node.kind-cluster .caption { fill: var(--aqua); font-style: italic; }
 /* The emergent graph has its own taxonomy, so its own pair of shapes. */
 .n-entity { fill: var(--aqua); }
 .n-kind { fill: var(--ochre); }
@@ -138,10 +173,16 @@ h2 { margin: 0 0 8px; font-family: Georgia, "Songti SC", serif; font-size: 1.05r
 }
 
 .edge { stroke: var(--edge); stroke-opacity: .6; stroke-width: 1.2; fill: none; }
-.edge.involves { stroke-dasharray: 3 3; }
+.edge.involves, .edge.updates_domain { stroke-dasharray: 3 3; }
+.edge.more { stroke-dasharray: 1 3; stroke-opacity: .5; }
+.edge.matches { stroke: var(--text); stroke-opacity: .25; }
+.lane-label { font-size: 10px; fill: var(--faint); }
 .node { cursor: pointer; }
 .node .shape { stroke: var(--sky-raised); stroke-width: 1.5; }
 .node .caption { font-size: 9px; fill: var(--muted); text-anchor: middle; pointer-events: none; }
+.node .caption.side { text-anchor: start; }
+.node .caption.strong { font-size: 11px; font-weight: 600; fill: var(--text); }
+.node.expanded .shape { stroke: var(--muted); }
 .node:hover .shape, .node.selected .shape { stroke: var(--text); stroke-width: 2; }
 .node:focus-visible { outline: none; }
 .node:focus-visible .ring { stroke: var(--gold); stroke-width: 2.5; fill: none; }
@@ -164,7 +205,9 @@ td.kind { color: var(--muted); white-space: nowrap; }
 .details dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; }
 .details dt { color: var(--muted); font-size: .82rem; }
 .details dd { margin: 0; font-size: .9rem; word-break: break-word; }
-.details .name { margin: 0 0 10px; font-weight: 600; line-height: 1.35; }
+.details .name { margin: 0 0 2px; font-weight: 600; line-height: 1.35; }
+.details .kind-line { margin: 0 0 10px; color: var(--muted); font-size: .82rem; }
+.detail-actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
 .details .neighbours { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
 .details .neighbours li { font-size: .86rem; }
 .details .neighbours button {

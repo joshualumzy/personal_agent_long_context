@@ -465,83 +465,6 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     },
   );
 
-  app.get<{
-    Querystring: {
-      seed?: string;
-      depth?: string;
-      category?: string;
-      sourceType?: string;
-      department?: string;
-      subtype?: string;
-      nodeType?: string;
-      incidentsOnly?: string;
-      includeActors?: string;
-      limit?: string;
-      edgeTypes?: string;
-    };
-  }>("/api/v1/graph", async (request, reply) => {
-    const knowledge = options.companyKnowledge;
-    if (!knowledge?.graphSlice) {
-      return reply.code(503).send({ message: "The graph is not configured." });
-    }
-    const query = request.query;
-    const number = (value: string | undefined) => {
-      if (value === undefined) return undefined;
-      const parsed = Number(value);
-      return Number.isFinite(parsed) ? parsed : undefined;
-    };
-    // Comma-separated rather than repeated ?edgeTypes=a&edgeTypes=b: Fastify's
-    // default query parser gives the latter the same string type as a single
-    // value, which would need its own array-vs-string branch for no benefit —
-    // a layer tab only ever asks for a small fixed list.
-    const edgeTypes = query.edgeTypes
-      ? query.edgeTypes.split(",").map((value) => value.trim()).filter(Boolean)
-      : undefined;
-
-    const slice = await knowledge.graphSlice({
-      ...(query.seed ? { seed: query.seed } : {}),
-      ...(number(query.depth) !== undefined ? { depth: number(query.depth)! } : {}),
-      ...(query.category ? { category: query.category } : {}),
-      ...(query.sourceType ? { sourceType: query.sourceType } : {}),
-      ...(query.department ? { department: query.department } : {}),
-      ...(query.subtype ? { subtype: query.subtype } : {}),
-      ...(query.nodeType ? { nodeType: query.nodeType } : {}),
-      incidentsOnly: query.incidentsOnly === "true",
-      includeActors: query.includeActors === "true",
-      ...(number(query.limit) !== undefined ? { limit: number(query.limit)! } : {}),
-      ...(edgeTypes && edgeTypes.length > 0 ? { edgeTypes } : {}),
-    });
-
-    if (slice.nodes.length === 0) {
-      return reply.code(404).send({ message: "That selection matched no nodes." });
-    }
-    return reply.send(slice);
-  });
-
-  /**
-   * Resolve a free-text question to the graph node most likely about it, so
-   * the main graph tab can center on something without the caller knowing a
-   * source id in advance. Reuses the same hybrid search retrieval already
-   * used for answering questions — no separate keyword-only path — so this
-   * finds the same top hit a person asking the same thing would get as
-   * evidence.
-   */
-  app.get<{ Querystring: { q?: string } }>("/api/v1/graph/seed", async (request, reply) => {
-    const knowledge = options.companyKnowledge;
-    if (!knowledge) {
-      return reply.code(503).send({ message: "Company knowledge is not configured." });
-    }
-    const query = request.query.q?.trim();
-    if (!query) {
-      return reply.code(400).send({ message: "Provide a q parameter." });
-    }
-    const [top] = await knowledge.search(query, 1);
-    if (!top) {
-      return reply.code(404).send({ message: "Nothing matched that question." });
-    }
-    return reply.send({ sourceId: top.sourceId, label: top.title });
-  });
-
   /** One of the fixed company-overview subgraphs, by name. */
   app.get<{ Params: { name: string } }>("/api/v1/graph/view/:name", async (request, reply) => {
     const knowledge = options.companyKnowledge;
@@ -613,8 +536,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   });
 
   /**
-   * Evidence for one graph node, found the same way: hybrid search over the
-   * node's own label. This is not exact provenance for a specific edge — the
+   * Evidence for one graph node: hybrid search over the node's own label, the
+   * same retrieval used to answer questions. This is not exact provenance for a specific edge — the
    * graph does not keep that — it is the same retrieval a question would get,
    * scoped to what this node is called. Good enough for "why is this here"
    * without pretending to be a citation.
@@ -772,6 +695,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.get("/graph", serve("graph.html", "text/html; charset=utf-8"));
   app.get("/graph/app.js", serve("graph.js", "text/javascript; charset=utf-8"));
   app.get("/graph/styles.css", serve("graph.css", "text/css; charset=utf-8"));
+  // The emergent graph, on a page of its own: it shares nothing with the
+  // recorded graph but the stylesheet.
+  app.get("/graph/emergent", serve("emergent.html", "text/html; charset=utf-8"));
+  app.get("/graph/emergent.js", serve("emergent.js", "text/javascript; charset=utf-8"));
 
   if (options.recruiting) {
     registerRecruitingRoutes(app, options.recruiting.board, options.recruiting.gmail);

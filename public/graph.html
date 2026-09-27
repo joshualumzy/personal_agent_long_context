@@ -14,6 +14,7 @@
       <p id="status-line" class="status-line" aria-live="polite">Loading…</p>
     </div>
     <div class="top-actions">
+      <a class="quiet" href="/graph/emergent">Read from the writing</a>
       <button type="button" class="quiet on" id="tab-picture" aria-pressed="true">Picture</button>
       <button type="button" class="quiet" id="tab-table" aria-pressed="false">Table</button>
     </div>
@@ -21,108 +22,66 @@
 
   <p id="error" class="banner error" role="alert" hidden></p>
 
-  <form id="controls" class="controls">
-    <div class="field">
-      <label for="source">Graph</label>
-      <select id="source">
-        <option value="recorded">What the company recorded</option>
-        <option value="emergent">What was read out of the writing</option>
-      </select>
-    </div>
+  <section class="controls" aria-label="What to draw">
+    <form id="ask" class="ask" role="search">
+      <label for="query" class="visually-hidden">Ask about the company</label>
+      <input type="search" id="query" autocomplete="off"
+             placeholder="Ask about a system, a person, a customer, or what happened — e.g. why did the TiDB migration slip?">
+      <button type="submit" class="primary" id="ask-button">Ask</button>
+      <span class="examples" id="examples">
+        Try:
+        <button type="button" class="example">TitanDB</button>
+        <button type="button" class="example">Redis cache incident</button>
+        <button type="button" class="example">Metro United FC</button>
+        <button type="button" class="example">Jax</button>
+      </span>
+    </form>
 
-    <div class="field" id="question-field" hidden>
-      <label for="question">Question</label>
-      <select id="question"></select>
-    </div>
-
-    <nav class="layer-tabs" id="layer-tabs" aria-label="Graph layer">
-      <button type="button" class="layer-tab on" id="layer-main" aria-pressed="true" data-layer="main">Main</button>
-      <button type="button" class="layer-tab" id="layer-org" aria-pressed="false" data-layer="org">Departments</button>
-      <button type="button" class="layer-tab" id="layer-person" aria-pressed="false" data-layer="person">People</button>
-      <button type="button" class="layer-tab" id="layer-causal" aria-pressed="false" data-layer="causal">Causal chains</button>
-      <button type="button" class="layer-tab" id="layer-domain" aria-pressed="false" data-layer="domain">Who knows what</button>
-      <button type="button" class="layer-tab" id="layer-timeline" aria-pressed="false" data-layer="timeline">Timeline</button>
+    <nav class="view-tabs" id="view-tabs" aria-label="Graph">
+      <button type="button" class="view-tab" data-view="query" id="tab-query" aria-pressed="false" disabled>Your question</button>
+      <span class="view-divider" aria-hidden="true"></span>
+      <button type="button" class="view-tab" data-view="org" aria-pressed="false">Departments</button>
+      <button type="button" class="view-tab" data-view="expertise" aria-pressed="false">Who knows what</button>
+      <button type="button" class="view-tab" data-view="incidents" aria-pressed="false">Incidents</button>
+      <button type="button" class="view-tab" data-view="documents" aria-pressed="false">Documents</button>
+      <button type="button" class="view-tab" data-view="customers" aria-pressed="false">Customers &amp; vendors</button>
+      <button type="button" class="view-tab" data-view="timeline" aria-pressed="false">Timeline</button>
     </nav>
 
-    <div class="field" id="query-field">
-      <label for="query">Ask a question</label>
-      <input type="text" id="query" placeholder="e.g. why did the TiDB migration slip?">
-    </div>
-
-    <div class="field" id="view-field">
-      <label for="view">Or pick a filter</label>
-      <select id="view">
-        <option value="query" selected>Follow a question above</option>
-        <option value="incidents">Artifacts caught up in incidents</option>
-        <option value="chain">One causal chain, by source id</option>
-        <option value="type">Everything of one kind</option>
-      </select>
-    </div>
-
-    <div class="field" id="seed-field" hidden>
-      <label for="seed">Starting document</label>
-      <input type="text" id="seed" placeholder="a source id, such as CONF-ENG-022">
-    </div>
-
-    <div class="field" id="depth-field" hidden>
-      <label for="depth">How far to follow</label>
-      <select id="depth">
-        <option value="1">1 step</option>
-        <option value="2" selected>2 steps</option>
-        <option value="3">3 steps</option>
-        <option value="4">4 steps</option>
-      </select>
-    </div>
-
-    <div class="field" id="type-field" hidden>
-      <label for="source-type">Kind</label>
-      <select id="source-type">
-        <option value="jira">Jira tickets</option>
-        <option value="confluence">Confluence pages</option>
-        <option value="slack">Slack messages</option>
-        <option value="zoom_transcript">Zoom transcripts</option>
-        <option value="pr">Pull requests</option>
-        <option value="email">Email</option>
-      </select>
-    </div>
-
-    <div class="field checkbox" id="actors-field">
-      <input type="checkbox" id="include-actors" checked>
-      <label for="include-actors">Include people</label>
-    </div>
-
-    <button type="submit" class="primary" id="draw">Draw</button>
-    <button type="button" class="quiet" id="restore" disabled>Restore original</button>
-  </form>
-
-  <p id="provenance" class="provenance" hidden></p>
-  <p id="extraction" class="banner working" role="status" aria-live="polite" hidden></p>
+    <fieldset class="categories" id="categories">
+      <legend>Show</legend>
+      <!-- Filled from CATEGORIES in app.js, so the list lives in one place. -->
+    </fieldset>
+  </section>
 
   <main class="board">
     <section id="picture" class="picture" aria-labelledby="picture-heading">
-      <h2 id="picture-heading" class="visually-hidden">Diagram</h2>
-      <!-- Focus moves between nodes with Tab; the table below carries the same
+      <div class="picture-bar">
+        <h2 id="picture-heading">Diagram</h2>
+        <div class="picture-actions">
+          <button type="button" class="quiet" id="fit">Fit</button>
+          <button type="button" class="quiet" id="restore" disabled>Back to start</button>
+        </div>
+      </div>
+      <!-- Focus moves between nodes with Tab; the table carries the same
            relationships for anyone not reading the diagram. -->
       <svg id="canvas" viewBox="-420 -320 840 640" role="application"
            aria-describedby="canvas-help">
-        <title>Documents and people, joined by how they reference one another</title>
+        <title>People, work, events and documents, joined by how they relate</title>
       </svg>
       <p id="canvas-help" class="hint-line">
-        Click a node to expand from it. Double-click for its attributes and evidence.
-        Tab moves between items with a keyboard; Enter opens the focused item.
+        Click an item to open it up: its neighbours are added around it, a few of each kind,
+        and a “+N more” item stands for the rest — click that for the next few.
+        Drag to move around, scroll to zoom. Tab moves between items; Enter opens the focused one.
       </p>
-      <ul class="legend" id="legend-recorded">
-        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 7,0 0,7 -7,0" class="n-person"/></svg>People</li>
-        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="-4,-7 4,-7 7,0 4,7 -4,7 -7,0" class="n-organization"/></svg>Organization</li>
-        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item"/></svg>Item — ticket, PR, or domain</li>
-        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><rect x="-6" y="-6" width="12" height="12" class="n-event"/></svg>Event — something that happened</li>
-        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 7,6 -7,6" class="n-document"/></svg>Document — a Confluence page</li>
+      <ul class="legend" id="legend">
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 7,0 0,7 -7,0" class="n-person"/></svg>Person</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="-4,-7 4,-7 7,0 4,7 -4,7 -7,0" class="n-organization"/></svg>Department, customer or vendor</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item"/></svg>Work item or knowledge domain</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><rect x="-6" y="-6" width="12" height="12" class="n-event"/></svg>Event</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 7,6 -7,6" class="n-document"/></svg>Document</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-cluster"/></svg>More of one kind</li>
         <li class="legend-note"><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item incident"/></svg>A red outline means it is part of an incident</li>
-      </ul>
-      <ul class="legend" id="legend-emergent" hidden>
-        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-entity"/></svg>Something named in the writing</li>
-        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><rect x="-6" y="-6" width="12" height="12" class="n-kind"/></svg>A kind of thing</li>
-        <li>Every line is a relationship read out of the prose. Select an item to see them named.</li>
       </ul>
     </section>
 

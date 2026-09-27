@@ -1,89 +1,83 @@
 /**
- * The company graph, drawn from /api/v1/graph.
+ * The company graph, drawn from the recorded graph in Postgres.
  *
- * Two views of one slice, kept in step: a diagram, and a table of every
- * relationship in it. The table is not a fallback bolted on afterwards — a
- * force-directed picture is unreadable to anyone not looking at it, and hard to
- * read precisely even then, so the table is where the relationships can actually
- * be checked. Both are built from the same response.
+ * Two ways in, one picture:
+ *   - a question ("Your question"): /api/v1/graph/query puts the question in
+ *     the middle and the things it points at around it;
+ *   - a company overview (Departments, Who knows what, Incidents, Documents,
+ *     Customers & vendors, Timeline): /api/v1/graph/view/:name, a fixed
+ *     subgraph that needs no question.
+ * Either way the picture grows by clicking: /api/v1/graph/expand adds a few
+ * neighbours of each kind around the clicked item and folds the rest into a
+ * "+N more" item, which pages in the next few when clicked. Nothing already on
+ * screen moves when something is added.
  *
- * Layout is a small force simulation run to completion before anything is drawn,
- * rather than animated into place: the result is identical and nothing moves
- * under the pointer. Nodes are told apart by shape as well as colour.
- *
- * The recorded graph is split into three layer tabs (main / people / causal
- * chains), each independently cached: the main tab is query-centered and
- * re-centers on click (a fresh request every time, since the center itself
- * changes), while the person and causal layers have no seed — one full
- * request each, cached after the first draw, since "the involves layer" is
- * a fixed thing to look at rather than something that follows a click.
- * Restore original resets whichever tab is open to its own cached slice.
+ * The category chips filter what is shown and what an expansion asks for.
+ * Every relationship drawn is also a row in the table, which is where they can
+ * be read precisely and without the picture.
  */
 
 const SVG = "http://www.w3.org/2000/svg";
 const $ = (selector) => document.querySelector(selector);
 
-// A force layout stops being readable well before this many nodes; the server
-// caps the slice too, and this is the view agreeing with it.
-const MAX_DRAWN = 120;
+/** What a reader filters by: the categories graph-neighbourhood.ts uses. */
+const CATEGORIES = [
+  ["people", "People"],
+  ["departments", "Departments"],
+  ["domains", "Knowledge domains"],
+  ["work", "Tickets & work"],
+  ["events", "Events"],
+  ["documents", "Documents"],
+  ["partners", "Customers & vendors"],
+];
 
-// The main tab's own, tighter cap: it is meant to be read as "what is near
-// this one thing", not "everything in the neighbourhood at once". Past this
-// many nodes the view should be told to click into a smaller piece rather
-// than rendering all of it.
-const MAIN_LAYER_CAP = 20;
-
-const LAYER_EDGE_TYPES = {
-  person: ["involves"],
-  // The incident spine: which incident recurred from which (and which
-  // customer ticket escalated into one), the ticket each was tracked in, and
-  // the PR that fixed it. The postmortem is a 'produced' edge, which the whole
-  // corpus has 1,608 of, so it waits for the overview API rather than being
-  // asked for here.
-  causal: ["caused_by", "tracked_in", "fixed_by"],
-  domain: ["knows_about", "owns_domain"],
-  // Departments, who is in each and who leads it, and which knowledge domains
-  // each one is responsible for.
-  org: ["member_of", "leads", "belongs_to"],
+/**
+ * How each overview is laid out. Structure views are columns, one per kind of
+ * thing, so the relationship the view is about runs left to right; the
+ * timeline puts time on the x axis. The question graph is radial: the question
+ * in the middle, what it points at around it.
+ */
+const VIEWS = {
+  query: { layout: "radial" },
+  org: { layout: "columns", columns: ["people", "departments", "domains"] },
+  expertise: { layout: "columns", columns: ["departments", "people", "domains"] },
+  incidents: { layout: "columns", columns: ["people", "events", "work", "documents", "domains"] },
+  documents: { layout: "columns", columns: ["events", "documents", "people", "domains"] },
+  customers: { layout: "columns", columns: ["contacts", "partners", "work", "events", "documents"] },
+  timeline: { layout: "timeline" },
 };
 
-// The layers that are a filter over edge types, as opposed to the main tab
-// (query-centred) and the timeline (every event, laid out by when).
-const EDGE_TYPE_LAYERS = new Set(Object.keys(LAYER_EDGE_TYPES));
-
-// Stands in for state.mainOriginalSeed when the main tab has drawn its
-// no-question-asked-yet fallback, so the cache/restore logic always has a
-// key to look up rather than needing an "is there really a seed" branch.
-const MAIN_NO_SEED_KEY = "__no_seed__";
+/** Neighbours per category an expansion adds before folding the rest. */
+const EXPAND_BUDGET = 5;
+/** Past this many items the picture stops being readable; say so instead. */
+const MAX_DRAWN = 300;
+const COLUMN_GAP = 250;
+const ROW_GAP = 26;
 
 const state = {
+  view: "org",
+  query: "",
   slice: null,
-  selected: null,
-  source: "recorded",
-  extraction: null,
-  questions: [],
-  layer: "main",
-  // The slice each tab first drew, keyed by layer name for person/causal
-  // (one entry, since there is no seed to vary) and by seed id for main
-  // (one entry per node visited, so returning to a node already seen does
-  // not re-fetch it).
-  cache: { main: new Map(), person: null, causal: null, domain: null, org: null, timeline: null },
-  // The main tab's own starting slice — what "Restore original" returns to —
-  // kept separate from state.cache.main because that map grows as the user
-  // clicks around; this is specifically the first one drawn.
-  mainOriginalSeed: null,
-  evidenceCache: new Map(),
-  // What the current picture is about: the concentric layout puts this at the
-  // centre and everything else at its own hop distance from it. Null lets the
-  // layout pick the best-connected node, which is what the layer tabs want.
+  /** The slice the current view first drew, for Back to start. */
+  start: null,
   centreId: null,
-  // Where each node was last drawn, so a redraw can keep them in place
-  // instead of relaying out the whole picture.
   positions: new Map(),
-  // Which nodes have already been expanded, so clicking one twice does not
-  // refetch a neighbourhood already merged in.
   expanded: new Set(),
+  hidden: new Set(),
+  selected: null,
+  evidenceCache: new Map(),
+  /** The time scale the timeline was first drawn at, kept so expanding a day
+   * places its events on the same axis. */
+  timeScale: null,
+  viewBox: { x: -420, y: -320, width: 840, height: 640 },
+  /** Bumped on every load, so a slow response to an older request is dropped
+   * instead of drawing over a newer one. */
+  generation: 0,
 };
+
+// ---------------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------------
 
 function svg(tag, attributes = {}) {
   const element = document.createElementNS(SVG, tag);
@@ -109,23 +103,7 @@ function h(tag, attributes = {}, ...children) {
   return element;
 }
 
-/** Deterministic start positions, so the same slice always lays out the same. */
-function seedNumber(text) {
-  let value = 2166136261;
-  for (let index = 0; index < text.length; index += 1) {
-    value ^= text.charCodeAt(index);
-    value = Math.imul(value, 16777619);
-  }
-  return (value >>> 0) / 4294967295;
-}
-
-/**
- * What to call a node when it has no label. A recorded node's id is
- * `type:refKey` (the natural key is shared across types — an incident and its
- * jira ticket are both "ENG-112" — so the type has to be part of the
- * identity); a person reads the natural key, not the prefixed id. Emergent
- * nodes have no refKey and fall back to their own id.
- */
+/** A node's natural key, never the `type:` prefixed id a person would not cite. */
 function naturalKey(node) {
   return node.refKey ?? node.id;
 }
@@ -134,741 +112,68 @@ function nameOf(node) {
   return node.label || naturalKey(node);
 }
 
-function shortLabel(node) {
+function shortLabel(node, length = 24) {
   const label = nameOf(node);
-  return label.length > 22 ? `${label.slice(0, 21)}…` : label;
+  return label.length > length ? `${label.slice(0, length - 1)}…` : label;
 }
 
-function nodeKind(node) {
-  // The emergent graph brings its own taxonomy: cognee labels every extracted
-  // thing an Entity, and the categories it groups them under EntityType.
-  if (node.type === "Entity") return "entity";
-  if (node.type === "EntityType") return "kind";
-  // The recorded graph's own five kinds, named exactly as the backend names
-  // them so there is one vocabulary rather than three.
-  if (node.type === "person") return "person";
-  if (node.type === "organization") return "organization";
-  if (node.type === "item") return "item";
-  if (node.type === "event") return "event";
-  if (node.type === "document") return "document";
-  return "entity";
+/** The same categories the server budgets by (src/graph-neighbourhood.ts). */
+function categoryOf(node) {
+  switch (node.type) {
+    case "person": return node.subtype === "external_contact" ? "partners" : "people";
+    case "organization": return node.subtype === "department" ? "departments" : "partners";
+    case "item": return node.subtype === "domain" ? "domains" : "work";
+    case "event": return "events";
+    case "document": return "documents";
+    case "cluster": return node.props?.category ?? null;
+    default: return null;
+  }
 }
 
 function describeKind(node) {
   const incident = node.isIncident ? ", part of an incident" : "";
-  switch (nodeKind(node)) {
-    case "person": return "Person";
-    case "organization": return node.subtype === "department" ? "Department" : "Organization";
-    case "item": return `Item${incident}`;
-    case "event": return `Event${incident}`;
+  switch (node.type) {
+    case "query": return "Your question";
+    case "cluster":
+      return node.props?.day ? "Everything else that happened that day" : "More of one kind, not drawn yet";
+    case "person": return node.subtype === "external_contact" ? "Customer or vendor contact" : "Person";
+    case "organization":
+      if (node.subtype === "department") return "Department";
+      if (node.subtype === "customer") return "Customer";
+      if (node.subtype === "vendor") return "Vendor";
+      return "Organization";
+    case "item":
+      if (node.subtype === "domain") return "Knowledge domain";
+      return `Work item${node.subtype ? ` (${node.subtype.replace(/_/g, " ")})` : ""}${incident}`;
+    case "event": return `Event${node.subtype ? ` (${node.subtype.replace(/_/g, " ")})` : ""}${incident}`;
     case "document": return `Document${incident}`;
-    case "entity": return "Something named in the writing";
-    case "kind": return "A kind of thing";
     default: return "Item";
   }
 }
 
-// The outermost ring's radius. The viewBox is 840x640, so this leaves room for
-// a node's caption without clipping.
-const LAYOUT_RADIUS = 260;
-
-/** The best-connected node, used as the centre when the caller has no
- * particular one in mind (the layer tabs, which have no seed). */
-function highestDegree(nodes, edges) {
-  if (nodes.length === 0) return null;
-  const degree = new Map(nodes.map((node) => [node.id, 0]));
-  for (const edge of edges) {
-    if (degree.has(edge.source)) degree.set(edge.source, degree.get(edge.source) + 1);
-    if (degree.has(edge.target)) degree.set(edge.target, degree.get(edge.target) + 1);
-  }
-  return [...degree.entries()]
-    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0][0];
+/** A day summary expands to its events like any node; a "+N more" cluster
+ * pages. The question itself is where the picture starts, not something to
+ * expand. */
+function isPager(node) {
+  return node.type === "cluster" && typeof node.props?.parent === "string";
 }
 
-/** How many hops each node sits from the centre, by breadth-first search over
- * the undirected graph. This is the number the layout turns into a radius. */
-function ringsFrom(nodes, edges, centreId) {
-  const present = new Set(nodes.map((node) => node.id));
-  const adjacency = new Map(nodes.map((node) => [node.id, []]));
-  for (const edge of edges) {
-    if (!present.has(edge.source) || !present.has(edge.target)) continue;
-    adjacency.get(edge.source).push(edge.target);
-    adjacency.get(edge.target).push(edge.source);
-  }
-
-  const ring = new Map();
-  if (centreId && present.has(centreId)) {
-    ring.set(centreId, 0);
-    let frontier = [centreId];
-    let depth = 0;
-    while (frontier.length > 0) {
-      depth += 1;
-      const next = [];
-      for (const id of frontier) {
-        for (const neighbour of adjacency.get(id) ?? []) {
-          if (ring.has(neighbour)) continue;
-          ring.set(neighbour, depth);
-          next.push(neighbour);
-        }
-      }
-      frontier = next;
-    }
-  }
-
-  // Anything the centre cannot reach goes one ring past the furthest thing it
-  // can, so disconnected nodes are visibly outside the structure rather than
-  // mixed into it.
-  const reached = [...ring.values()];
-  const outer = (reached.length > 0 ? Math.max(...reached) : 0) + 1;
-  for (const node of nodes) {
-    if (!ring.has(node.id)) ring.set(node.id, outer);
-  }
-  return ring;
+function expandable(node) {
+  return node.type !== "query" && !state.expanded.has(node.id);
 }
 
-/**
- * A concentric layout: the centre is what the view is about, and a node's
- * distance from it is how many hops away it is. Unlike the force simulation
- * this replaced, both coordinates mean something, it is O(n) rather than 320
- * iterations of O(n²), and it is stable — adding nodes does not move the ones
- * already on screen, which is what makes click-to-expand additive.
- *
- * `options.pinned` carries positions already assigned on a previous draw;
- * those nodes keep exactly where they were and only new ones get placed.
- */
-function layout(nodes, edges, options = {}) {
-  const positions = new Map();
-  if (nodes.length === 0) return positions;
-
-  const pinned = options.pinned ?? new Map();
-  const present = new Set(nodes.map((node) => node.id));
-  const centreId = options.centreId && present.has(options.centreId)
-    ? options.centreId
-    : highestDegree(nodes, edges);
-  const ring = ringsFrom(nodes, edges, centreId);
-
-  const byRing = new Map();
-  for (const node of nodes) {
-    const index = ring.get(node.id) ?? 0;
-    if (!byRing.has(index)) byRing.set(index, []);
-    byRing.get(index).push(node);
-  }
-  // Within a ring, group by kind so one kind occupies a contiguous arc instead
-  // of being scattered around it, then by id so the order never shuffles
-  // between draws of the same slice.
-  for (const list of byRing.values()) {
-    list.sort((left, right) =>
-      nodeKind(left).localeCompare(nodeKind(right)) || left.id.localeCompare(right.id));
-  }
-
-  const maxRing = Math.max(...byRing.keys());
-  const gap = maxRing > 0 ? LAYOUT_RADIUS / maxRing : 0;
-
-  for (const [index, list] of byRing) {
-    // Each ring starts at its own angle, so consecutive rings do not line up
-    // radially and make the picture look like spokes.
-    const offset = seedNumber(`ring-${index}`) * Math.PI * 2;
-    const radius = gap * index;
-    list.forEach((node, position) => {
-      const already = pinned.get(node.id);
-      if (already) {
-        positions.set(node.id, { x: already.x, y: already.y });
-        return;
-      }
-      if (index === 0) {
-        positions.set(node.id, { x: 0, y: 0 });
-        return;
-      }
-      const angle = offset + (position / list.length) * Math.PI * 2;
-      positions.set(node.id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
-    });
-  }
-  return positions;
-}
-
-/**
- * A timeline: x is when the thing happened, y is a lane per department. Both
- * coordinates carry meaning, which a force simulation cannot do and a
- * concentric layout does not try to — "what happened around the same time" is
- * a question about time, so time has to be an axis.
- *
- * Nodes with no timestamp (12 of 2,352 event nodes) go in a lane of their own
- * at the bottom rather than being dropped or silently placed at the epoch.
- */
-function timelineLayout(nodes) {
-  const positions = new Map();
-  if (nodes.length === 0) return positions;
-
-  const timeOf = (node) => {
-    const raw = node.props?.occurred_at;
-    const parsed = raw ? Date.parse(String(raw)) : Number.NaN;
-    return Number.isFinite(parsed) ? parsed : null;
-  };
-
-  const times = nodes.map(timeOf).filter((value) => value !== null);
-  const earliest = times.length > 0 ? Math.min(...times) : 0;
-  const latest = times.length > 0 ? Math.max(...times) : 1;
-  const span = latest - earliest || 1;
-
-  // One lane per department, ordered by name so the lanes do not reshuffle
-  // between draws. Undated nodes get the last lane.
-  const departments = [...new Set(nodes.map((node) => node.department).filter(Boolean))].sort();
-  const UNDATED_LANE = "—";
-  const lanes = [...departments, UNDATED_LANE];
-  const laneOf = (node) =>
-    timeOf(node) === null ? UNDATED_LANE : (node.department ?? departments[0] ?? UNDATED_LANE);
-
-  const laneHeight = lanes.length > 1 ? 480 / (lanes.length - 1) : 0;
-  // Several events can share a timestamp, which would stack them on one point;
-  // nudge each successive one down a little within its lane.
-  const seenAt = new Map();
-
-  for (const node of nodes) {
-    const time = timeOf(node);
-    const x = time === null ? 380 : -380 + ((time - earliest) / span) * 760;
-    const laneIndex = lanes.indexOf(laneOf(node));
-    const key = `${laneIndex}:${Math.round(x)}`;
-    const stacked = seenAt.get(key) ?? 0;
-    seenAt.set(key, stacked + 1);
-    const y = -240 + laneIndex * laneHeight + (stacked % 4) * 9;
-    positions.set(node.id, { x, y });
-  }
-  return positions;
-}
-
-function shapeFor(node) {
-  const kind = nodeKind(node);
-  // One shape per kind, so the picture still reads without colour. The
-  // incident class only adds an outline — it never replaces the fill, which
-  // would cost the node its kind.
-  const incident = node.isIncident ? " incident" : "";
-  if (kind === "person") {
-    return svg("polygon", { points: "0,-7 7,0 0,7 -7,0", class: `shape n-person${incident}` });
-  }
-  if (kind === "organization") {
-    return svg("polygon", {
-      points: "-4,-7 4,-7 7,0 4,7 -4,7 -7,0",
-      class: `shape n-organization${incident}`,
-    });
-  }
-  if (kind === "item") {
-    return svg("circle", { r: 7, class: `shape n-item${incident}` });
-  }
-  if (kind === "event") {
-    return svg("rect", { x: -6, y: -6, width: 12, height: 12, class: `shape n-event${incident}` });
-  }
-  if (kind === "document") {
-    return svg("polygon", { points: "0,-7 7,6 -7,6", class: `shape n-document${incident}` });
-  }
-  if (kind === "kind") {
-    return svg("rect", { x: -6, y: -6, width: 12, height: 12, class: "shape n-kind" });
-  }
-  return svg("circle", { r: 7, class: "shape n-entity" });
-}
-
-/**
- * When a slice is larger than can be drawn, keep the best-connected nodes.
- * Taking the first N instead would drop exactly the hubs that make the picture
- * mean anything, and the emergent graph is routinely twice the cap.
- */
-function mostConnected(nodes, edges, cap) {
-  if (nodes.length <= cap) return nodes;
-  const degree = new Map(nodes.map((node) => [node.id, 0]));
-  for (const edge of edges) {
-    if (degree.has(edge.source)) degree.set(edge.source, degree.get(edge.source) + 1);
-    if (degree.has(edge.target)) degree.set(edge.target, degree.get(edge.target) + 1);
-  }
-  return [...nodes]
-    .sort((left, right) =>
-      (degree.get(right.id) ?? 0) - (degree.get(left.id) ?? 0) ||
-      left.id.localeCompare(right.id))
-    .slice(0, cap);
-}
-
-function drawPicture() {
-  const canvas = $("#canvas");
-  const title = canvas.querySelector("title");
-  canvas.replaceChildren(title);
-
-  const { nodes, edges } = state.slice;
-  // The main tab's 20 is a budget for the *first* view being legible, not a
-  // hard ceiling: once the reader has expanded something they have asked for a
-  // bigger picture, and trimming back to 20 would throw away nodes they just
-  // added. MAX_DRAWN is the real ceiling either way.
-  const cap = state.layer !== "main" || state.expanded.size > 0
-    ? MAX_DRAWN
-    : MAIN_LAYER_CAP;
-  const drawn = mostConnected(nodes, edges, cap);
-  const visible = new Set(drawn.map((node) => node.id));
-  // The timeline puts time on an axis; every other layer is about structure,
-  // so distance from a centre is the more useful thing to encode.
-  const positions = state.layer === "timeline"
-    ? timelineLayout(drawn)
-    : layout(drawn, edges, {
-        centreId: state.centreId,
-        // Nodes already on screen keep their place, so expanding one does not
-        // rearrange everything the reader has already made sense of.
-        pinned: state.positions,
-      });
-  // Remembered for the next draw's pinning, trimmed to what is actually on
-  // screen so a node dropped from the slice does not keep a stale position.
-  state.positions = new Map(
-    [...positions].filter(([id]) => visible.has(id)).map(([id, point]) => [id, point]),
-  );
-
-  const edgeLayer = svg("g");
-  for (const edge of edges) {
-    if (!visible.has(edge.source) || !visible.has(edge.target)) continue;
-    const a = positions.get(edge.source);
-    const b = positions.get(edge.target);
-    edgeLayer.append(svg("line", {
-      x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `edge ${edge.type}`,
-    }));
-  }
-
-  const nodeLayer = svg("g");
-  for (const node of drawn) {
-    const point = positions.get(node.id);
-    // tabindex makes each node a stop, so the diagram is walkable without a
-    // pointer; the group carries the label so focus announces something useful.
-    const group = svg("g", {
-      class: "node",
-      transform: `translate(${point.x.toFixed(1)} ${point.y.toFixed(1)})`,
-      tabindex: "0",
-      role: "button",
-      "aria-label": `${nameOf(node)}. ${describeKind(node)}.`,
-      "data-id": node.id,
-    });
-    group.append(
-      svg("circle", { r: 12, class: "ring" }),
-      shapeFor(node),
-      Object.assign(svg("text", { y: 19, class: "caption" }), { textContent: shortLabel(node) }),
-    );
-    // Single click: select, and grow the picture outward from this node — the
-    // neighbours are merged in, so nothing already on screen is lost. Double
-    // click: open its details. expandFrom decides for itself which tabs it
-    // applies to.
-    group.addEventListener("click", () => {
-      select(node.id);
-      expandFrom(node.id);
-    });
-    group.addEventListener("dblclick", (event) => {
-      event.preventDefault();
-      openDetails(node.id);
-    });
-    group.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        select(node.id);
-        expandFrom(node.id);
-      }
-    });
-    // Tabbing onto a node shows its details, so the rail follows the keyboard.
-    group.addEventListener("focus", () => select(node.id));
-    nodeLayer.append(group);
-  }
-
-  canvas.append(edgeLayer, nodeLayer);
-}
-
-function drawTable() {
-  const { nodes, edges } = state.slice;
-  const byId = new Map(nodes.map((node) => [node.id, node]));
-  const rows = edges.map((edge) => {
-    const from = byId.get(edge.source);
-    const to = byId.get(edge.target);
-    return h(
-      "tr", {},
-      h("td", {}, from ? nameOf(from) : edge.source),
-      h("td", { class: "kind" }, from ? describeKind(from) : "—"),
-      h("td", { class: "kind" }, edge.type.replace(/_/g, " ")),
-      h("td", {}, to ? nameOf(to) : edge.target),
-    );
+function visibleNodes() {
+  return state.slice.nodes.filter((node) => {
+    const category = categoryOf(node);
+    return category === null || !state.hidden.has(category);
   });
-  $("#edge-rows").replaceChildren(...rows);
-  $("#table-summary").textContent =
-    `${nodes.length} items, ${edges.length} relationships.`;
 }
 
-function select(id) {
-  state.selected = id;
-  const { nodes, edges } = state.slice;
-  const node = nodes.find((candidate) => candidate.id === id);
-  if (!node) return;
-
-  for (const group of document.querySelectorAll(".node")) {
-    group.classList.toggle("selected", group.dataset.id === id);
-  }
-
-  const byId = new Map(nodes.map((candidate) => [candidate.id, candidate]));
-  const neighbours = [];
-  for (const edge of edges) {
-    if (edge.source === id && byId.has(edge.target)) {
-      neighbours.push({ node: byId.get(edge.target), direction: "to", type: edge.type });
-    } else if (edge.target === id && byId.has(edge.source)) {
-      neighbours.push({ node: byId.get(edge.source), direction: "from", type: edge.type });
-    }
-  }
-
-  const facts = [["Kind", describeKind(node)]];
-  // A cognee node id is a uuid, which tells a reader nothing; a source id does.
-  if (state.source === "recorded") facts.push(["Identifier", naturalKey(node)]);
-  if (node.sourceType) facts.push(["Type", node.sourceType]);
-  if (node.department) facts.push(["Department", node.department]);
-  if (typeof node.simulationDay === "number") facts.push(["Day", String(node.simulationDay)]);
-
-  const list = h("dl", {});
-  for (const [term, value] of facts) {
-    list.append(h("dt", {}, term), h("dd", {}, value));
-  }
-
-  const panel = $("#details");
-  panel.replaceChildren(
-    h("p", { class: "name" }, nameOf(node)),
-    list,
-    neighbours.length
-      ? h("ul", { class: "neighbours" },
-          h("li", { class: "kind" }, `Connected to ${neighbours.length}:`),
-          // The relationship is named on every row. In the emergent graph that
-          // name is the finding — "blocked by", "mitigated by", "has risk" — and
-          // it is lost if the row only says which two things are joined.
-          ...neighbours.slice(0, 14).map(({ node: other, direction, type }) =>
-            h("li", {},
-              h("span", { class: "kind" },
-                `${direction === "to" ? "→ " : "← "}${type.replace(/_/g, " ")} `),
-              h("button", { type: "button", onclick: () => focusNode(other.id) },
-                nameOf(other)),
-            )),
-        )
-      : h("p", { class: "hint-line" }, "Nothing else in this view connects to it."),
-  );
+function enabledCategories() {
+  return CATEGORIES.map(([key]) => key).filter((key) => !state.hidden.has(key));
 }
 
-/** Move focus to a node, so following a link keeps the keyboard in the diagram. */
-function focusNode(id) {
-  const group = document.querySelector(`.node[data-id="${CSS.escape(id)}"]`);
-  if (group) group.focus();
-  else select(id);
-}
-
-/**
- * Expand the clicked node in place: fetch its immediate neighbourhood and
- * merge it into what is already drawn, rather than replacing the picture.
- * The graph grows outward from wherever the reader started, and because the
- * concentric layout pins nodes it has already placed, nothing that was on
- * screen moves when new nodes arrive.
- *
- * Expanding the same node twice is a no-op: it is recorded in state.expanded
- * and its neighbours are already in the slice.
- */
-async function expandFrom(id) {
-  // Expanding is a recorded-graph, main-tab idea: the emergent graph is one
-  // question's own fixed export with no seed to follow outward, and the
-  // person/causal layers are defined by an edge type — pulling in a node's
-  // full neighbourhood there would drag in edges the layer excludes and stop
-  // it being that layer.
-  if (state.source !== "recorded" || state.layer !== "main") return;
-  if (state.expanded.has(id)) return;
-
-  $("#status-line").textContent = "Loading…";
-  try {
-    const cached = state.cache.main.get(id);
-    const slice = cached ?? await fetchSlice(`/api/v1/graph?${new URLSearchParams({
-      seed: id,
-      depth: "1",
-      includeActors: $("#include-actors").checked ? "true" : "false",
-    })}`);
-    if (!cached) state.cache.main.set(id, slice);
-    state.expanded.add(id);
-    state.slice = mergeSlices(state.slice, slice);
-    drawPicture();
-    drawTable();
-    reportCounts();
-    $("#restore").disabled = false;
-  } catch (error) {
-    showError(error instanceof Error ? error.message : String(error));
-  }
-}
-
-/** Union of two slices: nodes deduped by id, edges by the triple that makes
- * one unique. The existing slice wins on conflict, so a node already drawn
- * keeps the form the reader has been looking at. */
-function mergeSlices(current, addition) {
-  if (!current) return addition;
-  const nodes = [...current.nodes];
-  const seenNodes = new Set(nodes.map((node) => node.id));
-  for (const node of addition.nodes) {
-    if (seenNodes.has(node.id)) continue;
-    seenNodes.add(node.id);
-    nodes.push(node);
-  }
-
-  const edges = [...current.edges];
-  const edgeKey = (edge) => `${edge.source}\u0000${edge.target}\u0000${edge.type}`;
-  const seenEdges = new Set(edges.map(edgeKey));
-  for (const edge of addition.edges) {
-    const key = edgeKey(edge);
-    if (seenEdges.has(key)) continue;
-    seenEdges.add(key);
-    edges.push(edge);
-  }
-
-  return { nodes, edges, truncated: current.truncated || addition.truncated };
-}
-
-/**
- * Double-click: open the details panel with two sub-tabs.
- *
- * Attributes reads node.props as it already arrived on the wire — no
- * request, since a node with rich props (an incident's root_cause, a
- * domain's ownership) already carries them. Evidence is hybrid search over
- * the node's own label, fetched only the first time this tab is opened for
- * this node and cached after — not exact provenance for a specific edge
- * (the graph does not keep that), but the same retrieval a question about
- * this node would get.
- */
-function openDetails(id) {
-  const { nodes } = state.slice;
-  const node = nodes.find((candidate) => candidate.id === id);
-  if (!node) return;
-  select(id);
-
-  const panel = $("#details");
-  const attributesTab = h("div", { class: "detail-pane" });
-  const evidenceTab = h("div", { class: "detail-pane", hidden: true });
-  renderAttributes(attributesTab, node);
-
-  const attributesButton = h("button", {
-    type: "button", class: "detail-tab on",
-    onclick: () => {
-      attributesButton.classList.add("on");
-      evidenceButton.classList.remove("on");
-      attributesTab.hidden = false;
-      evidenceTab.hidden = true;
-    },
-  }, "Attributes");
-  const evidenceButton = h("button", {
-    type: "button", class: "detail-tab",
-    onclick: async () => {
-      attributesButton.classList.remove("on");
-      evidenceButton.classList.add("on");
-      attributesTab.hidden = true;
-      evidenceTab.hidden = false;
-      await renderEvidence(evidenceTab, node);
-    },
-  }, "Evidence");
-
-  panel.replaceChildren(
-    h("p", { class: "name" }, nameOf(node)),
-    h("div", { class: "detail-tabs" }, attributesButton, evidenceButton),
-    attributesTab,
-    evidenceTab,
-  );
-}
-
-/** node.props as delivered, plus the few flat fields the wire format already
- * has. Common bookkeeping fields (occurred_at is folded into a readable date
- * elsewhere, source_type/category/department duplicate what the node already
- * shows) are skipped so what is left is what actually distinguishes this
- * node — an incident's root_cause, a domain's primary_owner, and so on. */
-function renderAttributes(container, node) {
-  const skip = new Set(["source_type", "category", "department", "is_incident"]);
-  const props = node.props ?? {};
-  const entries = Object.entries(props).filter(
-    ([key, value]) => !skip.has(key) && value !== null && value !== undefined,
-  );
-
-  const facts = [["Kind", describeKind(node)], ["Identifier", naturalKey(node)]];
-  if (node.sourceType) facts.push(["Type", node.sourceType]);
-  if (node.department) facts.push(["Department", node.department]);
-
-  const list = h("dl", {});
-  for (const [term, value] of facts) list.append(h("dt", {}, term), h("dd", {}, value));
-  for (const [key, value] of entries) {
-    list.append(
-      h("dt", {}, key.replace(/_/g, " ")),
-      h("dd", {}, typeof value === "object" ? JSON.stringify(value) : String(value)),
-    );
-  }
-
-  container.replaceChildren(
-    list,
-    entries.length === 0
-      ? h("p", { class: "hint-line" }, "No additional attributes recorded for this node.")
-      : null,
-  );
-}
-
-/** Hybrid search over the node's own label, cached per node id so reopening
- * this tab does not refetch. */
-async function renderEvidence(container, node) {
-  const cached = state.evidenceCache.get(node.id);
-  if (cached) return renderEvidenceList(container, cached);
-
-  container.replaceChildren(h("p", { class: "hint-line" }, "Searching…"));
-  try {
-    const response = await fetch(
-      `/api/v1/graph/evidence?${new URLSearchParams({ label: nameOf(node), limit: "5" })}`,
-    );
-    if (!response.ok) throw new Error(`Evidence search failed (${response.status}).`);
-    const body = await response.json();
-    const evidence = Array.isArray(body.evidence) ? body.evidence : [];
-    state.evidenceCache.set(node.id, evidence);
-    renderEvidenceList(container, evidence);
-  } catch (error) {
-    container.replaceChildren(
-      h("p", { class: "hint-line" }, error instanceof Error ? error.message : String(error)),
-    );
-  }
-}
-
-function renderEvidenceList(container, evidence) {
-  if (evidence.length === 0) {
-    container.replaceChildren(h("p", { class: "hint-line" }, "Nothing found for this label."));
-    return;
-  }
-  container.replaceChildren(
-    h("ul", { class: "evidence-list" },
-      ...evidence.map((item) =>
-        h("li", {},
-          h("p", { class: "evidence-title" }, item.title || item.sourceId),
-          h("p", { class: "evidence-excerpt" }, item.excerpt || ""),
-        )),
-    ),
-  );
-}
-
-function showError(message) {
-  const banner = $("#error");
-  banner.textContent = message;
-  banner.hidden = false;
-}
-
-/**
- * Which questions have a graph. Each is extracted on its own, so each has its own
- * picture: merging them would leave a relationship impossible to attribute to the
- * question that found it.
- */
-async function loadQuestions() {
-  const select = $("#question");
-  try {
-    const response = await fetch("/api/v1/graph/emergent");
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      state.questions = [];
-      select.replaceChildren();
-      throw new Error(body.message || "No extracted graphs yet.");
-    }
-    const index = await response.json();
-    state.questions = Array.isArray(index.graphs) ? index.graphs : [];
-    // Newest first: the question just asked is the one most likely wanted.
-    state.questions.sort((left, right) =>
-      String(right.extracted_at ?? "").localeCompare(String(left.extracted_at ?? "")));
-    const chosen = select.value;
-    select.replaceChildren(
-      ...state.questions.map((graph) =>
-        h("option", { value: graph.slug },
-          `${graph.question}  (${graph.node_count} items)`)),
-    );
-    if (state.questions.some((graph) => graph.slug === chosen)) select.value = chosen;
-    return state.questions.length > 0;
-  } catch (error) {
-    throw error;
-  }
-}
-
-/**
- * Resolve free text to a graph node via the same hybrid search used to
- * answer questions. Only meaningful on the main tab, and only when the view
- * is "query" (the default) rather than one of the older manual filters.
- */
-async function resolveSeed(query) {
-  const response = await fetch(`/api/v1/graph/seed?${new URLSearchParams({ q: query })}`);
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.message || "Nothing matched that question.");
-  }
-  return response.json();
-}
-
-/**
- * Which URL to draw next. Three shapes:
- *   - emergent: unchanged, one question's own extraction
- *   - main tab, view=query: resolve free text to a seed first (async, so this
- *     returns a promise the caller awaits), then a one-hop slice from it
- *   - main tab, older manual filters (chain/incidents/type): unchanged
- *     behaviour, kept for anyone relying on picking a source id or a kind by
- *     hand instead of asking a question
- *   - person/causal tabs: edgeTypes only, no seed — the edge type itself is
- *     what selects the slice
- */
-async function request() {
-  if ($("#source").value === "emergent") {
-    const slug = $("#question").value;
-    return slug ? `/api/v1/graph/emergent/graphs/${encodeURIComponent(slug)}` : null;
-  }
-
-  if (EDGE_TYPE_LAYERS.has(state.layer)) {
-    const parameters = new URLSearchParams({
-      edgeTypes: LAYER_EDGE_TYPES[state.layer].join(","),
-      limit: "120",
-    });
-    // includeActors pulls in the person/organization nodes an 'involves' edge
-    // reaches from whatever the layer's own edge type already selected. None
-    // of these layers wants that: the causal layer's edges never touch a
-    // person, so asking for actors there would strand person nodes with no
-    // edge of this layer's type to draw; the person and domain layers already
-    // reach everyone their own edge type connects.
-    return `/api/v1/graph?${parameters}`;
-  }
-
-  if (state.layer === "timeline") {
-    // Every event, laid out by when it happened. nodeType=event is not
-    // optional here: without it the slice comes back ordered by ref_key and
-    // filled with organizations and domains, which have no timestamp at all —
-    // the first version of this drew 120 nodes and no timeline.
-    return `/api/v1/graph?${new URLSearchParams({ nodeType: "event", limit: "120" })}`;
-  }
-
-  const view = $("#view").value;
-  const parameters = new URLSearchParams();
-  if ($("#include-actors").checked) parameters.set("includeActors", "true");
-
-  if (view === "chain") {
-    parameters.set("seed", $("#seed").value.trim());
-    parameters.set("depth", $("#depth").value);
-  } else if (view === "incidents") {
-    parameters.set("incidentsOnly", "true");
-    parameters.set("limit", "60");
-  } else if (view === "type") {
-    parameters.set("sourceType", $("#source-type").value);
-    parameters.set("category", "artifact");
-    parameters.set("limit", "50");
-  } else {
-    const query = $("#query").value.trim();
-    if (query) {
-      const seed = await resolveSeed(query);
-      state.mainOriginalSeed = seed.sourceId;
-      parameters.set("seed", seed.sourceId);
-      parameters.set("depth", "1");
-    } else {
-      // Nothing asked yet, so open on the causal spine: the twelve incidents
-      // and how they caused one another. subtype=incident asks for the event
-      // nodes specifically — incidentsOnly matches anything *flagged* as
-      // incident-related, which is the jira items, and gave a thin picture of
-      // 5 tickets with no causal edges at all. Small enough to read, and every
-      // node in it can be clicked open from here.
-      state.mainOriginalSeed = MAIN_NO_SEED_KEY;
-      parameters.set("subtype", "incident");
-      parameters.set("limit", "60");
-    }
-  }
-  return `/api/v1/graph?${parameters}`;
-}
-
-/** One fetch, unwrapped and error-checked — the piece recenterOn and draw
- * both need, so a 404 or a 503 reads the same message either way. */
-async function fetchSlice(url) {
+async function fetchJSON(url) {
   const response = await fetch(url);
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
@@ -877,215 +182,685 @@ async function fetchSlice(url) {
   return response.json();
 }
 
+function showError(message) {
+  const banner = $("#error");
+  banner.textContent = message;
+  banner.hidden = !message;
+}
+
+// ---------------------------------------------------------------------------
+// Layouts. Each places only nodes without a position, so nothing already on
+// screen moves when an expansion adds to the picture.
+// ---------------------------------------------------------------------------
+
+/** The question in the middle, its seeds evenly around it. */
+function radialLayout(nodes, centreId) {
+  const others = nodes.filter((node) => node.id !== centreId);
+  if (centreId) state.positions.set(centreId, { x: 0, y: 0 });
+  others.forEach((node, index) => {
+    if (state.positions.has(node.id)) return;
+    const angle = -Math.PI / 2 + (index / Math.max(others.length, 1)) * Math.PI * 2;
+    state.positions.set(node.id, { x: Math.cos(angle) * 190, y: Math.sin(angle) * 190 });
+  });
+}
+
+/** Which column a node belongs in. A customer's or vendor's contact gets its
+ * own, so the people writing in do not mix with the organizations. */
+function columnOf(node) {
+  if (node.type === "person" && node.subtype === "external_contact") return "contacts";
+  return categoryOf(node) ?? "other";
+}
+
+/**
+ * One column per kind, in the order the view names, then any others. Rows
+ * within a column are ordered so that each node sits near what it is joined
+ * to in the next column (two barycentre passes, left to right and back),
+ * which is what groups people under their department without the view having
+ * to know about departments.
+ */
+function columnsLayout(nodes, edges, columns) {
+  const byColumn = new Map();
+  for (const node of nodes) {
+    const column = columnOf(node);
+    if (!byColumn.has(column)) byColumn.set(column, []);
+    byColumn.get(column).push(node);
+  }
+  const order = [
+    ...columns.filter((column) => byColumn.has(column)),
+    ...[...byColumn.keys()].filter((column) => !columns.includes(column)),
+  ];
+  for (const list of byColumn.values()) {
+    // Clusters last in their column, everything else alphabetical to start.
+    list.sort((left, right) =>
+      Number(left.type === "cluster") - Number(right.type === "cluster") ||
+      nameOf(left).localeCompare(nameOf(right)));
+  }
+
+  const neighbours = new Map(nodes.map((node) => [node.id, []]));
+  for (const edge of edges) {
+    if (neighbours.has(edge.source) && neighbours.has(edge.target)) {
+      neighbours.get(edge.source).push(edge.target);
+      neighbours.get(edge.target).push(edge.source);
+    }
+  }
+  const rowOf = () => {
+    const rows = new Map();
+    for (const list of byColumn.values()) list.forEach((node, index) => rows.set(node.id, index));
+    return rows;
+  };
+  const reorder = (column, towards) => {
+    const rows = rowOf();
+    const inColumn = new Set(byColumn.get(towards)?.map((node) => node.id) ?? []);
+    const list = byColumn.get(column);
+    const weight = new Map(list.map((node, index) => {
+      const joined = neighbours.get(node.id).filter((id) => inColumn.has(id)).map((id) => rows.get(id));
+      return [node.id, joined.length ? joined.reduce((a, b) => a + b, 0) / joined.length : index];
+    }));
+    list.sort((left, right) =>
+      Number(left.type === "cluster") - Number(right.type === "cluster") ||
+      weight.get(left.id) - weight.get(right.id));
+  };
+  for (let index = 1; index < order.length; index += 1) reorder(order[index], order[index - 1]);
+  for (let index = order.length - 2; index >= 0; index -= 1) reorder(order[index], order[index + 1]);
+
+  order.forEach((column, columnIndex) => {
+    const x = (columnIndex - (order.length - 1) / 2) * COLUMN_GAP;
+    const list = byColumn.get(column);
+    // A column already on screen keeps its rows; new ones go underneath.
+    const placed = list.filter((node) => state.positions.has(node.id));
+    let nextY = placed.length
+      ? Math.max(...placed.map((node) => state.positions.get(node.id).y)) + ROW_GAP
+      : -((list.length - 1) / 2) * ROW_GAP;
+    const columnX = placed.length ? state.positions.get(placed[0].id).x : x;
+    for (const node of list) {
+      if (state.positions.has(node.id)) continue;
+      state.positions.set(node.id, { x: columnX, y: nextY });
+      nextY += ROW_GAP;
+    }
+  });
+}
+
+const TIMELINE_LANES = {
+  incident: "Incidents",
+  sprint_planned: "Sprints",
+  zd_ticket: "Customer tickets",
+  confluence_created: "Pages written",
+  design_discussion: "Discussions",
+  jira_ticket_created: "Tickets opened",
+  ticket_progress: "Ticket progress",
+  pr_review: "PR reviews",
+  dept_plan_created: "Department plans",
+};
+
+function timeOf(node) {
+  const raw = node.props?.occurred_at ?? node.props?.opened_at;
+  const parsed = raw ? Date.parse(String(raw)) : Number.NaN;
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function laneOf(node) {
+  if (node.id.startsWith("day:")) return "Everything else, by day";
+  return TIMELINE_LANES[node.subtype] ?? "Other events";
+}
+
+/**
+ * x is when it happened, y a lane per kind of event: the milestones, then one
+ * summary per day for everything else, then — once a day is opened — a lane
+ * for each kind of event it held. Something with no time (a person reached
+ * by expanding an incident) is placed around what it was reached from.
+ */
+function timelineLayout(nodes) {
+  if (!state.timeScale) {
+    const times = nodes.map(timeOf).filter((value) => value !== null);
+    const earliest = times.length ? Math.min(...times) : 0;
+    const latest = times.length ? Math.max(...times) : 1;
+    state.timeScale = { earliest, span: latest - earliest || 1, lanes: [] };
+  }
+  const scale = state.timeScale;
+  const stacked = new Map();
+  for (const point of state.positions.values()) {
+    const key = `${Math.round(point.x)}:${Math.round(point.y)}`;
+    stacked.set(key, (stacked.get(key) ?? 0) + 1);
+  }
+  const lanePreference = [...Object.values(TIMELINE_LANES).slice(0, 3), "Everything else, by day"];
+  for (const node of nodes) {
+    if (state.positions.has(node.id)) continue;
+    const time = timeOf(node);
+    if (time === null) continue;
+    const lane = laneOf(node);
+    if (!scale.lanes.includes(lane)) {
+      scale.lanes.push(lane);
+      scale.lanes.sort((left, right) => {
+        const a = lanePreference.indexOf(left);
+        const b = lanePreference.indexOf(right);
+        return (a < 0 ? 99 : a) - (b < 0 ? 99 : b);
+      });
+    }
+  }
+  for (const node of nodes) {
+    if (state.positions.has(node.id)) continue;
+    const time = timeOf(node);
+    if (time === null) continue;
+    const x = -520 + ((time - scale.earliest) / scale.span) * 1040;
+    const baseY = -200 + scale.lanes.indexOf(laneOf(node)) * 70;
+    const key = `${Math.round(x)}:${baseY}`;
+    const count = stacked.get(key) ?? 0;
+    stacked.set(key, count + 1);
+    state.positions.set(node.id, { x, y: baseY + (count % 5) * 11 });
+  }
+}
+
+/** New neighbours fanned out around what they were reached from, facing away
+ * from the middle of the picture so the graph grows outward. */
+function placeAround(parentId, nodes) {
+  const parent = state.positions.get(parentId);
+  const fresh = nodes.filter((node) => !state.positions.has(node.id));
+  if (!parent || fresh.length === 0) return;
+  const centre = (state.centreId && state.positions.get(state.centreId)) || { x: 0, y: 0 };
+  const outward = parent.x === centre.x && parent.y === centre.y
+    ? null
+    : Math.atan2(parent.y - centre.y, parent.x - centre.x);
+  const spread = outward === null ? Math.PI * 2 : Math.min(Math.PI * 1.3, 0.34 * fresh.length);
+  const occupied = [...state.positions.values()];
+  fresh.forEach((node, index) => {
+    const fraction = fresh.length === 1 ? 0.5 : index / (fresh.length - (outward === null ? 0 : 1));
+    const angle = (outward ?? 0) - (outward === null ? 0 : spread / 2) + fraction * spread;
+    let radius = 120 + (index % 2) * 45;
+    let point = { x: parent.x + Math.cos(angle) * radius, y: parent.y + Math.sin(angle) * radius };
+    for (let attempt = 0; attempt < 4 && occupied.some((other) =>
+      Math.hypot(other.x - point.x, other.y - point.y) < 22); attempt += 1) {
+      radius += 40;
+      point = { x: parent.x + Math.cos(angle) * radius, y: parent.y + Math.sin(angle) * radius };
+    }
+    occupied.push(point);
+    state.positions.set(node.id, point);
+  });
+}
+
+/** Place whatever has no position yet, the way the current view lays out. */
+function placeNew(parentId) {
+  const nodes = state.slice.nodes;
+  const layout = VIEWS[state.view].layout;
+  if (layout === "timeline") timelineLayout(nodes);
+  else if (layout === "columns" && !parentId) columnsLayout(nodes, state.slice.edges, VIEWS[state.view].columns);
+  else if (layout === "radial" && !parentId) radialLayout(nodes, state.centreId);
+  // An expansion's additions go around what was expanded, whatever the view:
+  // appending them to a far column would put them out of sight of it.
+  if (parentId) placeAround(parentId, nodes);
+  // Anything still unplaced (reached from nothing on screen) goes to the side.
+  let spare = 0;
+  for (const node of nodes) {
+    if (state.positions.has(node.id)) continue;
+    state.positions.set(node.id, { x: 460, y: -200 + spare * ROW_GAP });
+    spare += 1;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Drawing
+// ---------------------------------------------------------------------------
+
+function shapeFor(node) {
+  const incident = node.isIncident ? " incident" : "";
+  switch (node.type) {
+    case "person":
+      return svg("polygon", { points: "0,-7 7,0 0,7 -7,0", class: `shape n-person${incident}` });
+    case "organization":
+      return svg("polygon", { points: "-4,-7 4,-7 7,0 4,7 -4,7 -7,0", class: `shape n-organization${incident}` });
+    case "item":
+      return svg("circle", { r: 7, class: `shape n-item${incident}` });
+    case "event":
+      return svg("rect", { x: -6, y: -6, width: 12, height: 12, class: `shape n-event${incident}` });
+    case "document":
+      return svg("polygon", { points: "0,-7 7,6 -7,6", class: `shape n-document${incident}` });
+    case "query":
+      return svg("circle", { r: 11, class: "shape n-query" });
+    case "cluster":
+      return svg("circle", { r: 8, class: "shape n-cluster" });
+    default:
+      return svg("circle", { r: 7, class: "shape n-item" });
+  }
+}
+
+function setViewBox(box) {
+  state.viewBox = box;
+  $("#canvas").setAttribute(
+    "viewBox",
+    `${box.x.toFixed(1)} ${box.y.toFixed(1)} ${box.width.toFixed(1)} ${box.height.toFixed(1)}`,
+  );
+}
+
+/** Frame everything drawn, with room for captions. */
+function fit() {
+  const points = visibleNodes().map((node) => state.positions.get(node.id)).filter(Boolean);
+  if (points.length === 0) return;
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const left = Math.min(...xs) - 60;
+  const right = Math.max(...xs) + (VIEWS[state.view].layout === "radial" ? 60 : 170);
+  const top = Math.min(...ys) - 40;
+  const bottom = Math.max(...ys) + 40;
+  const width = Math.max(right - left, 480);
+  const height = Math.max(bottom - top, 360);
+  setViewBox({
+    x: (left + right) / 2 - width / 2,
+    y: (top + bottom) / 2 - height / 2,
+    width,
+    height,
+  });
+}
+
+function drawLaneLabels(layer) {
+  if (VIEWS[state.view].layout !== "timeline" || !state.timeScale) return;
+  state.timeScale.lanes.forEach((lane, index) => {
+    layer.append(Object.assign(
+      svg("text", { x: -540, y: -212 + index * 70, class: "lane-label" }),
+      { textContent: lane },
+    ));
+  });
+}
+
+function drawPicture() {
+  const canvas = $("#canvas");
+  canvas.replaceChildren(canvas.querySelector("title"));
+
+  const nodes = visibleNodes();
+  const shown = new Set(nodes.map((node) => node.id));
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const sideCaptions = VIEWS[state.view].layout === "columns";
+
+  const lanes = svg("g");
+  drawLaneLabels(lanes);
+
+  const edgeLayer = svg("g");
+  for (const edge of state.slice.edges) {
+    if (!shown.has(edge.source) || !shown.has(edge.target)) continue;
+    const a = state.positions.get(edge.source);
+    const b = state.positions.get(edge.target);
+    if (!a || !b) continue;
+    const line = svg("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `edge ${edge.type}` });
+    line.append(Object.assign(svg("title"), {
+      textContent: `${nameOf(byId.get(edge.source))} — ${edge.type.replace(/_/g, " ")} → ${nameOf(byId.get(edge.target))}`,
+    }));
+    edgeLayer.append(line);
+  }
+
+  const nodeLayer = svg("g");
+  for (const node of nodes) {
+    const point = state.positions.get(node.id);
+    if (!point) continue;
+    // tabindex makes each node a stop, so the diagram is walkable without a
+    // pointer; the label says what it is and whether it opens up.
+    const group = svg("g", {
+      class: `node kind-${node.type}${state.expanded.has(node.id) ? " expanded" : ""}`,
+      transform: `translate(${point.x.toFixed(1)} ${point.y.toFixed(1)})`,
+      tabindex: "0",
+      role: "button",
+      "aria-label": `${nameOf(node)}. ${describeKind(node)}.${expandable(node) ? " Press Enter to open it up." : ""}`,
+      "data-id": node.id,
+    });
+    const caption = sideCaptions && node.type !== "query"
+      ? svg("text", { x: 12, y: 3, class: "caption side" })
+      : svg("text", { y: node.type === "query" ? 26 : 20, class: `caption${node.type === "query" ? " strong" : ""}` });
+    caption.textContent = shortLabel(node, node.type === "query" ? 60 : sideCaptions ? 32 : 24);
+    group.append(svg("circle", { r: 13, class: "ring" }), shapeFor(node), caption);
+    group.addEventListener("click", (event) => {
+      event.stopPropagation();
+      activate(node.id);
+    });
+    group.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        activate(node.id);
+      }
+    });
+    group.addEventListener("focus", () => select(node.id));
+    nodeLayer.append(group);
+  }
+  canvas.append(lanes, edgeLayer, nodeLayer);
+  for (const group of canvas.querySelectorAll(".node")) {
+    group.classList.toggle("selected", group.dataset.id === state.selected);
+  }
+}
+
+function drawTable() {
+  const nodes = visibleNodes();
+  const shown = new Set(nodes.map((node) => node.id));
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  const edges = state.slice.edges.filter((edge) => shown.has(edge.source) && shown.has(edge.target));
+  $("#edge-rows").replaceChildren(...edges.map((edge) => {
+    const from = byId.get(edge.source);
+    const to = byId.get(edge.target);
+    return h("tr", {},
+      h("td", {}, nameOf(from)),
+      h("td", { class: "kind" }, describeKind(from)),
+      h("td", { class: "kind" }, edge.type.replace(/_/g, " ")),
+      h("td", {}, nameOf(to)),
+    );
+  }));
+  $("#table-summary").textContent = `${nodes.length} items, ${edges.length} relationships.`;
+}
+
 function reportCounts() {
-  const { nodes, edges } = state.slice;
-  // Same rule as drawPicture, so the count of what is not drawn matches what
-  // actually was not drawn.
-  const cap = state.layer !== "main" || state.expanded.size > 0
-    ? MAX_DRAWN
-    : MAIN_LAYER_CAP;
-  const hidden = Math.max(nodes.length - cap, 0);
+  const nodes = visibleNodes();
+  const folded = nodes
+    .filter(isPager)
+    .reduce((sum, node) => sum + Number(node.props?.hidden ?? 0), 0);
+  const filtered = state.slice.nodes.length - nodes.length;
+  const shown = new Set(nodes.map((node) => node.id));
+  const edges = state.slice.edges.filter((edge) => shown.has(edge.source) && shown.has(edge.target));
   $("#status-line").textContent = [
     `${nodes.length} items, ${edges.length} relationships`,
-    state.slice.truncated ? "trimmed to fit" : null,
-    hidden
-      ? `${hidden} of the least connected not drawn — click a node to expand from it, or see the table`
-      : null,
+    folded ? `${folded} more folded into “+N more” items` : null,
+    filtered ? `${filtered} hidden by the filters` : null,
   ].filter(Boolean).join(" · ");
 }
 
-/** What produced this drawing. Only the emergent graph is a stored snapshot. */
-function showProvenance() {
-  const line = $("#provenance");
-  if (state.source !== "emergent") {
-    line.hidden = true;
-    return;
-  }
-  const meta = state.slice?.meta ?? {};
-  line.textContent = [
-    meta.question
-      ? `Read out of the writing while answering “${meta.question}”.`
-      : "Read out of the writing by a model.",
-    meta.semantic_only === false
-      ? "Includes the extractor's own scaffolding."
-      : "Scaffolding removed, so every line here was found in the prose.",
-    meta.extracted_at ? `Extracted ${meta.extracted_at}.` : null,
-    "One question, one graph: nothing here came from any other question.",
-  ].filter(Boolean).join(" ");
-  line.hidden = false;
-}
-
-/**
- * Follow extraction while the emergent graph is on screen.
- *
- * Extraction is queued when a question is answered elsewhere and takes minutes,
- * so the drawing here goes stale without warning. Polling lets the page say an
- * extraction is under way, and reload itself once the export has been rewritten.
- */
-async function pollExtraction() {
-  if (state.source !== "emergent") return;
-  try {
-    const response = await fetch("/api/v1/graph/emergent/status");
-    if (!response.ok) return;
-    const status = await response.json();
-    const previous = state.extraction;
-    state.extraction = status;
-
-    const note = $("#extraction");
-    if (status.running) {
-      note.textContent = `Reading the writing about “${status.running}”… this takes a few minutes.`;
-      note.hidden = false;
-    } else if (status.lastError) {
-      note.textContent = `The last extraction did not finish: ${status.lastError}`;
-      note.hidden = false;
-    } else {
-      note.hidden = true;
-    }
-
-    // A finished run means the export on disk has changed underneath us.
-    if (previous && previous.lastFinishedAt !== status.lastFinishedAt && !status.running) {
-      await draw();
-    }
-  } catch {
-    // A failed poll is not worth reporting; the next one may succeed.
-  }
-}
-
-async function draw() {
-  const button = $("#draw");
-  button.disabled = true;
-  $("#error").hidden = true;
-  $("#status-line").textContent = "Loading…";
-  state.source = $("#source").value;
-  // A fresh draw is a new picture, not a growth of the current one, so no
-  // node keeps its old place, nothing counts as already expanded, and the
-  // centre is recomputed below.
-  state.positions = new Map();
-  state.centreId = null;
-  state.expanded = new Set();
-
-  try {
-    if (state.source === "emergent") {
-      const any = await loadQuestions();
-      if (!any) throw new Error("No question has a graph yet.");
-    }
-    const url = await request();
-    if (!url) throw new Error("Choose a question first.");
-
-    state.slice = await fetchSlice(url);
-    if (state.source === "recorded" && state.layer === "main" && state.mainOriginalSeed) {
-      state.cache.main.set(state.mainOriginalSeed, state.slice);
-      // The seed the question resolved to is what the picture is about, so it
-      // is the centre. The sentinel used when no question was asked is not a
-      // real node, so that case falls through to the best-connected node.
-      if (state.mainOriginalSeed !== MAIN_NO_SEED_KEY) {
-        state.centreId = centreFor(state.slice, state.mainOriginalSeed);
-      }
-    }
-    if (state.source === "recorded" && state.layer !== "main") {
-      state.cache[state.layer] = state.slice;
-    }
-    drawPicture();
-    drawTable();
-    showProvenance();
-    reportCounts();
-    $("#restore").disabled = state.source !== "recorded";
-
-    $("#details").replaceChildren(
-      h("p", { class: "empty" }, "Choose an item to see what it is."),
-    );
-  } catch (error) {
-    showError(error instanceof Error ? error.message : String(error));
-    $("#status-line").textContent = "Nothing drawn.";
-  } finally {
-    button.disabled = false;
-  }
-}
-
-/**
- * The node a seed names. A question resolves to a bare natural key (the top
- * search hit's source id), and a hand-typed seed may be one too, while the
- * slice's ids are `type:refKey` — so an exact id match wins, then the first
- * node carrying that key. Null lets the layout choose, as with no seed.
- */
-function centreFor(slice, seed) {
-  const nodes = slice?.nodes ?? [];
-  const exact = nodes.find((node) => node.id === seed);
-  if (exact) return exact.id;
-  return nodes.find((node) => node.refKey === seed)?.id ?? null;
-}
-
-/** Redraw whichever tab is open from its own cached first slice, discarding
- * everything clicking around has grown onto it. Main returns to the question
- * most recently asked; person/causal return to their one fixed slice. This is
- * the only way back once the picture has been expanded, which is why the
- * remembered positions and the expanded set are cleared with it. A no-op, not
- * an error, if nothing has been drawn yet to restore. */
-function restoreOriginal() {
-  if (state.source !== "recorded") return;
-  const cached = state.layer === "main"
-    ? state.cache.main.get(state.mainOriginalSeed)
-    : state.cache[state.layer];
-  if (!cached) return;
-  state.slice = cached;
-  state.positions = new Map();
-  state.expanded = new Set();
+function redraw() {
   drawPicture();
   drawTable();
   reportCounts();
 }
 
-/** Switch which layer tab is open. Person/causal load once and reuse their
- * cache on every later visit; main is left alone if it already has
- * something drawn, so leaving and returning to it does not lose the place
- * a click had reached. */
-function switchLayer(layer) {
-  if (state.layer === layer) return;
-  state.layer = layer;
-  for (const button of document.querySelectorAll(".layer-tab")) {
-    button.classList.toggle("on", button.dataset.layer === layer);
-    button.setAttribute("aria-pressed", String(button.dataset.layer === layer));
+// ---------------------------------------------------------------------------
+// Details
+// ---------------------------------------------------------------------------
+
+function select(id) {
+  state.selected = id;
+  const node = state.slice?.nodes.find((candidate) => candidate.id === id);
+  if (!node) return;
+  for (const group of document.querySelectorAll(".node")) {
+    group.classList.toggle("selected", group.dataset.id === id);
   }
-  syncFields();
 
-  // Each layer is its own picture: positions from the layer being left would
-  // pin nodes to places that meant something in a different graph.
-  state.positions = new Map();
-  state.expanded = new Set();
-  state.centreId = null;
+  const byId = new Map(state.slice.nodes.map((candidate) => [candidate.id, candidate]));
+  const neighbours = [];
+  for (const edge of state.slice.edges) {
+    if (edge.source === id && byId.has(edge.target)) {
+      neighbours.push({ node: byId.get(edge.target), direction: "to", type: edge.type });
+    } else if (edge.target === id && byId.has(edge.source)) {
+      neighbours.push({ node: byId.get(edge.source), direction: "from", type: edge.type });
+    }
+  }
 
-  const cached = layer === "main" ? state.cache.main.get(state.mainOriginalSeed) : state.cache[layer];
-  if (cached) {
-    state.slice = cached;
-    drawPicture();
-    drawTable();
-    reportCounts();
-    $("#restore").disabled = false;
-  } else if (layer !== "main") {
-    draw();
+  const connected = h("div", { class: "detail-pane" },
+    neighbours.length
+      ? h("ul", { class: "neighbours" },
+          ...neighbours.slice(0, 30).map(({ node: other, direction, type }) =>
+            h("li", {},
+              h("span", { class: "kind" }, `${direction === "to" ? "→ " : "← "}${type.replace(/_/g, " ")} `),
+              h("button", { type: "button", onclick: () => focusNode(other.id) }, nameOf(other)),
+            )))
+      : h("p", { class: "hint-line" }, "Nothing else on screen connects to it yet."));
+  const attributes = h("div", { class: "detail-pane", hidden: true });
+  const evidence = h("div", { class: "detail-pane", hidden: true });
+  renderAttributes(attributes, node);
+
+  const panes = [["Connected", connected], ["Attributes", attributes], ["Evidence", evidence]];
+  const buttons = panes.map(([name, pane], index) => h("button", {
+    type: "button",
+    class: `detail-tab${index === 0 ? " on" : ""}`,
+    onclick: async () => {
+      buttons.forEach((button, other) => button.classList.toggle("on", other === index));
+      panes.forEach(([, other]) => { other.hidden = other !== pane; });
+      if (pane === evidence) await renderEvidence(evidence, node);
+    },
+  }, name));
+
+  const actions = h("div", { class: "detail-actions" },
+    expandable(node) && !isPager(node)
+      ? h("button", { type: "button", class: "quiet", onclick: () => expand(node.id) }, "Open it up")
+      : null,
+    isPager(node)
+      ? h("button", { type: "button", class: "quiet", onclick: () => expand(node.id) }, "Show the next few")
+      : null,
+    node.type !== "query" && node.type !== "cluster"
+      ? h("button", { type: "button", class: "quiet", onclick: () => ask(nameOf(node)) }, "Ask about this")
+      : null,
+  );
+
+  $("#details").replaceChildren(
+    h("p", { class: "name" }, nameOf(node)),
+    h("p", { class: "kind-line" }, describeKind(node)),
+    actions,
+    h("div", { class: "detail-tabs" }, ...buttons),
+    connected, attributes, evidence,
+  );
+}
+
+function focusNode(id) {
+  const group = document.querySelector(`.node[data-id="${CSS.escape(id)}"]`);
+  if (group) group.focus();
+  else select(id);
+}
+
+/** node.props as delivered. Bookkeeping fields that repeat what the panel
+ * already says are skipped, so what is left is what distinguishes the node —
+ * an incident's root cause, a page's self-audit, a member's first day. */
+function renderAttributes(container, node) {
+  // facts is the raw corpus row, already read into the fields worth showing;
+  // parent/offset are a cluster's paging bookkeeping.
+  const skip = new Set(["source_type", "category", "is_incident", "facts", "parent", "offset"]);
+  const entries = Object.entries(node.props ?? {}).filter(
+    ([key, value]) => !skip.has(key) && value !== null && value !== undefined && value !== "",
+  );
+  const list = h("dl", {});
+  if (node.type !== "query" && node.type !== "cluster") {
+    list.append(h("dt", {}, "Identifier"), h("dd", {}, naturalKey(node)));
+  }
+  for (const [key, value] of entries) {
+    list.append(
+      h("dt", {}, key.replace(/_/g, " ")),
+      h("dd", {}, typeof value === "object" ? JSON.stringify(value) : String(value)),
+    );
+  }
+  container.replaceChildren(
+    list,
+    entries.length === 0 ? h("p", { class: "hint-line" }, "No other attributes recorded.") : null,
+  );
+}
+
+/** The question's own evidence for the question; for anything else, the same
+ * retrieval a question about its label would get — not provenance for one
+ * edge, which the graph does not keep. */
+async function renderEvidence(container, node) {
+  if (node.type === "query") return renderEvidenceList(container, state.slice.evidence ?? []);
+  const cached = state.evidenceCache.get(node.id);
+  if (cached) return renderEvidenceList(container, cached);
+  container.replaceChildren(h("p", { class: "hint-line" }, "Searching…"));
+  try {
+    const body = await fetchJSON(
+      `/api/v1/graph/evidence?${new URLSearchParams({ label: nameOf(node), limit: "5" })}`,
+    );
+    const evidence = Array.isArray(body.evidence) ? body.evidence : [];
+    state.evidenceCache.set(node.id, evidence);
+    renderEvidenceList(container, evidence);
+  } catch (error) {
+    container.replaceChildren(h("p", { class: "hint-line" }, error instanceof Error ? error.message : String(error)));
   }
 }
 
-function syncFields() {
-  const emergent = $("#source").value === "emergent";
-  const view = $("#view").value;
-  // Every layer other than main is a fixed view of one kind of relationship:
-  // none of the query, seed or filter controls apply to it.
-  const onLayerTabs = state.layer !== "main";
-  // Each emergent graph is one question's own extraction; none of the
-  // slicing or layering applies to it, and which question is the only
-  // choice that does.
-  $("#question-field").hidden = !emergent;
-  $("#layer-tabs").hidden = emergent;
-  $("#query-field").hidden = emergent || onLayerTabs || view !== "query";
-  $("#view-field").hidden = emergent || onLayerTabs;
-  $("#actors-field").hidden = emergent || onLayerTabs;
-  $("#seed-field").hidden = emergent || onLayerTabs || view !== "chain";
-  $("#depth-field").hidden = emergent || onLayerTabs || view !== "chain";
-  $("#type-field").hidden = emergent || onLayerTabs || view !== "type";
-  $("#restore").hidden = emergent;
-  $("#legend-recorded").hidden = emergent;
-  $("#legend-emergent").hidden = !emergent;
+function renderEvidenceList(container, evidence) {
+  if (evidence.length === 0) {
+    container.replaceChildren(h("p", { class: "hint-line" }, "Nothing found."));
+    return;
+  }
+  container.replaceChildren(h("ul", { class: "evidence-list" },
+    ...evidence.map((item) => h("li", {},
+      h("p", { class: "evidence-title" }, item.title || item.sourceId),
+      h("p", { class: "evidence-excerpt" }, item.excerpt || ""),
+    ))));
+}
+
+// ---------------------------------------------------------------------------
+// Loading and growing
+// ---------------------------------------------------------------------------
+
+function markTabs() {
+  for (const button of document.querySelectorAll(".view-tab")) {
+    const on = button.dataset.view === state.view;
+    button.classList.toggle("on", on);
+    button.setAttribute("aria-pressed", String(on));
+  }
+  $("#tab-query").disabled = !state.query;
+  if (state.query) $("#tab-query").textContent = `“${shortLabel({ label: state.query }, 28)}”`;
+}
+
+function remember() {
+  const parameters = new URLSearchParams();
+  if (state.view === "query") parameters.set("q", state.query);
+  else parameters.set("view", state.view);
+  try {
+    history.replaceState(null, "", `${location.pathname}?${parameters}`);
+  } catch {
+    // Not worth failing a draw over.
+  }
+}
+
+/** Draw a fresh picture: the question's graph, or one overview. */
+async function load(view) {
+  const generation = ++state.generation;
+  state.view = view;
+  markTabs();
+  remember();
+  showError("");
+  $("#status-line").textContent = "Loading…";
+  try {
+    const url = view === "query"
+      ? `/api/v1/graph/query?${new URLSearchParams({
+          q: state.query,
+          ...(state.hidden.size ? { categories: enabledCategories().join(",") } : {}),
+        })}`
+      : `/api/v1/graph/view/${encodeURIComponent(view)}`;
+    const slice = await fetchJSON(url);
+    if (generation !== state.generation) return;
+    state.slice = slice;
+    state.start = slice;
+    state.centreId = slice.centre ?? null;
+    state.positions = new Map();
+    state.expanded = new Set();
+    state.timeScale = null;
+    state.selected = null;
+    placeNew(null);
+    fit();
+    redraw();
+    $("#restore").disabled = true;
+    $("#details").replaceChildren(h("p", { class: "empty" },
+      view === "query"
+        ? "Your question is in the middle. Click anything around it to open it up."
+        : "Click anything to open it up, or ask a question above."));
+  } catch (error) {
+    if (generation !== state.generation) return;
+    showError(error instanceof Error ? error.message : String(error));
+    $("#status-line").textContent = "Nothing drawn.";
+  }
+}
+
+function ask(query) {
+  const text = query.trim();
+  if (!text) return;
+  $("#query").value = text;
+  state.query = text;
+  load("query");
+}
+
+/** Union of two slices, dropping `removed` (a cluster being replaced by the
+ * page it stood for). The existing slice wins on conflict. */
+function merge(current, addition, removed = new Set()) {
+  const nodes = current.nodes.filter((node) => !removed.has(node.id));
+  const seen = new Set(nodes.map((node) => node.id));
+  for (const node of addition.nodes) {
+    if (seen.has(node.id)) continue;
+    seen.add(node.id);
+    nodes.push(node);
+  }
+  const key = (edge) => `${edge.source}\u0000${edge.target}\u0000${edge.type}`;
+  const edges = current.edges.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target));
+  const edgeKeys = new Set(edges.map(key));
+  for (const edge of addition.edges) {
+    if (edgeKeys.has(key(edge))) continue;
+    edgeKeys.add(key(edge));
+    edges.push(edge);
+  }
+  return { ...current, nodes, edges };
+}
+
+/** Grow the picture from one node: its neighbours, a few of each kind, placed
+ * around it. For a "+N more" item, the next few it stood for replace it. */
+async function expand(id) {
+  const node = state.slice.nodes.find((candidate) => candidate.id === id);
+  if (!node || !expandable(node)) return;
+  if (state.slice.nodes.length >= MAX_DRAWN) {
+    showError("The picture is as big as it can usefully get. Go back to the start, or ask about something narrower.");
+    return;
+  }
+  const generation = state.generation;
+  $("#status-line").textContent = "Loading…";
+  try {
+    const pager = isPager(node);
+    const parameters = new URLSearchParams({ id, budget: String(EXPAND_BUDGET) });
+    if (pager) parameters.set("offset", String(node.props.offset ?? 0));
+    else if (state.hidden.size) parameters.set("categories", enabledCategories().join(","));
+    const addition = await fetchJSON(`/api/v1/graph/expand?${parameters}`);
+    if (generation !== state.generation) return;
+
+    // A page replaces the cluster it stood for, and fans out from the node the
+    // cluster belonged to — keeping the cluster's own spot for the first one.
+    const parentId = pager ? node.props.parent : id;
+    const removed = pager ? new Set([id]) : new Set();
+    const spot = state.positions.get(id);
+    state.slice = merge(state.slice, {
+      nodes: addition.nodes,
+      edges: addition.edges,
+    }, removed);
+    // A page's own "+N more" comes back under the same id, and must stay
+    // clickable for the page after it; anything else opens up once.
+    if (pager) state.positions.delete(id);
+    else state.expanded.add(id);
+    if (pager && spot && !state.positions.has(parentId)) state.positions.set(parentId, spot);
+    placeNew(state.positions.has(parentId) ? parentId : null);
+    redraw();
+    select(pager ? parentId : id);
+    $("#restore").disabled = false;
+  } catch (error) {
+    showError(error instanceof Error ? error.message : String(error));
+    reportCounts();
+  }
+}
+
+function activate(id) {
+  select(id);
+  expand(id);
+}
+
+function restore() {
+  if (!state.start) return;
+  state.slice = state.start;
+  state.positions = new Map();
+  state.expanded = new Set();
+  state.timeScale = null;
+  placeNew(null);
+  fit();
+  redraw();
+  $("#restore").disabled = true;
+}
+
+// ---------------------------------------------------------------------------
+// Controls
+// ---------------------------------------------------------------------------
+
+function buildCategoryChips() {
+  const fieldset = $("#categories");
+  for (const [key, label] of CATEGORIES) {
+    const input = h("input", { type: "checkbox", id: `category-${key}`, value: key, checked: true });
+    input.addEventListener("change", () => {
+      if (input.checked) state.hidden.delete(key);
+      else state.hidden.add(key);
+      if (state.slice) redraw();
+    });
+    fieldset.append(h("label", { class: "chip", for: `category-${key}` }, input, label));
+  }
 }
 
 function showTab(which) {
@@ -1098,26 +873,73 @@ function showTab(which) {
   $("#tab-table").setAttribute("aria-pressed", String(!picture));
 }
 
-$("#source").addEventListener("change", () => {
-  syncFields();
-  if ($("#source").value !== "emergent") $("#extraction").hidden = true;
-});
-$("#question").addEventListener("change", () => draw());
-$("#view").addEventListener("change", syncFields);
-$("#controls").addEventListener("submit", (event) => {
-  event.preventDefault();
-  draw();
-});
-$("#tab-picture").addEventListener("click", () => showTab("picture"));
-$("#tab-table").addEventListener("click", () => showTab("table"));
-$("#restore").addEventListener("click", restoreOriginal);
-for (const button of document.querySelectorAll(".layer-tab")) {
-  button.addEventListener("click", () => switchLayer(button.dataset.layer));
+/** Drag to pan, wheel to zoom about the pointer. */
+function enablePanAndZoom() {
+  const canvas = $("#canvas");
+  let dragging = null;
+  const scale = () => state.viewBox.width / (canvas.clientWidth || state.viewBox.width);
+  canvas.addEventListener("pointerdown", (event) => {
+    if (event.target.closest?.(".node")) return;
+    dragging = { x: event.clientX, y: event.clientY, box: { ...state.viewBox } };
+    canvas.classList.add("dragging");
+  });
+  window.addEventListener("pointermove", (event) => {
+    if (!dragging) return;
+    const factor = scale();
+    setViewBox({
+      ...dragging.box,
+      x: dragging.box.x - (event.clientX - dragging.x) * factor,
+      y: dragging.box.y - (event.clientY - dragging.y) * factor,
+    });
+  });
+  window.addEventListener("pointerup", () => {
+    dragging = null;
+    canvas.classList.remove("dragging");
+  });
+  canvas.addEventListener("wheel", (event) => {
+    event.preventDefault();
+    const box = state.viewBox;
+    const zoom = event.deltaY > 0 ? 1.15 : 1 / 1.15;
+    const rect = canvas.getBoundingClientRect();
+    const px = rect.width ? (event.clientX - rect.left) / rect.width : 0.5;
+    const py = rect.height ? (event.clientY - rect.top) / rect.height : 0.5;
+    const width = Math.min(Math.max(box.width * zoom, 200), 8000);
+    const height = box.height * (width / box.width);
+    setViewBox({
+      x: box.x + (box.width - width) * px,
+      y: box.y + (box.height - height) * py,
+      width,
+      height,
+    });
+  }, { passive: false });
 }
 
-syncFields();
-draw();
-// Slow on purpose: extraction takes minutes, so asking more often only adds
-// requests without learning anything sooner.
-setInterval(pollExtraction, 10_000);
-pollExtraction();
+buildCategoryChips();
+enablePanAndZoom();
+$("#ask").addEventListener("submit", (event) => {
+  event.preventDefault();
+  ask($("#query").value);
+});
+for (const button of document.querySelectorAll(".example")) {
+  button.addEventListener("click", () => ask(button.textContent));
+}
+for (const button of document.querySelectorAll(".view-tab")) {
+  button.addEventListener("click", () => {
+    if (button.dataset.view === "query" && !state.query) return;
+    load(button.dataset.view);
+  });
+}
+$("#tab-picture").addEventListener("click", () => showTab("picture"));
+$("#tab-table").addEventListener("click", () => showTab("table"));
+$("#restore").addEventListener("click", restore);
+$("#fit").addEventListener("click", fit);
+
+{
+  // /graph?q=... opens on a question, /graph?view=... on an overview; with
+  // neither, on the departments, so the page never opens empty.
+  const parameters = new URLSearchParams(location.search);
+  const question = parameters.get("q");
+  const view = parameters.get("view");
+  if (question) ask(question);
+  else load(view && view in VIEWS && view !== "query" ? view : "org");
+}

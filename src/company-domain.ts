@@ -72,7 +72,7 @@ export interface GraphNode {
   /**
    * The node's own denormalized facts, passed through as-is for the graph
    * view's Attributes tab. Never a document body — that stays out of a
-   * slice on purpose (see graphSlice's own doc comment) — but an incident's
+   * slice on purpose, since document bodies carry oracle material — but an incident's
    * root_cause, a domain's ownership, a Zendesk ticket's linked incident are
    * all here because build_graph.py already put them in graph_nodes.props.
    */
@@ -135,39 +135,6 @@ export interface GraphExpandRequest {
   includePlans?: boolean;
 }
 
-/** How to choose a slice: a causal chain from one document, or a filter. */
-export interface GraphSliceRequest {
-  /** A node id (`type:refKey`), or a bare natural key matching every node
-   * that shares it. */
-  seed?: string;
-  depth?: number;
-  category?: string;
-  sourceType?: string;
-  department?: string;
-  /**
-   * Keep only nodes of this graph_nodes.node_subtype — 'incident', 'domain',
-   * 'confluence' and so on. Narrower than node type, and what the main tab's
-   * default view uses to ask for the twelve incidents specifically rather than
-   * anything flagged as incident-related.
-   */
-  subtype?: string;
-  /**
-   * Keep only nodes of this node type. The filter path otherwise returns
-   * anything that is not a person, which is right for a category filter and
-   * wrong for the timeline, where only events have a time to be placed at.
-   */
-  nodeType?: string;
-  incidentsOnly?: boolean;
-  includeActors?: boolean;
-  limit?: number;
-  /**
-   * Keep only edges of these types (and, transitively, only nodes an
-   * edge-of-this-type touches). Drives the person/causal layer tabs — e.g.
-   * ['involves'] for who is connected to what, ['caused_by','escalated_via']
-   * for the causal chains — without needing a seed or a category filter.
-   */
-  edgeTypes?: string[];
-}
 
 export interface CompanyKnowledge {
   employee(employeeId: string): Promise<EmployeeContext | null>;
@@ -181,11 +148,6 @@ export interface CompanyKnowledge {
    */
   relatedThroughEvents?(sourceIds: string[], limit: number): Promise<Evidence[]>;
   sources(sourceIds: string[]): Promise<Evidence[]>;
-  /**
-   * A renderable piece of the deterministic graph. Optional: an implementation
-   * without the graph tables omits it.
-   */
-  graphSlice?(request: GraphSliceRequest): Promise<GraphSlice>;
   /** A question's graph: a centre node for the question, linked to the nodes
    * its evidence and its words point at. */
   graphQuery?(request: GraphQueryRequest): Promise<GraphSlice>;
