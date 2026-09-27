@@ -458,12 +458,12 @@ function meetingsRespond(actions: unknown[]): PageOptions["respond"] {
 }
 
 describe("SME Assistant home: what needs you", () => {
-  test("says how many drafts wait for you and lists each with the meeting and the words it came from", async () => {
+  test("says how many drafts wait for you and lists each on one short line: what, from which meeting", async () => {
     const page = await openSmePage({ respond: meetingsRespond([
-      action("a1", "email_draft", "approval", "proposed", "Send follow-up to Owen"),
+      action("a1", "email_draft", "approval", "proposed", "Email: Send follow-up to Owen"),
       action("a2", "ticket_draft", "approval", "proposed", "Add consumer-lag alerting"),
       action("a3", "calendar_draft", "approval", "proposed", "Checkpoint before the championship", { missing: ["Which day: Tue 29 Sept or Tue 6 Oct"] }),
-      action("a4", "escalation", "escalate", "escalated", "20% discount for NOTC", { payload: { subject: "20% discount", reason: "Pricing", requiredApprover: "Finance lead" } }),
+      action("a4", "escalation", "escalate", "escalated", "Escalation: Approval required: 20% discount for NOTC", { payload: { subject: "20% discount", reason: "Pricing", requiredApprover: "Finance lead" } }),
       action("a5", "answer_question", "auto", "executed", "Was ENG-148 the same bug?"),
       action("a6", "email_draft", "approval", "rejected", "A draft you turned down"),
     ]) });
@@ -472,17 +472,26 @@ describe("SME Assistant home: what needs you", () => {
 
     assert.equal(page.document.querySelector("#home-title")!.textContent, "Jax, 3 things need you.");
     const rows = [...page.document.querySelectorAll("#home-needs .task")];
-    assert.match(rows[0]!.textContent!, /Send follow-up to Owen/);
-    assert.match(rows[0]!.textContent!, new RegExp(NOC.replace(/[&]/g, "&")));
-    assert.match(rows[0]!.textContent!, /quote for a1/);
+    assert.equal(rows[0]!.querySelector(".task-title")!.textContent, "Send follow-up to Owen");
+    assert.equal(rows[0]!.querySelector(".task-from")!.textContent, NOC);
+    // All from one meeting, which the headline already names: not repeated on every row.
+    assert.equal((rows[0]!.querySelector(".task-from") as HTMLElement).hidden, true);
     assert.equal(rows[0]!.getAttribute("href"), "/meetings/m1");
-    assert.match(rows[2]!.textContent!, /Which day: Tue 29 Sept or Tue 6 Oct/);
+    // Short: no quote, no speaker, no second line. The meeting has them.
+    assert.doesNotMatch(rows[0]!.textContent!, /quote for a1|Jax/);
+    assert.equal(rows[0]!.querySelector(".sub"), null);
+    // A draft that still needs an answer says so in a small tag, with the detail on hover.
+    const tag = rows[2]!.querySelector(".task-tag")!;
+    assert.equal(tag.textContent, "Needs input");
+    assert.equal(tag.getAttribute("title"), "Which day: Tue 29 Sept or Tue 6 Oct");
     // The sample tour is not work: its drafts are not counted.
     assert.doesNotMatch(page.document.querySelector("#home-needs")!.textContent!, /launch partners/);
 
     const waiting = page.document.querySelector("#home-waiting")!;
-    assert.match(waiting.textContent!, /20% discount for NOTC/);
-    assert.match(waiting.textContent!, /Finance lead/);
+    assert.equal(waiting.querySelector(".task-title")!.textContent, "20% discount for NOTC");
+    assert.equal(waiting.querySelector(".task-tag")!.textContent, "Finance lead");
+    // The headline's second line names the meetings only; the call waiting on others is listed below.
+    assert.doesNotMatch(page.document.querySelector("#home-summary")!.textContent!, /Finance/);
     assert.match(page.document.querySelector("#home-done")!.textContent!, /Was ENG-148 the same bug\?/);
     assert.doesNotMatch(page.document.querySelector("#home")!.textContent!, /A draft you turned down/);
   });

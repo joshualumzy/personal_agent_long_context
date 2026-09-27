@@ -2191,51 +2191,52 @@ const HOME_KINDS = {
   flag_conflict: ["Heads up", "alert"],
 };
 
-function homeTask({ action, meeting }, part) {
+/** A title without the kind the icon already shows ("Email: ", "Escalation:
+ * Approval required: "). */
+function taskTitle(title) {
+  const plain = String(title || "")
+    .replace(/^(email|ticket|calendar|hiring|escalation|answer|message|doc|document|sheet|heads up|conflict)\s*:\s*/i, "")
+    .replace(/^approval required\s*:\s*/i, "");
+  return plain.charAt(0).toUpperCase() + plain.slice(1);
+}
+
+function homeTask({ action, meeting }, part, oneMeeting = false) {
   const [kindLabel, icon] = HOME_KINDS[action.kind] ?? ["Action", "check"];
   const row = document.createElement("a");
   row.className = `task ${part}`;
   row.href = `/meetings/${encodeURIComponent(meeting.meetingId)}`;
-  const quote = action.trigger?.quote ? ` · “${action.trigger.quote}” · ${action.trigger.speaker ?? ""}` : "";
-  let sub = `${meeting.title}${quote}`;
-  if (part === "waiting") {
-    const approver = action.payload?.requiredApprover;
-    const reason = String(action.payload?.reason ?? "").trim();
-    sub = `${approver ? `Needs ${approver}. ` : ""}${reason}${reason && !/[.!?]$/.test(reason) ? "." : ""} From ${meeting.title}.`;
+  // One short line: what it is, a tag when something is missing or someone
+  // else decides, and the meeting it came from. The words and who said them
+  // are in the meeting.
+  let tag = "";
+  if (part === "needs" && Array.isArray(action.missing) && action.missing.length > 0) {
+    tag = `<span class="task-tag need" title="${escapeHtml(action.missing[0])}">Needs input</span>`;
   }
-  if (part === "done") sub = meeting.title;
-  const need = part === "needs" && Array.isArray(action.missing) && action.missing.length > 0
-    ? `<span class="need"><b>Needs input:</b> ${escapeHtml(action.missing[0])}</span>` : "";
-  const go = part === "needs" ? '<span class="task-go">Review</span>' : "";
+  if (part === "waiting" && action.payload?.requiredApprover) {
+    tag = `<span class="task-tag waiting" title="${escapeHtml(action.payload.reason ?? "")}">${escapeHtml(action.payload.requiredApprover)}</span>`;
+  }
+  const go = part === "needs" ? '<span class="task-go">Review</span>' : lineIcon("chevron", 14);
   row.innerHTML = `
-    <span class="task-icon ${part}">${lineIcon(icon, 15)}</span>
-    <span class="task-body"><b>${escapeHtml(action.title)}<span class="kind">${escapeHtml(kindLabel)}</span></b><span class="sub">${escapeHtml(sub.trim())}</span>${need}</span>
-    ${go}${lineIcon("chevron", 14)}`;
+    <span class="task-icon ${part}" title="${escapeHtml(kindLabel)}">${lineIcon(icon, 14)}</span>
+    <span class="task-title">${escapeHtml(taskTitle(action.title))}</span>${tag}
+    <span class="task-from"${oneMeeting ? " hidden" : ""}>${escapeHtml(meeting.title)}</span>${go}`;
   return row;
 }
 
-function fillHomeGroup(id, items, part) {
+function fillHomeGroup(id, items, part, oneMeeting = false) {
   const group = document.querySelector(id);
   if (!group) return;
   group.hidden = items.length === 0;
   group.querySelector(".count").textContent = String(items.length);
   const list = group.querySelector(".tasks");
-  list.replaceChildren(...items.map((item) => homeTask(item, part)));
+  list.replaceChildren(...items.map((item) => homeTask(item, part, oneMeeting)));
 }
 
-function homeSummary(needs, waiting) {
-  const parts = [];
-  if (needs.length > 0) {
-    const titles = [...new Set(needs.map((item) => item.meeting.title))];
-    const from = titles.length === 1 ? `<mark>${escapeHtml(titles[0])}</mark>` : `${titles.length} meetings`;
-    parts.push(needs.length === 1 ? `It is a draft from ${from}.` : `All ${needs.length} are drafts from ${from}.`);
-  }
-  const call = waiting.find((item) => item.action.payload?.requiredApprover);
-  if (call) {
-    const subject = call.action.payload.subject || call.action.title;
-    parts.push(`${escapeHtml(subject)} is <mark>${escapeHtml(call.action.payload.requiredApprover)}’s call</mark>, not yours.`);
-  }
-  return parts.join(" ");
+function homeSummary(needs) {
+  if (needs.length === 0) return "";
+  const titles = [...new Set(needs.map((item) => item.meeting.title))];
+  const from = titles.length === 1 ? `<mark>${escapeHtml(titles[0])}</mark>` : `${titles.length} meetings`;
+  return needs.length === 1 ? `A draft from ${from}.` : `All ${needs.length} are drafts from ${from}.`;
 }
 
 function renderHomeMeetings(meetings) {
@@ -2297,10 +2298,12 @@ async function loadHome() {
       : `${name}, ${needs.length} ${needs.length === 1 ? "thing needs" : "things need"} you.`;
   }
   const summary = document.querySelector("#home-summary");
-  if (summary) summary.innerHTML = homeSummary(needs, waiting);
-  fillHomeGroup("#home-needs", needs, "needs");
-  fillHomeGroup("#home-waiting", waiting, "waiting");
-  fillHomeGroup("#home-done", done.slice(0, 5), "done");
+  if (summary) summary.innerHTML = homeSummary(needs);
+  // Everything from one meeting: the headline names it, so the rows do not repeat it.
+  const oneMeeting = new Set([...needs, ...waiting, ...done].map((item) => item.meeting.meetingId)).size <= 1;
+  fillHomeGroup("#home-needs", needs, "needs", oneMeeting);
+  fillHomeGroup("#home-waiting", waiting, "waiting", oneMeeting);
+  fillHomeGroup("#home-done", done.slice(0, 5), "done", oneMeeting);
 }
 
 /**
