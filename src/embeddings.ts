@@ -35,7 +35,21 @@ export class BedrockEmbeddingProvider implements EmbeddingProvider {
   constructor(options: BedrockEmbeddingOptions) {
     if (!options.region.trim()) throw new Error("AWS_REGION is required for Bedrock embeddings.");
     this.model = options.model ?? BEDROCK_TITAN_V2_MODEL;
-    this.client = new BedrockRuntimeClient({ region: options.region });
+    const accessKeyId = process.env.AWS_ACCESS_KEY_ID?.trim();
+    const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY?.trim();
+    const sessionToken = process.env.AWS_SESSION_TOKEN?.trim();
+    const credentials =
+      accessKeyId && secretAccessKey
+        ? {
+            accessKeyId,
+            secretAccessKey,
+            ...(sessionToken ? { sessionToken } : {}),
+          }
+        : undefined;
+    this.client = new BedrockRuntimeClient({
+      region: options.region,
+      ...(credentials ? { credentials } : {}),
+    });
   }
 
   async embed(texts: string[], _purpose: EmbeddingPurpose): Promise<number[][]> {

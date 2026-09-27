@@ -1,0 +1,209 @@
+{
+  "timestamp": "2026-09-27T10:41:01.184Z",
+  "model": "qwen3.8:27b",
+  "summary": {
+    "totalQuestions": 5,
+    "accuracyPct": 60,
+    "citationRecallPct": 40,
+    "citationIntegrityPct": 100,
+    "avgLatencySec": 25.13
+  },
+  "results": [
+    {
+      "questionId": "silence_EVT-25-incident_opened-1460_postmortem_created",
+      "questionType": "SILENCE",
+      "questionText": "Was a postmortem document created in response to the incident on Day 25 involving Deepa and Alex?",
+      "groundedQuestion": "Was a postmortem document created in response to the incident on Day 25 (approx. 2026-02-04) involving Deepa and Alex?",
+      "expectedAnswer": true,
+      "judgedAnswer": false,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "slack_incidents_2026-02-04T11:03:00",
+        "ENG-173",
+        "CONF-ENG-223"
+      ],
+      "citedArtifacts": [
+        "CONF-ENG-260",
+        "CONF-ENG-354",
+        "CONF-ENG-386",
+        "CONF-PROD-001",
+        "slack_digital-hq_2026-02-09T16:55:00",
+        "slack_design_2026-02-12T13:00:00"
+      ],
+      "retrievedArtifacts": [
+        "CONF-ENG-260",
+        "CONF-ENG-354",
+        "CONF-ENG-386",
+        "CONF-PROD-001",
+        "slack_digital-hq_2026-02-09T16:55:00",
+        "slack_design_2026-02-12T13:00:00"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Deepa, here's what I found:\n\n## Short answer: No — no postmortem document was created for a 2026-02-04 incident involving you and Alex\n\nI searched Confluence and Slack records across the ~2026-02-04 window (and the days around it) for any postmortem tied to an incident dated 2026-02-04 with you and Alex as participants. I could not find any postmortem, incident ticket, or Slack thread documenting such an event. Alex does not appear in any incident-related artifact from that period, and there's no postmortem dated to or referencing 2026-02-04 in the records I can see.\n\n## What *does* exist in the records\n\nThe postmortems and incident activity I did find are for different dates and don't match the 2026-02-04 / Deepa + Alex framing:\n\n- **CONF-ENG-260** — Postmortem for P1 ENG-186 (Kafka consumer lag, `max.poll.interval.ms` misconfig). Deepa was primary on-call, but the incident timeline is 2026-03-28, not Feb 4 [source:CONF-ENG-260].\n- **CONF-ENG-354** — Postmortem for P1 ENG-230 (same `max.poll.interval.ms` root cause, recurrence). Deepa is mentioned as acknowledging/escalating, but the page is dated 2026-03-04 with no Feb 4 incident reference [source:CONF-ENG-354].\n- **CONF-ENG-386** — \"Discuss postmortem with Raj\" about a **2026-02-10** telemetry sync failure (EKS misconfig, AWS tagging gaps). Closest in date to Feb 4, but the date and the people don't line up [source:CONF-ENG-386].\n- **CONF-PROD-001** — Jamie's standardized postmortem *template* for Kafka consumer lag, published 2026-02-16 [source:CONF-PROD-001].\n- Slack threads on 2026-02-09 and 2026-02-12 in #digital-hq and #design discuss drafting postmortems for a telemetry outage, but again no 2026-02-04 incident and no Alex involvement [source:slack_digital-hq_2026-02-09T16:55:00][source:slack_design_2026-02-12T13:00:00].\n\n## Possible explanations\n\n- The \"Day 25\" mapping may be off — the closest real incidents cluster around **2026-02-10** (CONF-ENG-386) and **2026-03-28** (CONF-ENG-260/354).\n- If a 2026-02-04 incident really happened, it either wasn't documented in Confluence/Slack, or it was treated as low-severity and closed without a postmortem.\n- Alex may have been involved under a different name/spelling, or in a system not surfaced in these searches.\n\n## Suggested next step\n\nIf you can confirm the exact incident ID (e.g., an ENG-xxx ticket) or the approximate time of day on 2026-02-04, I can run one more targeted pass against PagerDuty/Jira references and the #ops-alerts channel to be thorough. Otherwise, based on everything indexed, the honest answer is: no postmortem for that specific incident exists in the records I can access.",
+      "latencyMs": 25024
+    },
+    {
+      "questionId": "silence_EVT-54-knowledge_gap_detected-1541_confluence_created",
+      "questionType": "SILENCE",
+      "questionText": "Was a Confluence documentation page created in response to the knowledge gap detected on Day 54 involving Sharon, specifically regarding mobile analytics, legacy auth service, AWS cost structure, Project Titan involving Sharon?",
+      "groundedQuestion": "Was a Confluence documentation page created in response to the knowledge gap detected on Day 54 (approx. 2026-03-17) involving Sharon, specifically regarding mobile analytics, legacy auth service, AWS cost structure, Project Titan involving Sharon?",
+      "expectedAnswer": false,
+      "judgedAnswer": false,
+      "answerCorrect": true,
+      "expectedArtifacts": [
+        "slack_digital-hq_2026-03-20T09:35:00"
+      ],
+      "citedArtifacts": [
+        "PR-103",
+        "PR-105",
+        "PR-126",
+        "PR-131",
+        "PR-153",
+        "PR-155",
+        "zoom_2026-03-17_48cc4de3",
+        "slack_digital-hq_2026-03-17T17:18:00",
+        "PR-101",
+        "PR-111",
+        "CONF-ENG-001",
+        "CONF-ENG-002",
+        "CONF-ENG-003",
+        "CONF-ENG-173",
+        "CONF-ENG-202",
+        "CONF-ENG-212",
+        "CONF-ENG-373"
+      ],
+      "retrievedArtifacts": [
+        "PR-103",
+        "PR-105",
+        "PR-126",
+        "PR-131",
+        "PR-153",
+        "PR-155",
+        "zoom_2026-03-17_48cc4de3",
+        "slack_digital-hq_2026-03-17T17:18:00",
+        "PR-101",
+        "PR-111",
+        "CONF-ENG-001",
+        "CONF-ENG-002",
+        "CONF-ENG-003",
+        "CONF-ENG-173",
+        "CONF-ENG-202",
+        "CONF-ENG-212",
+        "CONF-ENG-373"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "**Short answer: No — the company records do not show a Confluence page created in response to a Day 54 (2026-03-17) knowledge-gap event involving Sharon. The premise doesn't line up with what I can find.**\n\nHere's the breakdown, Jax:\n\n**The Sharon / Day 54 event doesn't exist in the records.** I searched for Sharon by name, for any reviewer-audit knowledge-gap event on 2026-03-17, and for knowledge gaps in that timeframe. What I found:\n\n- The only \"knowledge gap detected via reviewer audit\" PRs I can see are PR-103 (Hanna, 2026-01-08), PR-105 (Jordan, 2026-01-08), PR-126 (Taylor, 2026-02-09), PR-131 (Hanna, 2026-02-16), PR-153 (Hanna, 2026-03-23), and PR-155 (Janice, 2026-03-20). No Sharon, and nothing dated 2026-03-17 [source:PR-103][source:PR-105][source:PR-126][source:PR-131][source:PR-153][source:PR-155].\n- On 2026-03-17 the actual recorded activity is a Product Zoom call (\"Align Q2 roadmap with ops\") with Sarah, Mike, Elena, Raj, Priya, and Nadia — no Sharon, and no knowledge-gap discussion [source:zoom_2026-03-17_48cc4de3]. There's also a routine #digital-hq AWS-cost-tagging thread that day, again without Sharon [source:slack_digital-hq_2026-03-17T17:18:00].\n\n**The \"four gap areas\" you listed do exist, but they're tied to earlier tickets, not a Day 54 / Sharon event.** The exact gap list — *mobile analytics; legacy auth service; AWS cost structure; Project Titan* — appears on Jira PR-101 (2026-01-08) and PR-111 (2026-01-22) [source:PR-101][source:PR-111]. Related Confluence docs covering Project Titan/TitanDB, the legacy auth service, and AWS cost structure all predate March: CONF-ENG-001/002/003 (2026-01-01) [source:CONF-ENG-001][source:CONF-ENG-002][source:CONF-ENG-003], plus budget/finance pages like CONF-ENG-173, CONF-ENG-202, CONF-ENG-212 (early Feb) [source:CONF-ENG-173][source:CONF-ENG-202][source:CONF-ENG-212].\n\n**The nearest thing to a \"gap-response\" doc is from mid-March, but not Sharon's.** CONF-ENG-373 \"Define knowledge‑gap sprint process\" by Nadia (2026-03-09) explicitly cites a knowledge-gap detection covering TitanDB schema, legacy auth service, AWS cost tagging, and the Project Titan codebase — but it predates 2026-03-17 and attributes the work to Nadia, not Sharon [source:CONF-ENG-373].\n\nSo: I can't find a Sharon-attributed Day 54 detection, and I can't find a Confluence page that was created *in response* to one. If you saw this referenced somewhere specific (a Slack thread, a Jira comment, a particular CONF-ENG ID), point me at it and I'll dig into that directly — otherwise the premise looks like a conflation of the earlier PR-101/PR-111 gap areas with a different date/person.",
+      "latencyMs": 27630
+    },
+    {
+      "questionId": "silence_EVT-57-knowledge_gap_detected-1433_confluence_created",
+      "questionType": "SILENCE",
+      "questionText": "Did the team create a Confluence documentation page to address the knowledge gap detected on Day 57 involving Jordan, specifically regarding auth-service, redis-cache, and oauth2-flow?",
+      "groundedQuestion": "Did the team create a Confluence documentation page to address the knowledge gap detected on Day 57 (approx. 2026-03-20) involving Jordan, specifically regarding auth-service, redis-cache, and oauth2-flow?",
+      "expectedAnswer": true,
+      "judgedAnswer": false,
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "CONF-ENG-437",
+        "slack_digital-hq_2026-03-25T09:18:00"
+      ],
+      "citedArtifacts": [
+        "PR-117",
+        "slack_digital-hq_2026-02-02T14:56:00",
+        "zoom_2026-03-19_4ecd34a1",
+        "CONF-ENG-189",
+        "slack_engineering_mobile_2026-03-27T11:07:00",
+        "slack_qa_support_2026-01-26T12:10:00"
+      ],
+      "retrievedArtifacts": [
+        "PR-117",
+        "slack_digital-hq_2026-02-02T14:56:00",
+        "zoom_2026-03-19_4ecd34a1",
+        "CONF-ENG-189",
+        "slack_engineering_mobile_2026-03-27T11:07:00",
+        "slack_qa_support_2026-01-26T12:10:00"
+      ],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "**Short answer: No — I can't find a Confluence page that was created to fill that specific knowledge gap.**\n\nHere's what the records do and don't show:\n\n**What exists as a gap flag:**\n- PR-117 (Engineering_Mobile, 2026-01-22) explicitly tags `gap_areas: auth-service; redis-cache; oauth2-flow` [source:PR-117]. This is the closest artifact to a \"knowledge gap\" record covering those three topics in your department.\n- You yourself called out the gap in #digital-hq on 2026-02-02, noting the legacy Java 8 auth-service skips the oauth2-flow and there's no migration plan in Confluence [source:slack_digital-hq_2026-02-02T14:56:00].\n\n**What was created around that time:**\n- The only Confluence page creation I can find dated 2026-03-20 is from a *Design team* Zoom on 2026-03-19, where Desmond committed to creating a \"Brand Assets\" section in the ops SOPs — completely unrelated to auth-service/redis-cache/oauth2-flow [source:zoom_2026-03-19_4ecd34a1].\n- Sanjay offered to \"update the Confluence page\" with VPC tagging gaps and add a legacy auth migration risk section [source:slack_digital-hq_2026-02-02T14:56:00], but that was in February, and I can't find the resulting page in the records.\n- The Knowledge Gap Sync design (CONF-ENG-189) explicitly lists \"legacy auth service refactor\" as **out-of-scope** [source:CONF-ENG-189].\n\n**What's still missing:**\n- Even by 2026-03-27, Miki was asking in #engineering_mobile where the auth migration design doc lives, and the answer pointed to a GitHub issue tracker (auth-migration/issues/42) and a doc titled \"Design: Discuss ops impact of DB issue\" — not a dedicated page addressing the auth-service + redis-cache + oauth2-flow gap [source:slack_engineering_mobile_2026-03-27T11:07:00].\n- The \"Auth Service Overview\" Confluence page was still noted as stale (not updated since the Project Titan refactor) [source:slack_qa_support_2026-01-26T12:10:00].\n\n**Bottom line:** The gap was flagged, discussed, and partially addressed in scattered places (GitHub issues, Slack threads, existing compliance docs), but no dedicated Confluence page was created to close the auth-service/redis-cache/oauth2-flow knowledge gap around 2026-03-20. If this was expected as a deliverable, it either didn't happen or wasn't committed to a searchable artifact. Worth confirming with whoever owned that follow-up, or spinning it up yourself since you offered to draft it back in February.",
+      "latencyMs": 25506
+    },
+    {
+      "questionId": "silence_EVT-7-employee_hired-1030_onboarding_session",
+      "questionType": "SILENCE",
+      "questionText": "Was an onboarding session created in response to the hiring of Janice on Day 7 involving Janice?",
+      "groundedQuestion": "Was an onboarding session created in response to the hiring of Janice on Day 7 (approx. 2026-01-09) involving Janice?",
+      "expectedAnswer": false,
+      "judgedAnswer": false,
+      "answerCorrect": true,
+      "expectedArtifacts": [
+        "hr_outbound_janice_4_offer_letter"
+      ],
+      "citedArtifacts": [
+        "hr_outbound_janice_4_offer_letter",
+        "CONF-ENG-061",
+        "CONF-ENG-119",
+        "CONF-ENG-447",
+        "CONF-ENG-369",
+        "slack_engineering_backend_2026-01-13T16:18:00",
+        "slack_dm_jamie_janice_2026-01-21T12:42:17.625195"
+      ],
+      "retrievedArtifacts": [
+        "hr_outbound_janice_4_offer_letter",
+        "CONF-ENG-061",
+        "CONF-ENG-119",
+        "CONF-ENG-447",
+        "CONF-ENG-369",
+        "slack_engineering_backend_2026-01-13T16:18:00",
+        "slack_dm_jamie_janice_2026-01-21T12:42:17.625195"
+      ],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "**No onboarding session was created in response to your hiring.**\n\n**Hiring timeline:** The offer to you was for a **Backend Engineer** role with a start date three days after the 2026-01-14 offer letter, so your actual start was mid-January, not 2026-01-09 [source:hr_outbound_janice_4_offer_letter].\n\n**What exists around that date is design work, not a session:**\n- CONF-ENG-061 (\"Onboarding checklist alignment,\" 2026-01-09) is a design doc for a unified checklist and a `ONBOARD-CHK` Jira template — a process artifact, with its \"Day 7\" referring to a stakeholder-review milestone, not a hire [source:CONF-ENG-061].\n- CONF-ENG-119 (\"Align onboarding workflow,\" 2026-01-21) describes the *target* workflow (Day 0 orientation, Day 5 check-in, Day 7 completion) and is a planning doc created after your start date [source:CONF-ENG-119].\n- CONF-ENG-447 and CONF-ENG-369 are later design/review docs for the broader process, not individual sessions [source:CONF-ENG-447] [source:CONF-ENG-369].\n\n**No session involving you:** I found no ONB-#### Jira ticket, no orientation/kickoff transcript, and no buddy-assignment record tied to you as a new hire. By mid-January you were already in engineering work — a TitanDB migration thread on 2026-01-13 [source:slack_engineering_backend_2026-01-13T16:18:00] and a ticket-triage check-in with Jamie on 2026-01-21 [source:slack_dm_jamie_janice_2026-01-21T12:42:17.625195].\n\n**Missing evidence:** No HR Ops onboarding ticket, session transcript, or calendar invite for your onboarding exists in the available records.\n\n**One discrepancy worth flagging:** Your profile shows an **HR Generalist / HR_Ops** role, but the hiring and onboarding records point to a **Backend Engineer** role [source:hr_outbound_janice_4_offer_letter] — likely a later role change or a directory lag, but worth confirming.\n\nWant me to check whether a ticket was created but never linked, or look at your manager's side for the buddy assignment?",
+      "latencyMs": 27563
+    },
+    {
+      "questionId": "silence_EVT-29-customer_email_routed-1499_zd_ticket_opened",
+      "questionType": "SILENCE",
+      "questionText": "Was a Zendesk support ticket created in response to the routing of the customer email on Day 29 involving Metro United FC, Marcus?",
+      "groundedQuestion": "Was a Zendesk support ticket created in response to the routing of the customer email on Day 29 (approx. 2026-02-10) involving Metro United FC, Marcus?",
+      "expectedAnswer": false,
+      "judgedAnswer": false,
+      "answerCorrect": true,
+      "expectedArtifacts": [
+        "customer_reply_metro_united_fc_OPP-1002_29"
+      ],
+      "citedArtifacts": [
+        "SALES-128",
+        "SALES-122",
+        "customer_reply_metro_united_fc_OPP-1002_12",
+        "reply_customer_metro_united_fc_12",
+        "OPP-1002",
+        "CONF-ENG-277",
+        "slack_digital-hq_2026-02-23T16:23:00",
+        "slack_qa_support_2026-02-11T13:49:20.501104"
+      ],
+      "retrievedArtifacts": [
+        "SALES-128",
+        "SALES-122",
+        "customer_reply_metro_united_fc_OPP-1002_12",
+        "reply_customer_metro_united_fc_12",
+        "OPP-1002",
+        "CONF-ENG-277",
+        "slack_digital-hq_2026-02-23T16:23:00",
+        "slack_qa_support_2026-02-11T13:49:20.501104"
+      ],
+      "citationRecall": 1,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Short answer: No, I can't find any Zendesk ticket created in response to that routing. Here's what I actually searched and what's in the records.\n\n**What I looked for**\n- The Metro United FC email activity around 2026-02-10 (Day 29)\n- Any Zendesk ticket tied to Metro United FC or to that specific email routing\n- Related artifacts on the Metro United FC opportunity to see if a ticket was linked\n\n**What the records show**\n- The Metro United FC correspondence I found is part of the sales/opportunity thread under OPP-1002, with outbound follow-ups from Jenna, Tasha, Vince, and Blake (e.g., the 2026-02-27 \"Low‑latency pipeline & alert‑fatigue solution\" note [source:SALES-128], the 2026-02-13 \"Updated Proposal & Telemetry Specs\" note [source:SALES-122]) and your own exchange with the customer on the \"Request for Enhanced Data Integration Options\" thread [source:customer_reply_metro_united_fc_OPP-1002_12], [source:reply_customer_metro_united_fc_12]. The opportunity is in Negotiation/Review with Marcus as sender [source:OPP-1002].\n- The only concrete Zendesk ticket referenced in the records is ZD-101, which is about missing session/leaderboard data and a 502 from auth-service [source:CONF-ENG-277], [source:slack_digital-hq_2026-02-23T16:23:00]. That ticket's context doesn't tie to Metro United FC's email routing at all.\n- Your mention of Metro United FC in #qa_support on 2026-02-11 was about a leaderboard discrepancy bug, and you flagged the fix for the next release [source:slack_qa_support_2026-02-11T13:49:20.501104] — that thread references support bug tickets generally, but I don't see a specific Zendesk ticket ID created from the 2026-02-10 email routing.\n\n**Bottom line**\nThere's no Zendesk ticket in the records that I can tie to the ~2026-02-10 routing of the Metro United FC email. If one was expected, it's either not indexed here or wasn't created. Want me to dig into the Zendesk export or the OPP-1002 activity log directly to double-check, or confirm with the support team whether that routing was supposed to auto-create a ticket?",
+      "latencyMs": 19925
+    }
+  ]
+}

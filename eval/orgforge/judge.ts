@@ -11,6 +11,7 @@ export interface QuestionEvaluationResult {
   questionId: string;
   questionType: string;
   questionText: string;
+  groundedQuestion?: string;
   actor?: string;
   expectedAnswer: boolean | string | null;
   judgedAnswer: boolean | string | "inconclusive";
@@ -104,25 +105,32 @@ export async function evaluateQuestionResponse(
   },
   latencyMs: number,
   judgeOptions?: JudgeOptions,
+  groundedQuestion?: string,
 ): Promise<QuestionEvaluationResult> {
   const expectedArtifacts = getExpectedArtifacts(question);
   const expectedBool = getExpectedBooleanAnswer(question);
 
   const citedIds = agentResult.sources.map((s) => s.sourceId);
-  const retrievedIds = agentResult.retrievedSources?.map((s) => s.sourceId) ?? citedIds;
+  const retrievedIds = (agentResult.retrievedSources && agentResult.retrievedSources.length > 0)
+    ? agentResult.retrievedSources.map((s) => s.sourceId)
+    : citedIds;
 
-  // Citation recall: what fraction of expected artifacts were cited?
-  let hits = 0;
+  // Citation recall: exact artifact ID match fraction
+  let exactHits = 0;
   for (const exp of expectedArtifacts) {
-    if (citedIds.some((id) => id.toLowerCase().includes(exp.toLowerCase()) || exp.toLowerCase().includes(id.toLowerCase()))) {
-      hits++;
+    if (citedIds.some((id) => id.toLowerCase() === exp.toLowerCase())) {
+      exactHits++;
     }
   }
-  const citationRecall = expectedArtifacts.length > 0 ? hits / expectedArtifacts.length : 1.0;
+  // When no expected artifacts are specified, recall is 0 rather than artificially inflated 1.0
+  const citationRecall = expectedArtifacts.length > 0 ? exactHits / expectedArtifacts.length : 0;
 
-  // Citation integrity: all cited IDs must be in retrieved set
-  const citationIntegrity = citedIds.every((cited) =>
-    retrievedIds.some((r) => r.toLowerCase() === cited.toLowerCase()),
+  // Citation integrity: all cited IDs must actually exist in the retrieved set
+  const citationIntegrity = citedIds.length === 0 || (
+    retrievedIds.length > 0 &&
+    citedIds.every((cited) =>
+      retrievedIds.some((r) => r.toLowerCase() === cited.toLowerCase()),
+    )
   );
 
   let judgedAnswer: boolean | string | "inconclusive" = "inconclusive";
@@ -151,6 +159,7 @@ export async function evaluateQuestionResponse(
     questionId: question.question_id,
     questionType: question.question_type,
     questionText: question.question_text,
+    groundedQuestion,
     actor: question.actor ?? question.actors?.[0],
     expectedAnswer: expectedBool ?? "evidence_grounded",
     judgedAnswer,
