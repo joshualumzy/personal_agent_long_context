@@ -9,6 +9,7 @@ import type {
 } from "./company-domain.js";
 import type { Skill } from "./skills.js";
 import { asOfInstruction, resolveAsOf, type AsOf } from "./as-of.js";
+import type { GapHiring } from "./gap-hiring.js";
 
 type Message =
   | { role: "system" | "user"; content: string }
@@ -43,6 +44,9 @@ export interface SoCLaaSCompanyAgentOptions {
   retryBaseMs?: number;
   /** Corporate reference date for interpreting relative times (defaults to process.env.CORPORATE_DATE or "2026-03-25"). */
   corporateDate?: string;
+  /** Hiring proposals from knowledge gaps (src/gap-hiring.ts): offers the
+   * read-only hiring_proposals tool, and open_role_from_gap where roles can be opened. */
+  gapHiring?: Pick<GapHiring, "available" | "canOpenRoles" | "list" | "openRole">;
 }
 
 /**
@@ -208,6 +212,38 @@ const plannerTools = [
     },
   },
 ] as const;
+
+/** Hiring proposals: what the company should consider hiring for, and why. */
+const hiringProposalsTool = {
+  type: "function",
+  function: {
+    name: "hiring_proposals",
+    description:
+      "List the open hiring proposals: knowledge domains at risk (the owner left, too few people work on it, or its owner holds too much while incidents land in it), each with its reasons, evidence, a suggested role, and whether a role is already open. Use for questions like what people are we missing, where are we thin, who should we hire. Read-only.",
+    parameters: {
+      type: "object",
+      properties: {
+        date: { type: "string", description: "An earlier day, YYYY-MM-DD. Omit for today. Never later than today." },
+      },
+      additionalProperties: false,
+    },
+  },
+} as const;
+
+const openRoleFromGapTool = {
+  type: "function",
+  function: {
+    name: "open_role_from_gap",
+    description:
+      "Open a draft role in recruiting from one hiring proposal, by its id. Only when the employee's latest message explicitly asks to open a role for it; otherwise offer it and wait. The role stops at draft criteria: nothing is confirmed, searched or sent.",
+    parameters: {
+      type: "object",
+      properties: { proposal_id: { type: "string" } },
+      required: ["proposal_id"],
+      additionalProperties: false,
+    },
+  },
+} as const;
 
 const loadSkillTool: ToolDefinition = {
   type: "function",
@@ -695,9 +731,11 @@ export class GatewayCompanyAgent {
       else messages.push({ role: "assistant", content: text });
     };
     const hasPlanner = Boolean(knowledge.todo && knowledge.dayPlan && knowledge.workingDays);
+    const gaps = this.options.gapHiring?.available && knowledge.workingDays ? this.options.gapHiring : undefined;
     const offeredTools = (): readonly unknown[] => [
       ...companyTools,
       ...(hasPlanner ? plannerTools : []),
+      ...(gaps ? [hiringProposalsTool, ...(gaps.canOpenRoles ? [openRoleFromGapTool] : [])] : []),
       ...(skills.length ? [loadSkillTool] : []),
       ...(this.options.extensions ?? [])
         .filter((extension) => loadedSkills.has(extension.skill))
@@ -738,6 +776,10 @@ export class GatewayCompanyAgent {
         entry.tools.some((definition) => definition.function.name === call.function.name),
       );
       if (unloaded) return `Call load_skill with name "${unloaded.skill}" before using ${call.function.name}.`;
+      if (call.function.name === "hiring_proposals" || call.function.name === "open_role_from_gap") {
+        if (!gaps) throw new Error(`There is no tool named ${call.function.name}.`);
+        return runGapTool(call.function.name, args);
+      }
       if (call.function.name === "today_todo" || call.function.name === "day_plan") {
         if (!hasPlanner) throw new Error(`There is no tool named ${call.function.name}.`);
         return runPlannerTool(call.function.name, args);
@@ -802,19 +844,66 @@ export class GatewayCompanyAgent {
      * artifacts they name are fetched through the same dated view and added
      * to what may be cited, so a ticket on the list can be cited by its id.
      */
-    async function runPlannerTool(name: "today_todo" | "day_plan", args: Record<string, unknown>): Promise<string> {
+    /** Today (the question's day, or the corporate date), or an earlier day the model names — never a later one. */
+    async function toolDay(args: Record<string, unknown>): Promise<{ day: AsOf } | { error: string }> {
       const days = await knowledge.workingDays!();
       const today = resolveAsOf(corporateDate, days);
-      if (!today.ok) return JSON.stringify({ error: today.error });
-      let day: AsOf = today.day;
+      if (!today.ok) return { error: today.error };
       if (typeof args.date === "string" && args.date.trim()) {
         const asked = resolveAsOf(args.date, days);
-        if (!asked.ok) return JSON.stringify({ error: asked.error });
-        if (asked.day > today.day) {
-          return JSON.stringify({ error: `${args.date} is after today (${today.day}); nothing is known about it yet.` });
-        }
-        day = asked.day;
+        if (!asked.ok) return { error: asked.error };
+        if (asked.day > today.day) return { error: `${args.date} is after today (${today.day}); nothing is known about it yet.` };
+        return { day: asked.day };
       }
+      return { day: today.day };
+    }
+
+    /**
+     * hiring_proposals and open_role_from_gap. The proposals' evidence is
+     * fetched through the same dated view and becomes citable; the proposals
+     * themselves are not evidence.
+     */
+    async function runGapTool(name: "hiring_proposals" | "open_role_from_gap", args: Record<string, unknown>): Promise<string> {
+      const chosen = await toolDay(name === "hiring_proposals" ? args : {});
+      if ("error" in chosen) return JSON.stringify({ error: chosen.error });
+      if (name === "open_role_from_gap") {
+        if (typeof args.proposal_id !== "string" || !args.proposal_id.trim()) {
+          return JSON.stringify({ error: "proposal_id is required." });
+        }
+        callbacks?.onStatus?.("Opening a draft role…");
+        try {
+          const role = await gaps!.openRole(args.proposal_id.trim(), chosen.day, employee!.employeeId);
+          acted = true;
+          return JSON.stringify({ opened: true, ...role, note: "A draft role: its criteria wait for someone to confirm them in recruiting. Nothing was searched or sent." });
+        } catch (error) {
+          return JSON.stringify({ error: error instanceof Error ? error.message : "Could not open the role." });
+        }
+      }
+      callbacks?.onStatus?.("Checking where the company is thin…");
+      const proposals = await gaps!.list(chosen.day);
+      const cited = [...new Set(proposals.flatMap((proposal) => proposal.evidence))];
+      const found = cited.length ? await knowledge.sources(cited) : [];
+      for (const item of found) retrieved.set(item.sourceId, item);
+      const citable = new Set(found.map((item) => item.sourceId));
+      return JSON.stringify({
+        date: chosen.day,
+        note: "Proposals, not company evidence. Cite only the ids in each proposal's cite list, as [source:ID]. Offer to open a role; open one only if asked.",
+        proposals: proposals.map((proposal) => ({
+          id: proposal.id,
+          domain: proposal.name,
+          status: proposal.status,
+          open_since: proposal.openedOn,
+          reasons: proposal.reasons.map((reason) => reason.text),
+          suggested_title: proposal.suggestedTitle,
+          cite: proposal.evidence.filter((id) => citable.has(id)),
+        })),
+      });
+    }
+
+    async function runPlannerTool(name: "today_todo" | "day_plan", args: Record<string, unknown>): Promise<string> {
+      const chosen = await toolDay(args);
+      if ("error" in chosen) return JSON.stringify({ error: chosen.error });
+      const day: AsOf = chosen.day;
       const person = employee!.displayName;
       callbacks?.onStatus?.(name === "today_todo" ? "Checking your open tickets…" : "Reading your plan for the day…");
       const rows = name === "today_todo"
