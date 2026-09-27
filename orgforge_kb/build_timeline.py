@@ -59,6 +59,13 @@ try:
 except ImportError:
     pass
 
+# The simulation's clock is UTC: its working hours run 09:00-17:00 UTC, and
+# every artifact's occurred_at agrees with the day in its id when read in UTC.
+# document_date is not reliable for this (a slack message carries its channel
+# file's date, off by a day for 2,333 of 3,303), so a row's day is the UTC
+# date of occurred_at, the same boundary src/as-of.ts filters evidence on.
+DAY = "coalesce((occurred_at AT TIME ZONE 'UTC')::date, document_date)::text"
+
 TODO = "To Do"
 DONE = "Done"
 
@@ -230,20 +237,20 @@ def read(cursor) -> tuple[list[dict], list[dict], dict]:
     artifacts = {row[0] for row in cursor.fetchall()}
 
     cursor.execute(
-        """
-        SELECT source_id, document_date::text, facts::text
+        f"""
+        SELECT source_id, {DAY}, facts::text
         FROM source_documents
-        WHERE source_type = 'dept_plan_created' AND document_date IS NOT NULL
+        WHERE source_type = 'dept_plan_created' AND {DAY} IS NOT NULL
         """
     )
     plans = [(event_id, day, _json(facts)) for event_id, day, facts in cursor.fetchall()]
     entries = plan_entries(plans, artifacts)
 
     cursor.execute(
-        """
-        SELECT source_id, document_date::text, facts::text, actors::text
+        f"""
+        SELECT source_id, {DAY}, facts::text, actors::text
         FROM source_documents
-        WHERE source_type = 'jira' AND category = 'artifact' AND document_date IS NOT NULL
+        WHERE source_type = 'jira' AND category = 'artifact' AND {DAY} IS NOT NULL
         """
     )
     tickets = []
@@ -262,11 +269,11 @@ def read(cursor) -> tuple[list[dict], list[dict], dict]:
     known = {ticket.key for ticket in tickets}
 
     cursor.execute(
-        """
-        SELECT source_id, document_date::text, extract(epoch FROM occurred_at)::text,
+        f"""
+        SELECT source_id, {DAY}, extract(epoch FROM occurred_at)::text,
                facts::text, actors::text
         FROM source_documents
-        WHERE source_type = 'ticket_progress' AND document_date IS NOT NULL
+        WHERE source_type = 'ticket_progress' AND {DAY} IS NOT NULL
         """
     )
     changes: list[Change] = []

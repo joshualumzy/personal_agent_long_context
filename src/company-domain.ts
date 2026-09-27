@@ -1,4 +1,5 @@
 import type { ChatBlock } from "./agent-extension.js";
+import type { AsOf } from "./as-of.js";
 
 export interface EmployeePersona {
   employeeId: string;
@@ -169,6 +170,17 @@ export interface CompanyKnowledge {
   /** One of the fixed company-overview subgraphs (see GRAPH_VIEWS), or null
    * for a name that is not one. */
   graphView?(name: string): Promise<GraphSlice | null>;
+  /**
+   * The working days a date can be chosen from (see src/as-of.ts), oldest
+   * first. Absent where there is no planner projection.
+   */
+  workingDays?(): Promise<string[]>;
+  /**
+   * This knowledge seen from the end of one working day: retrieval returns
+   * only what had occurred by then, and anything not yet filtered by date is
+   * absent. Absent where dates are not supported.
+   */
+  asOf?(day: AsOf): CompanyKnowledge;
   close?(): Promise<void>;
 }
 
