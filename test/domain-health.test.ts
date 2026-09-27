@@ -71,7 +71,7 @@ describe("the domain health route", () => {
     async domainHealth(day) {
       asked.push(day);
       return [{ domain: "kubernetes-deploy", name: "kubernetes-deploy", department: null, owner: "Morgan", ownerSince: null,
-        ownerActive: false, ownerLoad: 1, activeContributors30d: [], incidents30d: [], pages30d: 0,
+        ownerActive: false, ownerLeftOn: "2026-02-17", ownerLoad: 1, activeContributors30d: [], incidents30d: [], pages30d: 0,
         evidence: { contributors: [], incidents: [] } }];
     },
   });

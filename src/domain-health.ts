@@ -23,6 +23,8 @@ export interface DomainHealth {
   ownerSince: string | null;
   /** False when the owner has left: the domain is orphaned. */
   ownerActive: boolean;
+  /** The day the owner left, when they have (from the roster). */
+  ownerLeftOn: string | null;
   /** Domains that owner holds on D, this one included. 0 with no owner. */
   ownerLoad: number;
   /** Employed on D, and wrote a page, worked a ticket, or handled an incident
@@ -43,6 +45,8 @@ export interface DomainHealthInputs {
   owners: Array<{ domain: string; owner: string; since: string | null }>;
   /** People employed on D. */
   employed: Set<string>;
+  /** Leave days known on D, by person. */
+  leftOn?: Map<string, string>;
   /** One row per person's piece of work about a domain in the window. */
   work: Array<{ domain: string; person: string; sourceId: string; kind: "page" | "ticket" | "incident" }>;
   /** Incidents about a domain opened in the window. */
@@ -67,6 +71,7 @@ export function assembleHealth(inputs: DomainHealthInputs): DomainHealth[] {
         owner: owner?.owner ?? null,
         ownerSince: owner?.since ?? null,
         ownerActive: Boolean(owner && inputs.employed.has(owner.owner)),
+        ownerLeftOn: owner ? inputs.leftOn?.get(owner.owner) ?? null : null,
         ownerLoad: owner ? load.get(owner.owner) ?? 0 : 0,
         activeContributors30d: contributors,
         incidents30d: incidents,

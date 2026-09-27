@@ -1122,6 +1122,22 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
    * is limited to artifacts that existed by then.
    */
   async domainHealth(day: AsOf): Promise<DomainHealth[]> {
+    // A past day's health never changes until the projections are rebuilt,
+    // which means a restart; proposals read many days, so keep them.
+    let cached = this.healthByDay.get(day);
+    if (!cached) {
+      cached = this.readDomainHealth(day).catch((error: unknown) => {
+        this.healthByDay.delete(day);
+        throw error;
+      });
+      this.healthByDay.set(day, cached);
+    }
+    return cached;
+  }
+
+  private readonly healthByDay = new Map<string, Promise<DomainHealth[]>>();
+
+  private async readDomainHealth(day: AsOf): Promise<DomainHealth[]> {
     const cutoff = asOfCutoff(day);
     const [domains, owners, roster, pages, tickets, incidents] = await Promise.all([
       this.pool.query<{ key: string; name: string; department: string | null }>(
@@ -1190,6 +1206,7 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
       domains: domains.rows,
       owners: owners.rows,
       employed: new Set(roster.filter((row) => row.employed).map((row) => row.person)),
+      leftOn: new Map(roster.filter((row) => row.leftOn).map((row) => [row.person, row.leftOn!])),
       work,
       incidents: incidents.rows.map((row) => ({ domain: row.domain, key: row.key })),
     });

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, describe, test } from "node:test";
 import { resolveAsOf, type AsOf } from "../src/as-of.js";
 import { PostgresCompanyKnowledge } from "../src/adapters/postgres-company-knowledge.js";
+import { proposalsThrough } from "../src/hiring-proposals.js";
 
 /*
  * Against the OrgForge corpus with the projections built (build_timeline.py).
@@ -60,6 +61,18 @@ describe("knowledge gaps on the real corpus", { skip: databaseUrl ? false : "TES
     // Jordan's redis-cache has nobody from 01-16 until Yusuf on 01-21.
     assert.equal((await health("2026-01-19"))["redis-cache"]!.ownerActive, false);
     assert.equal((await health("2026-01-21"))["redis-cache"]!.owner, "Yusuf");
+  });
+
+  test("proposals come before the hires the company made, and are the backtest's", async () => {
+    const all = await proposalsThrough(days, (when) => knowledge.domainHealth(when as AsOf));
+    const opened = (domain: string) => all.filter((p) => p.domain === domain).map((p) => p.openedOn);
+    assert.ok(opened("titandb").some((when) => when < "2026-01-09"), "TitanDB before Janice");
+    assert.ok(opened("kubernetes-deploy").some((when) => when < "2026-02-05"), "kubernetes-deploy before Reese");
+    assert.ok(opened("terraform-infra").some((when) => when <= "2026-02-17"), "terraform-infra by Morgan's leaving");
+    assert.deepEqual(all.map((p) => p.id), [
+      "titandb@2026-01-02", "redis-cache@2026-01-19", "titandb@2026-01-29",
+      "kubernetes-deploy@2026-01-30", "terraform-infra@2026-01-30", "kubernetes-deploy@2026-02-11",
+    ]);
   });
 
   test("domain health uses nothing after the day", async () => {
