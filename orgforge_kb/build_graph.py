@@ -526,6 +526,34 @@ def build_zd_ticket_edges(cursor) -> tuple[int, int, int]:
     return produced, caused_by, documented_by
 
 
+def build_incident_recurrence_edges(cursor) -> int:
+    """incident event -> incident event, from incident_opened's own
+    facts.recurrence_of — the corpus names which earlier incident this one is
+    a repeat of directly, no keyword or root_cause-prose matching involved.
+
+    This is a second, distinct source of caused_by edges alongside the
+    zd_ticket ones above: those connect a zd_ticket event to the incident it
+    escalated into; these connect two incident events to each other. Both use
+    edge_type='caused_by' but never share a node pair.
+    """
+    cursor.execute(
+        """
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+        SELECT DISTINCT en.node_id, cn.node_id, 'caused_by'
+        FROM source_documents d
+        JOIN graph_nodes en ON en.node_type = 'event'
+                            AND en.ref_key = d.facts->'causal_chain'->>0
+        JOIN graph_nodes cn ON cn.node_type = 'event'
+                            AND cn.ref_key = d.facts->>'recurrence_of'
+        WHERE d.source_type = 'incident_opened'
+          AND d.facts ? 'recurrence_of'
+          AND d.facts->>'recurrence_of' <> ''
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    return cursor.rowcount
+
+
 def build_owns_domain_edges(cursor) -> int:
     """person -> item(domain), from the registry's primary/former owner."""
     cursor.execute(
@@ -597,6 +625,7 @@ def main() -> int:
             print(f"zd_ticket produced:      {zd_produced}", file=sys.stderr)
             print(f"zd_ticket caused_by:     {zd_caused_by}", file=sys.stderr)
             print(f"zd_ticket documented_by: {zd_documented_by}", file=sys.stderr)
+            print(f"incident recurrence caused_by: {build_incident_recurrence_edges(cursor)}", file=sys.stderr)
             print(f"owns_domain edges:   {build_owns_domain_edges(cursor)}", file=sys.stderr)
             print(f"about_domain edges:  {build_about_domain_edges(cursor)}", file=sys.stderr)
 
