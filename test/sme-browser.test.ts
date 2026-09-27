@@ -1038,7 +1038,9 @@ describe("SME Assistant plate, as shown on camera", () => {
     const finance = rows.find((row) => /Finance lead/.test(row.textContent!))!;
     // The most recent ask names the row; the count says how many there are and from how many meetings.
     assert.equal(finance.querySelector(".task-title")!.textContent, "Discount Confirmation");
-    assert.match(finance.textContent!, /3 asks · 3 meetings/);
+    // Compact on the narrow plate: a count, with the full wording on hover.
+    assert.equal(finance.querySelector(".task-count")!.textContent, "×3");
+    assert.equal(finance.querySelector(".task-count")!.getAttribute("title"), "3 asks from 3 meetings");
     assert.equal(page.document.querySelector("#home-waiting .count")!.textContent, "2");
     for (const title of page.document.querySelectorAll("#home-waiting .task-title")) {
       assert.doesNotMatch(title.textContent!, /^(Escalation|Approval required):/i);

@@ -497,7 +497,7 @@ function homeTask({ action, meeting, asks = 1, meetingCount = 1 }, part, oneMeet
     tag = `<span class="task-tag waiting" title="${escapeHtml(action.payload.reason ?? "")}">${escapeHtml(action.payload.requiredApprover)}</span>`;
   }
   if (asks > 1) {
-    tag += `<span class="task-count">${asks} asks · ${meetingCount} ${meetingCount === 1 ? "meeting" : "meetings"}</span>`;
+    tag += `<span class="task-count" title="${asks} asks from ${meetingCount} ${meetingCount === 1 ? "meeting" : "meetings"}">×${asks}</span>`;
   }
   const go = part === "needs" ? '<span class="task-go">Review</span>' : lineIcon("chevron", 14);
   row.innerHTML = `
