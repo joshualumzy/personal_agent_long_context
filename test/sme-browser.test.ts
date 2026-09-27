@@ -594,7 +594,7 @@ function reviewRespond(
 describe("SME Assistant clearing the plate, one draft at a time", () => {
   test("Clear all opens a focused review: the full draft, where it came from, approve calls the tray's endpoint and offers an Open link instead of a pop-up", async () => {
     const a1 = action("a1", "email_draft", "approval", "proposed", "Email: Send follow-up to Owen", {
-      payload: { to: "owen@notc.example", subject: "Root cause and the fix", body: "Hi Owen,\n\nAs promised, here is the root cause." },
+      payload: { to: "owen@notc.example", subject: "Root cause and the fix", body: "Hi Owen,\n\nAs promised, here is the root cause [source:ENG-210]." },
       trigger: { segmentIndex: 4, speaker: "Jax", quote: "I'll send a follow-up email today with the root cause." },
       evidence: [
         { sourceId: "ENG-210", sourceType: "jira", title: "Commit race, open", excerpt: "" },
@@ -621,7 +621,10 @@ describe("SME Assistant clearing the plate, one draft at a time", () => {
     assert.equal(page.document.querySelector("#clear-progress")!.textContent, "1 of 2");
     assert.match(page.document.querySelector("#clear-fields")!.textContent!, /owen@notc\.example/);
     assert.match(page.document.querySelector("#clear-fields")!.textContent!, /Root cause and the fix/);
-    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /As promised, here is the root cause\./);
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /As promised, here is the root cause/);
+    // The reviewer sees what a sentence rests on as a citation chip, never a raw marker.
+    assert.doesNotMatch(page.document.querySelector("#clear-fields")!.textContent!, /\[source:/);
+    assert.equal(page.document.querySelector("#clear-fields .inline-citation")!.textContent, "ENG-210");
 
     // What it touches: the quote and speaker it came from, and what it was built from.
     const context = page.document.querySelector("#clear-context")!;

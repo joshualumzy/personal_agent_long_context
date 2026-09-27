@@ -84,7 +84,12 @@ function renderClearFields(item) {
 
   if (bodyKey) {
     const value = fieldValue(payload, bodyKey);
-    if (value) parts.push(`<div class="clear-body">${escapeHtml(value)}</div>`);
+    // [source:ID] markers show as the citation chips answers use; they never leave for the recipient.
+    if (value) {
+      const withChips = escapeHtml(value).replace(/\[source:([^\]]+)\]/gi, (_whole, id) =>
+        `<span class="inline-citation" title="${id}">${escapeHtml(citationLabel(id.trim()))}</span>`);
+      parts.push(`<div class="clear-body">${withChips}</div>`);
+    }
   }
 
   if (action.kind === "sheet_draft" && Array.isArray(payload.rows)) {
