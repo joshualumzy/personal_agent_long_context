@@ -287,6 +287,19 @@ describe("the company graph", () => {
     window.close();
   });
 
+  test("the question sits in the middle as a pill with its words inside, and every item says what it is", async () => {
+    const { document } = await open("/graph/answer?q=TitanDB", (url) => (url.pathname === "/api/v1/graph/query" ? asked : org));
+
+    const question = document.querySelector('.node[data-id="query:TitanDB"]')!;
+    assert.ok(question.querySelector("rect.n-query"), "the question is a pill, not a dot");
+    assert.match(question.querySelector("text.pill-label")!.textContent!, /TitanDB/);
+    assert.equal(question.querySelector("text.sub"), null, "the pill needs no second line");
+
+    const domain = document.querySelector('.node[data-id="item:titandb"]')!;
+    assert.match(domain.querySelector("text.caption")!.textContent!, /TitanDB/);
+    assert.match(domain.querySelector("text.sub")!.textContent!, /knowledge domain/i);
+  });
+
   test("the question's evidence is what its details show", async () => {
     const { window, document } = await open("/graph/answer?q=TitanDB", () => asked);
     document.querySelector('.node[data-id="query:TitanDB"]')!.dispatchEvent(new window.Event("focus"));

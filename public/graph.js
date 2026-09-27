@@ -515,27 +515,66 @@ function timelineCaption(node) {
   return shortLabel(node, 18);
 }
 
-function shapeFor(node) {
+/** Shapes at `size` 1 fit the dense layouts (columns, timeline); the radial
+ * pictures draw them half as large again, so each one reads at a glance. */
+function shapeFor(node, size = 1) {
   if (node.id.startsWith("day:") && VIEWS[state.view].layout === "timeline") return timelineShape(node);
   const incident = node.isIncident ? " incident" : "";
+  const k = (value) => +(value * size).toFixed(1);
+  const points = (pairs) => pairs.map(([x, y]) => `${k(x)},${k(y)}`).join(" ");
   switch (node.type) {
     case "person":
-      return svg("polygon", { points: "0,-7 7,0 0,7 -7,0", class: `shape n-person${incident}` });
+      return svg("polygon", { points: points([[0, -7], [7, 0], [0, 7], [-7, 0]]), class: `shape n-person${incident}` });
     case "organization":
-      return svg("polygon", { points: "-4,-7 4,-7 7,0 4,7 -4,7 -7,0", class: `shape n-organization${incident}` });
+      return svg("polygon", { points: points([[-4, -7], [4, -7], [7, 0], [4, 7], [-4, 7], [-7, 0]]), class: `shape n-organization${incident}` });
     case "item":
-      return svg("circle", { r: 7, class: `shape n-item${incident}` });
+      return svg("circle", { r: k(7), class: `shape n-item${incident}` });
     case "event":
-      return svg("rect", { x: -6, y: -6, width: 12, height: 12, class: `shape n-event${incident}` });
+      return svg("rect", { x: k(-6), y: k(-6), width: k(12), height: k(12), class: `shape n-event${incident}` });
     case "document":
-      return svg("polygon", { points: "0,-7 7,6 -7,6", class: `shape n-document${incident}` });
+      return svg("polygon", { points: points([[0, -7], [7, 6], [-7, 6]]), class: `shape n-document${incident}` });
     case "query":
       return svg("circle", { r: 11, class: "shape n-query" });
     case "cluster":
-      return svg("circle", { r: 8, class: "shape n-cluster" });
+      return svg("circle", { r: k(8), class: "shape n-cluster" });
     default:
-      return svg("circle", { r: 7, class: "shape n-item" });
+      return svg("circle", { r: k(7), class: "shape n-item" });
   }
+}
+
+/** The question at the centre of a radial picture: an indigo pill with its
+ * words inside, on two lines when it is long. */
+function questionPill(node) {
+  const words = shortLabel(node, 70).split(/\s+/);
+  const lines = [""];
+  for (const word of words) {
+    const line = lines[lines.length - 1];
+    if (line && `${line} ${word}`.length > 30 && lines.length < 2) lines.push(word);
+    else lines[lines.length - 1] = line ? `${line} ${word}` : word;
+  }
+  const width = Math.max(...lines.map((line) => line.length)) * 6.6 + 34;
+  const height = lines.length === 1 ? 30 : 44;
+  const pill = svg("rect", {
+    x: (-width / 2).toFixed(1), y: -height / 2, width: width.toFixed(1), height, rx: height / 2,
+    class: "shape n-query",
+  });
+  const label = svg("text", { class: "pill-label" });
+  lines.forEach((line, index) => {
+    const tspan = svg("tspan", { x: 0, y: (index - (lines.length - 1) / 2) * 15 + 4 });
+    tspan.textContent = line;
+    label.append(tspan);
+  });
+  return [pill, label];
+}
+
+/** A second line under an item: what kind of thing it is, briefly. */
+function shortKind(node) {
+  const kind = describeKind(node)
+    .replace(/^Work item \((.*?)\)/, "$1")
+    .replace(/^Event \((.*?)\)/, "$1")
+    .replace(/, part of an incident$/, ", incident");
+  const text = kind.charAt(0).toLowerCase() + kind.slice(1);
+  return text.length > 30 ? `${text.slice(0, 29)}…` : text;
 }
 
 function setViewBox(box) {
@@ -641,13 +680,26 @@ function drawPicture() {
     } else if (sideCaptions && node.type !== "query") {
       caption = svg("text", { x: 12, y: 3, class: "caption side" });
       caption.textContent = shortLabel(node, 32);
+    } else if (node.type === "query") {
+      caption = null;
     } else {
-      caption = svg("text", { y: node.type === "query" ? 26 : 20, class: `caption${node.type === "query" ? " strong" : ""}` });
-      caption.textContent = shortLabel(node, node.type === "query" ? 60 : 24);
+      caption = svg("text", { y: 27, class: "caption label" });
+      caption.textContent = shortLabel(node, 26);
     }
-    group.append(svg("title", {}), caption);
+    const radial = !timeline && !sideCaptions;
+    group.append(svg("title", {}));
+    if (caption) group.append(caption);
+    if (radial && node.type !== "query" && node.type !== "cluster") {
+      const sub = svg("text", { y: 40, class: "sub" });
+      sub.textContent = shortKind(node);
+      group.append(sub);
+    }
     group.querySelector("title").textContent = `${nameOf(node)} — ${describeKind(node)}`;
-    group.prepend(svg("circle", { r: 13, class: "ring" }), shapeFor(node));
+    if (node.type === "query" && !timeline) {
+      group.prepend(...questionPill(node));
+    } else {
+      group.prepend(svg("circle", { r: radial ? 18 : 13, class: "ring" }), shapeFor(node, radial ? 1.55 : 1));
+    }
     group.addEventListener("click", (event) => {
       event.stopPropagation();
       activate(node.id);
