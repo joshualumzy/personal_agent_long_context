@@ -106,6 +106,7 @@ describe("hiring proposals, as people act on them", () => {
     assert.equal(snapshot.role?.confirmed, false, "the criteria wait for a person");
     assert.equal(snapshot.role?.origin?.kind, "knowledge_gap");
     assert.equal(snapshot.role?.origin?.proposalId, "kubernetes-deploy@2026-01-21");
+    assert.equal(snapshot.role?.origin?.name, "kubernetes-deploy");
     assert.match(snapshot.role?.origin?.reasons[0] ?? "", /Morgan, who owned kubernetes-deploy, left on 2026-01-20/);
     assert.match(snapshot.role?.requirement ?? "", /own kubernetes-deploy/);
     assert.deepEqual(model.tasks, ["criteria extraction"]);

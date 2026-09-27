@@ -714,7 +714,7 @@ function renderOrigin(role) {
     return;
   }
   note.replaceChildren(
-    h("strong", {}, `Opened from a knowledge gap: ${origin.domain}. `),
+    h("strong", {}, `Opened from a knowledge gap: ${origin.name ?? origin.domain}. `),
     (origin.reasons ?? []).join(" "),
     origin.evidence?.length ? h("span", { class: "origin-evidence" }, ` Evidence: ${origin.evidence.slice(0, 6).join(", ")}.`) : null,
   );

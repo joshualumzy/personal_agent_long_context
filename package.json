@@ -27,6 +27,7 @@
     "test:timeline": ".venv/bin/python -m unittest orgforge_kb/test_build_timeline.py",
     "orgforge:gap-truth": "set -a; . ./.env; set +a; .venv/bin/python eval/orgforge/gap_truth.py",
     "backtest:hiring": "node --env-file=.env --import tsx scripts/backtest-hiring.ts",
+    "eval:gap-contamination": "node --env-file=.env --import tsx eval/orgforge/gap_contamination.ts",
     "orgforge:embed": "node --env-file=.env --import tsx scripts/orgforge/embed.ts",
     "linkedin:login": "node --env-file-if-exists=.env --import tsx scripts/linkedin-inbox.ts --login",
     "linkedin:sync": "node --env-file-if-exists=.env --import tsx scripts/linkedin-inbox.ts",
