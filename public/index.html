@@ -8,7 +8,9 @@
       content="Read-only workplace assistant for SME employees, grounded in verified Apex Athletics evidence and Letta working context."
     />
     <title>SME Employee Assistant</title>
-    <link rel="stylesheet" href="/styles.css?v=8" />
+    <link rel="preload" href="/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="stylesheet" href="/theme.css" />
+    <link rel="stylesheet" href="/styles.css?v=9" />
     <script src="/vendor/marked.js" defer></script>
     <script src="/vendor/dompurify.js" defer></script>
     <script src="/vendor/rive.js" defer></script>
@@ -17,12 +19,9 @@
   <body>
     <div class="app-layout">
       <!-- Left Sidebar for Chat History -->
-      <aside class="chat-sidebar" id="sidebar">
-        <div class="sidebar-header">
-          <div class="sidebar-brand">
-            <span class="sidebar-brand-icon">🏢</span>
-            <span class="sidebar-brand-name">SME Assistant</span>
-          </div>
+      <aside class="chat-sidebar shell-side" id="sidebar">
+        <div class="sidebar-header shell-top">
+          <div class="workspace"><span class="logo" aria-hidden="true">A</span>Apex Athletics</div>
           <button type="button" id="collapse-sidebar-btn" class="sidebar-action-btn" title="Minimize sidebar (⌘B)" aria-label="Minimize sidebar">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <rect width="18" height="18" x="3" y="3" rx="2" />
@@ -31,6 +30,13 @@
             </svg>
           </button>
         </div>
+
+        <nav class="sidebar-apps" aria-label="Apps">
+          <ul class="app-nav">
+            <li><a href="/meetings"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Meetings</a></li>
+            <li><a href="/" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>SME Assistant</a></li>
+          </ul>
+        </nav>
 
         <div class="sidebar-new-chat-wrapper">
           <button type="button" id="new-chat-btn" class="new-chat-btn" title="Start a new chat">
@@ -52,25 +58,10 @@
           </div>
         </div>
 
-        <div class="sidebar-footer">
-          <div class="sidebar-user" id="sidebar-user-container" title="Switch employee persona (click to open directory)" role="button" tabindex="0">
-            <div class="sidebar-user-info">
-              <div class="avatar" id="sidebar-user-avatar" aria-hidden="true">👨‍💻</div>
-              <div class="user-meta">
-                <strong id="sidebar-user-name">Jax</strong>
-                <small id="sidebar-user-role">Backend Engineer</small>
-              </div>
-            </div>
-            <div class="sidebar-user-actions">
-              <button type="button" id="logout-btn" class="sidebar-action-btn logout-btn" title="Log out" aria-label="Log out">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-                  <polyline points="16 17 21 12 16 7"></polyline>
-                  <line x1="21" y1="12" x2="9" y2="12"></line>
-                </svg>
-              </button>
-            </div>
-          </div>
+        <div class="shell-user" id="sidebar-user-container" title="Switch employee persona (click to open directory)" role="button" tabindex="0">
+          <span class="shell-avatar" id="sidebar-user-avatar" aria-hidden="true">J</span>
+          <span class="shell-who"><span class="shell-name" id="sidebar-user-name">Jax</span><span class="shell-role" id="sidebar-user-role">Backend Engineer</span></span>
+          <button type="button" id="logout-btn" class="shell-out logout-btn" title="Log out" aria-label="Log out"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
         </div>
       </aside>
 
@@ -78,7 +69,7 @@
       <div id="sidebar-overlay" class="sidebar-overlay" hidden></div>
 
       <!-- Main Chat Area -->
-      <div class="chat-panel">
+      <div class="chat-panel shell-main">
         <header class="app-header">
           <div class="header-content">
             <div class="brand">
@@ -89,7 +80,6 @@
                 </svg>
               </button>
               <div class="header-titles">
-                <span class="eyebrow">Workplace Context Agent</span>
                 <h1 id="current-chat-title">SME Assistant</h1>
               </div>
             </div>
@@ -112,7 +102,7 @@
                       </div>
                       <small class="model-opt-desc">NUS SoCLaaS cluster · High capacity</small>
                     </div>
-                    <span class="opt-check" aria-hidden="true">✓</span>
+                    <span class="opt-check" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
                   </button>
                   <button type="button" class="model-option" role="menuitemradio" aria-checked="false" data-model="sonnet">
                     <div class="model-opt-main">
@@ -122,7 +112,7 @@
                       </div>
                       <small class="model-opt-desc">Fast synthesis via Bedrock gateway</small>
                     </div>
-                    <span class="opt-check" aria-hidden="true">✓</span>
+                    <span class="opt-check" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
                   </button>
                 </div>
               </div>
@@ -186,27 +176,6 @@
                   aria-label="Message for workplace assistant"
                 ></textarea>
                 <div class="composer-toolbar">
-                  <!-- Model Selector (Claude style) -->
-                  <div class="model-selector-container" id="model-selector-container">
-                    <button type="button" id="model-selector-btn" class="model-selector-btn" aria-haspopup="listbox" aria-expanded="false" title="Switch AI model">
-                      <span class="model-dot-icon" id="model-dot-icon"></span>
-                      <span id="selected-model-name">Qwen 2.5 32B</span>
-                      <svg class="chevron-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="m6 9 6 6 6-6"/>
-                      </svg>
-                    </button>
-                    <div id="model-dropdown-menu" class="model-dropdown-menu" hidden>
-                      <div class="model-option active" data-model="soclaas">
-                        <span class="model-opt-title">Qwen 2.5 32B</span>
-                        <span class="opt-check" aria-hidden="true">✓</span>
-                      </div>
-                      <div class="model-option" data-model="sonnet">
-                        <span class="model-opt-title">Claude 3.5 Sonnet</span>
-                        <span class="opt-check" aria-hidden="true">✓</span>
-                      </div>
-                    </div>
-                  </div>
-
                   <div class="composer-actions">
                     <button type="submit" id="send-button" class="send-btn" aria-label="Send message">
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -224,13 +193,24 @@
               </div>
               <div class="input-footer">
                 <p class="privacy-note">
-                  🔒 Evidence-grounded & read-only. Basic prohibited-data filtering automatically blocks credentials, API tokens, and sensitive personal identifiers.
+                  <svg class="line-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Evidence-grounded & read-only. Basic prohibited-data filtering automatically blocks credentials, API tokens, and sensitive personal identifiers.
                 </p>
               </div>
             </form>
           </div>
         </main>
       </div>
+
+      <!-- A role's candidates, pinned beside the chat while the conversation goes on -->
+      <aside id="pinned-panel" class="pinned-panel" aria-label="Pinned candidates" hidden>
+        <div class="pinned-head">
+          <span id="pinned-title">Hiring · Candidates</span>
+          <button type="button" class="unpin-panel" title="Unpin" aria-label="Unpin the candidates">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+        <div class="pinned-body"></div>
+      </aside>
 
       <!-- Source Inspection Dialog -->
       <dialog id="source-dialog" aria-labelledby="source-title">
@@ -240,7 +220,7 @@
             <h2 id="source-title"></h2>
             <p id="source-meta" class="source-meta"></p>
           </div>
-          <button type="button" id="close-source" class="close-btn" aria-label="Close source view">✕</button>
+          <button type="button" id="close-source" class="close-btn" aria-label="Close source view"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
         <div class="dialog-body">
           <pre id="source-body"></pre>
@@ -250,10 +230,10 @@
       <!-- Employee Login Dialog -->
       <dialog id="login-dialog" class="auth-dialog" aria-labelledby="login-title">
         <div class="auth-modal-card">
-          <button type="button" id="close-login-dialog" class="close-btn login-close-btn" aria-label="Close sign-in" title="Close (Esc)">✕</button>
+          <button type="button" id="close-login-dialog" class="close-btn login-close-btn" aria-label="Close sign-in" title="Close (Esc)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
           <div class="auth-header">
             <div class="auth-brand-row">
-              <span class="auth-brand-badge">🏢 Apex Athletics Enterprise Workspace</span>
+              <span class="auth-brand-badge">Apex Athletics workspace</span>
             </div>
             <h2 id="login-title">Employee Sign-In</h2>
             <p class="auth-subtitle">Select your account from the 51-employee company directory.</p>
@@ -267,7 +247,7 @@
                   type="search"
                   id="persona-search-input"
                   class="persona-search-input"
-                  placeholder="🔍 Filter by name, role, or department..."
+                  placeholder="Filter by name, role, or department"
                   autocomplete="off"
                 />
               </div>
@@ -289,7 +269,7 @@
                 autocomplete="current-password"
                 placeholder="Enter password (default: password)"
               />
-              <span class="form-hint">💡 Default company password is <code>password</code></span>
+              <span class="form-hint">Default company password is <code>password</code></span>
             </div>
 
             <div id="login-error-msg" class="auth-error-banner" hidden></div>
@@ -306,7 +286,7 @@
       <!-- Confirmation Dialog -->
       <dialog id="confirm-dialog" class="confirm-dialog" aria-labelledby="confirm-dialog-title">
         <div class="confirm-modal-card">
-          <div class="confirm-modal-icon" id="confirm-modal-icon">🗑️</div>
+          <div class="confirm-modal-icon" id="confirm-modal-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></div>
           <h2 id="confirm-dialog-title" class="confirm-modal-title">Clear all conversations?</h2>
           <p id="confirm-dialog-message" class="confirm-modal-message">
             This action cannot be undone.

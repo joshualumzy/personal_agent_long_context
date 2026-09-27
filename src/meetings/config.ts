@@ -4,7 +4,7 @@ import type pg from "pg";
 import type { CompanyKnowledge } from "../company-domain.js";
 import { OpenAiCompatibleModel, type JsonModel } from "../recruiting/llm.js";
 import { ActionDrafter } from "./drafter.js";
-import type { AvailabilityChecker, ContactDirectory, HiringHandoff, QuestionAnswerer } from "./domain.js";
+import type { AvailabilityChecker, ContactDirectory, MeetingParticipant, QuestionAnswerer } from "./domain.js";
 import { companyContactDirectory } from "./contacts.js";
 import { FallbackWhenReader, JevWhenReader, ModelWhenReader } from "./when.js";
 import { checkConflicts } from "./drafter.js";
@@ -24,6 +24,8 @@ const SCENARIO_PREFIX = "scenario:";
 interface Scenario {
   title: string;
   segments: ReplaySegment[];
+  /** Who the scenario's invite lists, with their addresses. */
+  participants?: MeetingParticipant[];
 }
 
 /** Scripted demo meetings shipped with the repo, listed before OrgForge recordings. */
@@ -57,8 +59,6 @@ export interface MeetingDependencies {
   availability?: AvailabilityChecker | null;
   /** Whether Google is connected and calendar free/busy granted, for the page's connect prompt. */
   googleStatus?: () => Promise<GoogleStatus>;
-  /** S3, so a hiring need heard in a meeting becomes a draft role. */
-  hiring?: HiringHandoff | null;
   log: (context: string, error: unknown) => void;
 }
 
@@ -102,7 +102,6 @@ export function meetingsFromEnvironment(environment: Environment, deps: MeetingD
         : {}),
     }),
     executor: new DispatchingExecutor({
-      hiring: deps.hiring ?? null,
       ticketRepo: environment.MEETINGS_TICKET_REPO || undefined,
       suite: environment.MEETINGS_SUITE === "microsoft" ? "microsoft" : "google",
       chat: environment.MEETINGS_CHAT === "teams" ? "teams" : "whatsapp",
@@ -135,7 +134,9 @@ export function meetingsFromEnvironment(environment: Environment, deps: MeetingD
     async load(sourceId: string) {
       if (sourceId.startsWith(SCENARIO_PREFIX)) {
         const scenario = (await scenarios()).get(sourceId);
-        return scenario ? { title: scenario.title, segments: scenario.segments } : null;
+        return scenario
+          ? { title: scenario.title, segments: scenario.segments, ...(scenario.participants ? { participants: scenario.participants } : {}) }
+          : null;
       }
       return recordings.load(sourceId);
     },

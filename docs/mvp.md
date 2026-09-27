@@ -8,14 +8,15 @@ Demonstrate that an SME employee can ask a question spanning fragmented company 
 
 ## MVP Workflow
 
-1. Import employee-visible OrgForge Company Artifacts into PostgreSQL (4,966 records across 8 types).
-2. Exclude the Evaluation Oracle by construction.
-3. Authenticate the employee persona (51 colleagues, with Jax, Priya, Chloe, Marcus, Deepa pinned) and retrieve their personal context from Letta, strictly scoped to that employee.
-4. Use hybrid keyword and vector retrieval over Company Evidence, followed by explicit artifact link traversal (`document_links`).
-5. Run a live agent reasoning loop (via NUS SoCLaaS or AWS Bedrock) with live progress indicators and validated answer delivery over Server-Sent Events (SSE).
-6. Return answers whose company factual claims cite only retrieved Company Evidence (`[source:ID]`).
-7. Let the employee inspect each cited Company Artifact and inspect their separately labelled Letta Personal Memory.
-8. Persist multi-turn conversations in PostgreSQL.
+1. Import employee-visible OrgForge Company Artifacts into PostgreSQL (4,988 records across 12 types).
+2. Exclude raw Evaluation Oracle records from the runtime evidence, chunk, embedding, and citation surfaces.
+3. Build a deterministic property-graph projection offline and deploy only its approved `graph_nodes` and `graph_edges` snapshot to the shared runtime PostgreSQL database.
+4. Authenticate the employee persona (51 colleagues, with Jax, Priya, Chloe, Marcus, Deepa pinned) and retrieve their personal context from Letta, strictly scoped to that employee.
+5. Use hybrid keyword and vector retrieval over Company Evidence, explicit artifact links (`document_links`), and bounded property-graph traversal.
+6. Run a live agent reasoning loop (via NUS SoCLaaS or AWS Bedrock) with live progress indicators and validated answer delivery over Server-Sent Events (SSE).
+7. Return answers whose company factual claims cite only retrieved Company Evidence (`[source:ID]`); graph nodes and edges may guide traversal but are not citations.
+8. Let the employee inspect each cited Company Artifact, the approved graph views, and their separately labelled Letta Personal Memory.
+9. Persist multi-turn conversations in PostgreSQL.
 
 ## Architecture
 
@@ -43,19 +44,27 @@ Fastify Application (src/http-app.ts)
               ├── Hybrid Retrieval (src/adapters/postgres-company-knowledge.ts):
               │     ├── PostgreSQL tsvector full-text search
               │     └── pgvector cosine semantic search (Titan Text Embeddings V2)
-              └── Artifact Graph:
-                    └── Explicit OrgForge cross-links (document_links)
+              └── Company Context Graph:
+                    ├── Explicit OrgForge artifact cross-links (document_links)
+                    └── Deterministic property graph (graph_nodes / graph_edges)
 ```
 
-The application is a modular monolith. PostgreSQL stores Company Evidence, chunks, explicit artifact links, conversations, and the 51-employee roster. SoCLaaS/Bedrock performs reasoning and tool selection; deterministic server code validates tools and citations during the live request.
+The application is a modular monolith. PostgreSQL stores Company Evidence, chunks, explicit artifact links, the deployed property-graph snapshot, conversations, and the 51-employee roster. SoCLaaS/Bedrock performs reasoning and tool selection; deterministic server code validates tools and citations during the live request.
 
-Letta stores Personal Memory only; it never stores the OrgForge corpus. PostgreSQL with pgvector stores Company Evidence vectors alongside full-text search. The harness keeps personal-memory context visibly separate from inspectable Company Evidence and validates that company citations were retrieved in the current run.
+Letta stores Personal Memory only; it never stores the OrgForge corpus. PostgreSQL with pgvector stores Company Evidence vectors alongside full-text search. The graph snapshot is built deterministically outside the shared runtime database and deployed as `graph_nodes` and `graph_edges`; raw graph-build inputs are not copied with it. The harness keeps Personal Memory and graph context visibly separate from inspectable Company Evidence and validates that company citations were retrieved in the current run.
 
 ## Runtime Data Boundary
 
-Allowed runtime inputs are declared Company Artifact types such as Slack, Jira, Confluence, email, Zoom transcripts, pull requests, alerts, invoices, CRM artifacts, surveys, and support tickets.
+Allowed runtime evidence inputs are declared Company Artifact types such as Slack, Jira, Confluence, email, Zoom transcripts, pull requests, alerts, invoices, CRM artifacts, surveys, and support tickets.
 
-The runtime database must reject:
+The shared runtime database may additionally contain an approved deterministic graph projection in `graph_nodes` and `graph_edges`. The projection may be built offline from structural OrgForge relationships, including simulation-event relationships and the domain and resolved-incident registries, provided that:
+
+- only the projected nodes, edges, relationship metadata, and artifact natural keys are deployed;
+- raw Oracle rows and files are not deployed with the projection;
+- graph traversal returns employee-visible Company Artifacts before any result can become answer evidence; and
+- graph nodes and edges never satisfy the citation requirement by themselves.
+
+The runtime evidence store must reject:
 
 - `sim_event` and `sim_config` rows;
 - `simulation_snapshot.json`;
@@ -63,15 +72,17 @@ The runtime database must reject:
 - `domain_registry.json`;
 - Datadog metric time series and any expected-answer files.
 
-Those sources may be read only by a separate evaluation runner that cannot be called by the agent.
+Those raw sources may be read only by the offline graph builder or a separate evaluation runner. Neither component is callable by the runtime agent. Expected answers, scores, and evaluation-only labels must never influence the deployed graph projection.
 
 ## MVP Acceptance Criteria
 
 - One documented command starts PostgreSQL (`npm run db:up`) and one applies migrations (`npm run db:migrate`).
 - OrgForge ingestion is repeatable and reports accepted and rejected counts (`npm run orgforge:ingest`).
-- A database check finds zero Evaluation Oracle records (`npm run test:orgforge`).
+- Runtime retrieval, chunks, embeddings, and citations contain zero raw Evaluation Oracle records (`npm run test:orgforge`).
+- Database migrations create the current `graph_nodes` and `graph_edges` schema before a graph snapshot is restored.
+- Graph snapshot deployment is repeatable, preserves the existing Company Evidence embeddings, and produces zero dangling edges.
 - The browser asks a general company question and receives a live-model streaming response.
-- The agent can use keyword search, vector search, and explicit artifact links.
+- The agent can use keyword search, vector search, explicit artifact links, and bounded graph traversal.
 - Re-running the embedding backfill is safe and records the configured model for each vector.
 - The unified endpoint scopes Letta context to the active employee persona and returns Personal Memory separately from Company Evidence.
 - Every returned citation was retrieved during that run and opens in the browser inspector.

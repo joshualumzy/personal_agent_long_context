@@ -12,6 +12,12 @@
     "zoom_2026-02-06_655f73fa",
     "zoom_2026-01-07_993af431"
   ],
+  "participants": [
+    {"name": "Jax", "email": "jax@apexathletics.com"},
+    {"name": "Marcus", "email": "marcus@apexathletics.com"},
+    {"name": "Deepa", "email": "deepa@apexathletics.com"},
+    {"name": "Owen", "email": "owen@notc.example", "org": "National Olympic Training Center"}
+  ],
   "segments": [
     { "speaker": "Marcus", "text": "Thanks for jumping on, everyone — this is our weekly sync with National Olympic Training Center on the Apex Athletics telemetry rollout, and we also need to cover last week's SLA incident." },
     { "speaker": "Owen (National Olympic Training Center)", "text": "Appreciate the time. Quick factual question before we start: wasn't there a similar Kafka offset issue back in early February, the one tracked as ENG-148? I want to know if this is a repeat." },

@@ -93,6 +93,7 @@ describe("Authentication & Session Management", () => {
     const meData = meCookieRes.json();
     assert.equal(meData.authenticated, true);
     assert.equal(meData.employee.employeeId, "priya");
+    assert.equal(meData.employee.role, "Product Designer", "the sidebar shows the signed-in person's role");
 
     // 5. GET /api/v1/auth/me with Bearer token
     const meBearerRes = await app.inject({

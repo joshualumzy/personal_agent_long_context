@@ -5,131 +5,172 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Watch a meeting live and approve, edit, or reject the actions the agent proposes.">
   <title>Meeting Actions</title>
+  <link rel="preload" href="/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/vendor/shoelace/themes/light.css">
+  <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/meetings/styles.css">
   <script src="/vendor/marked.js" defer></script>
   <script src="/vendor/dompurify.js" defer></script>
+  <script type="module" src="/shoelace-setup.js"></script>
+  <script type="module" src="/vendor/shoelace/shoelace-autoloader.js" data-shoelace="/vendor/shoelace"></script>
+  <script src="/shell.js" defer></script>
   <script src="/meetings/app.js" defer></script>
 </head>
 <body>
-  <header class="top">
-    <div class="brand">
-      <h1>Meeting Actions</h1>
-      <p id="status-line" class="status-line">Pick a meeting, replay one, or start a new one.</p>
-    </div>
-    <nav class="app-switch" aria-label="Other agents">
-      <a href="/">SME Assistant</a>
-      <a href="/recruiting">Recruiting</a>
-    </nav>
-  </header>
+  <svg class="sprite" aria-hidden="true">
+    <symbol id="sobo-mark" viewBox="0 0 40 40"><rect x="2" y="2" width="36" height="36" rx="13" fill="#4b3fd1"/><rect x="8" y="10" width="24" height="18" rx="8" fill="#fbfaff"/><circle cx="15" cy="19" r="2.4" fill="#1c1a33"/><circle cx="25" cy="19" r="2.4" fill="#1c1a33"/><path d="M16.5 24 q3.5 2.6 7 0" stroke="#1c1a33" stroke-width="1.8" fill="none" stroke-linecap="round"/><circle cx="31" cy="9" r="3" fill="#ffd86b"/></symbol>
+  </svg>
 
-  <p id="error" class="banner error" role="alert" hidden></p>
-  <div id="google-banner" class="banner connect" hidden></div>
+  <div class="shell">
+    <aside class="side shell-side">
+      <div class="shell-top"><div class="workspace"><span class="logo" aria-hidden="true">A</span>Apex Athletics</div></div>
+      <nav aria-label="Apps">
+        <ul class="app-nav">
+          <li><a href="/meetings" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Meetings</a></li>
+          <li><a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>SME Assistant</a></li>
+        </ul>
+      </nav>
 
-  <section id="picker" class="picker">
-    <div class="picker-group">
-      <h2>Meetings</h2>
-      <ul id="meeting-list" class="meeting-list">
-        <li class="empty-note">No meetings yet.</li>
-      </ul>
-    </div>
+      <section id="picker" class="picker" aria-label="Meetings">
+        <h2 class="side-label">Meetings</h2>
+        <ul id="meeting-list" class="meeting-list">
+          <li class="empty-note">No meetings yet.</li>
+        </ul>
 
-    <div class="picker-group">
-      <h2>Replay an OrgForge meeting</h2>
-      <div class="picker-row">
-        <select id="replay-select" aria-label="Choose an OrgForge meeting to replay">
-          <option value="">No replays found</option>
-        </select>
-        <button type="button" id="replay-btn" class="primary" disabled>Replay</button>
-      </div>
-    </div>
-
-    <div class="picker-group">
-      <h2>New live meeting</h2>
-      <form id="new-meeting-form" class="picker-row">
-        <input type="text" id="new-meeting-title" placeholder="Meeting title" required maxlength="200">
-        <button type="submit" class="primary">Start</button>
-      </form>
-    </div>
-  </section>
-
-  <main id="board" class="board" hidden>
-    <section class="col assistant-col" aria-label="Assistant">
-      <div class="col-head assistant-head">
-        <h2>Assistant</h2>
-        <span id="busy-indicator" class="busy" hidden><span class="busy-dot"></span>Thinking&hellip;</span>
-      </div>
-      <div class="queue">
-        <section id="minutes-box" class="minutes" aria-label="Minutes" hidden></section>
-        <div id="assistant-pending" class="assistant-pending" aria-live="polite" hidden></div>
-        <p id="assistant-empty" class="assistant-empty">Listening. When someone makes a decision, a promise, or says something risky, it shows up here. Ask a question about a past incident, ticket, or customer and the answer lands here too.</p>
-        <div class="tier-group" data-tier="alerts" hidden>
-          <h3>Heads up</h3>
-          <div class="cards" id="cards-alerts"></div>
-        </div>
-        <div class="tier-group" data-tier="answers" hidden>
-          <h3>Looked up for you</h3>
-          <div class="cards" id="cards-answers"></div>
-        </div>
-        <div class="tier-group" data-tier="approval" hidden>
-          <h3>Needs your OK</h3>
-          <div class="cards" id="cards-approval"></div>
-        </div>
-        <div class="tier-group" data-tier="escalate" hidden>
-          <h3>Needs someone else</h3>
-          <div class="cards" id="cards-escalate"></div>
-        </div>
-        <div class="tier-group" data-tier="notes" hidden>
-          <h3>Meeting notes</h3>
-          <div id="notes" class="notes"></div>
-        </div>
-        <div class="tier-group" data-tier="auto" hidden>
-          <h3>Handled for you</h3>
-          <div class="cards" id="cards-auto"></div>
-        </div>
-        <div class="tier-group" data-tier="blocked" hidden>
-          <h3>Blocked</h3>
-          <div class="cards" id="cards-blocked"></div>
-        </div>
-      </div>
-      <details class="trace-panel">
-        <summary>Agent trace <button type="button" id="trace-clear" class="link" hidden>Show all steps</button></summary>
-        <ol id="trace-list" class="trace-list"></ol>
-      </details>
-    </section>
-
-    <section class="col transcript-col" aria-label="Live transcript">
-      <div class="col-head">
-        <h2 id="meeting-title-heading">Transcript</h2>
-        <button type="button" id="end-meeting-btn" class="quiet warn">End meeting</button>
-      </div>
-      <div id="mic-bar" class="mic-bar">
-        <button type="button" id="mic-btn" class="primary">Start recording</button>
-        <label for="mic-source" class="visually-hidden">What to record</label>
-        <select id="mic-source">
-          <option value="tab">Screen or tab + my mic</option>
-          <option value="mic">My mic only</option>
-        </select>
-        <label for="mic-lang" class="visually-hidden">Spoken language</label>
-        <select id="mic-lang">
-          <option value="zh">中文（夹英文也行）</option>
-          <option value="en">English</option>
-          <option value="">Auto language</option>
-        </select>
-        <label for="mic-speaker" class="visually-hidden">Speaker label for recorded lines</label>
-        <input type="text" id="mic-speaker" value="Meeting" maxlength="80" title="Speaker label for recorded lines">
-        <span id="mic-status" class="mic-status" aria-live="polite"></span>
-      </div>
-      <ul id="transcript" class="transcript"></ul>
-      <p id="mic-interim" class="mic-interim" hidden></p>
-      <details class="type-lines" open>
-        <summary>Type lines instead</summary>
-        <form id="live-form" class="live-form">
-          <label for="live-input" class="visually-hidden">Type transcript lines as "Speaker: text", one per line</label>
-          <textarea id="live-input" rows="3" placeholder="Alice: Let's ship the export flow by Friday.&#10;Bob: Can someone confirm the SSO deadline?"></textarea>
-          <button type="submit" class="primary">Send</button>
+        <h2 class="side-label">New live meeting</h2>
+        <form id="new-meeting-form" class="side-form">
+          <label for="new-meeting-title" class="visually-hidden">Meeting title</label>
+          <input type="text" id="new-meeting-title" placeholder="Meeting title" required maxlength="200">
+          <button type="submit" class="primary">Start</button>
         </form>
-      </details>
-    </section>
-  </main>
+
+        <h2 class="side-label">Replay an OrgForge meeting</h2>
+        <div class="side-form">
+          <sl-select id="replay-select" size="small" placeholder="Choose a meeting" hoist aria-label="Choose an OrgForge meeting to replay"></sl-select>
+          <button type="button" id="replay-btn" class="quiet" disabled>Replay</button>
+        </div>
+      </section>
+
+      <div class="shell-user">
+        <span class="shell-avatar" aria-hidden="true"></span>
+        <span class="shell-who"><span class="shell-name">&nbsp;</span><span class="shell-role"></span></span>
+        <button type="button" class="shell-out" title="Log out" aria-label="Log out" hidden><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+      </div>
+    </aside>
+
+    <div class="main shell-main">
+      <header class="bar">
+        <p class="crumb">Meetings <span aria-hidden="true">/</span> <b id="meeting-title-heading">Pick a meeting</b></p>
+        <p id="status-line" class="status-line">Pick a meeting, replay one, or start a new one.</p>
+        <span class="bar-space"></span>
+        <button type="button" id="minutes-copy" class="icon-btn" aria-label="Copy the minutes" title="Copy the minutes" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
+        </button>
+        <a id="minutes-download" class="icon-btn" aria-label="Download the minutes as Markdown" title="Download the minutes (.md)" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+        </a>
+        <button type="button" id="tx-toggle" class="icon-btn" aria-pressed="true" aria-label="Show transcript" title="Transcript" hidden>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/></svg>
+        </button>
+        <!-- One control at a time: start while the meeting is live and quiet, end while recording, nothing once it is over. -->
+        <sl-dropdown id="mic-start" placement="bottom-end" distance="6" hidden>
+          <button slot="trigger" type="button" id="mic-btn" class="primary small">Start recording</button>
+          <sl-menu id="mic-menu" aria-label="What to record">
+            <sl-menu-item value="tab">A browser tab and my mic<span slot="suffix" class="menu-hint">Zoom, Meet, Teams in the browser</span></sl-menu-item>
+            <sl-menu-item value="mic">My mic only<span slot="suffix" class="menu-hint">In the room</span></sl-menu-item>
+          </sl-menu>
+        </sl-dropdown>
+        <button type="button" id="end-meeting-btn" class="quiet warn" hidden>End meeting</button>
+      </header>
+
+      <p id="error" class="banner error" role="alert" hidden></p>
+      <div id="google-banner" class="banner connect" hidden></div>
+
+      <p id="no-meeting" class="no-meeting">Pick a meeting on the left, replay one, or start a new one. Notes build up here as people talk; anything that needs your OK waits at the bottom.</p>
+
+      <main id="board" class="board" hidden>
+        <div class="doc-area">
+          <div class="doc-scroll">
+            <article id="doc" class="doc" aria-label="Meeting">
+              <h1 id="doc-title"></h1>
+              <p id="doc-meta" class="doc-meta"></p>
+              <p id="doc-lead" class="doc-lead" hidden></p>
+
+              <p id="assistant-empty" class="assistant-empty">Listening. When someone makes a decision, a promise, or says something risky, it shows up here. Ask a question about a past incident, ticket, or customer and the answer lands here too.</p>
+              <div id="assistant-pending" class="assistant-pending" aria-live="polite" hidden></div>
+              <section class="tier-group ledger" data-tier="ledger" aria-labelledby="ledger-heading" hidden>
+                <h2 id="ledger-heading">What was promised</h2>
+                <ol id="ledger-list" class="ledger-list"></ol>
+              </section>
+
+              <div class="tier-group" data-tier="notes" hidden>
+                <h2>Decided</h2>
+                <div id="notes" class="notes"></div>
+              </div>
+              <div class="tier-group" data-tier="alerts" hidden>
+                <h2>Heads up</h2>
+                <div class="cards" id="cards-alerts"></div>
+              </div>
+              <div class="tier-group" data-tier="answers" hidden>
+                <h2>Looked up for you</h2>
+                <div class="cards" id="cards-answers"></div>
+              </div>
+
+              <details class="trace-panel">
+                <summary>Agent trace <button type="button" id="trace-clear" class="link" hidden>Show all steps</button></summary>
+                <ol id="trace-list" class="trace-list"></ol>
+              </details>
+            </article>
+          </div>
+
+          <section id="tray" class="tray" aria-label="Things that need you">
+            <div class="tray-head">
+              <button type="button" id="tray-toggle" class="tray-toggle" aria-expanded="true" aria-controls="tray" title="Fold the tray">
+                <svg class="sobo" aria-hidden="true"><use href="#sobo-mark"/></svg>
+                <b id="tray-title">Nothing needs you right now</b>
+                <svg class="tray-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 14 4-4 4 4"/></svg>
+              </button>
+              <span class="bar-space"></span>
+              <span id="busy-indicator" class="busy" hidden><span class="busy-dot"></span>Thinking&hellip;</span>
+            </div>
+            <div class="tray-body">
+              <div class="tier-group" data-tier="approval" hidden>
+                <h2 class="visually-hidden">Needs your OK</h2>
+                <div class="cards" id="cards-approval"></div>
+              </div>
+              <div id="blocked-list" class="blocked-list" hidden>
+                <div class="tier-group" data-tier="blocked" hidden>
+                  <h2 class="visually-hidden">Blocked</h2>
+                  <div class="cards" id="cards-blocked"></div>
+                </div>
+              </div>
+            </div>
+            <!-- Only when the guard refused something: what it would not touch, one click away. -->
+            <div class="tray-foot" hidden>
+              <button type="button" id="blocked-toggle" class="foot-btn" aria-expanded="false" aria-controls="blocked-list">
+                <span id="blocked-count">Blocked · 0</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4"/></svg>
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <aside class="transcript-panel" aria-label="Live transcript">
+          <div class="panel-head">
+            <h2>Transcript</h2>
+            <span id="rec-dot" class="rec-dot" hidden></span>
+          </div>
+          <p id="mic-status" class="mic-status" aria-live="polite"></p>
+          <ul id="transcript" class="transcript"></ul>
+          <p id="mic-interim" class="mic-interim" hidden></p>
+          <form id="live-form" class="live-form">
+            <label for="live-input" class="visually-hidden">Type transcript lines as "Speaker: text", one per line</label>
+            <textarea id="live-input" rows="1" placeholder="Type a line, e.g. Jax: ship by Friday"></textarea>
+            <button type="submit" class="quiet">Send</button>
+          </form>
+        </aside>
+      </main>
+    </div>
+  </div>
 </body>
 </html>

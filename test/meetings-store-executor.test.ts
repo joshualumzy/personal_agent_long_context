@@ -9,7 +9,6 @@ import {
   MeetingError,
   type ActionPayload,
   type EmailPayload,
-  type HiringHandoff,
   type MeetingState,
   type ProposedAction,
 } from "../src/meetings/domain.js";
@@ -54,13 +53,6 @@ function action(id: string, overrides: Partial<ProposedAction> = {}): ProposedAc
   };
 }
 
-class FakeHiring implements HiringHandoff {
-  requirements: string[] = [];
-  async start(requirement: string): Promise<{ message: string }> {
-    this.requirements.push(requirement);
-    return { message: `Started hiring for: ${requirement}` };
-  }
-}
 
 // ------------------------------------------------------------ InMemory store
 
@@ -170,36 +162,13 @@ describe("DispatchingExecutor", () => {
     assert.equal(new URL(result.handoffUrl!).searchParams.has("to"), false);
   });
 
-  test("hiring_request hands off to the recruiting agent", async () => {
-    const hiring = new FakeHiring();
-    const executor = new DispatchingExecutor({ hiring });
+  test("hiring_request continues in the assistant's chat, which opens the role and asks what it needs", async () => {
+    const executor = new DispatchingExecutor({});
     const result = await executor.execute(
       action("a1", { kind: "hiring_request", payload: { requirement: "Need a backend engineer" } }),
       meeting("m1"),
     );
-    assert.deepEqual(result, {
-      summary: "Started hiring for: Need a backend engineer",
-      simulated: false,
-      externalRef: "/recruiting",
-    });
-    assert.deepEqual(hiring.requirements, ["Need a backend engineer"]);
-  });
-
-  test("hiring_request refuses when the recruiting agent is unavailable", async () => {
-    const executor = new DispatchingExecutor({});
-    await assert.rejects(
-      () =>
-        executor.execute(
-          action("a1", { kind: "hiring_request", payload: { requirement: "Need a backend engineer" } }),
-          meeting("m1"),
-        ),
-      (error: unknown) => {
-        assert.ok(error instanceof MeetingError);
-        assert.equal(error.code, "hiring_not_connected");
-        assert.equal(error.statusCode, 503);
-        return true;
-      },
-    );
+    assert.deepEqual(result, { summary: "Continues in the assistant: Need a backend engineer", simulated: false, handoffUrl: "/" });
   });
 
   test("ticket_draft without a ticket repo is simulated and recorded", async () => {

@@ -872,8 +872,23 @@ function renderDetail() {
   }
 }
 
+// Line icons for a verdict, in the same stroke style as the rest of the app.
+const VERDICT_PATHS = { yes: ["M20 6 9 17l-5-5"], no: ["M18 6 6 18", "m6 6 12 12"], unclear: ["M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3", "M12 17h.01"] };
+
+function verdictIcon(kind) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  for (const [key, value] of Object.entries({ viewBox: "0 0 24 24", width: 15, height: 15, fill: "none", stroke: "currentColor", "stroke-width": 2.2, "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true" })) {
+    svg.setAttribute(key, String(value));
+  }
+  for (const d of VERDICT_PATHS[kind]) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    svg.append(path);
+  }
+  return svg;
+}
+
 function fitPanel(candidate) {
-  const mark = { yes: "✓", no: "✗", unclear: "?" };
   return h(
     "ul",
     { class: "verdicts" },
@@ -883,7 +898,7 @@ function fitPanel(candidate) {
       return h(
         "li",
         {},
-        h("span", { class: `mark ${verdict?.satisfied ?? (closed ? "closed" : "unclear")}` }, verdict ? mark[verdict.satisfied] : closed ? "·" : "…"),
+        h("span", { class: `mark ${verdict?.satisfied ?? (closed ? "closed" : "unclear")}` }, verdict ? verdictIcon(verdict.satisfied) : closed ? "·" : "…"),
         h(
           "span",
           {},

@@ -250,6 +250,51 @@ describe("Browser surface", () => {
     await app.close();
   });
 
+  test("serves the shared theme and its fonts from this origin", async () => {
+    const { app } = testApp();
+
+    const theme = await app.inject({ method: "GET", url: "/theme.css" });
+    assert.equal(theme.statusCode, 200);
+    assert.match(theme.headers["content-type"] as string, /^text\/css/);
+    const fontUrls = [...theme.body.matchAll(/url\(([^)]+)\)/g)].map((match) => match[1] as string);
+    assert.ok(fontUrls.length >= 3);
+    for (const url of fontUrls) {
+      assert.match(url, /^\/fonts\//, "fonts must come from this origin; the CSP blocks font CDNs");
+      const font = await app.inject({ method: "GET", url });
+      assert.equal(font.statusCode, 200, url);
+      assert.equal(font.headers["content-type"], "font/woff2");
+    }
+
+    const missing = await app.inject({ method: "GET", url: "/fonts/..%2Fapp.js" });
+    assert.equal(missing.statusCode, 404);
+    await app.close();
+  });
+
+  test("serves the Shoelace components from this origin, and nothing outside them", async () => {
+    const { app } = testApp();
+
+    const theme = await app.inject({ method: "GET", url: "/vendor/shoelace/themes/light.css" });
+    assert.equal(theme.statusCode, 200);
+    assert.match(theme.headers["content-type"] as string, /^text\/css/);
+    const loader = await app.inject({ method: "GET", url: "/vendor/shoelace/shoelace-autoloader.js" });
+    assert.equal(loader.statusCode, 200);
+    assert.match(loader.headers["content-type"] as string, /^text\/javascript/);
+    const select = await app.inject({ method: "GET", url: "/vendor/shoelace/components/select/select.js" });
+    assert.equal(select.statusCode, 200);
+    // Its built-in icons load from this origin: data: URLs would be refused by connect-src.
+    const setup = await app.inject({ method: "GET", url: "/shoelace-setup.js" });
+    assert.equal(setup.statusCode, 200);
+    assert.match(setup.body, /registerIconLibrary\("system"/);
+    const chevron = await app.inject({ method: "GET", url: "/vendor/shoelace/assets/icons/chevron-down.svg" });
+    assert.equal(chevron.statusCode, 200);
+    assert.equal(chevron.headers["content-type"], "image/svg+xml");
+
+    for (const url of ["/vendor/shoelace/../../package.json", "/vendor/shoelace/%2e%2e/%2e%2e/package.json", "/vendor/shoelace/custom-elements.json"]) {
+      assert.equal((await app.inject({ method: "GET", url })).statusCode, 404, url);
+    }
+    await app.close();
+  });
+
   test("does not deliver server credentials in browser assets", async () => {
     const previousToken = process.env.LETTA_APP_SERVER_TOKEN;
     process.env.LETTA_APP_SERVER_TOKEN = "server-only-token-for-test";

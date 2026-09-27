@@ -81,6 +81,14 @@ export interface BuildAppOptions extends ApplicationOptions {
 }
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
+const shoelaceDirectory = fileURLToPath(
+  new URL("../node_modules/@shoelace-style/shoelace/cdn/", import.meta.url),
+);
+const SHOELACE_TYPES: Record<string, string> = {
+  js: "text/javascript; charset=utf-8",
+  css: "text/css; charset=utf-8",
+  svg: "image/svg+xml",
+};
 const markedBrowserBundle = fileURLToPath(
   new URL("../node_modules/marked/lib/marked.umd.js", import.meta.url),
 );
@@ -164,6 +172,24 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   const memoryUpdateQueue = new MemoryUpdateQueue();
 
   const requireAuth = options.requireAuth ?? Boolean(options.sessionConfig);
+
+  // With sign-in required, the meetings and recruiting pages are for signed-in
+  // employees: a page visit goes to sign in and comes back; a data request is refused.
+  // Scripts and styles hold no data and stay open. Google's OAuth return is
+  // exempt because it is identified by its own state parameter.
+  if (requireAuth) {
+    const PAGE = /^\/(meetings(\/(?!app\.js$|styles\.css$|share-test)[^/]+)?|recruiting)$/;
+    const DATA = /^\/api\/(v1\/meetings|recruiting)(\/|$)/;
+    app.addHook("onRequest", async (request, reply) => {
+      const path = request.url.split("?")[0] ?? "";
+      if (path === "/api/recruiting/gmail/callback") return;
+      const isPage = request.method === "GET" && PAGE.test(path);
+      if (!isPage && !DATA.test(path)) return;
+      if (identity.extractEmployeeId(request)) return;
+      if (isPage) return reply.redirect(`/?next=${encodeURIComponent(request.url)}`, 302);
+      return reply.code(401).send({ error: "unauthorized", message: "Sign in to see meetings and recruiting." });
+    });
+  }
 
   const requireEmployee = async (
     request: FastifyRequest,
@@ -781,7 +807,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
   app.get("/api/v1/auth/me", async (request, reply) => {
     try {
-      const employee = await identity.requireEmployee(request);
+      const found = await identity.requireEmployee(request);
+      // Without a company directory the session only knows an id; fill in the
+      // name and role from the demo personas so every page can show who this is.
+      const known = (options.personas ?? DEFAULT_PERSONAS).find((persona) => persona.employeeId === found.employeeId);
+      const employee = found.role || !known ? found : { ...known, ...found, displayName: known.displayName };
       return reply.send({
         authenticated: true,
         employee,
@@ -1185,11 +1215,13 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     },
   );
 
+  // Pages, scripts and styles change with every release, so the browser checks
+  // for a newer copy each time instead of reusing one it guessed was fresh.
   const serve =
     (filename: string, contentType: string) =>
     async (_request: unknown, reply: FastifyReply) => {
       const content = await readFile(`${publicDirectory}${filename}`);
-      return reply.headers(securityHeaders).type(contentType).send(content);
+      return reply.headers({ ...securityHeaders, "cache-control": "no-cache" }).type(contentType).send(content);
     };
   const serveFile =
     (path: string, contentType: string) =>
@@ -1220,6 +1252,23 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     "/assets/merlion.riv",
     serve("assets/merlion.riv", "application/octet-stream"),
   );
+  app.get("/theme.css", serve("theme.css", "text/css; charset=utf-8"));
+  // Shoelace, the UI components, served from its package: only its scripts,
+  // styles and icons, only inside its folder.
+  app.get<{ Params: { "*": string } }>("/vendor/shoelace/*", async (request, reply) => {
+    const path = request.params["*"];
+    const type = SHOELACE_TYPES[path.split(".").pop() ?? ""];
+    if (!type || !/^[a-z0-9][a-z0-9._/-]*$/i.test(path) || path.split("/").includes("..")) {
+      return reply.code(404).send();
+    }
+    return serveFile(`${shoelaceDirectory}${path}`, type)(request, reply).catch(() => reply.code(404).send());
+  });
+  app.get<{ Params: { name: string } }>("/fonts/:name", async (request, reply) => {
+    if (!/^[a-z0-9-]+\.woff2$/.test(request.params.name)) return reply.code(404).send();
+    return serve(`fonts/${request.params.name}`, "font/woff2")(request, reply).catch(() => reply.code(404).send());
+  });
+  app.get("/shell.js", serve("shell.js", "text/javascript; charset=utf-8"));
+  app.get("/shoelace-setup.js", serve("shoelace-setup.js", "text/javascript; charset=utf-8"));
   app.get("/app.js", serve("app.js", "text/javascript; charset=utf-8"));
   app.get("/styles.css", serve("styles.css", "text/css; charset=utf-8"));
   app.get("/sme.js", serve("app.js", "text/javascript; charset=utf-8"));
@@ -1280,6 +1329,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     app.get("/meetings/", async (_request, reply) => reply.redirect("/meetings", 301));
     app.get("/meetings/app.js", serve("meetings.js", "text/javascript; charset=utf-8"));
     app.get("/meetings/styles.css", serve("meetings.css", "text/css; charset=utf-8"));
+    // Each meeting has its own address; the page reads the id and opens it.
+    app.get("/meetings/:meetingId", serve("meetings.html", "text/html; charset=utf-8"));
     // Checks whether screen sharing hands this page system audio; open it in two tabs to test sharing twice.
     app.get("/meetings/share-test", serve("share-test.html", "text/html; charset=utf-8"));
     app.get("/meetings/share-test.js", serve("share-test.js", "text/javascript; charset=utf-8"));

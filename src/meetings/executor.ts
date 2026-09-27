@@ -7,7 +7,6 @@ import {
   type CalendarPayload,
   type DocPayload,
   type EmailPayload,
-  type HiringHandoff,
   type HiringPayload,
   type MeetingState,
   type MessagePayload,
@@ -47,8 +46,6 @@ export interface RecordedEffect {
 }
 
 export interface DispatchingExecutorDeps {
-  /** S3, the recruiting agent. Absent means hiring_request cannot run. */
-  hiring?: HiringHandoff | null;
   /** Optional sink for simulated effects (ticket_draft, calendar_draft), for anyone who wants to list them later. */
   record?: (entry: RecordedEffect) => Promise<void>;
   /** "owner/name" of a GitHub repo; set, ticket_draft hands off to a prefilled new-issue page instead of simulating. */
@@ -135,13 +132,13 @@ export class DispatchingExecutor implements ActionExecutor {
       : this.handOff(action, gmailComposeLink(payload), "Gmail");
   }
 
-  private async startHiring(action: ProposedAction): Promise<ActionResult> {
+  /**
+   * Hiring happens in the assistant's chat, where the role is opened and the
+   * assistant asks what it needs; the meeting page carries the requirement over.
+   */
+  private startHiring(action: ProposedAction): ActionResult {
     const payload = action.payload as HiringPayload;
-    if (!this.deps.hiring) {
-      throw new MeetingError("hiring_not_connected", "The recruiting agent is not available.", 503);
-    }
-    const result = await this.deps.hiring.start(payload.requirement);
-    return { summary: result.message, simulated: false, externalRef: "/recruiting" };
+    return { summary: `Continues in the assistant: ${payload.requirement}`, simulated: false, handoffUrl: "/" };
   }
 
   private get microsoft(): boolean {
