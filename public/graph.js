@@ -106,6 +106,10 @@ const GRAVITY = 0.07;
  * pulled to: how far a thing sits from the middle says how far it is from
  * the focus. */
 const RINGS = [0, 150, 290, 440];
+/** Of an even share of the circle, the least gap kept between two of the
+ * focus's neighbours (see spreadFirstRing): enough that no two lines from the
+ * focus make a sliver, not so much that the ring looks ruled. */
+const SPREAD = 0.7;
 /** Drawing units per screen pixel past which captions drop below about 12px
  * (they are capped at 16 units): a column view bigger than that opens at this
  * zoom instead of shrunk to fit, and is read by dragging. */
@@ -695,6 +699,46 @@ function simulate({ alpha = 1, warm = 0, warmed = null, done = null, follow = fa
   const steps = stepsFromFocus();
   const ring = (node) => RINGS[Math.min(steps.get(node.id) ?? RINGS.length - 1, RINGS.length - 1)];
   const decay = 1 - Math.pow(0.001, 1 / 220);
+  // The focus's neighbours spread round it: two that sit closer than
+  // SPREAD of an even share are pushed apart along the ring. Only a floor, not
+  // even spacing: gaps above it are left as the lines made them, which reads
+  // as natural rather than as a clock face.
+  const firstRing = nodes.map((node, at) => ({ node, at })).filter(({ node }) => steps.get(node.id) === 1);
+  const spreadFirstRing = () => {
+    if (firstRing.length < 2) return;
+    const centre = state.positions.get(state.focus);
+    const floor = ((Math.PI * 2) / firstRing.length) * SPREAD;
+    // A few passes of a constraint rather than a force: whatever the lines and
+    // the other items pull, no two neighbours end a step closer than the floor.
+    for (let pass = 0; pass < 3; pass += 1) {
+      const around = firstRing
+        .map((entry) => {
+          const p = point(entry.node);
+          return { ...entry, angle: Math.atan2(p.y - centre.y, p.x - centre.x), radius: Math.hypot(p.x - centre.x, p.y - centre.y) || 1 };
+        })
+        .sort((a, b) => a.angle - b.angle);
+      let moved = false;
+      around.forEach((entry, i) => {
+        const next = around[(i + 1) % around.length];
+        const gap = (i + 1 < around.length ? next.angle : next.angle + Math.PI * 2) - entry.angle;
+        const short = floor - gap;
+        if (short <= 0) return;
+        moved = true;
+        // Each turns half the shortfall, away from the other, at its own radius.
+        entry.angle -= short / 2;
+        next.angle += short / 2;
+      });
+      if (!moved) break;
+      for (const entry of around) {
+        if (state.pinned?.id === entry.node.id || state.fixed.get(entry.node.id)) continue;
+        state.positions.set(entry.node.id, {
+          x: centre.x + Math.cos(entry.angle) * entry.radius,
+          y: centre.y + Math.sin(entry.angle) * entry.radius,
+        });
+      }
+    }
+  };
+
   const tick = () => {
     for (let i = 0; i < nodes.length; i += 1) {
       const a = point(nodes[i]);
@@ -717,12 +761,16 @@ function simulate({ alpha = 1, warm = 0, warmed = null, done = null, follow = fa
       const dx = b.x - a.x;
       const dy = b.y - a.y;
       const distance = Math.hypot(dx, dy) || 1;
-      // Softer for well-connected ends, so a hub is not yanked by every line.
-      const strength = 1 / Math.min(degree.get(edge.source), degree.get(edge.target));
+      // Softer for well-connected ends, so a hub is not yanked by every line;
+      // softer still between two of the focus's neighbours, which would
+      // otherwise pull each other into a sliver beside the focus.
+      const siblings = steps.get(edge.source) === 1 && steps.get(edge.target) === 1;
+      const strength = (siblings ? 0.2 : 1) / Math.min(degree.get(edge.source), degree.get(edge.target));
       const pull = ((distance - LINK_LENGTH) / distance) * alpha * strength * 0.5;
       velocity[i].x += dx * pull; velocity[i].y += dy * pull;
       velocity[j].x -= dx * pull; velocity[j].y -= dy * pull;
     }
+    if (steps.size) spreadFirstRing();
     nodes.forEach((node, at) => {
       const p = point(node);
       if (steps.size) {

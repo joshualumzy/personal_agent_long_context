@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { after, describe, test } from "node:test";
 import type { AddressInfo } from "node:net";
@@ -249,6 +250,28 @@ describe("the company graph", () => {
     document.querySelector<HTMLButtonElement>("#trail button")!.dispatchEvent(new window.Event("click"));
     assert.match(lit("document:CONF-2"), /the-focus/);
     assert.deepEqual(trail(), ["TitanDB migration notes"]);
+    window.close();
+  });
+
+  test("the focus's neighbours spread round it, never bunched, though not evenly spaced either", async () => {
+    // The documents web as the record draws it (test/fixtures/documents-web.json,
+    // exported from the demo company): kubernetes-deploy, the most connected,
+    // with five pages and incidents about it, the incidents joined to their
+    // write-ups, and all of them to people and pages of their own.
+    const record = JSON.parse(readFileSync(new URL("./fixtures/documents-web.json", import.meta.url), "utf8")) as GraphSlice;
+    const { window, document } = await open("/graph", () => record);
+    assert.match(document.querySelector('.node[data-id="item:kubernetes-deploy"]')!.getAttribute("class")!, /the-focus/);
+    const at = (id: string) => document.querySelector(`.node[data-id="${id}"]`)!
+      .getAttribute("transform")!.match(/-?[\d.]+/g)!.map(Number);
+    const [cx, cy] = at("item:kubernetes-deploy");
+    const near = [...document.querySelectorAll(".node.near:not(.the-focus)")].map((group) => group.getAttribute("data-id")!);
+    const angles = near.map((id) => { const [x, y] = at(id); return (Math.atan2(y - cy, x - cx) * 180) / Math.PI; })
+      .sort((a, b) => a - b);
+    const gaps = angles.map((angle, i) => (i + 1 < angles.length ? angles[i + 1]! : angles[0]! + 360) - angle);
+    // The incidents and their write-ups pull each other together, into thin
+    // slivers with the focus; each gap keeps most of an even share.
+    const share = 360 / near.length;
+    assert.ok(Math.min(...gaps) >= share * 0.6, `gaps ${gaps.map((gap) => gap.toFixed(0)).join(", ")}`);
     window.close();
   });
 
