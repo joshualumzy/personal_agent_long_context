@@ -121,6 +121,7 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
   const { window } = dom;
 
   const posts: Array<{ path: string; body: unknown }> = [];
+  let followUp: Record<string, unknown> | null = null;
   const loaded = new Set<string>();
   const meeting = scenario();
   Object.defineProperty(window, "fetch", {
@@ -147,6 +148,11 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
           const current = meeting.actions.find((candidate) => candidate.id === approved[1])!;
           return json({ ...current, status: "executed", result: { summary: "Sent", simulated: true } });
         }
+        if (path === "/api/v1/meetings") {
+          const title = (body as { title: string }).title;
+          followUp = { meetingId: "m2", title, status: "live", startedAt: new Date().toISOString(), segments: [], actions: [], notes: [] };
+          return json(followUp);
+        }
         return json({});
       }
       loaded.add(path);
@@ -158,6 +164,7 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
       }
       // The plate's own reads: what needs Priya (none, in this scenario) and her planner.
       if (path === "/api/v1/meetings/m1") return json({ meetingId: "m1", title: meeting.title, status: "live", actions: [] });
+      if (path === "/api/v1/meetings/m2" && followUp) return json(followUp);
       if (path === "/api/v1/planner/days") return json({ days: [] });
       return json({});
     },
@@ -490,9 +497,22 @@ describe("Meetings page", () => {
     const sources = [...page.document.querySelectorAll("#mic-start sl-menu-item")].map((item) => item.getAttribute("value"));
     assert.deepEqual(sources, ["tab", "mic"], "what to record is asked when starting");
 
+    assert.equal(shown("#live-form"), true, "a live meeting takes typed lines");
+    assert.equal(shown("#ended-note"), false);
+
     page.emit("meeting", { status: "ended" });
     assert.equal(shown("#mic-start"), false);
     assert.equal(shown("#end-meeting-btn"), false);
+    // An ended meeting takes no more lines: no dead box, one quiet way to carry on in a new meeting.
+    assert.equal(shown("#live-form"), false);
+    assert.equal(shown("#ended-note"), true);
+    assert.match(page.document.querySelector("#ended-note")!.textContent!, /This meeting ended\./);
+    const title = page.document.querySelector("#meeting-title-heading")!.textContent!;
+    (page.document.querySelector("#follow-up-btn") as HTMLButtonElement).click();
+    await page.until(() => page.posts.some((post) => post.path === "/api/v1/meetings"), "the follow-up meeting");
+    const started = page.posts.find((post) => post.path === "/api/v1/meetings")!;
+    assert.equal((started.body as { title: string }).title, `${title} · follow-up`);
+    await page.until(() => page.window.location.pathname === "/meetings/m2", "the follow-up to open");
   });
 
   test("an approved hiring need continues in the assistant's chat, carrying the requirement over", async () => {

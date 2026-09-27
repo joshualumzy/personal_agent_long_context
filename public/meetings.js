@@ -384,6 +384,9 @@ function renderMeetingHead() {
   $("#status-line").textContent = state.current.status === "live" ? "Live" : "Ended";
   renderDocMeta();
   for (const element of $("#live-form").elements) element.disabled = state.current.status !== "live";
+  // An ended meeting takes no more lines: the box goes, and a follow-up is one click away.
+  $("#live-form").hidden = state.current.status !== "live";
+  $("#ended-note").hidden = state.current.status === "live";
   if (state.current.status !== "live" && recording.active) stopRecording();
   renderRecording();
 }
@@ -1649,6 +1652,10 @@ function init() {
     if (!title) return;
     input.value = "";
     startMeeting(title);
+  });
+
+  $("#follow-up-btn").addEventListener("click", () => {
+    if (state.current) startMeeting(`${state.current.title} · follow-up`);
   });
 
   $("#replay-btn").addEventListener("click", () => {

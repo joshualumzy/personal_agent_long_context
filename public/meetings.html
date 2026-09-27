@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Watch a meeting live and approve, edit, or reject the actions the agent proposes.">
-  <link rel="icon" type="image/png" href="/assets/kaki-logo-64.png" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
   <title>Kaki · Meetings</title>
   <link rel="preload" href="/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/vendor/shoelace/themes/light.css">
@@ -209,6 +210,7 @@
             <textarea id="live-input" rows="1" placeholder="Type a line, e.g. Jax: ship by Friday"></textarea>
             <button type="submit" class="quiet">Send</button>
           </form>
+          <p id="ended-note" class="ended-note" hidden>This meeting ended. <button type="button" id="follow-up-btn" class="follow-up-btn">Start a follow-up →</button></p>
         </aside>
       </main>
     </div>

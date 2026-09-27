@@ -97,6 +97,9 @@ const nodes = new Map();
 // candidate named in the link opens once.
 const params = new URLSearchParams(location.search);
 const embedded = params.get("embed") === "1" && window.top !== window;
+/** Beside a chat the orbit is a narrow column: people and names are drawn this much larger. */
+const EMBED_NODE_SCALE = 1.7;
+const EMBED_NAME_SCALE = 2;
 let pendingCandidate = embedded ? params.get("candidate") : null;
 let roleId = params.get("role");
 let roles = [];
@@ -534,8 +537,8 @@ function drawRings(root) {
   const defs = svg("defs");
   const glow = svg("radialGradient", { id: "core-glow" });
   glow.append(
-    svg("stop", { offset: "0%", "stop-color": "#1f6d5f", "stop-opacity": "0.06" }),
-    svg("stop", { offset: "100%", "stop-color": "#1f6d5f", "stop-opacity": "0.02" }),
+    svg("stop", { offset: "0%", "stop-color": "#4b3fd1", "stop-opacity": "0.06" }),
+    svg("stop", { offset: "100%", "stop-color": "#4b3fd1", "stop-opacity": "0.02" }),
   );
   const star = svg("filter", { id: "star-glow", x: "-80%", y: "-80%", width: "260%", height: "260%" });
   star.append(
@@ -638,16 +641,21 @@ function renderOrbit() {
       candidate.id === selectedId ? "selected" : "",
       node.classList.contains("entering") ? "entering" : "",
     ].filter(Boolean).join(" "));
-    node.querySelector(".dot").setAttribute("r", size);
-    node.querySelector(".halo").setAttribute("r", size + 6);
-    node.querySelector(".stage-ring").setAttribute("r", size + 11);
-    node.querySelector(".select-ring").setAttribute("r", size + 17);
+    // Beside a chat the whole orbit is drawn a quarter of its size: the people on it are drawn larger, so they stay legible.
+    const scale = embedded ? EMBED_NODE_SCALE : 1;
+    const r = size * scale;
+    node.querySelector(".dot").setAttribute("r", r);
+    node.querySelector(".halo").setAttribute("r", r + 6 * scale);
+    node.querySelector(".stage-ring").setAttribute("r", r + 11 * scale);
+    node.querySelector(".select-ring").setAttribute("r", r + 17 * scale);
     const label = node.querySelector(".initials");
     label.textContent = size >= 17 ? initials(candidate.profile.name) : "";
-    label.style.fontSize = size >= 26 ? "16px" : "11px";
+    label.style.fontSize = `${(size >= 26 ? 16 : 11) * scale}px`;
     const name = node.querySelector(".name");
-    name.textContent = candidate.profile.name;
-    name.setAttribute("y", size + 24);
+    // Beside a chat the centre is tight: the given name only, the full name is in the tooltip and the details.
+    name.textContent = embedded ? candidate.profile.name.split(/\s+/)[0] : candidate.profile.name;
+    name.style.fontSize = `${15 * (embedded ? EMBED_NAME_SCALE : 1)}px`;
+    name.setAttribute("y", r + 24 * scale);
     node.querySelector("title").textContent = `${candidate.profile.name}, ${candidate.profile.headline}`;
     node.setAttribute("aria-label", `${candidate.profile.name}, ${candidate.tier}% match`);
     requestAnimationFrame(() => {
@@ -1204,6 +1212,8 @@ function readFile(file) {
 
 document.addEventListener("DOMContentLoaded", () => {
   document.body.classList.toggle("embed", embedded);
+  // Just the rings, no margin around them: every pixel of a narrow column goes to the orbit.
+  if (embedded) $("#orbit").setAttribute("viewBox", "-470 -470 940 940");
   $("#role-select").addEventListener("change", (event) => {
     if (event.target.value) {
       startingNew = false;

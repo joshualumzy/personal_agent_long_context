@@ -296,3 +296,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Which day: the days they mentioned, then the time, asked not guessed. */
+.clear-days { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.clear-day { font: 500 13px/1 var(--f-ui); padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--ink); cursor: pointer; }
+.clear-day:hover { border-color: var(--accent); }
+.clear-day.on { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.clear-time { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; color: var(--muted); }
+.clear-time[hidden] { display: none; }
+.clear-time input { font: inherit; color: var(--ink); padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }

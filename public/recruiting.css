@@ -343,3 +343,86 @@ body.embed .main { margin: 0; height: 100vh; border: 0; border-radius: 0; }
 .role-origin { margin: 4px 0 0; max-width: 72ch; font-size: 13px; line-height: 1.45; color: var(--muted, #666); }
 .role-origin strong { color: var(--ink, inherit); font-weight: 600; }
 .role-origin .origin-evidence { font-family: var(--f-mono, monospace); font-size: 12px; }
+
+/* Beside a chat: the orbit as wide as the column and square, the rest below it. */
+body.embed { overflow-y: auto; height: auto; min-height: 100vh; }
+body.embed .main { height: auto; min-height: 100vh; overflow: visible; }
+body.embed .board { height: auto; }
+body.embed .orbit-wrap { padding-bottom: 4px; }
+body.embed #orbit { flex: none; width: 100%; height: auto; aspect-ratio: 1; }
+
+/* Beside a chat the column is only as wide as the drawer: a drawer laid over it
+   would hide the whole orbit, and the next person could not be clicked until it
+   was closed. So the person opens in the flow, right under the orbit, where the
+   criteria were; clicking someone else switches, clicking them again folds. */
+body.embed { display: flex; flex-direction: column; }
+body.embed .drawer {
+  position: static; width: auto; z-index: auto; order: 1;
+  border-left: 0; border-top: 1px solid var(--line); box-shadow: none; animation: none;
+  background: transparent;
+}
+body.embed .drawer[hidden] { display: none; }
+body.embed .drawer-head { padding: 12px 16px 0; }
+body.embed .drawer-body { overflow: visible; padding: 12px 16px 20px; }
+body.embed:has(#drawer:not([hidden])) .rail { display: none; }
+body.embed .shell, body.embed .main { height: auto; min-height: 0; }
+body.embed .orbit-wrap { justify-content: flex-start; }
+
+/* A person open beside a chat: the orbit steps back to the top of the column and
+   the person fills the rest, one screen, no page scroll. The orbit stays in view,
+   so the next person is one click away; the person's details scroll in their own box. */
+body.embed:has(#drawer:not([hidden])) { height: 100vh; overflow: hidden; }
+body.embed:has(#drawer:not([hidden])) .shell { flex: none; }
+body.embed:has(#drawer:not([hidden])) #orbit { width: auto; height: 38vh; max-width: 100%; margin: 0 auto; display: block; }
+body.embed:has(#drawer:not([hidden])) .legend { display: none; }
+body.embed:has(#drawer:not([hidden])) .drawer { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+body.embed:has(#drawer:not([hidden])) .drawer-body { flex: 1; min-height: 0; overflow-y: auto; }
+
+/* The person beside a chat, compact: the orbit smaller, the head short, so what
+   they are judged on (the tab's content) starts halfway down, not at the bottom edge. */
+body.embed:has(#drawer:not([hidden])) #orbit { height: 28vh; }
+body.embed:has(#drawer:not([hidden])) .orbit-wrap { padding-bottom: 0; }
+body.embed .drawer-head { padding: 10px 16px 0; }
+body.embed .drawer h3 { font-size: 1.05rem; }
+body.embed .drawer .meta { margin-top: 2px; font-size: .82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.embed .drawer-title > div { min-width: 0; }
+body.embed .drawer .facts { margin-top: 6px; gap: 6px; }
+body.embed .drawer .decide { margin-top: 8px; gap: 6px; }
+body.embed .drawer .decide input { min-width: 0; flex: 1; padding-top: 5px; padding-bottom: 5px; }
+body.embed .drawer .decide button { padding-top: 5px; padding-bottom: 5px; }
+body.embed .drawer .tabs { margin-top: 6px; }
+body.embed .drawer-body { padding: 10px 16px 16px; }
+
+/* A wide column beside a chat (pinned candidates): the orbit on the left at full
+   size, and on the right either what the role looks for or, once someone is
+   clicked, that person. Nothing is laid over the orbit and nothing needs a page
+   scroll: the next person is always one click away. */
+@media (min-width: 560px) {
+  body.embed { display: grid; grid-template-columns: minmax(0, 1fr) 280px; height: 100vh; overflow: hidden; }
+  body.embed .shell { grid-column: 1 / -1; grid-row: 1; min-height: 0; overflow-y: auto; }
+  body.embed .board { grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; }
+  body.embed .rail { overflow-y: auto; }
+  body.embed:has(#drawer:not([hidden])) .shell { grid-column: 1; }
+  body.embed:has(#drawer:not([hidden])) .board { grid-template-columns: minmax(0, 1fr); }
+  body.embed:has(#drawer:not([hidden])) #orbit { height: auto; width: 100%; aspect-ratio: 1; }
+  body.embed:has(#drawer:not([hidden])) .legend { display: flex; }
+  body.embed .drawer { grid-column: 2; grid-row: 1; order: 0; min-height: 0; height: 100vh; border-top: 0; border-left: 1px solid var(--line); display: flex; flex-direction: column; }
+  body.embed .drawer .meta { white-space: normal; }
+  body.embed .drawer-body { flex: 1; min-height: 0; overflow-y: auto; }
+}
+@media (min-width: 560px) {
+  body.embed { grid-template-columns: minmax(0, 1fr) 240px; background: var(--panel); }
+  body.embed .board { grid-template-columns: minmax(0, 1fr) 240px; gap: 12px; }
+  body.embed .shell, body.embed .main { min-height: 100vh; background: var(--panel); }
+  body.embed .drawer { background: var(--panel); }
+}
+@media (min-width: 560px) {
+  body.embed:has(#drawer:not([hidden])) { grid-template-columns: minmax(0, 1fr) 290px; }
+  body.embed .drawer .meta { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
+  body.embed .drawer .decide { flex-wrap: wrap; }
+  body.embed .drawer .decide input { flex: 1 0 100%; }
+  body.embed .drawer .tabs { gap: 14px; }
+  body.embed .drawer .tabs button { white-space: nowrap; padding-left: 0; padding-right: 0; }
+}
+/* "must" / "nice to have" is one label: it moves to the next line whole, never split. */
+.verdicts .criterion small { white-space: nowrap; display: inline-block; }

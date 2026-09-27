@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
@@ -278,12 +279,59 @@ describe("Browser surface", () => {
     const images = [
       document.querySelector("link[rel=icon]")!.getAttribute("href")!,
       document.querySelector("#plate .brand img")!.getAttribute("src")!,
-      document.querySelector("#home-win")!.getAttribute("src")!,
+      document.querySelector("#home-art")!.getAttribute("src")!,
+      // Sharp on a high-density screen: the illustration's larger file.
+      ...document.querySelector("#home-art")!.getAttribute("srcset")!.split(",").map((part) => part.trim().split(" ")[0]!),
     ];
     for (const url of images) {
       const image = await app.inject({ method: "GET", url });
       assert.equal(image.statusCode, 200, url);
       assert.equal(image.headers["content-type"], "image/png", url);
+    }
+    // The walking hand, waving and showing a V: each a short silent loop, in two formats.
+    for (const source of document.querySelectorAll("#home-walk source, #home-win source")) {
+      const video = await app.inject({ method: "GET", url: source.getAttribute("src")! });
+      assert.equal(video.statusCode, 200, source.getAttribute("src")!);
+      assert.equal(video.headers["content-type"], source.getAttribute("type"));
+    }
+    assert.equal(document.querySelectorAll("#home-walk source, #home-win source").length, 4);
+    await app.close();
+  });
+
+  test("a chat's address serves the assistant page, which opens that chat", async () => {
+    const { app } = testApp();
+    const page = await app.inject({ method: "GET", url: "/chat/c1" });
+    assert.equal(page.statusCode, 200);
+    assert.match(page.headers["content-type"] as string, /^text\/html/);
+    assert.equal(new JSDOM(page.body).window.document.querySelector("head > title")!.textContent, "Kaki");
+    await app.close();
+  });
+
+  test("every page is Kaki in the tab: its name, and the hand as the icon", async () => {
+    const { app } = testApp();
+    const pages: Record<string, string> = {
+      "index.html": "Kaki",
+      "meetings.html": "Kaki · Meetings",
+      "graph.html": "Kaki · Company map",
+      "graph-answer.html": "Kaki · How the evidence connects",
+      "recruiting.html": "Kaki · Hiring",
+      "emergent.html": "Kaki · Read from the writing",
+    };
+    for (const [url, title] of Object.entries(pages)) {
+      const document = new JSDOM(readFileSync(new URL(`../public/${url}`, import.meta.url), "utf8")).window.document;
+      assert.equal(document.querySelector("head > title")!.textContent, title, url);
+      assert.equal(document.querySelector('link[rel="icon"][sizes="32x32"]')!.getAttribute("href"), "/assets/favicon-32.png", url);
+      assert.equal(document.querySelector('link[rel="apple-touch-icon"]')!.getAttribute("href"), "/assets/apple-touch-icon.png", url);
+    }
+    const icons: Record<string, string> = {
+      "/favicon.ico": "image/x-icon",
+      "/assets/favicon-32.png": "image/png",
+      "/assets/apple-touch-icon.png": "image/png",
+    };
+    for (const [url, type] of Object.entries(icons)) {
+      const icon = await app.inject({ method: "GET", url });
+      assert.equal(icon.statusCode, 200, url);
+      assert.equal(icon.headers["content-type"], type, url);
     }
     await app.close();
   });

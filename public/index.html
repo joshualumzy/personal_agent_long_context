@@ -7,7 +7,8 @@
       name="description"
       content="Kaki: a workplace agent for SME employees. It sits in your meetings, drafts what was promised, and answers from your company's records."
     />
-    <link rel="icon" type="image/png" href="/assets/kaki-logo-64.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
     <title>Kaki</title>
     <link rel="preload" href="/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/theme.css" />
@@ -39,7 +40,7 @@
             <button type="button" class="as-of-now" id="as-of-now" title="Back to the present" hidden>Now</button>
           </div>
         </div>
-        <div class="home-group" id="home-needs" hidden><h3>Needs you <em class="count"></em><button type="button" id="clear-needs-btn" class="text-btn" title="Review each draft, one at a time" hidden>Clear all</button></h3><div class="tasks"></div></div>
+        <div class="home-group" id="home-needs" hidden><h3>Needs you <em class="count"></em></h3><div class="tasks"></div></div>
         <div class="home-group" id="home-waiting" hidden><h3>Waiting on others <em class="count"></em></h3><div class="tasks"></div></div>
         <!-- The signed-in employee's own to-do list and plan, for the chosen day -->
       <section id="today-panel" class="today-panel plate-today" aria-labelledby="today-title" hidden>
@@ -83,11 +84,20 @@
             <div id="empty-state" class="empty-state home" >
               <section id="home" aria-labelledby="home-title">
                 <div class="home-head">
-                  <img id="home-win" class="home-win" src="/assets/kaki-win-128.png" alt="" width="44" height="47" hidden>
-                  <div>
+                  <div class="home-lead">
                     <h2 id="home-title">&nbsp;</h2>
                     <p id="home-summary" class="home-summary"></p>
+                    <button type="button" id="clear-needs-btn" class="primary-btn" title="Each draft in full, one at a time" hidden>Review one by one</button>
                   </div>
+                  <img id="home-art" class="home-art" src="/assets/kaki-logo-128.png" srcset="/assets/kaki-logo-128.png 1x, /assets/kaki-logo-256.png 2x" alt="" width="112" height="120">
+                  <video id="home-walk" class="home-art home-walk" autoplay muted loop playsinline preload="auto" poster="/assets/kaki-logo-256.png" width="112" height="112" aria-hidden="true" hidden>
+                    <source src="/assets/kaki-walk.webm" type="video/webm">
+                    <source src="/assets/kaki-walk.mp4" type="video/mp4">
+                  </video>
+                  <video id="home-win" class="home-art home-walk" muted loop playsinline preload="auto" poster="/assets/kaki-win-256.png" width="112" height="112" aria-hidden="true" hidden>
+                    <source src="/assets/kaki-win.webm" type="video/webm">
+                    <source src="/assets/kaki-win.mp4" type="video/mp4">
+                  </video>
                 </div>
                 <section class="home-group" id="timeline" aria-label="Today">
                   <h3>Today</h3>
@@ -102,6 +112,7 @@
                   <div class="conversations-list" id="conversations-list">
                     <div class="conversations-empty">No saved chats yet</div>
                   </div>
+                  <button type="button" id="conversations-more" class="text-btn more-btn" hidden></button>
                 </div>
               </section>
             </div>

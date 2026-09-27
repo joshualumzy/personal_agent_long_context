@@ -158,7 +158,11 @@ function showDay(day) {
     ? new Date(`${shown}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })
     : "";
   const label = document.querySelector("#as-of-label");
-  if (label && named) label.textContent = named;
+  if (label && named) {
+    // A past day has "As of" and "Now" beside it: the day alone, the weekday on hover.
+    label.textContent = day ? named.replace(/^\S+\s/, "") : named;
+    label.title = new Date(`${shown}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  }
   // A question asked on a past day is answered as of it, so the composer says so.
   const composer = document.querySelector("#message-input");
   if (composer) composer.placeholder = day && named ? `Ask as of ${named}` : ASK_TODAY;
@@ -234,10 +238,10 @@ todayToggle?.addEventListener("click", () => setTodayPanelOpen(todayPanel.hidden
 document.querySelector("#today-close")?.addEventListener("click", () => setTodayPanelOpen(false));
 
 const TODO_GROUPS = [
-  { title: "In progress", match: (item) => item.relation === "assignee" && item.status === "In Progress" },
-  { title: "In review", match: (item) => item.relation === "assignee" && item.status === "In Review" },
-  { title: "Not started", match: (item) => item.relation === "assignee" && item.status !== "In Progress" && item.status !== "In Review" },
-  { title: "Raised by you, not picked up", relation: "reporter", match: (item) => item.relation === "reporter" },
+  { match: (item) => item.relation === "assignee" && item.status === "In Progress" },
+  { state: "in review", match: (item) => item.relation === "assignee" && item.status === "In Review" },
+  { folded: "not started", match: (item) => item.relation === "assignee" && item.status !== "In Progress" && item.status !== "In Review" },
+  { folded: "raised by you", match: (item) => item.relation === "reporter" },
 ];
 
 const ACTIVITY_LABELS = {
@@ -269,16 +273,16 @@ function renderTodo(items) {
     todoList.appendChild(empty);
     return;
   }
+  // The work in hand is listed, one row each; what has not started and what
+  // you raised for others wait behind one quiet line right under it. Each
+  // opens below that line and closes again from the same button.
+  const list = document.createElement("ul");
+  const folded = [];
   for (const group of TODO_GROUPS) {
     const members = items.filter(group.match);
     if (!members.length) continue;
-    const heading = document.createElement("h4");
-    heading.textContent = `${group.title} · ${members.length}`;
-    const list = document.createElement("ul");
-    // What others were meant to pick up can run long; the first few are enough to see it.
-    // What others were meant to pick up is not the day's work: folded, one click away.
-    const shown = group.relation === "reporter" ? 0 : members.length;
-    members.forEach((item, index) => {
+    const target = group.folded ? document.createElement("ul") : list;
+    for (const item of members) {
       const row = document.createElement("li");
       const citable = Boolean(item.sources?.includes(item.itemKey) && plateSourceHandler);
       const open = document.createElement(citable ? "button" : "div");
@@ -302,23 +306,41 @@ function renderTodo(items) {
         item.since ? `since ${formatDay(item.since)}` : "",
       ].filter(Boolean).join(" · ");
       open.append(key, title, facts);
+      if (group.state) {
+        const state = document.createElement("span");
+        state.className = "todo-state";
+        state.textContent = group.state;
+        open.appendChild(state);
+      }
       row.appendChild(open);
-      if (index >= shown) row.hidden = true;
-      list.appendChild(row);
-    });
-    todoList.append(heading, list);
-    if (members.length > shown) {
-      const more = document.createElement("button");
-      more.type = "button";
-      more.className = "today-more";
-      more.textContent = `Show ${members.length - shown} more`;
-      more.addEventListener("click", () => {
-        list.querySelectorAll("li[hidden]").forEach((row) => { row.hidden = false; });
-        more.remove();
-      });
-      todoList.appendChild(more);
+      row.hidden = Boolean(group.folded);
+      target.appendChild(row);
     }
+    if (group.folded) folded.push({ name: group.folded, count: members.length, list: target, open: false });
   }
+  todoList.appendChild(list);
+  if (!folded.length) return;
+  const rest = document.createElement("p");
+  rest.className = "todo-rest";
+  const drawRest = () => {
+    rest.replaceChildren();
+    folded.forEach((fold, index) => {
+      if (index > 0) rest.append(" · ");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = fold.open ? `hide ${fold.name}` : `${fold.count} ${fold.name}`;
+      button.setAttribute("aria-expanded", String(fold.open));
+      button.addEventListener("click", () => {
+        fold.open = !fold.open;
+        fold.list.querySelectorAll("li").forEach((row) => { row.hidden = !fold.open; });
+        drawRest();
+      });
+      rest.appendChild(button);
+    });
+  };
+  drawRest();
+  todoList.appendChild(rest);
+  for (const fold of folded) todoList.appendChild(fold.list);
 }
 
 function renderPlan(entries) {
