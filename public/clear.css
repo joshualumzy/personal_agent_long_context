@@ -283,8 +283,16 @@
 }
 
 .clear-evidence-id {
-  width: 72px;
+  width: 104px;
   flex: none;
-  font: 500 11px/1.4 var(--f-mono);
+  font: 400 12px/1.4 var(--f-ui);
   color: var(--muted);
+}
+
+.clear-evidence-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

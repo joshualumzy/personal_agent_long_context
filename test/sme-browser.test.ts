@@ -596,7 +596,10 @@ describe("SME Assistant clearing the plate, one draft at a time", () => {
     const a1 = action("a1", "email_draft", "approval", "proposed", "Email: Send follow-up to Owen", {
       payload: { to: "owen@notc.example", subject: "Root cause and the fix", body: "Hi Owen,\n\nAs promised, here is the root cause." },
       trigger: { segmentIndex: 4, speaker: "Jax", quote: "I'll send a follow-up email today with the root cause." },
-      evidence: [{ sourceId: "ENG-210", sourceType: "jira", title: "Commit race, open", excerpt: "" }],
+      evidence: [
+        { sourceId: "ENG-210", sourceType: "jira", title: "Commit race, open", excerpt: "" },
+        { sourceId: "slack_digital-hq_2026-02-02T11:36:00", sourceType: "slack", title: "#digital-hq", excerpt: "" },
+      ],
     });
     const a2 = action("a2", "ticket_draft", "approval", "proposed", "Add consumer-lag alerting", {
       payload: { title: "Add consumer-lag alerting", description: "Alert before we breach the SLA.", assignee: "Ben", due: "2026-10-03" },
@@ -626,6 +629,9 @@ describe("SME Assistant clearing the plate, one draft at a time", () => {
     assert.match(context.textContent!, /NOC SLA escalation/);
     assert.match(context.textContent!, /Jax/);
     assert.match(context.textContent!, /ENG-210/);
+    // A stored message shows what it is, never its storage id.
+    assert.match(context.textContent!, /Slack message/);
+    assert.doesNotMatch(context.textContent!, /slack_digital-hq_2026/);
     assert.equal((page.document.querySelector("#context") as HTMLElement).hidden, false);
     assert.equal((page.document.querySelector(".chat-main") as HTMLElement).hidden, true);
 

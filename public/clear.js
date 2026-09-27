@@ -119,7 +119,11 @@ function renderClearContext(item) {
       ...evidence.map((source) => {
         const row = document.createElement("div");
         row.className = "clear-evidence-row";
-        row.innerHTML = `<span class="clear-evidence-id">${escapeHtml(source.sourceId)}</span><span>${escapeHtml(source.title || "")}</span>`;
+        // What it is in plain words, and its title; the storage id stays in the tooltip.
+        row.title = source.sourceId;
+        const readableKey = citationLabel(source.sourceId) === source.sourceId;
+        const kind = readableKey ? source.sourceId : source.sourceType ? sourceKind(source.sourceType) : citationLabel(source.sourceId);
+        row.innerHTML = `<span class="clear-evidence-id">${escapeHtml(kind)}</span><span class="clear-evidence-title">${escapeHtml(sourceTitle(source))}</span>`;
         return row;
       }),
     );
