@@ -19,10 +19,11 @@ async function openSmePage(options: PageOptions = {}) {
   await app.listen({ host: "127.0.0.1", port: 0 });
   const { port } = app.server.address() as AddressInfo;
   const base = `http://127.0.0.1:${port}`;
-  const [html, markedScript, domPurifyScript, script] = await Promise.all([
+  const [html, markedScript, domPurifyScript, plateScript, script] = await Promise.all([
     fetch(`${base}/`).then((response) => response.text()),
     fetch(`${base}/vendor/marked.js`).then((response) => response.text()),
     fetch(`${base}/vendor/dompurify.js`).then((response) => response.text()),
+    fetch(`${base}/plate.js`).then((response) => response.text()),
     fetch(`${base}/app.js`).then((response) => response.text()),
   ]);
   const dom = new JSDOM(html, { url: `${base}${options.path ?? "/"}`, runScripts: "outside-only" });
@@ -71,6 +72,7 @@ async function openSmePage(options: PageOptions = {}) {
   options.setup?.(window);
   window.eval(markedScript);
   window.eval(domPurifyScript);
+  window.eval(plateScript);
   window.eval(script);
 
   return {

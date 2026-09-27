@@ -9,10 +9,11 @@ import { MemoryRoleRepository, RoleBoard } from "../src/recruiting/roles.js";
 
 // Moving between pages must not move the frame: the same pieces sit at the
 // same pixels. jsdom has no layout, so this measures in a real browser.
-// Kaki's one entry (the assistant and meetings) has a top bar and no sidebar;
-// the pages not yet brought into it (recruiting, the emergent graph) keep the
-// older sidebar, the same on each. /graph opens inside the chat's dialog.
-const TOPBAR_PAGES = ["/", "/meetings"];
+// Kaki's one entry (the assistant and meetings) shows the same plate on the
+// left, and no sidebar; the pages not yet brought into it (recruiting, the
+// emergent graph) keep the older sidebar, the same on each. /graph opens
+// inside the chat's dialog.
+const PLATE_PAGES = ["/", "/meetings"];
 const PAGES = ["/recruiting", "/graph/emergent"];
 
 const MEASURE_TOP = `(() => {
@@ -100,12 +101,12 @@ describe("Shared shell layout", () => {
     assert.equal(home.sidebar, null, "and not the old sidebar");
   });
 
-  test("puts the plate, the Kaki mark and the employee at the same pixels on the assistant and meetings", { todo: "the meetings page moves onto the plate next" }, async () => {
-    const [first, ...rest] = await Promise.all(TOPBAR_PAGES.map(measureTop));
+  test("puts the plate, the Kaki mark and the employee at the same pixels on the assistant and meetings", async () => {
+    const [first, ...rest] = await Promise.all(PLATE_PAGES.map(measureTop));
     assert.ok(first!.plate, "the assistant page has the plate");
     assert.equal(first!.sidebar, null, "and no sidebar");
     rest.forEach((other, index) => {
-      assert.deepEqual(other, first, `${TOPBAR_PAGES[index + 1]} differs from /`);
+      assert.deepEqual(other, first, `${PLATE_PAGES[index + 1]} differs from /`);
     });
   });
 
@@ -131,7 +132,7 @@ describe("Shared shell layout", () => {
 
   test("draws icons as line icons, never as emoji or check-mark characters", async () => {
     const assets = [
-      "/", "/app.js", "/meetings", "/meetings/app.js", "/recruiting", "/recruiting/app.js",
+      "/", "/app.js", "/plate.js", "/meetings", "/meetings/app.js", "/recruiting", "/recruiting/app.js",
       "/graph", "/graph/app.js", "/graph/emergent", "/graph/emergent.js",
     ];
     const iconLike = /[\p{Extended_Pictographic}\u2713\u2715\u2717]/u;

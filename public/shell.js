@@ -22,8 +22,14 @@ async function loadShellUser() {
   foot.querySelector(".shell-role").textContent = employee ? employee.role || employee.department || "" : "Sign in on the assistant page";
   const out = foot.querySelector(".shell-out");
   out.hidden = !employee;
-  out.onclick = async () => {
+  out.onclick = async (event) => {
+    event.stopPropagation();
     await fetch("/api/v1/auth/logout", { method: "POST", credentials: "same-origin" }).catch(() => {});
+    location.href = "/";
+  };
+  // Switching persona is the assistant page's own dialog; this page sends you there.
+  foot.onclick = (event) => {
+    if (event.target.closest(".shell-out")) return;
     location.href = "/";
   };
 }
