@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Read From the Writing</title>
+  <link rel="stylesheet" href="/graph/styles.css">
+  <script src="/graph/emergent.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="title-block">
+      <h1>What was read out of the writing</h1>
+      <p id="status-line" class="status-line" aria-live="polite">Loading…</p>
+    </div>
+    <div class="top-actions">
+      <a class="quiet" href="/graph">The recorded graph</a>
+      <button type="button" class="quiet on" id="tab-picture" aria-pressed="true">Picture</button>
+      <button type="button" class="quiet" id="tab-table" aria-pressed="false">Table</button>
+    </div>
+  </header>
+
+  <p id="error" class="banner error" role="alert" hidden></p>
+
+  <div class="controls">
+    <div class="field" id="question-field">
+      <label for="question">Question</label>
+      <select id="question"></select>
+    </div>
+  </div>
+
+  <p id="provenance" class="provenance" hidden></p>
+  <p id="extraction" class="banner working" role="status" aria-live="polite" hidden></p>
+
+  <main class="board">
+    <section id="picture" class="picture" aria-labelledby="picture-heading">
+      <h2 id="picture-heading" class="visually-hidden">Diagram</h2>
+      <svg id="canvas" viewBox="-420 -320 840 640" role="application" aria-describedby="canvas-help">
+        <title>Things named in the writing, joined by the relationships read out of it</title>
+      </svg>
+      <p id="canvas-help" class="hint-line">
+        Select an item to see its relationships named. Tab moves between items with a keyboard.
+      </p>
+      <ul class="legend" id="legend-emergent">
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-entity"/></svg>Something named in the writing</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><rect x="-6" y="-6" width="12" height="12" class="n-kind"/></svg>A kind of thing</li>
+        <li>Every line is a relationship read out of the prose. Select an item to see them named.</li>
+      </ul>
+    </section>
+
+    <section id="table-view" class="table-view" aria-labelledby="table-heading" hidden>
+      <h2 id="table-heading">Every relationship in this view</h2>
+      <p class="hint-line" id="table-summary"></p>
+      <div class="table-scroll">
+        <table>
+          <caption class="visually-hidden">Each row is one relationship, from one item to another.</caption>
+          <thead>
+            <tr><th scope="col">From</th><th scope="col">Kind</th><th scope="col">Relationship</th><th scope="col">To</th></tr>
+          </thead>
+          <tbody id="edge-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <aside id="details" class="details" aria-live="polite">
+      <p class="empty">Choose an item to see what it is.</p>
+    </aside>
+  </main>
+</body>
+</html>

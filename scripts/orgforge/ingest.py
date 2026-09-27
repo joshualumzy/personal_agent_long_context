@@ -1,7 +1,18 @@
-"""Import employee-visible OrgForge artifacts into the runtime database.
+"""Import the OrgForge corpus into the runtime database.
 
-Evaluation and oracle material is rejected by construction: only rows whose
-category is ``artifact`` and whose type is explicitly allow-listed can enter.
+Two layers come out of one pass:
+
+* **Retrieval layer** — only employee-visible Company Artifacts are chunked and
+  embedded, so only they can ever surface as evidence. Simulation events carry
+  god's-eye facts (causal chains, the ticket a PR will spawn) and must never
+  reach it.
+* **Causal layer** — every row is admitted to ``source_documents`` and linked in
+  ``document_links``, because the simulation's causal chains are what the
+  scheduler reasons over, and the graph builder derives its nodes and edges
+  from them.
+
+``category`` records which layer a row belongs to. The corpus leaves it empty on
+thousands of rows, so it is derived from the document type when missing.
 """
 
 from __future__ import annotations
@@ -21,6 +32,8 @@ DATASET_NAME = "aeriesec/orgforge"
 DATASET_REVISION = os.environ.get("ORGFORGE_REVISION", "main")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
+# Document types the corpus documents as employee-visible artifacts. These are
+# the only ones allowed into the retrieval layer.
 ALLOWED_TYPES = {
     "confluence",
     "datadog_alert",
@@ -35,6 +48,20 @@ ALLOWED_TYPES = {
     "zd_ticket",
     "zoom_transcript",
 }
+
+CATEGORIES = ("artifact", "sim_event", "sim_config")
+
+
+def without_nul(value: str) -> str:
+    """Strip NUL bytes. Postgres text and jsonb reject 0x00, and a few corpus
+    bodies carry stray ones."""
+    return value.replace("\x00", "")
+
+
+def dump_json(value: object) -> str:
+    """Serialize for a jsonb parameter, with NUL bytes removed from nested
+    strings as well as from the escaped form json.dumps produces."""
+    return json.dumps(value).replace("\\u0000", "").replace("\x00", "")
 
 
 def parse_json(value: object, fallback: object) -> object:
@@ -70,11 +97,32 @@ def parse_date(value: object) -> date | None:
         return None
 
 
-def is_runtime_artifact(row: dict[str, object]) -> bool:
-    """Admit only declared employee-visible Company Artifacts."""
+def derive_category(row: dict[str, object]) -> str:
+    """Return the corpus category, deriving it when the row leaves it empty.
+
+    Thousands of rows carry no category (datadog_metric, dept_plan,
+    dept_plan_reasoning, and a handful of artifacts). Routing depends on this
+    value, so fall back to the document type: allow-listed types are artifacts,
+    the configuration row is its own category, everything else is a simulation
+    event.
+    """
+    category = str(row.get("category") or "").strip()
+    if category in CATEGORIES:
+        return category
+    doc_type = str(row.get("doc_type") or "")
+    if doc_type == "sim_config":
+        return "sim_config"
+    return "artifact" if doc_type in ALLOWED_TYPES else "sim_event"
+
+
+def is_retrievable_artifact(row: dict[str, object], category: str) -> bool:
+    """Admit only declared employee-visible Company Artifacts to the retrieval
+    layer. Simulation events are excluded even when their type looks familiar,
+    because their identifiers are prefixed ``EVT-`` and their payload is oracle
+    material."""
     source_id = str(row.get("doc_id") or "")
     return (
-        row.get("category") == "artifact"
+        category == "artifact"
         and row.get("doc_type") in ALLOWED_TYPES
         and not source_id.startswith("EVT-")
     )
@@ -114,6 +162,58 @@ def link_pairs(source_id: str, raw_links: object) -> Iterable[tuple[str, str, st
                 yield source_id, related, str(relationship)
 
 
+def actor_names(raw_actors: object) -> list[str]:
+    """Distinct, ordered actor names from the corpus list."""
+    actors = parse_json(raw_actors, [])
+    if not isinstance(actors, list):
+        return []
+    seen: dict[str, None] = {}
+    for actor in actors:
+        if isinstance(actor, str) and actor.strip():
+            seen.setdefault(actor.strip(), None)
+    return list(seen)
+
+
+def backfill_actor_attributes(cursor) -> tuple[int, int]:
+    """Fill in what the corpus says about an actor, from the facts just stored.
+
+    Hiring and departure events name a person's role and department; a departure
+    also lists the domains they held. Only a handful of people are ever hired or
+    leave during the simulation, so most actors stay bare — `domain_registry.json`
+    is the fuller source and is not imported yet.
+
+    Later facts win, so someone hired and then promoted ends up with the role they
+    held last.
+    """
+    cursor.execute(
+        """
+        WITH stated AS (
+            SELECT
+                d.facts->>'name' AS name,
+                d.facts->>'role' AS role,
+                d.facts->>'dept' AS dept,
+                row_number() OVER (
+                    PARTITION BY d.facts->>'name'
+                    ORDER BY d.simulation_day DESC NULLS LAST
+                ) AS recency
+            FROM source_documents d
+            WHERE d.facts ? 'name'
+              AND (d.facts ? 'role' OR d.facts ? 'dept')
+        )
+        UPDATE actors a
+        SET role = coalesce(a.role, stated.role),
+            dept = coalesce(a.dept, stated.dept)
+        FROM stated
+        WHERE stated.recency = 1 AND stated.name = a.name
+          AND (a.role IS NULL OR a.dept IS NULL)
+        """
+    )
+    filled = cursor.rowcount
+    cursor.execute("SELECT count(*), count(role) FROM actors")
+    total, with_role = cursor.fetchone()
+    return filled, total - with_role
+
+
 def main() -> None:
     if not DATABASE_URL:
         raise RuntimeError("DATABASE_URL is required.")
@@ -122,6 +222,8 @@ def main() -> None:
     batch_id = uuid.uuid4()
     accepted = 0
     rejected = 0
+    artifacts = 0
+    events = 0
 
     with psycopg.connect(DATABASE_URL) as connection:
         with connection.cursor() as cursor:
@@ -148,42 +250,47 @@ def main() -> None:
                 """
             )
 
-            cursor.execute(
-                "DELETE FROM source_documents WHERE dataset_revision = %s",
-                (DATASET_REVISION,),
-            )
+            # Rows are upserted and stale ones removed at the end, rather than
+            # clearing the revision first. Deleting up front cascaded to
+            # document_chunks and took every embedding with it, so each re-ingest
+            # silently cost a full re-embed — money, or a re-sync from elsewhere.
+            seen: set[str] = set()
 
             for row in dataset:
-                if not is_runtime_artifact(row):
-                    rejected += 1
-                    continue
-
                 source_id = str(row["doc_id"])
-                title = str(row.get("title") or "").strip()
-                body = str(row.get("body") or title).strip()
+                title = without_nul(str(row.get("title") or "")).strip()
+                body = without_nul(str(row.get("body") or title)).strip()
                 if not source_id or not body:
                     rejected += 1
                     continue
 
+                category = derive_category(row)
+                retrievable = is_retrievable_artifact(row, category)
+
                 actors = parse_json(row.get("actors"), [])
                 tags = parse_json(row.get("tags"), [])
                 links = parse_json(row.get("artifact_ids"), {})
+                # What the corpus asserts about this row. Empty for artifacts; for
+                # a simulation event it holds the causal chain, the domains in
+                # play, and names in full.
+                facts = parse_json(row.get("facts"), {})
                 occurred_at = parse_timestamp(row.get("timestamp"))
 
                 cursor.execute(
                     """
                     INSERT INTO source_documents (
-                        source_id, source_type, title, body, simulation_day,
-                        document_date, occurred_at, department, actors, tags,
-                        original_links, metadata, is_incident, is_external,
-                        dataset_revision, batch_id
+                        source_id, source_type, category, title, body,
+                        simulation_day, document_date, occurred_at, department,
+                        actors, tags, original_links, facts, is_incident,
+                        is_external, dataset_revision, batch_id
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, NULLIF(%s, ''),
-                        %s::jsonb, %s::jsonb, %s::jsonb, '{}'::jsonb,
+                        %s, %s, %s, %s, %s, %s, %s, %s, NULLIF(%s, ''),
+                        %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb,
                         %s, %s, %s, %s
                     )
                     ON CONFLICT (source_id) DO UPDATE SET
                         source_type = EXCLUDED.source_type,
+                        category = EXCLUDED.category,
                         title = EXCLUDED.title,
                         body = EXCLUDED.body,
                         simulation_day = EXCLUDED.simulation_day,
@@ -193,6 +300,7 @@ def main() -> None:
                         actors = EXCLUDED.actors,
                         tags = EXCLUDED.tags,
                         original_links = EXCLUDED.original_links,
+                        facts = EXCLUDED.facts,
                         is_incident = EXCLUDED.is_incident,
                         is_external = EXCLUDED.is_external,
                         dataset_revision = EXCLUDED.dataset_revision,
@@ -201,15 +309,17 @@ def main() -> None:
                     (
                         source_id,
                         row["doc_type"],
+                        category,
                         title or None,
                         body,
                         row.get("day"),
                         parse_date(row.get("date")),
                         occurred_at,
                         row.get("dept") or "",
-                        json.dumps(actors),
-                        json.dumps(tags),
-                        json.dumps(links),
+                        dump_json(actors),
+                        dump_json(tags),
+                        dump_json(links),
+                        dump_json(facts),
                         bool(row.get("is_incident")),
                         bool(row.get("is_external")),
                         DATASET_REVISION,
@@ -217,15 +327,49 @@ def main() -> None:
                     ),
                 )
 
-                for chunk_index, content in enumerate(chunks(body)):
+                # Only employee-visible artifacts become retrievable evidence.
+                if retrievable:
+                    for chunk_index, content in enumerate(chunks(body)):
+                        cursor.execute(
+                            """
+                            INSERT INTO document_chunks (source_id, chunk_index, content)
+                            VALUES (%s, %s, %s)
+                            ON CONFLICT (source_id, chunk_index) DO UPDATE SET
+                                content = EXCLUDED.content,
+                                -- Text that changed invalidates its vector: the
+                                -- embedding would otherwise keep describing what
+                                -- the chunk used to say, and the backfill only
+                                -- looks for a missing vector or a changed model.
+                                embedding = CASE
+                                    WHEN document_chunks.content = EXCLUDED.content
+                                    THEN document_chunks.embedding ELSE NULL END,
+                                embedding_model = CASE
+                                    WHEN document_chunks.content = EXCLUDED.content
+                                    THEN document_chunks.embedding_model ELSE NULL END
+                            """,
+                            (source_id, chunk_index, content),
+                        )
+                    artifacts += 1
+                else:
+                    events += 1
+
+                seen.add(source_id)
+
+                for name in actor_names(row.get("actors")):
                     cursor.execute(
                         """
-                        INSERT INTO document_chunks (source_id, chunk_index, content)
-                        VALUES (%s, %s, %s)
-                        ON CONFLICT (source_id, chunk_index)
-                        DO UPDATE SET content = EXCLUDED.content
+                        INSERT INTO actors (name) VALUES (%s)
+                        ON CONFLICT (name) DO NOTHING
                         """,
-                        (source_id, chunk_index, content),
+                        (name,),
+                    )
+                    cursor.execute(
+                        """
+                        INSERT INTO document_actors (source_id, actor_id)
+                        SELECT %s, actor_id FROM actors WHERE name = %s
+                        ON CONFLICT DO NOTHING
+                        """,
+                        (source_id, name),
                     )
 
                 for link in link_pairs(source_id, links):
@@ -241,17 +385,41 @@ def main() -> None:
 
                 accepted += 1
 
+            # Anything this revision used to hold and no longer does. Removing
+            # them here, rather than clearing the revision first, is what lets
+            # unchanged rows keep their chunks and vectors.
+            cursor.execute(
+                """
+                DELETE FROM source_documents
+                WHERE dataset_revision = %s AND NOT (source_id = ANY(%s))
+                """,
+                (DATASET_REVISION, list(seen)),
+            )
+            removed = cursor.rowcount
+
             cursor.execute(
                 """
                 UPDATE ingestion_batches
                 SET completed_at = now(), artifact_count = %s, rejected_count = %s
                 WHERE batch_id = %s
                 """,
-                (accepted, rejected, batch_id),
+                (artifacts, rejected, batch_id),
             )
+
+            filled, still_bare = backfill_actor_attributes(cursor)
         connection.commit()
 
-    print(f"Imported {accepted} employee-visible artifacts; rejected {rejected} non-runtime rows.")
+    print(
+        f"Imported {accepted} documents: {artifacts} retrievable artifacts "
+        f"(chunked and embeddable), {events} causal-layer rows (never chunked); "
+        f"skipped {rejected} rows without a usable body."
+    )
+    if removed:
+        print(f"Removed {removed} documents this revision no longer contains.")
+    print(
+        f"Filled in {filled} actors from what the corpus states; {still_bare} "
+        f"still have no role, which hiring and departure events alone cannot give."
+    )
 
 
 if __name__ == "__main__":

@@ -84,6 +84,106 @@ test("uses the configured SoCLaaS chat-completions endpoint and preserves retrie
   assert.equal(result.sources[0]?.sourceId, "JIRA-42");
 });
 
+test("tops up related sources with artifacts that share a cause, and never with the event itself", async () => {
+  const askedThroughEvents: Array<{ seeds: string[]; limit: number }> = [];
+  const knowledge: CompanyKnowledge = {
+    async employee() {
+      return { employeeId: "jax", displayName: "Jax", currentAssignments: [] };
+    },
+    async search() {
+      return [
+        {
+          sourceId: "CONF-5",
+          sourceType: "confluence",
+          title: "Roadmap alignment",
+          excerpt: "The roadmap moved.",
+        },
+      ];
+    },
+    // Directly linked artifacts are scarce in this corpus.
+    async related() {
+      return [];
+    },
+    async relatedThroughEvents(sourceIds, limit) {
+      askedThroughEvents.push({ seeds: sourceIds, limit });
+      return [
+        {
+          sourceId: "zoom-1",
+          sourceType: "zoom_transcript",
+          title: "Roadmap call",
+          excerpt: "We agreed to move the roadmap.",
+        },
+      ];
+    },
+    async sources() {
+      return [];
+    },
+  };
+
+  const responses = [
+    {
+      choices: [
+        {
+          message: {
+            content: null,
+            tool_calls: [
+              {
+                id: "call-1",
+                type: "function",
+                function: {
+                  name: "search_company_knowledge",
+                  arguments: JSON.stringify({ query: "roadmap", limit: 1 }),
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      choices: [
+        {
+          message: {
+            content: null,
+            tool_calls: [
+              {
+                id: "call-2",
+                type: "function",
+                function: {
+                  name: "get_related_sources",
+                  arguments: JSON.stringify({ source_ids: ["CONF-5"], limit: 4 }),
+                },
+              },
+            ],
+          },
+        },
+      ],
+    },
+    {
+      choices: [
+        {
+          message: {
+            content: "The roadmap moved. [source:CONF-5] [source:zoom-1]",
+          },
+        },
+      ],
+    },
+  ];
+
+  const agent = new SoCLaaSCompanyAgent(knowledge, {
+    apiKey: "test-key",
+    fetch: async () => new Response(JSON.stringify(responses.shift()), { status: 200 }),
+  });
+
+  const result = await agent.answer({ employeeId: "jax", question: "What happened to the roadmap?" });
+
+  // The seed was retrieved first, so it is allowed as a seed, and the top-up
+  // asked only for the slots the direct lookup left unfilled.
+  assert.deepEqual(askedThroughEvents, [{ seeds: ["CONF-5"], limit: 4 }]);
+  const cited = result.sources.map((source) => source.sourceId).sort();
+  assert.deepEqual(cited, ["CONF-5", "zoom-1"]);
+});
+
 test("replaces an uncited insufficient-evidence response with a controlled safe answer", async () => {
   const knowledge: CompanyKnowledge = {
     async employee() {

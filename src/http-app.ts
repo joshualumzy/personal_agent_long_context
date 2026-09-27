@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, {
   type FastifyInstance,
@@ -19,6 +20,7 @@ import type { ConversationStore } from "./conversation-domain.js";
 import type { GmailClient } from "./recruiting/gmail.js";
 import { registerRecruitingRoutes } from "./recruiting/routes.js";
 import type { RoleBoard } from "./recruiting/roles.js";
+import type { EmergentMemory } from "./emergent-memory.js";
 import type { MeetingActions } from "./meetings/domain.js";
 import { replayTranscript, type ReplaySource } from "./meetings/replay.js";
 import { registerMeetingRoutes, type GoogleStatus } from "./meetings/routes.js";
@@ -63,6 +65,11 @@ export interface BuildAppOptions extends ApplicationOptions {
   logger?: FastifyServerOptions["logger"];
   /** The recruiting direction (S3). Omitted, its routes are not registered. */
   recruiting?: { board: RoleBoard; gmail: GmailClient | null };
+  /**
+   * Keeps the emergent graph following the questions asked. Omitted, questions
+   * are answered exactly as before and the graph stays at its last export.
+   */
+  emergentMemory?: EmergentMemory;
   /** Meeting actions (S2). Omitted, its routes are not registered. */
   meetings?: {
     service: MeetingActions;
@@ -79,6 +86,11 @@ const markedBrowserBundle = fileURLToPath(
 );
 const domPurifyBrowserBundle = fileURLToPath(
   new URL("../node_modules/dompurify/dist/purify.min.js", import.meta.url),
+);
+/** Written by orgforge_kb/cognee_memory.py graph: one file per question, plus
+ *  index.json. Ignored by Git. */
+const emergentGraphDirectory = fileURLToPath(
+  new URL("../data/emergent-graph/", import.meta.url),
 );
 
 const securityHeaders = {
@@ -116,6 +128,11 @@ function titleFrom(message: string): string {
 /** A string field or query value, trimmed; anything else (a number, a list, a repeated parameter) counts as absent. */
 function stringOf(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+/** A comma-separated query parameter as a list, blanks dropped. */
+function splitList(value: string): string[] {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
 export function buildApp(options: BuildAppOptions): FastifyInstance {
@@ -513,6 +530,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         ? "evidence_insufficient"
         : "success";
 
+      // The answer is already settled, so extraction can happen afterwards. It
+      // reads prose with a model and takes minutes; queueing it here is what
+      // lets the emergent graph grow around the questions people actually ask.
+      options.emergentMemory?.enqueue(message);
+
       let persistenceStatus: "saved" | "failed" = "saved";
       if (options.conversationStore && conversationId) {
         await options.conversationStore
@@ -901,6 +923,167 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     },
   );
 
+  /** One of the fixed company-overview subgraphs, by name. */
+  app.get<{ Params: { name: string } }>("/api/v1/graph/view/:name", async (request, reply) => {
+    const knowledge = options.companyKnowledge;
+    if (!knowledge?.graphView) {
+      return reply.code(503).send({ message: "The graph is not configured." });
+    }
+    const slice = await knowledge.graphView(request.params.name);
+    if (!slice) return reply.code(404).send({ message: "There is no view by that name." });
+    return reply.send(slice);
+  });
+
+  /**
+   * A question's graph: the question as a centre node, linked to the graph
+   * nodes its evidence belongs to and the ones it names outright. Only the
+   * centre and its seeds — the rest is reached by expanding.
+   */
+  app.get<{ Querystring: { q?: string; categories?: string; seeds?: string } }>(
+    "/api/v1/graph/query",
+    async (request, reply) => {
+      const knowledge = options.companyKnowledge;
+      if (!knowledge?.graphQuery) {
+        return reply.code(503).send({ message: "The graph is not configured." });
+      }
+      const query = request.query.q?.trim();
+      if (!query) return reply.code(400).send({ message: "Provide a q parameter." });
+      const seeds = Number(request.query.seeds);
+      const slice = await knowledge.graphQuery({
+        query,
+        ...(request.query.categories ? { categories: splitList(request.query.categories) } : {}),
+        ...(Number.isFinite(seeds) && seeds > 0 ? { seeds } : {}),
+      });
+      return reply.send(slice);
+    },
+  );
+
+  /**
+   * One node's neighbourhood, along every relationship in both directions,
+   * ranked and budgeted per category; the remainder of a category comes back
+   * as a cluster node, and expanding that returns its next page.
+   */
+  app.get<{
+    Querystring: {
+      id?: string;
+      categories?: string;
+      budget?: string;
+      offset?: string;
+      includePlans?: string;
+    };
+  }>("/api/v1/graph/expand", async (request, reply) => {
+    const knowledge = options.companyKnowledge;
+    if (!knowledge?.graphExpand) {
+      return reply.code(503).send({ message: "The graph is not configured." });
+    }
+    const id = request.query.id?.trim();
+    if (!id) return reply.code(400).send({ message: "Provide an id parameter." });
+    const budget = Number(request.query.budget);
+    const offset = Number(request.query.offset);
+    const slice = await knowledge.graphExpand({
+      id,
+      ...(request.query.categories ? { categories: splitList(request.query.categories) } : {}),
+      ...(Number.isFinite(budget) && budget > 0 ? { budget } : {}),
+      ...(Number.isFinite(offset) && offset > 0 ? { offset } : {}),
+      includePlans: request.query.includePlans === "true",
+    });
+    if (slice.nodes.length === 0) {
+      return reply.code(404).send({ message: "No node has that id." });
+    }
+    return reply.send(slice);
+  });
+
+  /**
+   * Evidence for one graph node: hybrid search over the node's own label, the
+   * same retrieval used to answer questions. This is not exact provenance for a specific edge — the
+   * graph does not keep that — it is the same retrieval a question would get,
+   * scoped to what this node is called. Good enough for "why is this here"
+   * without pretending to be a citation.
+   */
+  app.get<{ Querystring: { label?: string; limit?: string } }>(
+    "/api/v1/graph/evidence",
+    async (request, reply) => {
+      const knowledge = options.companyKnowledge;
+      if (!knowledge) {
+        return reply.code(503).send({ message: "Company knowledge is not configured." });
+      }
+      const label = request.query.label?.trim();
+      if (!label) {
+        return reply.code(400).send({ message: "Provide a label parameter." });
+      }
+      const parsedLimit = Number(request.query.limit);
+      const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 12) : 5;
+      const evidence = await knowledge.search(label, limit);
+      return reply.send({ evidence });
+    },
+  );
+
+  /**
+   * The emergent graph, as last exported by orgforge_kb/cognee_memory.py.
+   *
+   * It is served from a file rather than queried live: cognee keeps it in its own
+   * embedded stores, which this process cannot read, and extraction takes minutes
+   * anyway — far too long for a request. So the Python side writes an export and
+   * this hands it over, which also makes plain that the view is a snapshot of
+   * whatever was last extracted rather than something computed on demand.
+   */
+  app.get("/api/v1/graph/emergent", async (_request, reply) => {
+    try {
+      const content = await readFile(join(emergentGraphDirectory, "index.json"), "utf8");
+      return reply.type("application/json; charset=utf-8").send(content);
+    } catch (error) {
+      if ((error as { code?: string }).code !== "ENOENT") throw error;
+      return reply.code(404).send({
+        message:
+          "No question has been extracted yet. Ask something in the chat and it " +
+          "will be extracted in the background, or run it by hand: " +
+          "python orgforge_kb/query_slice.py \"<question>\" -o slice.json, then " +
+          "python orgforge_kb/cognee_memory.py remember slice.json, then " +
+          "python orgforge_kb/cognee_memory.py graph.",
+      });
+    }
+  });
+
+  /** The graph extracted for one question. */
+  app.get<{ Params: { slug: string } }>(
+    "/api/v1/graph/emergent/graphs/:slug",
+    async (request, reply) => {
+      // The slug reaches the filesystem, so it may only be what the exporter
+      // produces: lower-case words, digits and underscores.
+      if (!/^[a-z0-9_]{1,120}$/.test(request.params.slug)) {
+        return reply.code(400).send({ message: "That is not a graph name." });
+      }
+      try {
+        const content = await readFile(
+          join(emergentGraphDirectory, `${request.params.slug}.json`),
+          "utf8",
+        );
+        return reply.type("application/json; charset=utf-8").send(content);
+      } catch (error) {
+        if ((error as { code?: string }).code !== "ENOENT") throw error;
+        return reply.code(404).send({ message: "No graph for that question." });
+      }
+    },
+  );
+
+  /**
+   * Whether an extraction is in flight, so the view can say the graph is about
+   * to change and reload it once it has.
+   */
+  app.get("/api/v1/graph/emergent/status", async (_request, reply) => {
+    if (!options.emergentMemory) {
+      return reply.send({
+        enabled: false,
+        running: null,
+        queued: 0,
+        extracted: 0,
+        lastFinishedAt: null,
+        lastError: null,
+      });
+    }
+    return reply.send({ enabled: true, ...options.emergentMemory.status() });
+  });
+
   app.get("/api/v1/policy", async () => ({
     policyVersion: CONSENT_POLICY_VERSION,
     attestations: CONSENT_ATTESTATIONS,
@@ -1034,13 +1217,21 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     serve("vendor/rive.wasm", "application/wasm"),
   );
   app.get(
-    "/assets/sobo.riv",
-    serve("assets/sobo.riv", "application/octet-stream"),
+    "/assets/merlion.riv",
+    serve("assets/merlion.riv", "application/octet-stream"),
   );
   app.get("/app.js", serve("app.js", "text/javascript; charset=utf-8"));
   app.get("/styles.css", serve("styles.css", "text/css; charset=utf-8"));
   app.get("/sme.js", serve("app.js", "text/javascript; charset=utf-8"));
   app.get("/sme.css", serve("styles.css", "text/css; charset=utf-8"));
+
+  app.get("/graph", serve("graph.html", "text/html; charset=utf-8"));
+  app.get("/graph/app.js", serve("graph.js", "text/javascript; charset=utf-8"));
+  app.get("/graph/styles.css", serve("graph.css", "text/css; charset=utf-8"));
+  // The emergent graph, on a page of its own: it shares nothing with the
+  // recorded graph but the stylesheet.
+  app.get("/graph/emergent", serve("emergent.html", "text/html; charset=utf-8"));
+  app.get("/graph/emergent.js", serve("emergent.js", "text/javascript; charset=utf-8"));
 
   if (options.recruiting) {
     registerRecruitingRoutes(app, options.recruiting.board, options.recruiting.gmail);

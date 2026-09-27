@@ -697,7 +697,19 @@ export class GatewayCompanyAgent {
           throw new Error("get_related_sources requires source_ids.");
         }
         const allowedSeeds = args.source_ids.filter((id) => retrieved.has(id));
-        result = await this.knowledge.related(allowedSeeds, limitOf(args.limit));
+        const wanted = limitOf(args.limit);
+        result = await this.knowledge.related(allowedSeeds, wanted);
+        // Most explicit links run through the event that produced several
+        // artifacts. If direct links leave seats open, include those siblings
+        // without returning the event itself or repeating an existing result.
+        if (result.length < wanted && this.knowledge.relatedThroughEvents) {
+          const seen = new Set([...allowedSeeds, ...result.map((item) => item.sourceId)]);
+          const siblings = await this.knowledge.relatedThroughEvents(
+            allowedSeeds,
+            wanted - result.length,
+          );
+          result = [...result, ...siblings.filter((item) => !seen.has(item.sourceId))];
+        }
       } else {
         throw new Error(`There is no tool named ${call.function.name}.`);
       }
@@ -804,9 +816,9 @@ export class GatewayCompanyAgent {
               authorization: `Bearer ${this.options.apiKey}`,
               "content-type": "application/json",
             },
-            // On the last step the tools are left out entirely. Offered with
-            // tool_choice "none", the model still tried to search, the call was
-            // stripped, and the turn came back empty ("\n") about half the time.
+            // On the last step the tools are left out entirely and tool choice
+            // is explicitly disabled. The nudge below tells the model to answer
+            // from what has already been gathered.
             // The nudge is a system message so the user's question stays the
             // latest user turn, which sets the reply language.
             body: JSON.stringify({
@@ -820,7 +832,9 @@ export class GatewayCompanyAgent {
                     },
                   ]
                 : messages,
-              ...(mustAnswer ? {} : { tools: offeredTools(), tool_choice: step === 0 ? "required" : "auto" }),
+              ...(mustAnswer
+                ? { tool_choice: "none" }
+                : { tools: offeredTools(), tool_choice: step === 0 ? "required" : "auto" }),
               ...this.noThinking,
               max_tokens: 1800,
               ...(isStreaming ? { stream: true } : {}),
