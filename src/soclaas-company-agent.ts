@@ -492,6 +492,9 @@ function citedIds(answer: string): string[] {
   return [...answer.matchAll(CITATION_TAG)].flatMap((match) => idsIn(match[1]!));
 }
 
+/** About 100k tokens of tool output per turn: well inside a 262k context, with room for the prompt and answer. */
+const TOOL_OUTPUT_BUDGET = 400_000;
+
 const INSUFFICIENT_EVIDENCE_ANSWER_ZH =
   "证据不足：我没有找到能可靠支持这个回答的公司资料。";
 
@@ -882,6 +885,18 @@ export class GatewayCompanyAgent {
     };
     // The last call run, to tell a repeat of it (even in the model's next reply) from a new call.
     let previous = null as { key: string; content: string } | null;
+    // Characters of tool output sent back so far this turn. Many parallel
+    // searches over a few steps once filled the model's whole context window
+    // (262k tokens) and failed the turn; past the budget, the model is told to
+    // answer from what it already has.
+    let toolChars = 0;
+    const withinBudget = (content: string) => {
+      if (toolChars + content.length > TOOL_OUTPUT_BUDGET) {
+        return "Not run: this question's budget for tool output is used up. Answer from the evidence already gathered.";
+      }
+      toolChars += content.length;
+      return content;
+    };
 
     const corporateDate = input.asOf ?? this.options.corporateDate ?? process.env.CORPORATE_DATE ?? "2026-03-25";
 
@@ -985,7 +1000,7 @@ export class GatewayCompanyAgent {
           "A question that narrates something happening is describing an event in its own words; those narrating words rarely appear in the record it is asking about. Do not reuse the question's own framing or descriptive phrasing as search terms—company documents are titled and written around their underlying technical substance (the system, incident number, ticket, or concrete problem), not around a description of what happened. If the question or prior tool results name a ticket, incident, or PR number, search and follow links on that number directly; it is the most reliable anchor. If your first 1-2 searches using the question's own wording return nothing on point, stop rewording it and instead search for the concrete subject matter (the technology, system, or problem involved) as if writing that document's own title.",
           "Cite every factual claim about company systems using [source:SOURCE_ID], using only IDs returned by tools. Never fabricate or guess source IDs.",
           "If company documents and communication records do not contain the answer (e.g. an unrecorded reporting line, a missing policy, or a task that was never created), be candid and natural about what you searched for and what company records lack, rather than using robotic boilerplates or generic refusals. When an action or artifact did not happen, state clearly upfront what was searched and what records show vs what is missing.",
-          "Before concluding that something did not happen (no ticket was opened, no page was written, no reply was sent), earn the 'no': first find the records of what should have triggered it, then check what followed—follow its links with get_related_sources and search the days after it with from/to. Only if you found the trigger and nothing followed may you say plainly that it did not happen. If you could not find the trigger itself, say that you could not confirm either way and what you searched, rather than asserting it did not happen. Words for a step in a process (routed, escalated, handled, followed up, handed over) rarely name a record of their own: judge them by their visible effects. An email that reached the person responsible and was answered by them was routed and handled, whether or not any record says 'routed'.",
+          "Before concluding that something did not happen (no ticket was opened, no page was written, no reply was sent), earn the 'no': first find the records of what should have triggered it, then check what followed—follow its links with get_related_sources and search the days after it with from/to. Only if you found the trigger and nothing followed may you say plainly that it did not happen. If you could not find the trigger itself, say that you could not confirm either way and what you searched, rather than asserting it did not happen.",
           "A hypothetical question ('if X had not happened, would Y still have happened?', 'was Y a consequence of X, or would it have happened regardless?') asks for your reasoned judgment, not for a record of the hypothetical. Do not decline because the hypothetical itself is not recorded or because the question's wording does not appear in the records. Find the real events it refers to—who did what, when, and what followed from what—then reason about whether the outcome depended on the cause, and open with a committed conclusion (e.g. 'Most likely yes, it would still have happened, because…' or 'Probably not—Y followed directly from X…'). Cite the facts the reasoning rests on, say how confident you are, and only say you cannot judge if you found nothing at all about the events involved.",
           "Conversational memory: Treat prior conversational context as your own stateful recall of past discussions with this person (e.g., 'As you mentioned in our last chat...', 'Earlier you noted...'). Never refer to it as 'your personal notes' or 'your personal memory', and do not cite it with [source:...]. When describing their current role, focus, or situation, lead with what they communicated to you directly.",
           "Situational discrepancy handling: Handle mismatches between what the employee communicated and what company records show with situational intelligence: (1) Where a natural workplace explanation applies (such as HR directories or documentation lagging behind recent promotions or in-flight initiatives), mention that context helpfully. (2) Where there is a genuine technical conflict, policy mismatch, or potential misunderstanding, present the tension plainly and objectively without making excuses, allowing the employee to assess the discrepancy.",
@@ -1347,14 +1362,14 @@ export class GatewayCompanyAgent {
           // A failed call is not remembered, so the model may try it again.
           const failed = content.startsWith("Error:") || /^\s*\{\s*"error"\s*:/.test(content);
           previous = failed ? null : { key, content };
-          messages.push({ role: "tool", tool_call_id: call.id, content });
+          messages.push({ role: "tool", tool_call_id: call.id, content: withinBudget(content) });
         };
 
         for (let index = 0; index < calls.length; ) {
           const call = calls[index]!;
           const key = keyOf(call);
           if (previous?.key === key) {
-            messages.push({ role: "tool", tool_call_id: call.id, content: `Same call as the one before; it ran once. ${previous.content}` });
+            messages.push({ role: "tool", tool_call_id: call.id, content: "Same call as the one before; it ran once. Its result is above." });
             index += 1;
             continue;
           }
