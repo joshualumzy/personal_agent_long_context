@@ -450,6 +450,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
       sendEvent("status", { phrase: "Reviewing working context…" });
 
+      const phases: Array<{ stage: string; atMs: number }> = [];
+      const markPhase = (stage: string) => {
+        phases.push({ stage, atMs: Date.now() - turnStartTime });
+      };
+      const memoryStartedAt = Date.now();
       let contextConsidered = "";
       let memoryStatus: "available" | "empty" | "unavailable" = "empty";
       let memoryUnavailableReason: string | undefined;
@@ -485,7 +490,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         }
       } else if (typeof options.memory.processWorkingContext === "function") {
         try {
-          const memRes = await options.memory.processWorkingContext({ userId, message, history });
+            const memRes = await options.memory.processWorkingContext({
+              userId,
+              message,
+              history,
+              modelId: resolvedModel.id === "sonnet" ? "sonnet" : "soclaas",
+            });
           if (memRes.contextConsidered && memRes.contextConsidered.trim()) {
             memoryStatus = "available";
             contextConsidered = memRes.contextConsidered;
@@ -514,13 +524,20 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           memoryUnavailableReason = err instanceof Error ? err.message : "Memory service unavailable";
         }
       }
+      const memoryMs = Date.now() - memoryStartedAt;
+      markPhase("memory_ready");
 
       // Start the update and company answer in parallel, serialized per employee
       let memoryUpdated = false;
       if (typeof options.memory.processWorkingContext === "function") {
         memoryUpdateQueue.enqueue(userId, async () => {
           try {
-            const res = await options.memory.processWorkingContext!({ userId, message, history });
+            const res = await options.memory.processWorkingContext!({
+              userId,
+              message,
+              history,
+              modelId: resolvedModel.id === "sonnet" ? "sonnet" : "soclaas",
+            });
             memoryUpdated = res.memoryUpdated;
           } catch (err) {
             request.log.warn({ err }, "Background working context update failed");
@@ -529,6 +546,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       }
 
       let ttftMs: number | undefined;
+      let streamedTokenCount = 0;
+      let streamedCharacterCount = 0;
+      const agentStartedAt = Date.now();
 
       const companyAnswer = await activeAgent.answer(
         {
@@ -540,8 +560,31 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         isStream
           ? {
               signal: abortController.signal,
-              onStatus: (phrase: string) => sendEvent("status", { phrase }),
-              onToken: (delta: string) => sendEvent("token", { delta }),
+              onStatus: (phrase: string) => {
+                const stage =
+                  phrase === "Consulting company knowledge base…"
+                    ? "retrieval"
+                    : phrase === "Synthesizing answer from gathered evidence…"
+                      ? "synthesis"
+                      : phrase === "Investigating additional company evidence…"
+                        ? "retrieval_refinement"
+                        : phrase === "Refining citations…"
+                          ? "citation_repair"
+                          : phrase === "Verifying citations…"
+                            ? "citation_validation"
+                          : "tool_or_extension";
+                markPhase(stage);
+                sendEvent("status", { phrase });
+              },
+              onToken: (delta: string) => {
+                if (ttftMs === undefined) {
+                  ttftMs = Date.now() - turnStartTime;
+                  markPhase("first_token");
+                }
+                streamedTokenCount += 1;
+                streamedCharacterCount += delta.length;
+                sendEvent("token", { delta });
+              },
               onResetTokens: () => sendEvent("reset_tokens", {}),
             }
           : {
@@ -550,6 +593,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       );
 
       const durationMs = Date.now() - turnStartTime;
+      const agentMs = Date.now() - agentStartedAt;
       const modelUsed = resolvedModel.id;
       const providerUsed = resolvedModel.provider;
       const outcome = companyAnswer.answer.startsWith("Insufficient Evidence:")
@@ -596,30 +640,41 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           });
       }
 
-      let generatedTitle: string | undefined;
-      if (
-        isFirstTurn &&
-        conversationId &&
-        typeof (activeAgent as unknown as { generateTitle?: (m: string) => Promise<string> }).generateTitle === "function"
-      ) {
-        try {
-          const t = await Promise.race([
-            (activeAgent as unknown as { generateTitle: (m: string) => Promise<string> }).generateTitle(message),
-            new Promise<null>((r) => setTimeout(() => r(null), 1000)),
-          ]);
-          if (t && t.trim()) {
-            generatedTitle = t.trim();
-            if (options.conversationStore) {
-              await options.conversationStore.updateTitle(conversationId, userId, generatedTitle).catch(() => {});
+      const scheduleTitle = () => {
+        if (
+          !isFirstTurn ||
+          !conversationId ||
+          typeof (activeAgent as unknown as { generateTitle?: (m: string) => Promise<string> }).generateTitle !== "function"
+        ) {
+          return;
+        }
+        void (async () => {
+          try {
+            const t = await Promise.race([
+              (activeAgent as unknown as { generateTitle: (m: string) => Promise<string> }).generateTitle(message),
+              new Promise<null>((resolve) => setTimeout(() => resolve(null), 1000)),
+            ]);
+            if (t?.trim() && options.conversationStore) {
+              await options.conversationStore.updateTitle(conversationId!, userId, t.trim());
             }
+          } catch {
+            // The initial title remains usable when the optional refinement fails.
           }
-        } catch (_) {}
-      }
+        })();
+      };
 
+      const timings = {
+        memoryMs,
+        agentMs,
+        ttftMs: ttftMs ?? null,
+        endToEndMs: Date.now() - turnStartTime,
+        streamedTokenCount,
+        streamedCharacterCount,
+        phases,
+      };
       const responsePayload = {
         ...companyAnswer,
         ...(conversationId ? { conversationId } : {}),
-        ...(generatedTitle ? { title: generatedTitle } : {}),
         personalMemory: {
           status: memoryStatus,
           answer: contextConsidered,
@@ -633,25 +688,33 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         provider: providerUsed,
         outcome,
         persistenceStatus,
+        timings,
       };
+      request.log.info(
+        {
+          model: modelUsed,
+          provider: providerUsed,
+          stream: isStream,
+          outcome,
+          timings,
+        },
+        "Agent turn timing",
+      );
 
       if (isStream) {
         sendEvent("answer", {
           text: companyAnswer.answer,
           sources: companyAnswer.sources,
         });
-        if (generatedTitle) {
-          sendEvent("title", {
-            conversationId,
-            title: generatedTitle,
-          });
-        }
         sendEvent("done", responsePayload);
         reply.raw.end();
+        scheduleTitle();
         return;
       }
 
-      return reply.send(responsePayload);
+      const sent = reply.send(responsePayload);
+      scheduleTitle();
+      return sent;
     } catch (error: unknown) {
       if (abortController.signal.aborted || reply.raw.destroyed) {
         request.log.info({ employeeId }, "Turn cancelled by client");

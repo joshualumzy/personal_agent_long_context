@@ -355,7 +355,7 @@ function updateModelSelectorUI(modelId) {
 
   if (selectedModelName) {
     selectedModelName.textContent =
-      modelId === "sonnet" ? "Claude 3.5 Sonnet" : "Qwen 2.5 32B";
+      modelId === "sonnet" ? "Claude Sonnet 4.5" : "Qwen 2.5 32B";
   }
   if (modelDotIcon) {
     modelDotIcon.className = modelId === "sonnet" ? "model-dot-icon sonnet" : "model-dot-icon";
@@ -860,10 +860,10 @@ function attachAssistantMeta(bubble, data) {
   if (data.model) {
     const modelTag = document.createElement("span");
     modelTag.className = `context-tag model-badge ${data.model}`;
-    modelTag.textContent = data.model === "sonnet" ? "Claude Sonnet" : "SoCLaaS Qwen";
+    modelTag.textContent = data.model === "sonnet" ? "Claude Sonnet 4.5" : "SoCLaaS Qwen";
     modelTag.title =
       data.model === "sonnet"
-        ? "Answered using Claude 3.5 Sonnet on AWS Bedrock"
+        ? "Answered using Claude Sonnet 4.5 through the configured LLM gateway"
         : "Answered using Qwen 2.5 32B on NUS SoCLaaS";
     contextTags.appendChild(modelTag);
   }
@@ -1576,27 +1576,9 @@ chatForm.addEventListener("submit", async (e) => {
           if (ttftMs === null) {
             ttftMs = Math.round(performance.now() - requestStartTime);
           }
-          if (!assistantRow) {
-            stopWaitingAnimation();
-            assistantRow = document.createElement("div");
-            assistantRow.className = "message-row assistant";
-            bubble = document.createElement("div");
-            bubble.className = "message-bubble";
-            textContainer = document.createElement("div");
-            textContainer.className = "message-text";
-            bubble.appendChild(textContainer);
-            assistantRow.appendChild(bubble);
-            chatMessages.appendChild(assistantRow);
-          }
+          // Tokens are a draft until the server has checked citations. Keep the
+          // progress state visible, but render only the authoritative answer event.
           accumulatedContent += (parsed.delta || "");
-          const normalized = normalizeModelMarkdown(accumulatedContent);
-          const rawHtml = marked.parse(normalized, { gfm: true, breaks: false });
-          const sanitized = DOMPurify.sanitize(rawHtml, { USE_PROFILES: { html: true } });
-          setAnswerHtml(textContainer, sanitized);
-          textContainer.querySelectorAll(".inline-citation").forEach((btn) => {
-            btn.addEventListener("click", () => showSource(btn.getAttribute("data-source-id")));
-          });
-          scrollToBottom();
         } else if (event === "answer") {
           stopWaitingAnimation();
           if (ttftMs === null) {

@@ -18,7 +18,7 @@ def build():
 
     p = doc.add_paragraph()
     p.paragraph_format.space_after = Pt(30)
-    r = p.add_run("Know the company. Act on meetings. Grow the team.")
+    r = p.add_run("Company context meeting follow up and founder led recruiting")
     set_run_font(r, name="Aptos Display", size=16, color=GRAY)
 
     cover_table = doc.add_table(rows=5, cols=2)
@@ -27,7 +27,7 @@ def build():
     labels = ["Company", "Team code", "Hackathon", "Repository", "Date"]
     values = [
         "Stellar Ark AI",
-        "Pending confirmation",
+        "<missing>",
         "Show Me Your Agents",
         "github.com/joshualumzy/personal_agent_long_context",
         "27 September 2026",
@@ -53,7 +53,7 @@ def build():
     set_run_font(r, size=10, bold=True, color=NAVY)
     add_body(
         doc,
-        "Stellar Ark AI applies its own context-to-action principle internally: one operating agent that carries company evidence into meeting follow-up and structured hiring.",
+        "Stellar Ark AI applies its context to action principle internally through one operating agent for company knowledge meeting follow up and structured hiring.",
         after=0,
     )
 
@@ -66,11 +66,11 @@ def build():
     )
     add_body(
         doc,
-        "The SME Operating Agent closes that internal gap. It carries work through one connected loop: recover reliable context, turn meeting decisions into accountable follow-up, and open a structured recruiting workflow when the company needs additional capacity.",
+        "The SME Operating Agent closes that internal gap. It carries work through one connected loop: recover reliable context, turn live conversations into accountable follow up, and open a structured recruiting workflow when the company needs additional capacity.",
     )
     add_body(
         doc,
-        "Company Context answers questions from inspectable evidence while Personal Memory retains employee-specific context across interactions without becoming factual evidence. Meeting Actions converts text transcripts into reviewable commitments and decisions. Recruiting turns an approved hiring need into criteria, candidate review, and outreach drafts. Employees remain responsible for consequential external actions.",
+        "Company Context answers questions from inspectable evidence, shows how related people and work connect, and keeps employee Working Context separate from factual evidence. Meeting Actions transcribes live audio when configured and turns the conversation into reviewable answers, commitments, decisions, and follow up. Recruiting turns an approved hiring need into criteria, candidate review, and outreach drafts. Employees remain responsible for consequential external actions.",
     )
 
     heading(doc, "One Operating Loop", 2)
@@ -79,9 +79,9 @@ def build():
         ["Context", "Decision", "Action", "Growth"],
         [[
             "Recover inspectable company evidence",
-            "Extract commitments and decisions",
-            "Prepare owned follow-up",
-            "Start structured hiring when needed",
+            "Understand live decisions and promises",
+            "Prepare controlled follow up",
+            "Continue an approved hiring need",
         ]],
         widths=[1.62, 1.62, 1.62, 1.62],
         font_size=9.3,
@@ -90,7 +90,7 @@ def build():
     heading(doc, "Why It Fits Stellar Ark AI", 2)
     add_body(
         doc,
-        "The proposal applies Stellar Ark AI's own product principle to internal operations. The same idea that serves customers - captured context becoming useful memory and action - becomes an operating advantage for the team building it.",
+        "The proposal applies Stellar Ark AI's product principle to internal operations. The same idea that serves customers - captured context becoming useful memory and action - becomes an operating advantage for the team building it.",
     )
 
     # Page 3
@@ -135,16 +135,16 @@ def build():
         doc,
         ["Workflow", "Employee experience", "Business result"],
         [
-            ["Company Context", "An employee asks a company question and receives a concise answer with inspectable Company Evidence. Personal Memory carries employee-specific context across interactions without becoming factual evidence", "Less time searching across systems and greater confidence in the source of an answer"],
-            ["Meeting Actions", "An employee provides a text transcript. The agent identifies commitments, questions, and decisions, checks relevant context and conflicts, and prepares follow-up for review", "Faster follow through, clearer ownership, and fewer actions lost after a meeting"],
-            ["Recruiting", "A founder defines a role, reviews scored public profiles and feedback, and receives outreach and follow-up drafts before completing the handoff", "Less recruiting administration and more founder time for product, customers, and leadership"],
+            ["Company Context", "An employee asks a company question and receives a concise answer with inspectable Company Evidence. They can open cited records and explore a graph of related people, domains, events, work, and documents", "Less time searching across systems and greater confidence in the source and surrounding context of an answer"],
+            ["Meeting Actions", "The agent listens through live speech recognition when configured, with recorded audio, typed transcript, and replay options. It answers questions, identifies commitments and decisions, checks conflicts, and prepares follow up for review", "Useful support during the meeting, faster follow through, clearer ownership, and fewer actions lost afterwards"],
+            ["Recruiting", "A founder confirms role criteria, reviews scored public profiles and feedback, and prepares outreach and follow ups. Approved hiring needs can continue directly from a meeting into the assistant", "Less recruiting administration and more founder time for product, customers, and leadership"],
         ],
         widths=[1.25, 3.35, 1.9],
         font_size=8.8,
     )
     add_body(
         doc,
-        "The workflows connect through the work itself. Company context can support meeting follow-up, and an approved hiring need can become a recruiting draft. Employees can inspect the supporting information and decide whether to complete each consequential handoff.",
+        "The workflows connect through the work itself. Company Context answers questions raised during a meeting. An approved hiring need is carried into the assistant, where the recruiting skill can open the role and ask for any missing criteria. Employees inspect the supporting information and decide whether to complete each consequential handoff.",
     )
 
     # Page 5
@@ -181,9 +181,9 @@ def build():
         doc,
         ["Workflow", "What the prototype demonstrates", "Why it is feasible"],
         [
-            ["Company Context", "A browser workflow searches 4,966 employee-visible synthetic artifacts across eight workplace record types and returns inspectable citations or an insufficient-evidence response", "PostgreSQL, pgvector, explicit artifact links, source validation, and employee-scoped Personal Memory are already implemented"],
-            ["Meeting Actions", "A text transcript becomes structured commitments, questions, decisions, conflict checks, and reviewable follow-up", "Deterministic policy checks, evidence lookup, exact-payload approval, and action logs provide a controlled execution path"],
-            ["Recruiting", "A founder can define criteria, review and score public profiles, record feedback, and prepare outreach", "The implemented service supports search, scoring, proposals, outreach drafts, retention, and user-controlled handoff"],
+            ["Company Context", "A browser workflow searches thousands of employee-visible synthetic workplace records, validates citations, preserves multi-turn Working Context, and exposes recorded and question-driven relationship graphs", "Hybrid retrieval, explicit links, graph traversal, source validation, persistent conversations, and employee-scoped memory are implemented"],
+            ["Meeting Actions", "Live or supplied speech becomes a transcript, fast and deeper evidence-backed answers, structured commitments, conflict checks, and reviewable action cards", "Streaming and local speech paths, pre-model screening, deterministic policy tiers, exact-payload approval, and user-account handoffs are implemented"],
+            ["Recruiting", "A founder can confirm criteria, search or import public profiles, review deterministic fit tiers, record feedback, prepare outreach, and track replies", "The implemented service supports role isolation, search, scoring, proposals, outreach drafts, reply ingestion, retention, and user-controlled handoff"],
         ],
         widths=[1.25, 3.35, 1.9],
         font_size=8.7,
@@ -197,13 +197,13 @@ def build():
     ])
     add_body(
         doc,
-        "Company Evidence remains separate from employee Personal Memory, and consequential outbound actions continue to require a visible employee decision. Access controls and monitoring can be strengthened as usage expands.",
+        "Company Evidence remains separate from employee Working Context. Meeting follow up opens prefilled work in the employee's own tools, and recruiting outreach is completed by the founder in their own account. Access controls, monitoring, and connector-specific permissions can be strengthened as usage expands.",
     )
 
     heading(doc, "Closing Case")
     add_body(
         doc,
-        "Stellar Ark AI already believes that conversations should become durable memory and action. This proposal turns that belief into an internal operating advantage. The SME Operating Agent carries inspectable context into meeting follow-up and structured hiring, giving a small team more execution capacity without removing employee judgment. The working prototype demonstrates the core loop today and provides a practical foundation for expansion as the company grows.",
+        "Stellar Ark AI already believes that conversations should become durable memory and action. This proposal applies that belief to the company's own work. The SME Operating Agent carries inspectable context into live meetings and structured hiring, giving a small team more execution capacity without removing employee judgment. The implemented prototype demonstrates that connected loop today and provides a practical foundation for a measured internal pilot.",
     )
 
     # Footer

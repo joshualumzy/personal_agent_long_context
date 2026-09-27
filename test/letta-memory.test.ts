@@ -522,6 +522,7 @@ test("workingContextPrompt includes recent_conversation when history is provided
 
 test("processWorkingContext passes history to Letta session prompt", async () => {
   let sentPrompt: string | undefined;
+  let selectedModel: string | undefined;
   const fakeSession = {
     async getDeviceStatus() {
       return { memoryDirectory: "/srv/letta/memory" };
@@ -544,13 +545,22 @@ test("processWorkingContext passes history to Letta session prompt", async () =>
       async list() {
         return [{ id: "agent-1" }];
       },
+      async update(_agentId: string, update: { model: string }) {
+        selectedModel = update.model;
+      },
     },
     resumeSession() {
       return fakeSession;
     },
     async close() {},
   };
-  const provider = new LettaMemoryProvider({ url: "http://127.0.0.1:4500" });
+  const provider = new LettaMemoryProvider({
+    url: "http://127.0.0.1:4500",
+    models: {
+      soclaas: "openai-compatible/qwen3.8:27b",
+      sonnet: "lmstudio/sonnet",
+    },
+  });
   Object.defineProperty(provider, "client", { value: fakeClient });
 
   const history = [
@@ -561,9 +571,11 @@ test("processWorkingContext passes history to Letta session prompt", async () =>
     userId: "jax",
     message: "sounds good",
     history,
+    modelId: "sonnet",
   });
 
   assert.equal(result.memoryUpdated, true);
+  assert.equal(selectedModel, "lmstudio/sonnet");
   assert.equal(result.contextConsidered, "TitanDB migration is classified as P0.");
   assert.ok(sentPrompt);
   const payload = JSON.parse(sentPrompt.split("\n\n").at(-1) ?? "{}");

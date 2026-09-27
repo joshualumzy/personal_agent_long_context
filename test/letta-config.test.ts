@@ -14,9 +14,25 @@ test("parses a valid Letta request timeout", () => {
       url: "http://letta.test:4500",
       authToken: "test-token",
       model: "test/model",
+      models: {
+        soclaas: "test/model",
+        sonnet: "lmstudio/sonnet4.5",
+      },
       requestTimeoutMs: 150_000,
     },
   );
+});
+
+test("maps the Sonnet profile to the named local gateway provider", () => {
+  const options = lettaOptionsFromEnvironment({
+    LLM_MODEL: "sonnet",
+    LETTA_QWEN_MODEL: "openai-compatible/qwen3.8:27b",
+  });
+
+  assert.deepEqual(options.models, {
+    soclaas: "openai-compatible/qwen3.8:27b",
+    sonnet: "lmstudio/sonnet",
+  });
 });
 
 test("rejects an invalid Letta request timeout at startup", () => {

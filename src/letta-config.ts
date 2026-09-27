@@ -28,6 +28,12 @@ export function lettaOptionsFromEnvironment(
       ? { authToken: environment.LETTA_APP_SERVER_TOKEN }
       : {}),
     ...(environment.LETTA_MODEL ? { model: environment.LETTA_MODEL } : {}),
+    models: {
+      soclaas: environment.LETTA_QWEN_MODEL ?? environment.LETTA_MODEL ?? "openai-compatible/qwen3.8:27b",
+      sonnet:
+        environment.LETTA_SONNET_MODEL ??
+        `lmstudio/${environment.LLM_MODEL ?? "sonnet4.5"}`,
+    },
     ...(requestTimeoutMs !== undefined ? { requestTimeoutMs } : {}),
   };
 }

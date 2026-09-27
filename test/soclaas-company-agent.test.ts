@@ -3,6 +3,190 @@ import { test } from "node:test";
 import { SoCLaaSCompanyAgent } from "../src/soclaas-company-agent.js";
 import type { CompanyKnowledge } from "../src/company-domain.js";
 
+function streamingResponse(chunks: string[], delayMs: number, onClose: () => void): Response {
+  const encoder = new TextEncoder();
+  return new Response(
+    new ReadableStream({
+      start(controller) {
+        controller.enqueue(encoder.encode(chunks[0]!));
+        setTimeout(() => {
+          for (const chunk of chunks.slice(1)) controller.enqueue(encoder.encode(chunk));
+          onClose();
+          controller.close();
+        }, delayMs);
+      },
+    }),
+    { status: 200, headers: { "content-type": "text/event-stream" } },
+  );
+}
+
+function knowledgeForStreamingTests(): CompanyKnowledge {
+  return {
+    async employee() {
+      return { employeeId: "jax", displayName: "Jax", currentAssignments: [] };
+    },
+    async search() {
+      return [{ sourceId: "JIRA-42", sourceType: "jira", title: "Project", excerpt: "The project is active." }];
+    },
+    async related() {
+      return [];
+    },
+    async sources() {
+      return [];
+    },
+  };
+}
+
+const searchToolCall = {
+  choices: [
+    {
+      message: {
+        content: null,
+        tool_calls: [
+          {
+            id: "search-1",
+            type: "function",
+            function: { name: "search_company_knowledge", arguments: JSON.stringify({ query: "project" }) },
+          },
+        ],
+      },
+    },
+  ],
+};
+
+test("forwards an upstream SSE token before the provider closes the stream", async () => {
+  let providerClosed = false;
+  const tokenObservedBeforeClose: boolean[] = [];
+  let calls = 0;
+  const agent = new SoCLaaSCompanyAgent(knowledgeForStreamingTests(), {
+    apiKey: "test-key",
+    fetch: async () => {
+      calls += 1;
+      if (calls === 1) return new Response(JSON.stringify(searchToolCall), { status: 200 });
+      return streamingResponse(
+        [
+          'data: {"choices":[{"delta":{"content":"The project "}}]}\n\n',
+          'data: {"choices":[{"delta":{"content":"is active. [source:JIRA-42]"}}]}\n\n',
+          "data: [DONE]\n\n",
+        ],
+        5,
+        () => {
+          providerClosed = true;
+        },
+      );
+    },
+  });
+
+  const result = await agent.answer(
+    { employeeId: "jax", question: "What is active?" },
+    { onToken: () => tokenObservedBeforeClose.push(!providerClosed) },
+  );
+
+  assert.equal(result.answer, "The project is active. [source:JIRA-42]");
+  assert.deepEqual(tokenObservedBeforeClose, [true, false]);
+});
+
+test("identifies a gateway JSON fallback as non-streaming at the callback boundary", async () => {
+  let providerClosed = false;
+  const tokenObservedBeforeClose: boolean[] = [];
+  let calls = 0;
+  const agent = new SoCLaaSCompanyAgent(knowledgeForStreamingTests(), {
+    apiKey: "test-key",
+    fetch: async () => {
+      calls += 1;
+      if (calls === 1) return new Response(JSON.stringify(searchToolCall), { status: 200 });
+      const response = new Response(
+        new ReadableStream({
+          start(controller) {
+            setTimeout(() => {
+              controller.enqueue(
+                new TextEncoder().encode(
+                  JSON.stringify({ choices: [{ message: { content: "The project is active. [source:JIRA-42]" } }] }),
+                ),
+              );
+              providerClosed = true;
+              controller.close();
+            }, 5);
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+      return response;
+    },
+  });
+
+  await agent.answer(
+    { employeeId: "jax", question: "What is active?" },
+    { onToken: () => tokenObservedBeforeClose.push(!providerClosed) },
+  );
+
+  assert.deepEqual(tokenObservedBeforeClose, [false]);
+});
+
+test("runs independent company searches from one tool response in parallel", async () => {
+  let activeSearches = 0;
+  let peakSearches = 0;
+  let calls = 0;
+  const knowledge: CompanyKnowledge = {
+    async employee() {
+      return { employeeId: "jax", displayName: "Jax", currentAssignments: [] };
+    },
+    async search(query) {
+      activeSearches += 1;
+      peakSearches = Math.max(peakSearches, activeSearches);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      activeSearches -= 1;
+      return [
+        {
+          sourceId: query === "project" ? "JIRA-42" : "CONF-9",
+          sourceType: "jira",
+          title: query,
+          excerpt: "The project is active.",
+        },
+      ];
+    },
+    async related() {
+      return [];
+    },
+    async sources() {
+      return [];
+    },
+  };
+  const agent = new SoCLaaSCompanyAgent(knowledge, {
+    apiKey: "test-key",
+    fetch: async () => {
+      calls += 1;
+      if (calls === 1) {
+        return new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: null,
+                  tool_calls: [
+                    { id: "search-1", type: "function", function: { name: "search_company_knowledge", arguments: JSON.stringify({ query: "project" }) } },
+                    { id: "search-2", type: "function", function: { name: "search_company_knowledge", arguments: JSON.stringify({ query: "timeline" }) } },
+                  ],
+                },
+              },
+            ],
+          }),
+          { status: 200 },
+        );
+      }
+      return new Response(
+        JSON.stringify({ choices: [{ message: { content: "The project is active. [source:JIRA-42]" } }] }),
+        { status: 200 },
+      );
+    },
+  });
+
+  const result = await agent.answer({ employeeId: "jax", question: "What is active?" }, { onToken: () => {} });
+
+  assert.equal(result.answer, "The project is active. [source:JIRA-42]");
+  assert.equal(peakSearches, 2, "two independent searches should overlap");
+});
+
 test("uses the configured SoCLaaS chat-completions endpoint and preserves retrieved citations", async () => {
   const requests: Array<{ url: string; body: Record<string, unknown> }> = [];
   const knowledge: CompanyKnowledge = {

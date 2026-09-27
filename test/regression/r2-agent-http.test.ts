@@ -142,6 +142,47 @@ describe("BUG: unknown conversationId", () => {
 });
 
 describe("NOT A BUG (verified)", () => {
+  test("a streamed turn reports time to first token instead of leaving it undefined", async () => {
+    const { agent } = fakeAgent();
+    const app = buildApp({ memory: new DeterministicMemoryProvider(), companyAgent: agent as never });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/agent/chat",
+      headers: { accept: "text/event-stream" },
+      payload: { message: "What is active?" },
+    });
+    const done = events(response.body).find((event) => event.event === "done")?.data as { ttftMs?: unknown } | undefined;
+    assert.equal(typeof done?.ttftMs, "number", `done event: ${response.body}`);
+    await app.close();
+  });
+
+  test("a streamed turn reports the retrieval and synthesis phase boundaries", async () => {
+    const agent = {
+      async answer(_input: CompanyQuestion, callbacks?: CompanyAgentCallbacks): Promise<CompanyAnswer> {
+        callbacks?.onStatus?.("Consulting company knowledge base…");
+        callbacks?.onStatus?.("Synthesizing answer from gathered evidence…");
+        callbacks?.onToken?.("The answer");
+        return { answer: "The answer", sources: [], runId: "run", toolCalls: [] };
+      },
+    };
+    const app = buildApp({ memory: new DeterministicMemoryProvider(), companyAgent: agent as never });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/agent/chat",
+      headers: { accept: "text/event-stream" },
+      payload: { message: "What is active?" },
+    });
+    const done = events(response.body).find((event) => event.event === "done")?.data as
+      | { timings?: { phases?: Array<{ stage?: string; atMs?: number }> } }
+      | undefined;
+    assert.deepEqual(
+      done?.timings?.phases?.map((phase) => phase.stage),
+      ["memory_ready", "retrieval", "synthesis", "first_token"],
+    );
+    assert.ok(done?.timings?.phases?.every((phase) => typeof phase.atMs === "number"));
+    await app.close();
+  });
+
   test("another user's conversation id is neither read into history nor appended to", async () => {
     const store = new InMemoryConversationStore();
     const { agent, asked } = fakeAgent();

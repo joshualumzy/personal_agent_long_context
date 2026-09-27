@@ -37,6 +37,8 @@ export interface LettaMemoryOptions {
   url: string;
   authToken?: string;
   model?: string;
+  /** Fixed server-owned Letta models keyed by the allowed chat model profile. */
+  models?: Partial<Record<"soclaas" | "sonnet", string>>;
   requestTimeoutMs?: number;
 }
 
@@ -336,6 +338,7 @@ export class LettaMemoryProvider implements MemoryProvider {
   private readonly client: LettaAgentClient;
   private readonly agentPromises = new Map<string, Promise<string>>();
   private readonly memoryDirectories = new Map<string, string>();
+  private readonly agentModels = new Map<string, string>();
 
   constructor(private readonly options: LettaMemoryOptions) {
     this.client = new LettaAgentClient({
@@ -385,6 +388,13 @@ export class LettaMemoryProvider implements MemoryProvider {
       tags: [APP_TAG, userTag(userId)],
       ...(this.options.model ? { model: this.options.model } : {}),
     });
+  }
+
+  private async selectAgentModel(agentId: string, modelId?: "soclaas" | "sonnet"): Promise<void> {
+    const model = (modelId ? this.options.models?.[modelId] : undefined) ?? this.options.model;
+    if (!model || this.agentModels.get(agentId) === model) return;
+    await this.client.agents.update(agentId, { model });
+    this.agentModels.set(agentId, model);
   }
 
   async ingest(transcript: AcceptedTranscript): Promise<{ agentRef: string }> {
@@ -658,8 +668,10 @@ export class LettaMemoryProvider implements MemoryProvider {
     userId: string;
     message: string;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
+    modelId?: "soclaas" | "sonnet";
   }): Promise<WorkingContextResult> {
     const agentId = await this.resolveAgent(input.userId);
+    await this.selectAgentModel(agentId, input.modelId);
     let memoryDirectory: string | null = null;
     let memoryUpdated = false;
     const sources = new Map<string, SourceReference>();

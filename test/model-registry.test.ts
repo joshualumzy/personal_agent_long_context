@@ -143,21 +143,21 @@ describe("ModelRegistry", () => {
 
     const cookie = `sme_session=${createSessionToken("jax", TEST_SECRET)}`;
 
-    // Pass alias "claude-3-5-sonnet"
+    // Pass the supported Sonnet alias instead of its canonical profile ID.
     const res = await app.inject({
       method: "POST",
       url: "/api/v1/agent/questions",
       headers: { cookie },
       payload: {
         question: "What is Project Titan?",
-        model: "claude-3-5-sonnet",
+        model: "claude-4-5-sonnet",
       },
     });
 
     assert.equal(res.statusCode, 200);
     const body = res.json();
     assert.equal(body.model, "sonnet", "Must use canonical resolved model ID, not requested alias");
-    assert.equal(body.provider, "AWS Bedrock", "Must derive provider from resolved descriptor");
+    assert.equal(body.provider, "LLM Gateway", "Must derive provider from resolved descriptor");
 
     await app.close();
   });

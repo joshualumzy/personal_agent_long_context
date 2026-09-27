@@ -170,11 +170,12 @@ describe("Conversation store", () => {
     await app.close();
   });
 
-  test("auto-generates a topic title on turn 1 using active agent", async () => {
+  test("generates a topic title after the first response has already been sent", async () => {
     const { buildApp } = await import("../src/http-app.js");
     const { DeterministicMemoryProvider } = await import("../src/adapters/deterministic-memory.js");
     const store = new InMemoryConversationStore();
     let generatedTitleRequested = false;
+    let resolveTitle: ((title: string) => void) | undefined;
 
     const companyAgent = {
       async answer(input: { employeeId: string; question: string }) {
@@ -187,7 +188,9 @@ describe("Conversation store", () => {
       },
       async generateTitle(prompt: string) {
         generatedTitleRequested = true;
-        return "Generated Topic Title";
+        return await new Promise<string>((resolve) => {
+          resolveTitle = resolve;
+        });
       },
     };
 
@@ -202,17 +205,22 @@ describe("Conversation store", () => {
       conversationStore: store,
     });
 
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/v1/agent/chat",
-      headers: authHeaders,
-      payload: { message: "Can you tell me about the architecture?" },
-    });
+    const res = await Promise.race([
+      app.inject({
+        method: "POST",
+        url: "/api/v1/agent/chat",
+        headers: authHeaders,
+        payload: { message: "Can you tell me about the architecture?" },
+      }),
+      new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error("response waited for title generation")), 50)),
+    ]);
 
     assert.equal(res.statusCode, 200);
     const body = res.json();
-    assert.equal(body.title, "Generated Topic Title");
     assert.equal(generatedTitleRequested, true);
+
+    resolveTitle!("Generated Topic Title");
+    await new Promise((resolve) => setImmediate(resolve));
 
     const detail = await store.get(body.conversationId, "jax");
     assert.equal(detail?.conversation.title, "Generated Topic Title");
@@ -220,4 +228,3 @@ describe("Conversation store", () => {
     await app.close();
   });
 });
-

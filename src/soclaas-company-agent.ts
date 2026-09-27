@@ -946,6 +946,7 @@ export class GatewayCompanyAgent {
           // Once a skill's tool ran, the answer is about that skill's state even if a company
           // search happened earlier in the turn.
           const groundedElsewhere = extensionRan || (loadedSkills.size > 0 && retrieved.size === 0);
+          if (isStreaming) callbacks?.onStatus?.("Verifying citations…");
           let citationCheck = validateCitations(answer, retrieved, hasPersonalContext, groundedElsewhere);
           // A greeting, a list of what the agent can do, or a question back holds nothing to cite.
           if (citationCheck.problem && statesNoFacts(answer)) citationCheck = { citedSourceIds: [] };
@@ -1088,23 +1089,54 @@ export class GatewayCompanyAgent {
         // The same call twice in a row runs once: twice would open two roles or draft twice.
         // Only in a row: a read after a change must see the change.
         // (declared once for the whole turn: the last call of one reply and the first of the next are in a row too)
-        for (const call of calls) {
-          const key = `${call.function.name}\u0000${typeof call.function.arguments === "string" ? call.function.arguments : JSON.stringify(call.function.arguments ?? null)}`;
-          if (previous?.key === key) {
-            messages.push({ role: "tool", tool_call_id: call.id, content: `Same call as the one before; it ran once. ${previous.content}` });
-            continue;
-          }
-          // Each call stands alone: a bad call becomes an error the model can read and recover from.
-          let content: string;
+        const keyOf = (call: ToolCall) =>
+          `${call.function.name}\u0000${typeof call.function.arguments === "string" ? call.function.arguments : JSON.stringify(call.function.arguments ?? null)}`;
+        const execute = async (call: ToolCall) => {
           try {
-            content = await runTool(call);
+            return await runTool(call);
           } catch (error) {
-            content = `Error: ${error instanceof Error ? error.message : String(error)} Fix the arguments or choose another tool.`;
+            return `Error: ${error instanceof Error ? error.message : String(error)} Fix the arguments or choose another tool.`;
           }
+        };
+        const record = (call: ToolCall, key: string, content: string) => {
           // A failed call is not remembered, so the model may try it again.
           const failed = content.startsWith("Error:") || /^\s*\{\s*"error"\s*:/.test(content);
           previous = failed ? null : { key, content };
           messages.push({ role: "tool", tool_call_id: call.id, content });
+        };
+
+        for (let index = 0; index < calls.length; ) {
+          const call = calls[index]!;
+          const key = keyOf(call);
+          if (previous?.key === key) {
+            messages.push({ role: "tool", tool_call_id: call.id, content: `Same call as the one before; it ran once. ${previous.content}` });
+            index += 1;
+            continue;
+          }
+
+          // Searches do not mutate state or depend on one another. The model is explicitly asked
+          // for 2-3 of these on its first turn, so overlap them—but never cross a dependency,
+          // extension, or duplicate call, and cap the fan-out to protect PostgreSQL and embeddings.
+          const batch: ToolCall[] = [];
+          for (const candidate of calls.slice(index, index + 3)) {
+            if (candidate.function.name !== "search_company_knowledge") break;
+            batch.push(candidate);
+          }
+          const batchKeys = batch.map(keyOf);
+          const canRunInParallel =
+            batch.length > 1 &&
+            new Set(batchKeys).size === batchKeys.length;
+          if (canRunInParallel) {
+            const contents = await Promise.all(batch.map(execute));
+            for (let batchIndex = 0; batchIndex < batch.length; batchIndex += 1) {
+              record(batch[batchIndex]!, batchKeys[batchIndex]!, contents[batchIndex]!);
+            }
+            index += batch.length;
+            continue;
+          }
+
+          record(call, key, await execute(call));
+          index += 1;
         }
       }
 

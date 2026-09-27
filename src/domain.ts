@@ -78,6 +78,8 @@ export interface MemoryProvider {
     userId: string;
     message: string;
     history?: Array<{ role: "user" | "assistant"; content: string }>;
+    /** Server-resolved model profile; never an arbitrary browser-supplied model name. */
+    modelId?: "soclaas" | "sonnet";
   }): Promise<WorkingContextResult>;
   close?(): Promise<void>;
 }

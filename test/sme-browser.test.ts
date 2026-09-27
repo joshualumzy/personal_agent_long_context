@@ -103,6 +103,64 @@ describe("SME Assistant shell", () => {
 });
 
 describe("SME Assistant conversational rendering", () => {
+  test("keeps an unvalidated token off-screen until the authoritative answer event", async () => {
+    const encoder = new TextEncoder();
+    let tokenChunkSent: (() => void) | undefined;
+    const tokenChunk = new Promise<void>((resolve) => {
+      tokenChunkSent = resolve;
+    });
+    let sendFinal: (() => void) | undefined;
+    const sse = new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode('event: status\ndata: {"phrase":"Drafting from evidence…"}\n\nevent: token\ndata: {"delta":"Unvalidated draft that must not appear"}\n\n'));
+          tokenChunkSent!();
+          sendFinal = () => {
+            controller.enqueue(
+              encoder.encode(
+                'event: answer\ndata: {"text":"Validated answer [source:CONF-1]","sources":[{"sourceId":"CONF-1","sourceType":"confluence","title":"Evidence","excerpt":"Verified"}]}\n\nevent: done\ndata: {"answer":"Validated answer [source:CONF-1]","sources":[{"sourceId":"CONF-1","sourceType":"confluence","title":"Evidence","excerpt":"Verified"}],"runId":"run","toolCalls":[],"personalMemory":{"status":"empty","answer":"","sources":[]}}\n\n',
+              ),
+            );
+            controller.close();
+          };
+        },
+      }),
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    );
+    const page = await openSmePage({
+      respond: (url) => (url.startsWith("/api/v1/agent/chat") ? sse : undefined),
+      setup: (window) => {
+        Object.defineProperty(window, "TextDecoder", { value: TextDecoder });
+      },
+    });
+    after(() => page.close());
+
+    const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
+    const assistantRowsBefore = page.document.querySelectorAll(".message-row.assistant").length;
+    input.value = "What is verified?";
+    page.document.querySelector("#chat-form")!
+      .dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+
+    await tokenChunk;
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(
+      page.document.querySelectorAll(".message-row.assistant").length,
+      assistantRowsBefore,
+      "the unvalidated token was rendered",
+    );
+
+    sendFinal!();
+    const deadline = Date.now() + 2_000;
+    while (page.document.querySelectorAll(".message-row.assistant").length === assistantRowsBefore) {
+      if (Date.now() > deadline) throw new Error("Timed out waiting for the validated answer.");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    const rows = [...page.document.querySelectorAll(".message-row.assistant")];
+    const text = rows.at(-1)?.querySelector(".message-text")?.textContent ?? "";
+    assert.match(text, /Validated answer/);
+    assert.doesNotMatch(text, /Unvalidated draft/);
+  });
+
   test("renders model Markdown, sanitizes unsafe markup, and displays working context", async () => {
     const page = await openSmePage();
     after(() => page.close());
@@ -356,4 +414,3 @@ describe("SME Assistant keeping candidates in view", () => {
     assert.equal(pinned.hasAttribute("hidden"), true);
   });
 });
-

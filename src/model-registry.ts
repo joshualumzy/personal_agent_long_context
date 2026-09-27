@@ -176,16 +176,15 @@ export function createDefaultModelRegistry(options: {
     },
     {
       id: "sonnet",
-      name: "Claude 3.5 Sonnet",
-      shortName: "Claude Sonnet",
-      configuredModel:
-        env.LLM_MODEL ?? "global.anthropic.claude-sonnet-4-5-20250929-v1:0",
-      provider: "AWS Bedrock",
+      name: "Claude Sonnet 4.5",
+      shortName: "Claude Sonnet 4.5",
+      configuredModel: env.LLM_MODEL ?? "sonnet4.5",
+      provider: "LLM Gateway",
       badge: "Fast",
       available: Boolean(sonnetAgent),
       unavailableReason:
         "The Claude Sonnet model is not configured on this server. Check LLM_GATEWAY_URL and LLM_GATEWAY_API_KEY in .env.",
-      aliases: ["claude", "claude-3-5-sonnet", "claude-sonnet", "bedrock"],
+      aliases: ["claude", "claude-sonnet", "claude-4-5-sonnet"],
       agent: sonnetAgent,
     },
   ];
