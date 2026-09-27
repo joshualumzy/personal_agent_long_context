@@ -96,23 +96,31 @@ export function getExpectedArtifacts(question: OrgForgeBenchmarkQuestion): strin
   return Array.from(new Set(artifacts));
 }
 
-export function getExpectedBooleanAnswer(question: OrgForgeBenchmarkQuestion): boolean | null {
+/**
+ * The ground truth stated as a conclusion a reader can compare an answer against.
+ *
+ * Questions are phrased every which way — "would X have known", "would X have been
+ * outside the visibility of", "was it a consequence of A, or would it have happened
+ * regardless" — so reducing an answer to yes/no and flipping by keyword cannot be
+ * scored reliably. Stating what the answer should conclude sidesteps the phrasing.
+ */
+export function getReferenceAnswer(question: OrgForgeBenchmarkQuestion): string | null {
   const gt = question.ground_truth;
   if (typeof gt.could_actor_have_known === "boolean") {
-    // Questions asking if someone was "outside visibility" or had a "blind spot":
-    // If they could NOT have known (false), then YES (true) they were outside visibility / had a blind spot.
-    const text = question.question_text.toLowerCase();
-    const isNegative = text.includes("outside") || text.includes("blind spot") || text.includes("unaware") || text.includes("lack");
-    return isNegative ? !gt.could_actor_have_known : gt.could_actor_have_known;
+    return gt.could_actor_have_known
+      ? "The person could have known about this: it was within their visibility through the systems and channels available to them by that time."
+      : "The person could not have known about this: it was outside their visibility by that time (a blind spot).";
   }
   if (typeof gt.answer === "boolean") {
-    return gt.answer;
+    return gt.answer
+      ? "Yes: the response the question asks about was created / did happen."
+      : "No: the response the question asks about was never created / did not happen.";
   }
   if (typeof gt.outcome_changed === "boolean") {
-    // In causal counterfactual questions ("Would X still have occurred without Y?"):
-    // outcome_changed = true means without Y, X did NOT occur -> surface answer: false (no).
-    // outcome_changed = false means without Y, X STILL occurred -> surface answer: true (yes).
-    return !gt.outcome_changed;
+    const detail = typeof gt.outcome === "string" && gt.outcome.trim() ? ` Specifically: ${gt.outcome.trim()}.` : "";
+    return gt.outcome_changed
+      ? `The cause described in the question mattered: without it, the outcome would have been different.${detail}`
+      : `The outcome would have happened anyway, regardless of the cause described in the question.${detail}`;
   }
   return null;
 }

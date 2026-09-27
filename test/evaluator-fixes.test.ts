@@ -1,83 +1,53 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { getExpectedBooleanAnswer, type OrgForgeBenchmarkQuestion } from "../eval/orgforge/dataset.js";
-import { evaluateQuestionResponse } from "../eval/orgforge/judge.js";
+import { getReferenceAnswer, type OrgForgeBenchmarkQuestion } from "../eval/orgforge/dataset.js";
+import { evaluateQuestionResponse, parseVerdict } from "../eval/orgforge/judge.js";
 
-test("Evaluator Fix 1: Counterfactual polarity inversion is corrected", () => {
-  const counterfactualQ1: OrgForgeBenchmarkQuestion = {
+test("Counterfactual references state whether the outcome depended on the cause, whatever the phrasing", () => {
+  const dependent: OrgForgeBenchmarkQuestion = {
     question_id: "cf-1",
     question_type: "COUNTERFACTUAL",
     question_text: "If Deepa had not conducted the review, would Jax still have identified the gap?",
-    ground_truth: {
-      outcome_changed: true,
-      outcome: "Jax would not have flagged a knowledge gap",
-    },
+    ground_truth: { outcome_changed: true, outcome: "Jax would not have flagged a knowledge gap" },
   };
+  assert.match(getReferenceAnswer(dependent)!, /would have been different.*Jax would not have flagged/);
 
-  const expected1 = getExpectedBooleanAnswer(counterfactualQ1);
-  // outcome_changed = true means the effect did NOT occur -> Jax would NOT still have identified it -> false
-  assert.equal(expected1, false, "outcome_changed: true should map to expected answer: false");
-
-  const counterfactualQ2: OrgForgeBenchmarkQuestion = {
+  // An either/or question has no meaningful yes/no; the reference names the conclusion instead.
+  const regardless: OrgForgeBenchmarkQuestion = {
     question_id: "cf-2",
     question_type: "COUNTERFACTUAL",
-    question_text: "If the doc gap had not existed, would the incident still have occurred?",
-    ground_truth: {
-      outcome_changed: false,
-      outcome: "the incident would still have occurred",
-    },
+    question_text: "Was the incident dependent on Alex's incomplete knowledge, or would it have happened regardless?",
+    ground_truth: { outcome_changed: false, outcome: "the incident would still have occurred" },
   };
-
-  const expected2 = getExpectedBooleanAnswer(counterfactualQ2);
-  // outcome_changed = false means outcome unchanged -> incident STILL occurred -> true
-  assert.equal(expected2, true, "outcome_changed: false should map to expected answer: true");
+  assert.match(getReferenceAnswer(regardless)!, /would have happened anyway/);
 });
 
-test("Evaluator Fix 2: Negative visibility perspective framing is corrected", () => {
-  const outsideVisibilityQ: OrgForgeBenchmarkQuestion = {
-    question_id: "pers-1",
+test("Perspective references follow could_actor_have_known, never keywords in the question", () => {
+  // "slack_..." contains "lack", which the old keyword heuristic read as negative phrasing.
+  const slackTrigger: OrgForgeBenchmarkQuestion = {
+    question_id: "pers-slack",
+    question_type: "PERSPECTIVE",
+    question_text: "Could Chloe have encountered a knowledge gap (triggered by slack_sales_marketing_2026-03-23T09:00:00) by Day 55?",
+    ground_truth: { could_actor_have_known: true },
+  };
+  assert.match(getReferenceAnswer(slackTrigger)!, /could have known/);
+
+  const outside: OrgForgeBenchmarkQuestion = {
+    question_id: "pers-outside",
     question_type: "PERSPECTIVE",
     question_text: "Would Janice have been outside the visibility of the design discussion by Day 3?",
-    ground_truth: {
-      could_actor_have_known: false,
-    },
+    ground_truth: { could_actor_have_known: false },
   };
+  assert.match(getReferenceAnswer(outside)!, /could not have known/);
+});
 
-  assert.equal(
-    getExpectedBooleanAnswer(outsideVisibilityQ),
-    true,
-    "could_actor_have_known: false for 'outside visibility' should expect YES (true)",
-  );
-
-  const blindSpotQ: OrgForgeBenchmarkQuestion = {
-    question_id: "pers-2",
-    question_type: "PERSPECTIVE",
-    question_text: "Would Mike have had a blind spot around an inbound email from Nora as of Day 22?",
-    ground_truth: {
-      could_actor_have_known: false,
-    },
-  };
-
-  assert.equal(
-    getExpectedBooleanAnswer(blindSpotQ),
-    true,
-    "could_actor_have_known: false for 'blind spot' should expect YES (true)",
-  );
-
-  const standardQ: OrgForgeBenchmarkQuestion = {
-    question_id: "pers-3",
-    question_type: "PERSPECTIVE",
-    question_text: "Would Alex have learned about the incident resolved event through normal channels by Day 28?",
-    ground_truth: {
-      could_actor_have_known: true,
-    },
-  };
-
-  assert.equal(
-    getExpectedBooleanAnswer(standardQ),
-    true,
-    "could_actor_have_known: true for positive phrasing should expect YES (true)",
-  );
+test("Judge replies are read strictly; anything unexpected is inconclusive, not a guess", () => {
+  assert.equal(parseVerdict("agrees"), "agrees");
+  assert.equal(parseVerdict("  Disagrees."), "disagrees");
+  assert.equal(parseVerdict("inconclusive"), "inconclusive");
+  // The old parser read any reply containing "no" (e.g. "cannot", "not sure") as a verdict.
+  assert.equal(parseVerdict("cannot tell"), "inconclusive");
+  assert.equal(parseVerdict("no"), "inconclusive");
 });
 
 test("Evaluator Fix 3: Citation recall uses exact matching and does not inflate empty artifacts", async () => {

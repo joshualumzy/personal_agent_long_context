@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { PostgresCompanyKnowledge } from "../../src/adapters/postgres-company-knowledge.js";
@@ -6,12 +6,12 @@ import { embeddingProviderFromEnvironment } from "../../src/embeddings.js";
 import { SoCLaaSCompanyAgent } from "../../src/soclaas-company-agent.js";
 import {
   getExpectedArtifacts,
-  getExpectedBooleanAnswer,
+  getReferenceAnswer,
   getQuestionActor,
   loadBenchmarkQuestions,
   type OrgForgeBenchmarkQuestion,
 } from "./dataset.js";
-import { evaluateQuestionResponse, type QuestionEvaluationResult } from "./judge.js";
+import { evaluateQuestionResponse, judgeOptionsFromEnvironment, type QuestionEvaluationResult } from "./judge.js";
 import { groundBenchmarkQuestion } from "./temporal.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -22,6 +22,8 @@ interface RunConfig {
   random?: boolean;
   type?: "PERSPECTIVE" | "SILENCE" | "COUNTERFACTUAL";
   actor?: string;
+  /** A JSON file listing question ids to run; overrides --type/--limit/--offset. */
+  idsFile?: string;
   saveReport: boolean;
   model: string;
   baseUrl: string;
@@ -36,6 +38,7 @@ function parseCliArgs(): RunConfig {
   let random = false;
   let type: "PERSPECTIVE" | "SILENCE" | "COUNTERFACTUAL" | undefined;
   let actor: string | undefined;
+  let idsFile: string | undefined;
   let saveReport = true;
   let providerOrModel = "soclaas";
 
@@ -51,6 +54,8 @@ function parseCliArgs(): RunConfig {
       random = true;
     } else if (arg === "--type" && args[i + 1]) {
       type = args[++i].toUpperCase() as "PERSPECTIVE" | "SILENCE" | "COUNTERFACTUAL";
+    } else if (arg === "--ids" && args[i + 1]) {
+      idsFile = args[++i];
     } else if (arg === "--actor" && args[i + 1]) {
       actor = args[++i];
     } else if (arg === "--no-save") {
@@ -84,6 +89,7 @@ function parseCliArgs(): RunConfig {
     random,
     type,
     actor,
+    idsFile,
     saveReport,
     model,
     baseUrl,
@@ -107,12 +113,17 @@ async function run(): Promise<void> {
   if (config.actor) console.log(`Filter Actor:  ${config.actor}`);
   console.log("------------------------------------------------------------------\n");
 
-  const allQuestions = await loadBenchmarkQuestions({
-    type: config.type,
-    limit: config.limit,
-    offset: config.offset,
-    random: config.random,
-  });
+  const allQuestions = config.idsFile
+    ? await (async () => {
+        const wanted = new Set(JSON.parse(await readFile(config.idsFile!, "utf-8")) as string[]);
+        return (await loadBenchmarkQuestions()).filter((q) => wanted.has(q.question_id));
+      })()
+    : await loadBenchmarkQuestions({
+        type: config.type,
+        limit: config.limit,
+        offset: config.offset,
+        random: config.random,
+      });
 
   const questions = config.actor
     ? allQuestions.filter((q) => (q.actor ?? q.actors?.[0])?.toLowerCase() === config.actor?.toLowerCase())
@@ -140,11 +151,8 @@ async function run(): Promise<void> {
   const employeesList = (await companyKnowledge.listEmployees?.()) ?? [];
   const validEmployeeIds = new Set(employeesList.map((e) => e.employeeId.toLowerCase()));
 
-  const judgeOptions = {
-    apiKey: config.apiKey,
-    baseUrl: config.baseUrl,
-    model: config.model,
-  };
+  const judgeOptions = judgeOptionsFromEnvironment(process.env);
+  console.log(`Judge:         ${judgeOptions.model} (${judgeOptions.baseUrl})\n`);
 
   const results: QuestionEvaluationResult[] = [];
 
@@ -161,7 +169,12 @@ async function run(): Promise<void> {
 
       const groundedQuestion = groundBenchmarkQuestion(q.question_text, q.day);
       const startTime = Date.now();
-      let agentResult: { answer: string; sources: { sourceId: string; title: string }[]; retrievedSources?: { sourceId: string; title: string }[] };
+      let agentResult: {
+        answer: string;
+        sources: { sourceId: string; title: string }[];
+        retrievedSources?: { sourceId: string; title: string }[];
+        toolCalls?: Array<{ name: string; arguments: unknown }>;
+      };
 
       try {
         agentResult = await companyAgent.answer({
@@ -176,7 +189,7 @@ async function run(): Promise<void> {
           questionText: q.question_text,
           groundedQuestion,
           actor: actorName,
-          expectedAnswer: getExpectedBooleanAnswer(q),
+          expectedAnswer: getReferenceAnswer(q) ?? "evidence_grounded",
           judgedAnswer: "error",
           answerCorrect: false,
           expectedArtifacts: getExpectedArtifacts(q),
@@ -187,6 +200,7 @@ async function run(): Promise<void> {
           agentStatus: "error",
           agentAnswer: `Execution error: ${err instanceof Error ? err.message : String(err)}`,
           latencyMs: Date.now() - startTime,
+          toolCalls: [],
         });
         continue;
       }
