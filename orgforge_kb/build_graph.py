@@ -76,8 +76,15 @@ SMALL_ITEM_TYPES = ("invoice", "sf_opp", "zd_ticket", "nps_survey")
 # separately: three rows merge into one event node per incident.
 STANDALONE_EVENT_TYPES = (
     "design_discussion", "jira_ticket_created", "ticket_progress",
-    "pr_review", "sprint_planned", "escalation_chain", "confluence_created",
+    "pr_review", "sprint_planned", "confluence_created",
     "dept_plan_created",
+)
+
+# The edge types that name what a person did. 'involves' is defined against
+# this list — it is what is left when none of these applies — so the two stay
+# in step from one place rather than two.
+PERSON_ROLE_EDGE_TYPES = (
+    "authored_by", "reviewed_by", "led_by", "assigned_to", "raised_by", "received_by",
 )
 
 
@@ -309,6 +316,13 @@ def build_incident_event_nodes(cursor) -> int:
     Six of the twelve incident ids are never their own artifact row (migration
     007), so the label falls back to the incident_key itself when no jira title
     exists to use.
+
+    The escalation narrative joins it here rather than living on a node of its
+    own. escalation_chain used to be 14 event nodes all labelled the literal
+    string "Escalation Chain", joining a pair of people to an incident and
+    carrying nothing else; being told an incident was escalated is a fact about
+    that incident, so it is one of its props, and the two people get
+    raised_by/received_by edges (build_escalation_role_edges).
     """
     cursor.execute(
         """
@@ -320,11 +334,15 @@ def build_incident_event_nodes(cursor) -> int:
                 'opened_at', i.opened_at,
                 'resolved_at', i.resolved_at,
                 'root_cause', i.root_cause,
-                'root_domain', dm.domain_key
+                'root_domain', dm.domain_key,
+                'escalation', esc.facts->>'escalation_narrative'
             )
         FROM incidents i
         LEFT JOIN source_documents j ON j.source_id = i.incident_key
         LEFT JOIN domains dm ON dm.domain_id = i.root_domain
+        LEFT JOIN source_documents esc
+               ON esc.source_type = 'escalation_chain'
+              AND esc.original_links->>'jira' = i.incident_key
         ON CONFLICT (node_type, ref_key) DO UPDATE SET
             label = EXCLUDED.label, props = EXCLUDED.props
         """
@@ -337,7 +355,8 @@ def build_incident_event_nodes(cursor) -> int:
 # ---------------------------------------------------------------------------
 def build_involves_edges(cursor) -> int:
     """event/document -> person/organization, from the normalized actor
-    junction.
+    junction — but only where no role edge has already said what the person
+    did.
 
     Resolved through actor_identity so a document naming "Ethan" links to the
     same person node a document naming "Ethan Patel" does. Both 'person' and
@@ -345,6 +364,14 @@ def build_involves_edges(cursor) -> int:
     employee also names a customer account like "Metro United FC" wherever a
     document is about that account, and those are graph_nodes of node_type
     'organization' now, not 'person'.
+
+    This is a partition, not a leftover. document_actors is exactly the
+    flattened union of the role fields the builders above read, so every pair
+    it holds either has a role edge naming what the person did, or genuinely
+    has no role to name — a participant in a design discussion, someone
+    mentioned in a thread. 'involves' is now that second case and only that
+    case, which is why it must run after the role builders: it asks them what
+    they already covered.
     """
     cursor.execute(
         """
@@ -358,8 +385,15 @@ def build_involves_edges(cursor) -> int:
         )
         JOIN graph_nodes sn ON sn.ref_key = da.source_id
                             AND sn.node_type IN ('event', 'document', 'item')
+        WHERE NOT EXISTS (
+            SELECT 1 FROM graph_edges covered
+            WHERE covered.src_node_id = sn.node_id
+              AND covered.dst_node_id = an.node_id
+              AND covered.edge_type = ANY(%s)
+        )
         ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
-        """
+        """,
+        (list(PERSON_ROLE_EDGE_TYPES),),
     )
     return cursor.rowcount
 
@@ -368,10 +402,11 @@ def build_dept_plan_involves_edges(cursor) -> int:
     """dept_plan event -> person, for names dept_plan_created carries inside
     its own facts rather than in document_actors.
 
-    document_actors already links each dept_plan_created row to its lead —
-    that edge comes for free from build_involves_edges() above. It does not
-    reach facts.engineer_plans[].name (every engineer the plan covers, not
-    just the lead) or agenda[].collaborator[] (who else a specific agenda
+    document_actors already links each dept_plan_created row to its lead, and
+    the lead now has a 'led_by' edge naming that role, so this skips any pair a
+    role edge already covers for the same reason build_involves_edges does. It
+    does not reach facts.engineer_plans[].name (every engineer the plan covers,
+    not just the lead) or agenda[].collaborator[] (who else a specific agenda
     item names), so those need their own resolution here, through
     actor_identity for the same alias-merging reason every other name lookup
     in this file goes through it rather than actors.name directly.
@@ -395,8 +430,15 @@ def build_dept_plan_involves_edges(cursor) -> int:
                             AND pn.ref_key = (SELECT name FROM actors WHERE actor_id = ai.actor_id)
         JOIN graph_nodes sn ON sn.node_type = 'event' AND sn.ref_key = d.source_id
         WHERE d.source_type = 'dept_plan_created'
+          AND NOT EXISTS (
+              SELECT 1 FROM graph_edges covered
+              WHERE covered.src_node_id = sn.node_id
+                AND covered.dst_node_id = pn.node_id
+                AND covered.edge_type = ANY(%s)
+          )
         ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
-        """
+        """,
+        (list(PERSON_ROLE_EDGE_TYPES),),
     )
     engineers = cursor.rowcount
 
@@ -414,11 +456,142 @@ def build_dept_plan_involves_edges(cursor) -> int:
                             AND pn.ref_key = (SELECT name FROM actors WHERE actor_id = ai.actor_id)
         JOIN graph_nodes sn ON sn.node_type = 'event' AND sn.ref_key = d.source_id
         WHERE d.source_type = 'dept_plan_created'
+          AND NOT EXISTS (
+              SELECT 1 FROM graph_edges covered
+              WHERE covered.src_node_id = sn.node_id
+                AND covered.dst_node_id = pn.node_id
+                AND covered.edge_type = ANY(%s)
+          )
         ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
-        """
+        """,
+        (list(PERSON_ROLE_EDGE_TYPES),),
     )
     collaborators = cursor.rowcount
     return engineers, collaborators
+
+
+# Which facts field on which event type names a person in which role. Each of
+# these was a plain 'involves' edge until now: document_actors is exactly the
+# flattened union of these fields with the role dropped, so naming the role is
+# a relabelling and not a second edge alongside the old one.
+#
+# The edge attaches to the event, because the event is where the role field
+# lives and where both people on a two-role event (an author and a reviewer)
+# are already attached. Putting 'reviewed_by' on the PR item instead would
+# invent an edge where 'involves' never had one — PRs average 1.09 actors —
+# which would make this an addition rather than a partition.
+PERSON_ROLE_FIELDS = (
+    # (edge type, source_type, facts field)
+    ("authored_by", "confluence_created", "author"),
+    ("authored_by", "pr_review", "author"),
+    ("authored_by", "knowledge_gap_detected", "author"),
+    ("reviewed_by", "pr_review", "reviewer"),
+    ("reviewed_by", "knowledge_gap_detected", "reviewer"),
+    ("led_by", "dept_plan_created", "lead"),
+    ("assigned_to", "ticket_progress", "new_assignee"),
+)
+
+
+def build_person_role_edges(cursor) -> dict[str, int]:
+    """event -> person, named for what the person did rather than only the fact
+    that they were there.
+
+    Resolved through actor_identity for the same alias-merging reason every
+    other name lookup in this file goes through it. Counted per source, so a
+    field whose rows all dedupe against another's shows up as contributing
+    nothing rather than looking like it worked.
+    """
+    counts: dict[str, int] = {}
+    for edge_type, source_type, field in PERSON_ROLE_FIELDS:
+        cursor.execute(
+            """
+            INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+            SELECT DISTINCT en.node_id, pn.node_id, %s
+            FROM source_documents d
+            JOIN actors a ON a.name = d.facts->>%s
+            JOIN actor_identity ai ON ai.actor_id = a.actor_id
+            JOIN graph_nodes pn ON pn.node_type = 'person'
+                                AND pn.ref_key = (
+                                    SELECT name FROM actors WHERE actor_id = ai.actor_id
+                                )
+            JOIN graph_nodes en ON en.node_type = 'event' AND en.ref_key = d.source_id
+            WHERE d.source_type = %s AND d.facts->>%s IS NOT NULL
+            ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+            """,
+            (edge_type, field, source_type, field),
+        )
+        counts[f"{edge_type} <- {source_type}.{field}"] = cursor.rowcount
+    return counts
+
+
+def build_knows_about_edges(cursor) -> int:
+    """person -> item(domain), from the registry's known_by.
+
+    The one new person relationship rather than a relabelling: known_by lists
+    15-42 people per domain and has never been in the graph, so "who
+    understands this" could not be asked of it. Distinct from owns_domain,
+    which is the one or two people accountable for a domain rather than
+    everyone who knows their way around it.
+    """
+    cursor.execute(
+        """
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+        SELECT DISTINCT pn.node_id, dn.node_id, 'knows_about'
+        FROM domains d
+        CROSS JOIN LATERAL jsonb_array_elements_text(d.known_by) AS known(name)
+        JOIN actors a ON a.name = known.name
+        JOIN actor_identity ai ON ai.actor_id = a.actor_id
+        JOIN graph_nodes pn ON pn.node_type = 'person'
+                            AND pn.ref_key = (
+                                SELECT name FROM actors WHERE actor_id = ai.actor_id
+                            )
+        JOIN graph_nodes dn ON dn.node_type = 'item' AND dn.node_subtype = 'domain'
+                            AND dn.ref_key = d.domain_key
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    return cursor.rowcount
+
+
+def build_escalation_role_edges(cursor) -> tuple[int, int]:
+    """event(incident) -> person, for the two ends of an escalation.
+
+    Replaces the escalation_chain node, which was 14 rows all carrying the
+    literal label "Escalation Chain" — a contentless hub whose only job was
+    joining a pair of people to an incident, and indistinguishable from the
+    other thirteen on a diagram. An escalation is a fact about the incident,
+    so its narrative goes into the incident's own props and the two people
+    attach here.
+
+    chain_detail is [[name, role], [name, role]]: the first raised it, the
+    second received it. Two of the fourteen rows are
+    trigger=post_departure_reroute with neither chain_detail nor an incident —
+    a change to who escalates to whom after someone left, not an escalation of
+    anything — and are deliberately left out of the graph.
+    """
+    counts = []
+    for position, edge_type in ((0, "raised_by"), (1, "received_by")):
+        cursor.execute(
+            """
+            INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+            SELECT DISTINCT en.node_id, pn.node_id, %s
+            FROM source_documents d
+            JOIN actors a ON a.name = d.facts->'chain_detail'->%s->>0
+            JOIN actor_identity ai ON ai.actor_id = a.actor_id
+            JOIN graph_nodes pn ON pn.node_type = 'person'
+                                AND pn.ref_key = (
+                                    SELECT name FROM actors WHERE actor_id = ai.actor_id
+                                )
+            JOIN graph_nodes en ON en.node_type = 'event'
+                                AND en.node_subtype = 'incident'
+                                AND en.ref_key = d.original_links->>'jira'
+            WHERE d.source_type = 'escalation_chain' AND d.facts ? 'chain_detail'
+            ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+            """,
+            (edge_type, position),
+        )
+        counts.append(cursor.rowcount)
+    return counts[0], counts[1]
 
 
 def build_produced_edges(cursor) -> int:
@@ -507,25 +680,6 @@ def build_produced_edges(cursor) -> int:
         """
     )
     return tickets + discussions + created + cursor.rowcount
-
-
-def build_escalated_via_edges(cursor) -> int:
-    """incident event -> escalation_chain event, from the escalation's own
-    original_links.jira — it already names which incident it belongs to."""
-    cursor.execute(
-        """
-        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
-        SELECT DISTINCT en.node_id, xn.node_id, 'escalated_via'
-        FROM source_documents d
-        JOIN graph_nodes en ON en.node_type = 'event'
-                            AND en.ref_key = d.original_links->>'jira'
-        JOIN graph_nodes xn ON xn.node_type = 'event' AND xn.ref_key = d.source_id
-        WHERE d.source_type = 'escalation_chain'
-          AND d.original_links ? 'jira'
-        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
-        """
-    )
-    return cursor.rowcount
 
 
 def build_zd_ticket_edges(cursor) -> tuple[int, int, int]:
@@ -676,12 +830,20 @@ def main() -> int:
             print(f"incident events:   {build_incident_event_nodes(cursor)}", file=sys.stderr)
             print(f"zd_ticket events:  {build_zd_ticket_event_nodes(cursor)}", file=sys.stderr)
 
+            # Role edges first: 'involves' is defined as what they do not
+            # cover, so it has to be able to ask them.
+            for label, count in build_person_role_edges(cursor).items():
+                print(f"  {label}: {count}", file=sys.stderr)
+            esc_raised, esc_received = build_escalation_role_edges(cursor)
+            print(f"  raised_by <- escalation_chain: {esc_raised}", file=sys.stderr)
+            print(f"  received_by <- escalation_chain: {esc_received}", file=sys.stderr)
+            print(f"knows_about edges:   {build_knows_about_edges(cursor)}", file=sys.stderr)
+
             print(f"involves edges:      {build_involves_edges(cursor)}", file=sys.stderr)
             dp_engineers, dp_collaborators = build_dept_plan_involves_edges(cursor)
             print(f"dept_plan engineer involves:     {dp_engineers}", file=sys.stderr)
             print(f"dept_plan collaborator involves: {dp_collaborators}", file=sys.stderr)
             print(f"produced edges:      {build_produced_edges(cursor)}", file=sys.stderr)
-            print(f"escalated_via edges: {build_escalated_via_edges(cursor)}", file=sys.stderr)
             zd_produced, zd_caused_by, zd_documented_by = build_zd_ticket_edges(cursor)
             print(f"zd_ticket produced:      {zd_produced}", file=sys.stderr)
             print(f"zd_ticket caused_by:     {zd_caused_by}", file=sys.stderr)
