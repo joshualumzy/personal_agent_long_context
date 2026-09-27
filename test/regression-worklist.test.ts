@@ -160,7 +160,7 @@ describe("Phase 0 — Regression Worklist", () => {
         payload: {
           employeeId: "jax",
           question: "What is Project Titan?",
-          model: "claude-3-5-sonnet",
+          model: "sonnet",
         },
       });
 

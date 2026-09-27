@@ -327,7 +327,9 @@ def main() -> None:
                     ),
                 )
 
-                # Only employee-visible artifacts become retrievable evidence.
+                # Only employee-visible artifacts become retrievable evidence. OrgForge's
+                # own paper treats SimEvents as "the answer-key layer": a system under
+                # evaluation retrieves over the prose artifacts, never the event log.
                 if retrievable:
                     for chunk_index, content in enumerate(chunks(body)):
                         cursor.execute(

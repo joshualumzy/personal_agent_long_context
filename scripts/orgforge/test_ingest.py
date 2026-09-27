@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timezone
 
-from ingest import is_runtime_artifact, parse_timestamp
+from ingest import is_retrievable_artifact, parse_timestamp
 
 
 class IngestTests(unittest.TestCase):
@@ -16,11 +16,21 @@ class IngestTests(unittest.TestCase):
         )
 
     def test_rejects_every_non_artifact_or_oracle_row(self) -> None:
-        self.assertTrue(is_runtime_artifact({"category": "artifact", "doc_type": "jira", "doc_id": "JIRA-1"}))
-        self.assertFalse(is_runtime_artifact({"category": None, "doc_type": "jira", "doc_id": "JIRA-1"}))
-        self.assertFalse(is_runtime_artifact({"category": "sim_event", "doc_type": "jira", "doc_id": "EVT-1"}))
+        self.assertTrue(is_retrievable_artifact({"doc_type": "jira", "doc_id": "JIRA-1"}, "artifact"))
+        self.assertFalse(is_retrievable_artifact({"doc_type": "jira", "doc_id": "JIRA-1"}, None))
+        self.assertFalse(is_retrievable_artifact({"doc_type": "jira", "doc_id": "EVT-1"}, "sim_event"))
         self.assertFalse(
-            is_runtime_artifact({"category": "artifact", "doc_type": "datadog_metric", "doc_id": "METRIC-1"})
+            is_retrievable_artifact({"doc_type": "datadog_metric", "doc_id": "METRIC-1"}, "artifact")
+        )
+
+    def test_rejects_an_event_id_even_with_an_allowed_type_and_artifact_category(self) -> None:
+        # The exact shape of tonight's incident: a row that looks admissible by
+        # category and doc_type alone, but whose EVT- id marks it as oracle
+        # material that must never reach the retrieval layer.
+        self.assertFalse(
+            is_retrievable_artifact(
+                {"doc_type": "jira", "doc_id": "EVT-38-jira_ticket_created-9001"}, "artifact"
+            )
         )
 
 

@@ -73,6 +73,7 @@ export function companyContactDirectory(pool: {
         `SELECT c.source_id, d.title, d.source_type, c.content
            FROM document_chunks c JOIN source_documents d USING (source_id)
           WHERE c.content ILIKE $1
+            AND d.category = 'artifact'
             AND c.content ~* '[a-z0-9._%+-]+@[a-z0-9-]+\\.[a-z]{2,}|\\+[0-9]|\\([0-9]{2,4}\\)|[0-9]{4} [0-9]{4}'
           LIMIT 20`,
         [`%${escaped}%`],

@@ -182,11 +182,17 @@ export interface DayPlanEntry {
   sources: string[];
 }
 
+/** A span of time to search within, as ISO instants: `after` inclusive, `before` exclusive. */
+export interface SearchWindow {
+  after?: string | null;
+  before?: string | null;
+}
+
 export interface CompanyKnowledge {
   employee(employeeId: string): Promise<EmployeeContext | null>;
   listEmployees?(): Promise<EmployeePersona[]>;
   verifyEmployeePassword?(employeeId: string, password: string): Promise<EmployeePersona | null>;
-  search(query: string, limit: number): Promise<Evidence[]>;
+  search(query: string, limit: number, window?: SearchWindow): Promise<Evidence[]>;
   related(sourceIds: string[], limit: number): Promise<Evidence[]>;
   /**
    * Artifacts that share a cause with the given ones, found by stepping through
