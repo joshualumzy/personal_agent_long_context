@@ -1145,7 +1145,8 @@ function shapeFor(node, size = 1) {
     case "event":
       return svg("rect", { x: k(-6), y: k(-6), width: k(12), height: k(12), rx: k(3), class: `shape n-event${incident}${touched}` });
     case "document":
-      return shaped(rounded([[0, -7.5], [7.8, 6.2], [-7.8, 6.2]], 2.6), "n-document");
+      // Equilateral, its centre on the item's centre: three points on a circle of radius 8.
+      return shaped(rounded([[0, -8], [6.93, 4], [-6.93, 4]], 2.2), "n-document");
     case "query":
       return svg("circle", { r: 11, class: "shape n-query" });
     case "cluster":
