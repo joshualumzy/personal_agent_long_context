@@ -187,6 +187,8 @@ export interface DayPlanEntry {
 export interface SearchWindow {
   after?: string | null;
   before?: string | null;
+  /** Only these kinds of record (source_type, e.g. "confluence"); all kinds when absent. */
+  types?: string[] | null;
 }
 
 /** One person on the roster (employee_roster), and whether they were

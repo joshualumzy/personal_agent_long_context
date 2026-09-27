@@ -136,13 +136,19 @@ function joinSpoken(spoken: string[], final: string): string {
   return [...kept, rest].filter(Boolean).join("\n\n");
 }
 
+/** The kinds of record an employee can see, as stored in source_documents.source_type. */
+const RECORD_TYPES = [
+  "slack", "email", "confluence", "jira", "zoom_transcript", "pr",
+  "datadog_alert", "invoice", "sf_opp", "nps_survey", "zd_ticket",
+] as const;
+
 const companyTools = [
   {
     type: "function",
     function: {
       name: "search_company_knowledge",
       description:
-        "Search employee-visible company artifacts for evidence relevant to the question. When the question concerns a particular day or period, pass from/to so records from other dates cannot crowd out the right ones; a date written inside the query text does not filter anything.",
+        "Search employee-visible company artifacts for evidence relevant to the question. When the question concerns a particular day or period, pass from/to so records from other dates cannot crowd out the right ones; a date written inside the query text does not filter anything. To find records of one kind (the Confluence pages or Jira tickets written in a window, say), pass types: their titles often don't share words with the topic, and chat about the same topic would otherwise crowd them out.",
       parameters: {
         type: "object",
         properties: {
@@ -150,6 +156,11 @@ const companyTools = [
           limit: { type: "integer", minimum: 1, maximum: 20 },
           from: { type: "string", description: "Earliest date to include, YYYY-MM-DD (inclusive)." },
           to: { type: "string", description: "Latest date to include, YYYY-MM-DD (inclusive)." },
+          types: {
+            type: "array",
+            items: { type: "string", enum: [...RECORD_TYPES] },
+            description: "Only these kinds of record. Omit to search every kind.",
+          },
         },
         required: ["query"],
         additionalProperties: false,
@@ -297,7 +308,7 @@ function textOf(content: unknown): string | null {
  * `from` to midnight UTC after `to` (the simulation's clock is UTC). A malformed date
  * is an error the model can read and correct, not a silently unfiltered search.
  */
-export function searchWindowOf(from: unknown, to: unknown): SearchWindow | undefined {
+export function searchWindowOf(from: unknown, to: unknown, types?: unknown): SearchWindow | undefined {
   const day = (value: unknown, name: string): Date | null => {
     if (value === undefined || value === null || value === "") return null;
     if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number.isNaN(Date.parse(`${value}T00:00:00Z`))) {
@@ -307,10 +318,18 @@ export function searchWindowOf(from: unknown, to: unknown): SearchWindow | undef
   };
   const start = day(from, "from");
   const end = day(to, "to");
-  if (!start && !end) return undefined;
   if (start && end && start > end) throw new Error("search_company_knowledge from must not be after to.");
+  let kinds: string[] | null = null;
+  if (types !== undefined && types !== null) {
+    const known = new Set<string>(RECORD_TYPES);
+    if (!Array.isArray(types) || types.some((t) => typeof t !== "string" || !known.has(t))) {
+      throw new Error(`search_company_knowledge types must be a list of: ${RECORD_TYPES.join(", ")}.`);
+    }
+    kinds = types.length > 0 ? (types as string[]) : null;
+  }
+  if (!start && !end && !kinds) return undefined;
   const nextDay = end ? new Date(end.getTime() + 86_400_000) : null;
-  return { after: start?.toISOString() ?? null, before: nextDay?.toISOString() ?? null };
+  return { after: start?.toISOString() ?? null, before: nextDay?.toISOString() ?? null, ...(kinds ? { types: kinds } : {}) };
 }
 
 /** A search limit the knowledge base can use: a whole number from 1 to 20. */
@@ -818,7 +837,7 @@ export class GatewayCompanyAgent {
         if (typeof args.query !== "string" || !args.query.trim()) {
           throw new Error("search_company_knowledge requires a non-empty query.");
         }
-        result = await knowledge.search(args.query.trim(), limitOf(args.limit), searchWindowOf(args.from, args.to));
+        result = await knowledge.search(args.query.trim(), limitOf(args.limit), searchWindowOf(args.from, args.to, args.types));
       } else if (call.function.name === "get_related_sources") {
         if (!Array.isArray(args.source_ids) || !args.source_ids.every((id) => typeof id === "string")) {
           throw new Error("get_related_sources requires source_ids.");

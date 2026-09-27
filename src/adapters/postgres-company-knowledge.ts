@@ -276,7 +276,7 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
   }
 
   async search(query: string, limit: number, window?: SearchWindow): Promise<Evidence[]> {
-    return this.searchBefore(query, limit, window?.before ?? null, window?.after ?? null);
+    return this.searchBefore(query, limit, window?.before ?? null, window?.after ?? null, window?.types ?? null);
   }
 
   /**
@@ -286,12 +286,20 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
    * so a date early in the record still gets a full page of what existed then.
    * `after` (an ISO instant, inclusive) bounds the other end the same way, so a
    * question about one week of a long thread is not crowded out by its later messages.
+   * `types` keeps only those kinds of record (source_type), so the Confluence
+   * pages of one week can be listed without chat about the same topic crowding them out.
    */
-  async searchBefore(query: string, limit: number, cutoff: string | null, after: string | null = null): Promise<Evidence[]> {
+  async searchBefore(
+    query: string,
+    limit: number,
+    cutoff: string | null,
+    after: string | null = null,
+    types: string[] | null = null,
+  ): Promise<Evidence[]> {
     const normalizedLimit = Math.min(Math.max(limit, 1), 20);
     const potentialIds = extractPotentialSourceIds(query);
     const exactPromise = potentialIds.length > 0 ? this.sourcesBefore(potentialIds, cutoff) : Promise.resolve([]);
-    const keywordPromise = this.keywordSearch(query, normalizedLimit, cutoff, after);
+    const keywordPromise = this.keywordSearch(query, normalizedLimit, cutoff, after, types);
     if (!this.embeddings) {
       const [keywordResult, exactResult] = await Promise.all([keywordPromise, exactPromise]);
       return fuseEvidence(keywordResult, [], normalizedLimit, exactResult);
@@ -303,7 +311,7 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
         exactPromise,
         this.embeddings.embed([query], "query"),
       ]);
-      const semanticResult = await this.semanticSearch(vectors[0]!, normalizedLimit, cutoff, after);
+      const semanticResult = await this.semanticSearch(vectors[0]!, normalizedLimit, cutoff, after, types);
       return fuseEvidence(keywordResult, semanticResult, normalizedLimit, exactResult);
     } catch {
       // Keyword retrieval remains available when a hosted embedding provider is unavailable.
@@ -312,7 +320,13 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     }
   }
 
-  private async keywordSearch(query: string, limit: number, cutoff: string | null, after: string | null): Promise<Evidence[]> {
+  private async keywordSearch(
+    query: string,
+    limit: number,
+    cutoff: string | null,
+    after: string | null,
+    types: string[] | null,
+  ): Promise<Evidence[]> {
     const result = await this.pool.query<EvidenceRow>(
       `WITH requested AS (SELECT websearch_to_tsquery('english', $1) AS query),
        ranked AS (
@@ -333,6 +347,7 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
          WHERE (c.search_vector || to_tsvector('english', coalesce(d.title, '') || ' ' || coalesce(d.source_type, '') || ' ' || coalesce(d.source_id, '') || ' ' || coalesce(d.actors::text, ''))) @@ requested.query
            AND ($3::timestamptz IS NULL OR d.occurred_at < $3::timestamptz)
            AND ($4::timestamptz IS NULL OR d.occurred_at >= $4::timestamptz)
+           AND ($5::text[] IS NULL OR d.source_type = ANY($5::text[]))
            AND d.category = 'artifact'
        )
        SELECT d.source_id, d.source_type, d.title,
@@ -341,12 +356,18 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
        WHERE ranked.source_rank = 1
        ORDER BY ranked.score DESC, d.occurred_at DESC NULLS LAST
        LIMIT $2`,
-      [query, limit, cutoff, after],
+      [query, limit, cutoff, after, types],
     );
     return result.rows.map(evidence);
   }
 
-  private async semanticSearch(vector: number[], limit: number, cutoff: string | null, after: string | null): Promise<Evidence[]> {
+  private async semanticSearch(
+    vector: number[],
+    limit: number,
+    cutoff: string | null,
+    after: string | null,
+    types: string[] | null,
+  ): Promise<Evidence[]> {
     const result = await this.pool.query<EvidenceRow>(
       `WITH ranked AS (
          SELECT c.source_id, c.content,
@@ -360,6 +381,7 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
          WHERE c.embedding IS NOT NULL
            AND ($3::timestamptz IS NULL OR cd.occurred_at < $3::timestamptz)
            AND ($4::timestamptz IS NULL OR cd.occurred_at >= $4::timestamptz)
+           AND ($5::text[] IS NULL OR cd.source_type = ANY($5::text[]))
            AND cd.category = 'artifact'
        )
        SELECT d.source_id, d.source_type, d.title,
@@ -368,7 +390,7 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
        WHERE ranked.source_rank = 1
        ORDER BY ranked.score DESC, d.occurred_at DESC NULLS LAST
        LIMIT $2`,
-      [pgVector(vector), limit, cutoff, after],
+      [pgVector(vector), limit, cutoff, after, types],
     );
     return result.rows.map(evidence);
   }
@@ -1281,7 +1303,7 @@ export class DatedCompanyKnowledge implements CompanyKnowledge {
   search(query: string, limit: number, window?: SearchWindow): Promise<Evidence[]> {
     // Never see past the as-of day, however late a window the caller asks for.
     const before = window?.before && Date.parse(window.before) < Date.parse(this.cutoff) ? window.before : this.cutoff;
-    return this.knowledge.searchBefore(query, limit, before, window?.after ?? null);
+    return this.knowledge.searchBefore(query, limit, before, window?.after ?? null, window?.types ?? null);
   }
 
   related(sourceIds: string[], limit: number): Promise<Evidence[]> {
