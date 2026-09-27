@@ -2444,7 +2444,7 @@ body.has-context .kaki .home-art { display: none; }
 /* The walking hand: the video has a white ground, the same white as the sheet, so
    it is cut to the tile by nothing but the page itself. It does not tilt or cast a
    shadow (that would show the frame). Reduced motion keeps the still. */
-.kaki .home-walk { grid-column: 3; justify-self: start; width: 132px; height: 132px; object-fit: cover; margin-top: -18px; margin-left: -14px; transform: none; filter: none; background: #fff; }
+.kaki .home-walk, .kaki .home-still { grid-column: 3; justify-self: start; width: 132px; height: 132px; object-fit: cover; margin-top: -18px; margin-left: -14px; transform: none; filter: none; background: #fff; }
 .kaki .home-walk[hidden], .kaki .home-art[hidden] { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .kaki .home-walk { display: none !important; }

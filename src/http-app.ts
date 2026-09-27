@@ -1549,7 +1549,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     serve("assets/merlion.riv", "application/octet-stream"),
   );
   // The logo (the walking hand) and its all-clear pose, downscaled from the team's artwork.
-  for (const name of ["kaki-logo-64.png", "kaki-logo-128.png", "kaki-logo-256.png", "kaki-win-128.png", "kaki-win-256.png"]) {
+  for (const name of ["kaki-logo-64.png", "kaki-logo-128.png", "kaki-logo-256.png", "kaki-win-256.png"]) {
     app.get(`/assets/${name}`, serve(`assets/${name}`, "image/png"));
   }
   app.get("/favicon.ico", serve("favicon.ico", "image/x-icon"));
@@ -1560,6 +1560,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   for (const pose of ["kaki-walk", "kaki-win"]) {
     app.get(`/assets/${pose}.mp4`, serve(`assets/${pose}.mp4`, "video/mp4"));
     app.get(`/assets/${pose}.webm`, serve(`assets/${pose}.webm`, "video/webm"));
+    app.get(`/assets/${pose}.jpg`, serve(`assets/${pose}.jpg`, "image/jpeg"));
   }
   app.get("/theme.css", serve("theme.css", "text/css; charset=utf-8"));
   // The public front page, with screenshots of the product taken from the demo company.

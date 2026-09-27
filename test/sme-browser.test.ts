@@ -573,14 +573,14 @@ describe("SME Assistant home: what needs you", () => {
     const walk = page.document.querySelector("#home-walk") as HTMLVideoElement;
     assert.equal(walk.hidden, false);
     assert.ok(walk.muted && walk.loop && walk.autoplay && walk.hasAttribute("playsinline"), "plays by itself, silent, on repeat");
-    assert.match(walk.getAttribute("poster")!, /kaki-logo/);
+    assert.match(walk.getAttribute("poster")!, /kaki-walk\.jpg/);
     assert.equal((page.document.querySelector("#home-art") as HTMLElement).hidden, true);
     // A video that cannot load leaves the still in its place, whole.
     const sources = page.document.querySelectorAll("#home-walk source");
     sources[sources.length - 1]!.dispatchEvent(new page.window.Event("error"));
     assert.equal(walk.hidden, true);
     assert.equal((page.document.querySelector("#home-art") as HTMLElement).hidden, false);
-    assert.match(page.document.querySelector("#home-art")!.getAttribute("src")!, /kaki-logo-128/);
+    assert.match(page.document.querySelector("#home-art")!.getAttribute("src")!, /kaki-walk\.jpg/, "the loop's first frame");
     // The one solid action on the page sits under the headline, not on the plate.
     const review = page.document.querySelector("#clear-needs-btn") as HTMLButtonElement;
     assert.ok(page.document.querySelector("#home")!.contains(review));
@@ -654,8 +654,7 @@ describe("SME Assistant home: what needs you", () => {
     assert.equal((page.document.querySelector("#home-win") as HTMLElement).hidden, false);
     // The still under it is the V too: it is what shows when motion is reduced.
     assert.equal((page.document.querySelector("#home-art") as HTMLElement).hidden, true);
-    assert.match(page.document.querySelector("#home-art")!.getAttribute("src")!, /kaki-win-128/);
-    assert.match(page.document.querySelector("#home-art")!.getAttribute("srcset")!, /kaki-win-256\.png 2x/);
+    assert.match(page.document.querySelector("#home-art")!.getAttribute("src")!, /kaki-win\.jpg/);
     assert.equal((page.document.querySelector("#clear-needs-btn") as HTMLButtonElement).hidden, true);
   });
 });

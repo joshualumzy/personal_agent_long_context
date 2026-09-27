@@ -2411,9 +2411,8 @@ async function loadHome() {
   }
   if (art) {
     art.hidden = walking;
-    const pose = needs.length === 0 ? "kaki-win" : "kaki-logo";
-    art.src = `/assets/${pose}-128.png`;
-    art.srcset = `/assets/${pose}-128.png 1x, /assets/${pose}-256.png 2x`;
+    // The still is the loop's first frame, so reduced motion shows the same toy.
+    art.src = `/assets/${needs.length === 0 ? "kaki-win" : "kaki-walk"}.jpg`;
   }
   const summary = document.querySelector("#home-summary");
   if (summary) summary.innerHTML = homeSummary(needs);

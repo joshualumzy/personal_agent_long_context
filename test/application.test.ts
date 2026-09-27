@@ -279,14 +279,15 @@ describe("Browser surface", () => {
     const images = [
       document.querySelector("link[rel=icon]")!.getAttribute("href")!,
       document.querySelector("#plate .brand img")!.getAttribute("src")!,
+      // The stills are the loops' first frames: what shows when motion is reduced.
       document.querySelector("#home-art")!.getAttribute("src")!,
-      // Sharp on a high-density screen: the illustration's larger file.
-      ...document.querySelector("#home-art")!.getAttribute("srcset")!.split(",").map((part) => part.trim().split(" ")[0]!),
+      document.querySelector("#home-walk")!.getAttribute("poster")!,
+      document.querySelector("#home-win")!.getAttribute("poster")!,
     ];
     for (const url of images) {
       const image = await app.inject({ method: "GET", url });
       assert.equal(image.statusCode, 200, url);
-      assert.equal(image.headers["content-type"], "image/png", url);
+      assert.equal(image.headers["content-type"], url.endsWith(".jpg") ? "image/jpeg" : "image/png", url);
     }
     // The walking hand, waving and showing a V: each a short silent loop, in two formats.
     for (const source of document.querySelectorAll("#home-walk source, #home-win source")) {
