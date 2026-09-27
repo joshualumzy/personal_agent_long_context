@@ -1,12 +1,13 @@
 /**
- * The company graph, drawn from the recorded graph in Postgres.
- *
- * Two ways in, one picture:
- *   - a question ("Your question"): /api/v1/graph/query puts the question in
- *     the middle and the things it points at around it;
- *   - a company overview (Departments, Who knows what, Incidents, Documents,
- *     Customers & vendors, Timeline): /api/v1/graph/view/:name, a fixed
- *     subgraph that needs no question.
+ * The recorded graph, drawn from Postgres, on two pages that share this
+ * script (the page's <body data-mode> says which):
+ *   - company (/graph): the company overviews — Departments, Who knows what,
+ *     Incidents, Documents, Customers & vendors, Timeline — each from
+ *     /api/v1/graph/view/:name, a fixed subgraph that needs no question;
+ *   - answer (/graph/answer?q=…&sources=…): one chat answer's graph, from
+ *     /api/v1/graph/query with the question in the middle and the things its
+ *     cited evidence belongs to around it. The chat opens it in a dialog from
+ *     the small preview above an answer's evidence.
  * Either way the picture grows by clicking: /api/v1/graph/expand adds a few
  * neighbours of each kind around the clicked item and folds the rest into a
  * "+N more" item, which pages in the next few when clicked. Nothing already on
@@ -19,6 +20,7 @@
 
 const SVG = "http://www.w3.org/2000/svg";
 const $ = (selector) => document.querySelector(selector);
+const MODE = document.body.dataset.mode === "answer" ? "answer" : "company";
 
 /** What a reader filters by: the categories graph-neighbourhood.ts uses. */
 const CATEGORIES = [
@@ -68,8 +70,12 @@ const COLUMN_GAP = 250;
 const ROW_GAP = 26;
 
 const state = {
-  view: "org",
+  view: MODE === "answer" ? "query" : "org",
   query: "",
+  /** On the answer page: the answer's own question and the evidence it cited,
+   * which "Back to start" returns to after re-centring on something else. */
+  origin: "",
+  sources: [],
   slice: null,
   /** The slice the current view first drew, for Back to start. */
   start: null,
@@ -753,8 +759,8 @@ function select(id) {
     isPager(node)
       ? h("button", { type: "button", class: "quiet", onclick: () => expand(node.id) }, "Show the next few")
       : null,
-    node.type !== "query" && node.type !== "cluster"
-      ? h("button", { type: "button", class: "quiet", onclick: () => ask(nameOf(node)) }, "Ask about this")
+    MODE === "answer" && node.type !== "query" && node.type !== "cluster"
+      ? h("button", { type: "button", class: "quiet", onclick: () => ask(nameOf(node)) }, "Centre on this")
       : null,
   );
 
@@ -841,14 +847,25 @@ function markTabs() {
     button.classList.toggle("on", on);
     button.setAttribute("aria-pressed", String(on));
   }
-  $("#tab-query").disabled = !state.query;
-  if (state.query) $("#tab-query").textContent = `“${shortLabel({ label: state.query }, 28)}”`;
+  const title = $("#question-title");
+  if (title) title.textContent = state.query;
+}
+
+/** Whether the picture is the answer's own, built from what it cited. */
+function onOrigin() {
+  return MODE === "answer" && state.query === state.origin;
 }
 
 function remember() {
-  const parameters = new URLSearchParams();
-  if (state.view === "query") parameters.set("q", state.query);
-  else parameters.set("view", state.view);
+  const parameters = new URLSearchParams(location.search);
+  if (MODE === "answer") {
+    parameters.set("q", state.query);
+    if (onOrigin() && state.sources.length) parameters.set("sources", state.sources.join(","));
+    else parameters.delete("sources");
+  } else {
+    parameters.delete("q");
+    parameters.set("view", state.view);
+  }
   try {
     history.replaceState(null, "", `${location.pathname}?${parameters}`);
   } catch {
@@ -868,6 +885,9 @@ async function load(view) {
     const url = view === "query"
       ? `/api/v1/graph/query?${new URLSearchParams({
           q: state.query,
+          // The answer's own graph is seeded from what it cited; re-centred on
+          // something else, it is a fresh search.
+          ...(onOrigin() && state.sources.length ? { sources: state.sources.join(",") } : {}),
           ...(state.hidden.size ? { categories: enabledCategories().join(",") } : {}),
         })}`
       : `/api/v1/graph/view/${encodeURIComponent(view)}`;
@@ -883,11 +903,12 @@ async function load(view) {
     placeNew(null);
     fit();
     redraw();
-    $("#restore").disabled = true;
+    // Re-centred on something else, Back to start returns to the answer.
+    $("#restore").disabled = MODE !== "answer" || onOrigin();
     $("#details").replaceChildren(h("p", { class: "empty" },
       view === "query"
-        ? "Your question is in the middle. Click anything around it to open it up."
-        : "Click anything to open it up, or ask a question above."));
+        ? "The question is in the middle, and around it what its evidence belongs to. Click anything to open it up."
+        : "Click anything to open it up."));
   } catch (error) {
     if (generation !== state.generation) return;
     showError(error instanceof Error ? error.message : String(error));
@@ -895,10 +916,10 @@ async function load(view) {
   }
 }
 
+/** Re-centre the answer page on something else in it. */
 function ask(query) {
   const text = query.trim();
   if (!text) return;
-  $("#query").value = text;
   state.query = text;
   load("query");
 }
@@ -974,6 +995,11 @@ function activate(id) {
 }
 
 function restore() {
+  if (MODE === "answer" && !onOrigin()) {
+    state.query = state.origin;
+    load("query");
+    return;
+  }
   if (!state.start) return;
   state.slice = state.start;
   state.positions = new Map();
@@ -1055,18 +1081,8 @@ function enablePanAndZoom() {
 
 buildCategoryChips();
 enablePanAndZoom();
-$("#ask").addEventListener("submit", (event) => {
-  event.preventDefault();
-  ask($("#query").value);
-});
-for (const button of document.querySelectorAll(".example")) {
-  button.addEventListener("click", () => ask(button.textContent));
-}
 for (const button of document.querySelectorAll(".view-tab")) {
-  button.addEventListener("click", () => {
-    if (button.dataset.view === "query" && !state.query) return;
-    load(button.dataset.view);
-  });
+  button.addEventListener("click", () => load(button.dataset.view));
 }
 $("#tab-picture").addEventListener("click", () => showTab("picture"));
 $("#tab-table").addEventListener("click", () => showTab("table"));
@@ -1074,11 +1090,26 @@ $("#restore").addEventListener("click", restore);
 $("#fit").addEventListener("click", fit);
 
 {
-  // /graph?q=... opens on a question, /graph?view=... on an overview; with
-  // neither, on the departments, so the page never opens empty.
   const parameters = new URLSearchParams(location.search);
-  const question = parameters.get("q");
-  const view = parameters.get("view");
-  if (question) ask(question);
-  else load(view && view in VIEWS && view !== "query" ? view : "org");
+  const question = (parameters.get("q") ?? "").trim();
+  // Inside the chat's dialog, which already shows the question.
+  if (parameters.get("embed") === "1") document.body.classList.add("embedded");
+  if (MODE === "answer") {
+    state.origin = question;
+    state.query = question;
+    state.sources = (parameters.get("sources") ?? "").split(",").map((id) => id.trim()).filter(Boolean);
+    if (question) load("query");
+    else {
+      showError("No question to draw. This page opens from an answer in the chat.");
+      $("#status-line").textContent = "Nothing drawn.";
+    }
+  } else if (question) {
+    // Questions have their own page now; an old /graph?q=… link still works.
+    location.replace(`/graph/answer?${new URLSearchParams({ q: question })}`);
+  } else {
+    // /graph?view=… opens on that overview; otherwise on the departments, so
+    // the page never opens empty.
+    const view = parameters.get("view");
+    load(view && view in VIEWS && view !== "query" ? view : "org");
+  }
 }

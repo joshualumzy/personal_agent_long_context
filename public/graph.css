@@ -1,42 +1,37 @@
 /* Tokens match recruiting.css so the two pages read as one product. */
+/* Built on the shared theme (theme.css, loaded first), so the graph pages
+   look like the rest of the product and sit naturally inside the chat's
+   dialog. The names below are the ones this sheet grew up with, pointed at
+   the theme; the five node-kind fills stay the graph's own. */
 :root {
-  color-scheme: light;
-  --sky: #f5f2ea;
-  --sky-raised: #fffdf8;
-  --sky-high: #efebe1;
-  --line: #d8d4ca;
-  --text: #1d2530;
-  --muted: #66717e;
-  --faint: #a7aeb6;
+  --sky: var(--bg);
+  --sky-raised: var(--panel);
+  --sky-high: var(--hover);
+  --text: var(--ink);
   --gold: #1f6d5f;
   --aqua: #4f8f82;
   --ochre: #b7862b;
-  /* Two more fills, so each of the five node kinds has its own. Chosen to sit
-     in the same muted range as the rest rather than shouting over them. */
   --slate: #5b6b7c;
   --indigo: #4a6fa5;
-  --danger: #9a382f;
+  --danger: var(--error-text);
   --on-accent: #ffffff;
-  --radius-control: 10px;
-  --radius-surface: 16px;
-  /* Edges stay quiet so the nodes and their labels carry the meaning. */
-  --edge: #90a4ae;
-  font-family: Inter, "PingFang SC", "Hiragino Sans GB", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --edge: #a9a6c2;
+  font-family: var(--f-ui);
   font-size: 14px;
   line-height: 1.5;
-  color: var(--text);
-  background: var(--sky);
+  color: var(--ink);
+  background: var(--bg);
 }
 
 body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; background: var(--sky); }
 [hidden] { display: none !important; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 button, .quiet { font: inherit; cursor: pointer; }
 .primary {
   border: 0; border-radius: var(--radius-control); padding: 8px 14px;
-  background: var(--gold); color: var(--on-accent); font-weight: 600;
+  background: var(--accent); color: var(--on-accent); font-weight: 600;
 }
 .primary:hover { filter: brightness(1.06); }
 .primary:disabled { opacity: .5; cursor: progress; }
@@ -45,23 +40,9 @@ button, .quiet { font: inherit; cursor: pointer; }
   background: transparent; color: var(--text); text-decoration: none; font-size: .88rem;
 }
 .quiet:hover { border-color: var(--muted); }
-.quiet.on { border-color: var(--aqua); color: var(--aqua); }
+.quiet.on { border-color: var(--accent); color: var(--accent); }
 
-/* The two ways in: a question, or one of the fixed overviews. One row of
-   tabs for both, since "your question" is just another picture to look at. */
-.ask { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; }
-.ask input[type="search"] {
-  flex: 1 1 420px; min-width: 0; border: 1px solid var(--line); border-radius: var(--radius-control);
-  padding: 9px 12px; background: var(--sky-raised); color: var(--text); font: inherit;
-}
-.ask input[type="search"]:focus { outline: none; border-color: var(--gold); }
-.examples { color: var(--muted); font-size: .82rem; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-.example {
-  border: 1px dashed var(--line); border-radius: 999px; padding: 2px 10px;
-  background: transparent; color: var(--aqua); font-size: .82rem;
-}
-.example:hover { border-color: var(--aqua); }
-
+/* The company overviews, one tab each. */
 .view-tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 100%; }
 .view-divider { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
 .view-tab {
@@ -71,7 +52,7 @@ button, .quiet { font: inherit; cursor: pointer; }
 }
 .view-tab:hover:not(:disabled) { border-color: var(--muted); }
 .view-tab:disabled { opacity: .45; cursor: default; }
-.view-tab.on { border-color: var(--gold); color: var(--gold); background: var(--sky-high); font-weight: 600; }
+.view-tab.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 600; }
 
 /* Category filters: what is shown, and what an expansion asks for. */
 .categories { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 100%; }
@@ -81,7 +62,7 @@ button, .quiet { font: inherit; cursor: pointer; }
   border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px 3px 6px;
   font-size: .82rem; color: var(--text); background: var(--sky-raised);
 }
-.chip input { accent-color: var(--gold); margin: 0; }
+.chip input { accent-color: var(--accent); margin: 0; }
 .chip:has(input:not(:checked)) { color: var(--faint); background: transparent; }
 
 /* Header */
@@ -90,10 +71,10 @@ button, .quiet { font: inherit; cursor: pointer; }
   width: min(1320px, calc(100% - 32px)); margin: 0 auto; padding: 14px 0 6px;
 }
 h1 {
-  margin: 0; font-family: Georgia, "Songti SC", serif;
+  margin: 0; font-family: var(--f-display);
   font-size: clamp(1.35rem, 2vw, 1.85rem); font-weight: 500; line-height: 1.1;
 }
-h2 { margin: 0 0 8px; font-family: Georgia, "Songti SC", serif; font-size: 1.05rem; font-weight: 500; }
+h2 { margin: 0 0 8px; font-family: var(--f-display); font-size: 1.05rem; font-weight: 600; }
 .status-line { margin: 4px 0 0; color: var(--muted); }
 .top-actions { flex: none; display: flex; gap: 8px; align-items: center; }
 
@@ -187,7 +168,7 @@ h2 { margin: 0 0 8px; font-family: Georgia, "Songti SC", serif; font-size: 1.05r
 .node.expanded .shape { stroke: var(--muted); }
 .node:hover .shape, .node.selected .shape { stroke: var(--text); stroke-width: 2; }
 .node:focus-visible { outline: none; }
-.node:focus-visible .ring { stroke: var(--gold); stroke-width: 2.5; fill: none; }
+.node:focus-visible .ring { stroke: var(--accent); stroke-width: 2.5; fill: none; }
 .node .ring { stroke: none; fill: none; }
 
 /* Table view: the accessible source of truth for the same relationships. */
@@ -242,3 +223,16 @@ td.kind { color: var(--muted); white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* The answer page: the question as the title, with a small line above it. */
+.eyebrow { margin: 0 0 2px; color: var(--muted); font-size: .78rem; font-weight: 600; letter-spacing: .02em; }
+#question-title { font-size: clamp(1.1rem, 1.6vw, 1.45rem); }
+
+/* Inside the chat's dialog: the dialog already names the question and the
+   way back, so the page drops its own title and links out. */
+body.embedded .standalone-only,
+body.embedded .eyebrow,
+body.embedded #question-title { display: none; }
+body.embedded .top { padding-top: 8px; }
+body.embedded .board { margin-bottom: 12px; }
+body.embedded #canvas { height: min(62vh, 640px); }

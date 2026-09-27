@@ -650,8 +650,9 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     const maxSeeds = Math.min(Math.max(request.seeds ?? 8, 1), 16);
     const categories = (request.categories ?? []).filter(isGraphCategory);
 
-    let evidence = await this.search(query, 10);
-    if (evidence.length < 3) {
+    const given = (request.evidence ?? []).filter(Boolean).slice(0, 20);
+    let evidence = given.length > 0 ? await this.evidenceInOrder(given) : await this.search(query, 10);
+    if (given.length === 0 && evidence.length < 3) {
       // Keyword search needs every term; a question rarely has them all in one
       // chunk. Accepting any term recovers it, at some cost in precision that
       // the scoring below absorbs.
@@ -909,6 +910,20 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
       [nodeIds],
     );
     return result.rows;
+  }
+
+  /** Evidence for the given source ids, in the order given: an answer lists
+   * its sources most relevant first, and seed scoring reads that order. Ids
+   * that are not employee-visible artifacts are dropped (sources() only
+   * returns those), so nothing an answer could not have shown gets placed. */
+  private async evidenceInOrder(sourceIds: string[]): Promise<Evidence[]> {
+    // sources() returns whole bodies; the graph only needs enough to recognise
+    // each piece by.
+    const found = new Map((await this.sources(sourceIds)).map((item) => [
+      item.sourceId,
+      { ...item, excerpt: item.excerpt.length > 400 ? `${item.excerpt.slice(0, 399)}…` : item.excerpt },
+    ]));
+    return sourceIds.map((id) => found.get(id)).filter((item): item is Evidence => Boolean(item));
   }
 
   /** Keyword search accepting any of the question's terms, for when requiring

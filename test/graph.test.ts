@@ -120,8 +120,9 @@ describe("the company graph", () => {
    * recorded in `asked`. */
   async function open(path: string, respond: (url: URL) => unknown) {
     const { base } = await start(graphKnowledge());
+    const page = path.split("?")[0];
     const [html, script] = await Promise.all([
-      fetch(`${base}/graph`).then((response) => response.text()),
+      fetch(`${base}${page}`).then((response) => response.text()),
       fetch(`${base}/graph/app.js`).then((response) => response.text()),
     ]);
     const dom = new JSDOM(html, { url: `${base}${path}`, runScripts: "outside-only" });
@@ -184,8 +185,55 @@ describe("the company graph", () => {
     window.close();
   });
 
+  test("the company graph is overviews only; questions have their own page", async () => {
+    const { window, document } = await open("/graph", () => org);
+    assert.equal(document.querySelector("#ask"), null, "no question box on the company graph");
+    assert.equal(document.querySelector('.view-tab[data-view="query"]'), null);
+    assert.equal(document.body.dataset.mode, "company");
+    // The company graph opens in no one's frame; the answer page opens in the chat's.
+    const { base } = await start(graphKnowledge());
+    const company = await fetch(`${base}/graph`);
+    assert.match(company.headers.get("content-security-policy")!, /frame-ancestors 'none'/);
+    const answer = await fetch(`${base}/graph/answer?q=x`);
+    assert.equal(answer.status, 200);
+    assert.match(answer.headers.get("content-security-policy")!, /frame-ancestors 'self'/);
+    assert.equal(answer.headers.get("x-frame-options"), "SAMEORIGIN");
+    window.close();
+  });
+
+  test("an answer's graph is seeded from the evidence the answer cited", async () => {
+    const { window, document, requests } = await open(
+      "/graph/answer?q=TitanDB&sources=CONF-ENG-002,ENG-112&embed=1",
+      (url) => (url.pathname === "/api/v1/graph/query" ? asked : titandbNeighbours),
+    );
+    const first = requests[0]!;
+    assert.equal(first.pathname, "/api/v1/graph/query");
+    assert.equal(first.searchParams.get("q"), "TitanDB");
+    assert.equal(first.searchParams.get("sources"), "CONF-ENG-002,ENG-112");
+    assert.ok(document.body.classList.contains("embedded"), "inside the chat's dialog");
+    assert.equal(document.querySelector("#question-title")!.textContent, "TitanDB");
+
+    // Centring on something else is a fresh search, without the answer's sources…
+    document.querySelector('.node[data-id="event:ENG-112"]')!.dispatchEvent(new window.Event("focus"));
+    const centre = [...document.querySelectorAll("#details button")]
+      .find((button) => button.textContent === "Centre on this")!;
+    centre.dispatchEvent(new window.Event("click"));
+    await settle();
+    assert.equal(requests.at(-1)!.searchParams.get("q"), "Incident ENG-112: missing cost tag");
+    assert.equal(requests.at(-1)!.searchParams.get("sources"), null);
+    assert.equal(document.querySelector("#question-title")!.textContent, "Incident ENG-112: missing cost tag");
+    const restore = document.querySelector<HTMLButtonElement>("#restore")!;
+    assert.equal(restore.disabled, false, "the way back to the answer's own graph");
+
+    // …and Back to start returns to the answer's graph, sources and all.
+    restore.dispatchEvent(new window.Event("click"));
+    await settle();
+    assert.equal(requests.at(-1)!.searchParams.get("sources"), "CONF-ENG-002,ENG-112");
+    window.close();
+  });
+
   test("a question is drawn with itself in the middle, and grows by clicking", async () => {
-    const { window, document, requests } = await open("/graph?q=TitanDB", (url) => {
+    const { window, document, requests } = await open("/graph/answer?q=TitanDB", (url) => {
       if (url.pathname === "/api/v1/graph/query") return asked;
       if (url.pathname === "/api/v1/graph/expand") {
         return url.searchParams.get("offset") ? titandbPage : titandbNeighbours;
@@ -196,7 +244,6 @@ describe("the company graph", () => {
     assert.equal(requests[0]!.pathname, "/api/v1/graph/query");
     assert.equal(requests[0]!.searchParams.get("q"), "TitanDB");
     assert.deepEqual(ids(document).sort(), asked.nodes.map((entry) => entry.id).sort());
-    assert.equal(document.querySelector('.view-tab[data-view="query"]')!.getAttribute("aria-pressed"), "true");
     // The question sits at the centre of the picture.
     assert.equal(
       document.querySelector('.node[data-id="query:TitanDB"]')!.getAttribute("transform"),
@@ -241,7 +288,7 @@ describe("the company graph", () => {
   });
 
   test("the question's evidence is what its details show", async () => {
-    const { window, document } = await open("/graph?q=TitanDB", () => asked);
+    const { window, document } = await open("/graph/answer?q=TitanDB", () => asked);
     document.querySelector('.node[data-id="query:TitanDB"]')!.dispatchEvent(new window.Event("focus"));
     const evidenceTab = [...document.querySelectorAll(".detail-tab")]
       .find((button) => button.textContent === "Evidence")!;
@@ -252,7 +299,7 @@ describe("the company graph", () => {
   });
 
   test("turning a category off hides it, and expansions stop asking for it", async () => {
-    const { window, document, requests } = await open("/graph?q=TitanDB", (url) =>
+    const { window, document, requests } = await open("/graph/answer?q=TitanDB", (url) =>
       url.pathname === "/api/v1/graph/expand" ? titandbNeighbours : asked);
 
     const people = document.querySelector<HTMLInputElement>("#category-people")!;
@@ -267,25 +314,6 @@ describe("the company graph", () => {
     // Nothing of the hidden category is drawn or listed — cluster included.
     assert.ok(ids(document).every((id) => !id!.startsWith("person:") && !id!.startsWith("cluster:people")));
     assert.match(document.querySelector("#status-line")!.textContent!, /hidden by the filters/);
-    window.close();
-  });
-
-  test("asking from the search box, and from an item, both draw that question", async () => {
-    const { window, document, requests } = await open("/graph", (url) =>
-      url.pathname === "/api/v1/graph/query" ? asked : org);
-
-    (document.querySelector("#query") as HTMLInputElement).value = "  cost tagging  ";
-    document.querySelector("#ask")!.dispatchEvent(new window.Event("submit"));
-    await settle();
-    assert.equal(requests.at(-1)!.searchParams.get("q"), "cost tagging");
-    assert.match(window.location.search, /q=cost/);
-
-    document.querySelector('.node[data-id="item:titandb"]')!.dispatchEvent(new window.Event("focus"));
-    const askAbout = [...document.querySelectorAll("#details button")]
-      .find((button) => button.textContent === "Ask about this")!;
-    askAbout.dispatchEvent(new window.Event("click"));
-    await settle();
-    assert.equal(requests.at(-1)!.searchParams.get("q"), "TitanDB");
     window.close();
   });
 

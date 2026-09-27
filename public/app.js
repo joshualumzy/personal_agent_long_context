@@ -127,6 +127,7 @@ const LINE_ICONS = {
   book: '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
   stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
   external: '<path d="M7 17 17 7"/><path d="M7 7h10v10"/>',
+  graph: '<circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="7" r="2.5"/><circle cx="11" cy="18" r="2.5"/><path d="M7.5 6.3l9 .5"/><path d="M6.2 8.3l3.6 7.4"/><path d="M17.6 9.1l-5.3 6.8"/>',
   pin: '<path d="M12 17v5"/><path d="M9 10.76V6h6v4.76a2 2 0 0 0 1.11 1.79l1.78.9A2 2 0 0 1 19 15.24V17H5v-1.76a2 2 0 0 1 1.11-1.79l1.78-.9A2 2 0 0 0 9 10.76Z"/><path d="M8 3h8"/>',
 };
 
@@ -910,6 +911,12 @@ function attachAssistantMeta(bubble, data) {
     meta.appendChild(contextTags);
   }
 
+  // The answer's graph: a small picture of what its evidence connects to,
+  // above the evidence itself. Opens larger on click.
+  if (data.question && data.sources && data.sources.length > 0) {
+    meta.appendChild(answerGraphPreview(data.question, data.sources));
+  }
+
   // Sources grid
   if (data.sources && data.sources.length > 0) {
     const sourcesGrid = document.createElement("div");
@@ -933,6 +940,161 @@ function attachAssistantMeta(bubble, data) {
   if (meta.children.length > 0) {
     bubble.appendChild(meta);
   }
+}
+
+// ---------------------------------------------------------------------------
+// The answer's graph
+// ---------------------------------------------------------------------------
+
+/** /api/v1/graph/query for this answer: centred on its question, seeded from
+ * the evidence it cited (in the order cited), so the picture is of what the
+ * answer drew on rather than of a fresh search. */
+function answerGraphParams(question, sources) {
+  return new URLSearchParams({
+    q: question,
+    sources: sources.map((source) => source.sourceId).filter(Boolean).slice(0, 20).join(","),
+  });
+}
+
+function answerGraphPreview(question, sources) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "answer-graph loading";
+  button.setAttribute("aria-label", "How this answer's evidence connects. Open the graph larger.");
+  button.innerHTML = `
+    <svg class="answer-graph-picture" viewBox="-190 -84 380 168" aria-hidden="true"></svg>
+    <span class="answer-graph-caption">
+      <span class="answer-graph-title">${lineIcon("graph", 12)}How the evidence connects</span>
+      <span class="answer-graph-count">Loading…</span>
+    </span>`;
+  button.addEventListener("click", () => openAnswerGraph(question, sources));
+
+  // Fetched once the preview is near the screen: a long history would
+  // otherwise ask for every answer's graph at once.
+  const load = () => loadAnswerGraphPreview(button, question, sources);
+  if (typeof IntersectionObserver === "function") {
+    const watcher = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        watcher.disconnect();
+        load();
+      }
+    }, { rootMargin: "200px" });
+    watcher.observe(button);
+  } else {
+    load();
+  }
+  return button;
+}
+
+async function loadAnswerGraphPreview(button, question, sources) {
+  try {
+    const response = await fetch(`/api/v1/graph/query?${answerGraphParams(question, sources)}`);
+    if (!response.ok) throw new Error(String(response.status));
+    const slice = await response.json();
+    const nodes = Array.isArray(slice?.nodes) ? slice.nodes : [];
+    // Nothing but the question itself: no picture worth showing.
+    if (nodes.length < 2) {
+      button.remove();
+      return;
+    }
+    drawAnswerGraph(button.querySelector("svg"), slice);
+    button.classList.remove("loading");
+    const seeds = nodes.length - 1;
+    button.querySelector(".answer-graph-count").textContent =
+      `${seeds} ${seeds === 1 ? "thing" : "things"} it points to · click to explore`;
+  } catch {
+    // The answer stands without its picture.
+    button.remove();
+  }
+}
+
+/** A small, fixed picture: the question in the middle, what it points at
+ * around it on an ellipse, and the edges between them. Kinds are told apart
+ * by shape as on the graph page. */
+function drawAnswerGraph(svg, slice) {
+  const centreId = slice.centre ?? slice.nodes[0].id;
+  const others = slice.nodes.filter((node) => node.id !== centreId);
+  const at = new Map([[centreId, { x: 0, y: 0 }]]);
+  others.forEach((node, index) => {
+    const angle = -Math.PI / 2 + (index / others.length) * Math.PI * 2;
+    at.set(node.id, { x: Math.cos(angle) * 128, y: Math.sin(angle) * 54 });
+  });
+  // The namespace is read off the <svg> itself: this script names no URLs.
+  const make = (tag, attributes) => {
+    const element = document.createElementNS(svg.namespaceURI, tag);
+    for (const [key, value] of Object.entries(attributes)) element.setAttribute(key, String(value));
+    return element;
+  };
+  const shape = (node) => {
+    switch (node.type) {
+      case "person": return make("polygon", { points: "0,-5 5,0 0,5 -5,0", class: "ag-person" });
+      case "organization": return make("polygon", { points: "-3,-5 3,-5 5,0 3,5 -3,5 -5,0", class: "ag-organization" });
+      case "event": return make("rect", { x: -4, y: -4, width: 8, height: 8, class: "ag-event" });
+      case "document": return make("polygon", { points: "0,-5 5,4 -5,4", class: "ag-document" });
+      case "query": return make("circle", { r: 7, class: "ag-query" });
+      default: return make("circle", { r: 5, class: "ag-item" });
+    }
+  };
+  svg.replaceChildren();
+  for (const edge of slice.edges) {
+    const a = at.get(edge.source);
+    const b = at.get(edge.target);
+    if (!a || !b) continue;
+    svg.append(make("line", { x1: a.x, y1: a.y, x2: b.x, y2: b.y, class: `ag-edge ${edge.type === "matches" ? "matches" : ""}` }));
+  }
+  for (const node of slice.nodes) {
+    const point = at.get(node.id);
+    const group = make("g", { transform: `translate(${point.x.toFixed(1)} ${point.y.toFixed(1)})` });
+    group.append(shape(node));
+    if (node.id !== centreId) {
+      const label = node.label || node.refKey || node.id;
+      const text = make("text", { y: point.y < 0 ? -9 : 14, class: "ag-label" });
+      text.textContent = label.length > 20 ? `${label.slice(0, 19)}…` : label;
+      group.append(text);
+    }
+    svg.append(group);
+  }
+}
+
+/** The full graph page for this answer, in a dialog over the chat: expand by
+ * clicking, filter by kind, read each item's details and evidence. */
+function openAnswerGraph(question, sources) {
+  let dialog = document.querySelector("#answer-graph-dialog");
+  if (!dialog) {
+    dialog = document.createElement("dialog");
+    dialog.id = "answer-graph-dialog";
+    dialog.className = "answer-graph-dialog";
+    dialog.setAttribute("aria-label", "How this answer's evidence connects");
+    dialog.innerHTML = `
+      <div class="answer-graph-dialog-bar">
+        <span class="answer-graph-dialog-title"></span>
+        <button type="button" class="close-btn" aria-label="Close the graph" title="Close (Esc)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      </div>
+      <iframe title="How this answer's evidence connects"></iframe>`;
+    dialog.querySelector(".close-btn").addEventListener("click", () => dialog.close());
+    // Esc pressed inside the graph goes to the frame's document, not to the
+    // dialog; the frame is same-origin, so listen there too.
+    dialog.querySelector("iframe").addEventListener("load", (event) => {
+      try {
+        event.target.contentWindow.addEventListener("keydown", (key) => {
+          if (key.key === "Escape") dialog.close();
+        });
+      } catch {
+        // Not reachable: the close button and a click outside still work.
+      }
+    });
+    // Clicking the dim area outside the sheet closes it too.
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) dialog.close();
+    });
+    document.body.appendChild(dialog);
+  }
+  dialog.querySelector(".answer-graph-dialog-title").textContent = question;
+  const params = answerGraphParams(question, sources);
+  params.set("embed", "1");
+  dialog.querySelector("iframe").src = `/graph/answer?${params}`;
+  if (typeof dialog.showModal === "function") dialog.showModal();
+  else dialog.setAttribute("open", "");
 }
 
 function appendErrorMessage(message) {
@@ -1160,11 +1322,14 @@ async function selectConversation(conversationId, title) {
     chatMessages.innerHTML = "";
     if (detail.messages && detail.messages.length > 0) {
       if (emptyState) emptyState.style.display = "none";
+      let askedBefore;
       for (const msg of detail.messages) {
         if (msg.role === "user") {
+          askedBefore = msg.content;
           appendUserMessage(msg.content);
         } else if (msg.role === "assistant") {
           appendAssistantMessage({
+            question: askedBefore,
             answer: msg.content,
             sources: msg.metadata?.sources,
             personalMemory: msg.metadata?.personalMemory,
@@ -1191,7 +1356,7 @@ async function selectConversation(conversationId, title) {
       answered: lastQuestionAt >= 0 && messages.slice(lastQuestionAt + 1).some((msg) => msg.role === "assistant"),
     };
     if (pending && !alreadyDrawn(conversationId, pending.question)) {
-      appendAssistantMessage(pending.payload);
+      appendAssistantMessage({ ...pending.payload, question: pending.question });
       drawnHistory = { conversationId, lastQuestion: pending.question, answered: true };
     }
     const failed = failedQuestions.get(conversationId);
@@ -1349,7 +1514,7 @@ chatForm.addEventListener("submit", async (e) => {
         }
         loadConversations();
       }
-      appendAssistantMessage(data);
+      appendAssistantMessage({ ...data, question: message });
       return;
     }
 
@@ -1475,6 +1640,9 @@ chatForm.addEventListener("submit", async (e) => {
         }
       }
     }
+
+    // The question travels with its answer, for the answer's graph.
+    if (finalPayload) finalPayload.question = message;
 
     if (!stillHere()) {
       // The answer is saved in its own conversation. If that conversation is back on screen (the
