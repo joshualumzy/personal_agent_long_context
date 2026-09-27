@@ -1096,6 +1096,225 @@ def build_thread_edges(cursor) -> dict[str, int]:
     return counts
 
 
+# A confluence page's own header line: "**Author:** Nadia".
+AUTHOR_HEADER = r"\*\*Author:\*\*\s*([^\n*]+)"
+
+
+def build_document_chain_edges(cursor) -> dict[str, int]:
+    """Who wrote each page, which pages it cites, and which page a chunk is
+    part of.
+
+      wrote    person -> document. The confluence_created event's author where
+               there is one (219 pages), else the page's own "**Author:**"
+               header (473 of 479 pages carry one; on the 219 both exist,
+               they agree on every one). props.source says which.
+      cites    document -> document the body names by id, when that page
+               exists and is not the page itself or its parent.
+      part_of  document -> the parent page facts.parent_id names.
+    """
+    counts: dict[str, int] = {}
+    cursor.execute(
+        """
+        WITH from_event AS (
+            SELECT DISTINCT p.node_id AS person, doc.node_id AS document
+            FROM graph_edges a
+            JOIN graph_nodes p ON p.node_id = a.dst_node_id AND p.node_type = 'person'
+            JOIN graph_edges pr ON pr.src_node_id = a.src_node_id AND pr.edge_type = 'produced'
+            JOIN graph_nodes doc ON doc.node_id = pr.dst_node_id AND doc.node_type = 'document'
+            JOIN graph_nodes ev ON ev.node_id = a.src_node_id
+                                AND ev.node_subtype = 'confluence_created'
+            WHERE a.edge_type = 'authored_by'
+        ),
+        from_header AS (
+            SELECT DISTINCT pn.node_id AS person, doc.node_id AS document
+            FROM source_documents d
+            CROSS JOIN LATERAL regexp_match(d.body, %s) AS m(captured)
+            JOIN actor_identity ai ON ai.alias = trim(m.captured[1])
+            JOIN actors canon ON canon.actor_id = ai.actor_id
+            JOIN graph_nodes pn ON pn.node_type = 'person' AND pn.ref_key = canon.name
+            JOIN graph_nodes doc ON doc.node_type = 'document' AND doc.ref_key = d.source_id
+            WHERE d.source_type = 'confluence'
+              AND NOT EXISTS (SELECT 1 FROM from_event fe WHERE fe.document = doc.node_id)
+        )
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type, props)
+        SELECT person, document, 'wrote', jsonb_build_object('source', 'confluence_created')
+        FROM from_event
+        UNION ALL
+        SELECT person, document, 'wrote', jsonb_build_object('source', 'header')
+        FROM from_header
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """,
+        (AUTHOR_HEADER,),
+    )
+    counts["wrote"] = cursor.rowcount
+
+    cursor.execute(
+        """
+        WITH parent AS (
+            SELECT original_links->>'confluence' AS page, facts->>'parent_id' AS parent
+            FROM source_documents
+            WHERE source_type = 'confluence_created' AND coalesce(facts->>'parent_id', '') <> ''
+        )
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+        SELECT DISTINCT child.node_id, up.node_id, 'part_of'
+        FROM parent
+        JOIN graph_nodes child ON child.node_type = 'document' AND child.ref_key = parent.page
+        JOIN graph_nodes up ON up.node_type = 'document' AND up.ref_key = parent.parent
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    counts["part_of"] = cursor.rowcount
+
+    cursor.execute(
+        """
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+        SELECT DISTINCT src.node_id, dst.node_id, 'cites'
+        FROM source_documents d
+        CROSS JOIN LATERAL regexp_matches(d.body, '(CONF-[A-Z]+-[0-9]+(?:-[0-9]+)?)', 'g') AS m(captured)
+        JOIN graph_nodes src ON src.node_type = 'document' AND src.ref_key = d.source_id
+        JOIN graph_nodes dst ON dst.node_type = 'document' AND dst.ref_key = m.captured[1]
+        WHERE d.source_type = 'confluence'
+          AND dst.node_id <> src.node_id
+          AND NOT EXISTS (
+              SELECT 1 FROM graph_edges up
+              WHERE up.src_node_id = src.node_id AND up.dst_node_id = dst.node_id
+                AND up.edge_type = 'part_of'
+          )
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    counts["cites"] = cursor.rowcount
+    return counts
+
+
+def annotate_document_self_audits(cursor) -> int:
+    """A page's own gap assessment, onto the page's props.
+
+    knowledge_gap_detected rows with detection_method 'author_self_audit' are
+    a page's author assessing it (264 pages, one row each): how well the topic
+    fits their expertise, what they deferred, which claims they hedged. That
+    is a fact about the page, not a relationship, so it is a prop rather than
+    an edge or a node. The other 2,171 knowledge_gap_detected rows are
+    detections on slack messages and tickets, mostly classified as no gap.
+    """
+    cursor.execute(
+        """
+        UPDATE graph_nodes doc SET props = doc.props || jsonb_strip_nulls(jsonb_build_object(
+            'gap_classification', a.facts->>'gap_classification',
+            'author_domain_fit', a.facts->>'author_domain_fit',
+            'deferred_sections', a.facts->'deferred_sections',
+            'hedged_claims', a.facts->'hedged_claims',
+            'topics_beyond_expertise', a.facts->'topics_beyond_expertise'
+        ))
+        FROM source_documents a
+        WHERE a.source_type = 'knowledge_gap_detected'
+          AND a.facts->>'detection_method' = 'author_self_audit'
+          AND doc.node_type = 'document'
+          AND doc.ref_key = a.original_links->>'confluence'
+        """
+    )
+    return cursor.rowcount
+
+
+def build_evidence_nodes(cursor) -> dict[str, int]:
+    """Map every employee-visible artifact to the graph nodes it belongs to.
+
+    Most evidence a question retrieves is a slack message, email or meeting
+    transcript, none of which is a graph node. This table is how such a hit is
+    placed on the graph. Each route is a field the corpus states, named in
+    `via`, so a caller can prefer a ticket the evidence is about over a person
+    it merely mentions:
+
+      self          the artifact is itself a node (tickets, PRs, pages, ...)
+      event         a graph event's own links name it (a design discussion's
+                    transcript and slack thread)
+      link          a document link joins it to an item/document node (the
+                    email a ticket was opened from, an alert's ticket)
+      thread        it is in a causal_chain thread rooted at a node (an
+                    incident's slack alerts)
+      organization  an email's facts name the customer or vendor
+      department    its department, or for slack its channel's name
+                    (slack_engineering_backend -> Engineering_Backend)
+      person        its actors list names the person
+    """
+    counts: dict[str, int] = {}
+    routes = {
+        "self": """
+            SELECT d.source_id, g.node_id
+            FROM source_documents d
+            JOIN graph_nodes g ON g.ref_key = d.source_id AND g.node_type IN ('item', 'document')
+            WHERE d.category = 'artifact'
+        """,
+        "event": """
+            SELECT l.related_source_id, g.node_id
+            FROM document_links l
+            JOIN graph_nodes g ON g.ref_key = l.source_id AND g.node_type = 'event'
+            JOIN source_documents a ON a.source_id = l.related_source_id AND a.category = 'artifact'
+        """,
+        "link": """
+            SELECT l.source_id, g.node_id
+            FROM document_links l
+            JOIN graph_nodes g ON g.ref_key = l.related_source_id AND g.node_type IN ('item', 'document')
+            JOIN source_documents a ON a.source_id = l.source_id AND a.category = 'artifact'
+          UNION
+            SELECT l.related_source_id, g.node_id
+            FROM document_links l
+            JOIN graph_nodes g ON g.ref_key = l.source_id AND g.node_type IN ('item', 'document')
+            JOIN source_documents a ON a.source_id = l.related_source_id AND a.category = 'artifact'
+        """,
+        "thread": """
+            SELECT member.id, g.node_id
+            FROM source_documents d
+            CROSS JOIN LATERAL jsonb_array_elements_text(d.facts->'causal_chain')
+                 WITH ORDINALITY AS member(id, position)
+            JOIN graph_nodes g ON g.ref_key = d.facts->'causal_chain'->>0
+                               AND g.node_type IN ('item', 'document', 'event')
+            JOIN source_documents a ON a.source_id = member.id AND a.category = 'artifact'
+            WHERE jsonb_typeof(d.facts->'causal_chain') = 'array' AND member.position > 1
+        """,
+        "organization": f"""
+            WITH mail AS ({ORGANIZATION_OF_MAIL_SQL})
+            SELECT d.source_id, o.node_id
+            FROM source_documents d
+            LEFT JOIN mail ON mail.contact = coalesce(d.facts->>'vendor', d.facts->>'customer')
+            JOIN graph_nodes o ON o.node_type = 'organization'
+                               AND o.node_subtype IN ('customer', 'vendor')
+                               AND o.ref_key IN (d.facts->>'customer', d.facts->>'org', mail.organization)
+            WHERE d.category = 'artifact'
+        """,
+        "department": """
+            SELECT d.source_id, dept.node_id
+            FROM source_documents d
+            JOIN graph_nodes dept ON dept.node_type = 'organization'
+                                  AND dept.node_subtype = 'department'
+                                  AND (dept.ref_key = d.department
+                                       OR (d.source_type = 'slack'
+                                           AND lower(dept.ref_key) = substring(d.source_id FROM '^slack_(.*)_\\d{4}-')))
+            WHERE d.category = 'artifact'
+        """,
+        "person": """
+            SELECT da.source_id, pn.node_id
+            FROM document_actors da
+            JOIN source_documents a ON a.source_id = da.source_id AND a.category = 'artifact'
+            JOIN actor_identity ai ON ai.actor_id = da.actor_id
+            JOIN actors canon ON canon.actor_id = ai.actor_id
+            JOIN graph_nodes pn ON pn.node_type = 'person' AND pn.ref_key = canon.name
+        """,
+    }
+    for via, select in routes.items():
+        cursor.execute(
+            f"""
+            INSERT INTO evidence_nodes (source_id, node_id, via)
+            SELECT DISTINCT r.source_id, r.node_id, %s
+            FROM ({select}) AS r(source_id, node_id)
+            ON CONFLICT DO NOTHING
+            """,
+            (via,),
+        )
+        counts[via] = cursor.rowcount
+    return counts
+
+
 def build_owns_domain_edges(cursor) -> int:
     """person -> item(domain), from the registry's primary/former owner."""
     cursor.execute(
@@ -1300,12 +1519,19 @@ def main() -> int:
             print(f"incident recurrence caused_by: {build_incident_recurrence_edges(cursor)}", file=sys.stderr)
             for label, count in build_thread_edges(cursor).items():
                 print(f"{label} edges: {count}", file=sys.stderr)
+            for label, count in build_document_chain_edges(cursor).items():
+                print(f"{label} edges: {count}", file=sys.stderr)
+            print(f"self-audited pages:  {annotate_document_self_audits(cursor)}", file=sys.stderr)
             print(f"owns_domain edges:   {build_owns_domain_edges(cursor)}", file=sys.stderr)
             print(f"updates_domain edges: {build_updates_domain_edges(cursor)}", file=sys.stderr)
             from_registry, from_root_cause, from_title = build_about_domain_edges(cursor)
             print(f"about_domain <- registry:   {from_registry}", file=sys.stderr)
             print(f"about_domain <- root_cause: {from_root_cause}", file=sys.stderr)
             print(f"about_domain <- title:      {from_title}", file=sys.stderr)
+
+            # Last: it maps evidence onto the nodes built above.
+            for via, count in build_evidence_nodes(cursor).items():
+                print(f"evidence -> node via {via}: {count}", file=sys.stderr)
 
             cursor.execute("SELECT node_type, count(*) FROM graph_nodes GROUP BY 1 ORDER BY 1")
             print("\nnodes by type:", file=sys.stderr)
