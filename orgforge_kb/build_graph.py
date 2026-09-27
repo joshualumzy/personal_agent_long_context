@@ -77,6 +77,7 @@ SMALL_ITEM_TYPES = ("invoice", "sf_opp", "zd_ticket", "nps_survey")
 STANDALONE_EVENT_TYPES = (
     "design_discussion", "jira_ticket_created", "ticket_progress",
     "pr_review", "sprint_planned", "escalation_chain", "confluence_created",
+    "dept_plan_created",
 )
 
 
@@ -363,6 +364,63 @@ def build_involves_edges(cursor) -> int:
     return cursor.rowcount
 
 
+def build_dept_plan_involves_edges(cursor) -> int:
+    """dept_plan event -> person, for names dept_plan_created carries inside
+    its own facts rather than in document_actors.
+
+    document_actors already links each dept_plan_created row to its lead —
+    that edge comes for free from build_involves_edges() above. It does not
+    reach facts.engineer_plans[].name (every engineer the plan covers, not
+    just the lead) or agenda[].collaborator[] (who else a specific agenda
+    item names), so those need their own resolution here, through
+    actor_identity for the same alias-merging reason every other name lookup
+    in this file goes through it rather than actors.name directly.
+
+    related_id inside each agenda item (229 distinct values, all of which
+    resolve to existing item/event nodes) is deliberately not built into an
+    edge here: it names a work item on someone's plan for the day, not a
+    person or organization, and none of this graph's edge types describe
+    that relationship without stretching 'involves' past the event/document
+    -> person/organization meaning it has everywhere else it is used.
+    """
+    cursor.execute(
+        """
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+        SELECT DISTINCT sn.node_id, pn.node_id, 'involves'
+        FROM source_documents d
+        CROSS JOIN LATERAL jsonb_array_elements(d.facts->'engineer_plans') AS ep
+        JOIN actors a ON a.name = ep->>'name'
+        JOIN actor_identity ai ON ai.actor_id = a.actor_id
+        JOIN graph_nodes pn ON pn.node_type = 'person'
+                            AND pn.ref_key = (SELECT name FROM actors WHERE actor_id = ai.actor_id)
+        JOIN graph_nodes sn ON sn.node_type = 'event' AND sn.ref_key = d.source_id
+        WHERE d.source_type = 'dept_plan_created'
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    engineers = cursor.rowcount
+
+    cursor.execute(
+        """
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+        SELECT DISTINCT sn.node_id, pn.node_id, 'involves'
+        FROM source_documents d
+        CROSS JOIN LATERAL jsonb_array_elements(d.facts->'engineer_plans') AS ep
+        CROSS JOIN LATERAL jsonb_array_elements(ep->'agenda') AS agenda_item
+        CROSS JOIN LATERAL jsonb_array_elements_text(agenda_item->'collaborator') AS collaborator_name
+        JOIN actors a ON a.name = collaborator_name
+        JOIN actor_identity ai ON ai.actor_id = a.actor_id
+        JOIN graph_nodes pn ON pn.node_type = 'person'
+                            AND pn.ref_key = (SELECT name FROM actors WHERE actor_id = ai.actor_id)
+        JOIN graph_nodes sn ON sn.node_type = 'event' AND sn.ref_key = d.source_id
+        WHERE d.source_type = 'dept_plan_created'
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    collaborators = cursor.rowcount
+    return engineers, collaborators
+
+
 def build_produced_edges(cursor) -> int:
     """event -> item/document it resulted in, from each event's own facts.
 
@@ -619,6 +677,9 @@ def main() -> int:
             print(f"zd_ticket events:  {build_zd_ticket_event_nodes(cursor)}", file=sys.stderr)
 
             print(f"involves edges:      {build_involves_edges(cursor)}", file=sys.stderr)
+            dp_engineers, dp_collaborators = build_dept_plan_involves_edges(cursor)
+            print(f"dept_plan engineer involves:     {dp_engineers}", file=sys.stderr)
+            print(f"dept_plan collaborator involves: {dp_collaborators}", file=sys.stderr)
             print(f"produced edges:      {build_produced_edges(cursor)}", file=sys.stderr)
             print(f"escalated_via edges: {build_escalated_via_edges(cursor)}", file=sys.stderr)
             zd_produced, zd_caused_by, zd_documented_by = build_zd_ticket_edges(cursor)
