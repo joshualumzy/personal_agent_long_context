@@ -766,13 +766,14 @@ async function request() {
       parameters.set("seed", seed.sourceId);
       parameters.set("depth", "1");
     } else {
-      // Nothing asked yet — the first thing on screen should still be
-      // something, not an error demanding a question before it will draw
-      // anything. Incidents are the one view guaranteed to be non-empty.
-      // A fixed sentinel key stands in for "no seed" so the main tab's
-      // cache and Restore original do not need a separate code path for it.
+      // Nothing asked yet, so open on the causal spine: the twelve incidents
+      // and how they caused one another. subtype=incident asks for the event
+      // nodes specifically — incidentsOnly matches anything *flagged* as
+      // incident-related, which is the jira items, and gave a thin picture of
+      // 5 tickets with no causal edges at all. Small enough to read, and every
+      // node in it can be clicked open from here.
       state.mainOriginalSeed = MAIN_NO_SEED_KEY;
-      parameters.set("incidentsOnly", "true");
+      parameters.set("subtype", "incident");
       parameters.set("limit", "60");
     }
   }

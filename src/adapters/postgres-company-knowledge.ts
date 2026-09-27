@@ -352,11 +352,18 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
       conditions.push(`props->>'department' = ${next()}`);
       parameters.push(request.department);
     }
+    if (request.subtype) {
+      conditions.push(`node_subtype = ${next()}`);
+      parameters.push(request.subtype);
+    }
     if (request.incidentsOnly) conditions.push("(props->>'is_incident')::boolean");
 
     parameters.push(limit);
     const result = await this.pool.query<GraphNodeRow>(
-      `SELECT ref_key, node_type, label, props
+      // node_subtype has to be selected, not just filtered on: the view tells
+      // an incident from a sprint plan by it, and leaving it out of the SELECT
+      // silently stripped it from every node this path returned.
+      `SELECT ref_key, node_type, node_subtype, label, props
        FROM graph_nodes
        WHERE ${conditions.join(" AND ")}
        ORDER BY (props->>'simulation_day')::int NULLS LAST, ref_key

@@ -60,6 +60,13 @@ export interface GraphSliceRequest {
   category?: string;
   sourceType?: string;
   department?: string;
+  /**
+   * Keep only nodes of this graph_nodes.node_subtype — 'incident', 'domain',
+   * 'confluence' and so on. Narrower than node type, and what the main tab's
+   * default view uses to ask for the twelve incidents specifically rather than
+   * anything flagged as incident-related.
+   */
+  subtype?: string;
   incidentsOnly?: boolean;
   includeActors?: boolean;
   limit?: number;

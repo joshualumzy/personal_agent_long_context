@@ -467,6 +467,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       category?: string;
       sourceType?: string;
       department?: string;
+      subtype?: string;
       incidentsOnly?: string;
       includeActors?: string;
       limit?: string;
@@ -497,6 +498,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       ...(query.category ? { category: query.category } : {}),
       ...(query.sourceType ? { sourceType: query.sourceType } : {}),
       ...(query.department ? { department: query.department } : {}),
+      ...(query.subtype ? { subtype: query.subtype } : {}),
       incidentsOnly: query.incidentsOnly === "true",
       includeActors: query.includeActors === "true",
       ...(number(query.limit) !== undefined ? { limit: number(query.limit)! } : {}),
