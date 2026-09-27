@@ -8,8 +8,8 @@
   --sky-raised: var(--panel);
   --sky-high: var(--hover);
   --text: var(--ink);
-  --gold: #1f6d5f;
-  --aqua: #4f8f82;
+  --gold: #4b3fd1;
+  --aqua: #3d32b8;
   --ochre: #b7862b;
   --slate: #5b6b7c;
   --indigo: #4a6fa5;
@@ -42,28 +42,56 @@ button, .quiet { font: inherit; cursor: pointer; }
 .quiet:hover { border-color: var(--muted); }
 .quiet.on { border-color: var(--accent); color: var(--accent); }
 
-/* The company overviews, one tab each. */
-.view-tabs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 100%; }
-.view-divider { width: 1px; align-self: stretch; background: var(--line); margin: 0 4px; }
+/* The company overviews: plain tabs underlined when chosen, in three
+   groups, so six of them read as a menu and not a row of buttons. A group's
+   name sits above its tabs, small and pale, so it reads as a heading and not
+   as a seventh tab. */
+.view-tabs { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px 0; flex: 1 1 auto; min-width: 0; }
+.view-group {
+  display: grid; grid-auto-flow: column; grid-template-rows: auto auto; justify-content: start;
+  column-gap: 2px; padding: 0 16px; border-left: 1px solid var(--line);
+}
+.view-group:first-child { padding-left: 0; border-left: 0; }
+.view-group-label {
+  grid-row: 1; grid-column: 1 / -1; padding: 0 8px 2px;
+  color: var(--faint); font-size: .68rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+}
 .view-tab {
-  border: 1px solid var(--line); border-radius: var(--radius-control);
-  padding: 6px 12px; background: var(--sky-raised); color: var(--muted);
-  font: inherit; font-size: .88rem; cursor: pointer;
+  grid-row: 2;
+  border: 0; border-bottom: 2px solid transparent; border-radius: 0;
+  padding: 4px 8px 5px; background: none; color: var(--ink-2, var(--text));
+  font: inherit; font-size: .92rem; cursor: pointer;
 }
-.view-tab:hover:not(:disabled) { border-color: var(--muted); }
+.view-tab:hover:not(:disabled) { color: var(--accent); }
 .view-tab:disabled { opacity: .45; cursor: default; }
-.view-tab.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.view-tab.on { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.view-about { flex-basis: 100%; margin: 0; padding-left: 8px; color: var(--muted); font-size: .86rem; }
 
-/* Category filters: what is shown, and what an expansion asks for. */
-.categories { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 100%; }
-.categories legend { float: left; margin-right: 6px; color: var(--muted); font-size: .82rem; padding: 0; }
-.chip {
-  display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-  border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px 3px 6px;
-  font-size: .82rem; color: var(--text); background: var(--sky-raised);
+/* Show: a menu of category checkboxes, used now and then. Its button says
+   when something is filtered out. */
+.show-menu { position: relative; flex: none; margin-left: auto; }
+.show-menu > summary {
+  list-style: none; cursor: pointer; user-select: none;
+  border: 1px solid var(--line); border-radius: var(--radius-control); padding: 5px 10px;
+  font-size: .86rem; color: var(--text); background: var(--sky-raised);
 }
-.chip input { accent-color: var(--accent); margin: 0; }
-.chip:has(input:not(:checked)) { color: var(--faint); background: transparent; }
+.show-menu > summary::-webkit-details-marker { display: none; }
+.show-menu > summary::after { content: "▾"; margin-left: 6px; color: var(--muted); }
+.show-menu > summary:hover { border-color: var(--muted); }
+.show-menu.filtered > summary { border-color: var(--accent); color: var(--accent); }
+.categories {
+  position: absolute; right: 0; top: calc(100% + 6px); z-index: 10; min-width: 210px;
+  margin: 0; padding: 6px; display: grid; gap: 2px;
+  background: var(--sky-raised); border: 1px solid var(--line); border-radius: var(--radius-control);
+  box-shadow: 0 8px 24px rgb(0 0 0 / .12);
+}
+.show-option {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 6px 8px; border-radius: 6px; font-size: .88rem; color: var(--text);
+}
+.show-option:hover { background: var(--sky-high); }
+.show-option input { accent-color: var(--accent); margin: 0; }
+.show-option:has(input:not(:checked)) { color: var(--faint); }
 
 /* Header */
 .top {
@@ -86,7 +114,7 @@ h2 { margin: 0 0 8px; font-family: var(--f-display); font-size: 1.05rem; font-we
 /* Controls */
 .controls {
   width: min(1320px, calc(100% - 32px)); margin: 10px auto 0; box-sizing: border-box;
-  display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+  display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: center;
   padding: 14px; background: var(--sky-raised);
   border: 1px solid var(--line); border-radius: var(--radius-surface);
 }
@@ -155,21 +183,101 @@ h2 { margin: 0 0 8px; font-family: var(--f-display); font-size: 1.05rem; font-we
   color: var(--muted); font-size: .82rem;
 }
 
-.edge { stroke: var(--edge); stroke-opacity: .6; stroke-width: 1.2; fill: none; }
+/* Line widths are in screen pixels (non-scaling-stroke), so a thick line
+   stays thick however far the picture is zoomed out. Relationships a reader
+   looks for have their own look; the rest stay thin and grey. */
+.edge { stroke: var(--edge); stroke-opacity: .6; stroke-width: 1.2; fill: none; vector-effect: non-scaling-stroke; }
 .edge.involves, .edge.updates_domain { stroke-dasharray: 3 3; }
 .edge.more { stroke-dasharray: 1 3; stroke-opacity: .5; }
 .edge.matches { stroke: var(--text); stroke-opacity: .25; }
-.lane-label { font-size: 10px; fill: var(--faint); }
+.edge.leads { stroke: var(--accent); stroke-opacity: .9; stroke-width: 2.6; }
+.edge.belongs_to { stroke: var(--muted); stroke-dasharray: 4 3; }
+.edge.owns_domain { stroke: var(--ochre); stroke-opacity: .9; stroke-width: 2; }
+.edge.formerly_owned { stroke: var(--ochre); stroke-opacity: .9; stroke-width: 1.4; stroke-dasharray: 2 3; }
+.edge.caused_by { stroke: var(--danger); stroke-opacity: .8; stroke-width: 1.8; }
+.edge-arrow { fill: var(--danger); }
+.key.line { width: 28px; height: 8px; }
+.lane-label { font-size: min(calc(11px * var(--px, 1)), 18px); fill: var(--muted); }
 .node { cursor: pointer; }
 .node .shape { stroke: var(--sky-raised); stroke-width: 1.5; }
-.node .caption { font-size: 9px; fill: var(--muted); text-anchor: middle; pointer-events: none; }
+/* --px is drawing units per screen pixel, set with the viewBox: captions stay
+   about 12px on screen, up to 16 units, past which rows 26 units apart and
+   sub-columns 150 apart would print over each other. The halo keeps a caption
+   readable over lines. A caption is the biggest thing to click on a node, so
+   it takes clicks; line labels do not. */
+.node .caption, .edge-label {
+  paint-order: stroke; stroke: var(--sky-raised); stroke-linejoin: round;
+  stroke-width: calc(6px * var(--px, 1));
+}
+.edge-label { pointer-events: none; }
+.node .caption { font-size: min(calc(12px * var(--px, 1)), 16px); fill: var(--ink-2, var(--text)); text-anchor: middle; }
 .node .caption.side { text-anchor: start; }
-.node .caption.strong { font-size: 11px; font-weight: 600; fill: var(--text); }
+.node .caption.hang { dominant-baseline: hanging; }
+.node .caption.side.left { text-anchor: end; }
+.node .caption.strong { font-size: min(calc(13px * var(--px, 1)), 18px); font-weight: 600; fill: var(--text); }
+.node.kind-organization .caption, .node.lead .caption { font-weight: 700; fill: var(--text); }
+.edge-label { font-size: min(calc(11px * var(--px, 1)), 18px); fill: var(--muted); text-anchor: middle; dominant-baseline: middle; }
+/* Hovering or focusing an item lights it and its neighbours; the rest fade. */
+.node, .edge, .edge-arrow, .edge-label { transition: opacity .15s; }
+#canvas.focus .node:not(.on), #canvas.focus .edge:not(.on),
+#canvas.focus .edge-arrow:not(.on), #canvas.focus .edge-label:not(.on) { opacity: .12; }
+
+/* The documents web (force layout): lines stay pale until an item is
+   hovered, when its own light up; --grow (set per item) makes the
+   well-connected ones bigger; the small ones are captioned on hover. Items
+   can be dragged. */
+#canvas.force .edge { stroke-opacity: .28; }
+#canvas.force.focus .edge.on { stroke: var(--accent); stroke-opacity: .9; stroke-width: 1.6; }
+#canvas.force .node { cursor: grab; }
+/* Captions here float over other items, and hidden ones would still catch
+   the pointer: the shape and its ring are what to click. */
+#canvas.force .node .caption { pointer-events: none; }
+#canvas.force .node.minor .caption { opacity: 0; transition: opacity .15s; }
+#canvas.force .node.minor.on .caption, #canvas.force .node.minor.selected .caption,
+#canvas.force .node.minor:focus-visible .caption { opacity: 1; }
+
+/* With a focus: the focus and its neighbours are lit and captioned, the
+   next ring is nearly as clear, and the rest is a quieter background whose
+   main items (people, domains, well-connected pages) are still named. The
+   focus's own lines are in the accent colour and named. Hovering still
+   lights what an item is joined to, wherever it is. */
+#canvas.focusing .node.mid { opacity: .8; }
+#canvas.focusing .node.far { opacity: .38; }
+#canvas.focusing .node.far.minor .caption { opacity: 0; }
+#canvas.focusing .node.near .caption, #canvas.focusing .node.mid .caption { opacity: 1; }
+#canvas.focusing .node.the-focus .caption { font-weight: 700; fill: var(--text); }
+#canvas.focusing .node.the-focus .shape { stroke: var(--accent); stroke-width: 2.5; }
+#canvas.focusing .edge.far { stroke-opacity: .12; }
+#canvas.focusing .edge.mid { stroke-opacity: .3; }
+#canvas.force .edge-arrow.story { fill: var(--accent); opacity: .85; }
+#canvas.focusing .edge-arrow.story:not(.on) { opacity: .85; }
+.caption-note { font-weight: 500; fill: var(--muted); font-size: .85em; }
+/* A word with no clear spot (see declutter in app.js) waits for a hover. */
+#canvas .caption.crowded, #canvas .edge-label.crowded { opacity: 0; }
+#canvas.focus .node.on .caption.crowded, #canvas.focus .edge-label.on.crowded { opacity: 1; }
+#canvas.focusing .edge.near { stroke: var(--accent); stroke-opacity: .8; stroke-width: 1.8; }
+#canvas.focusing.focus .node.on { opacity: 1; }
+#canvas.focusing.focus .node.on .caption { opacity: 1; }
+
+.trail { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; flex: 1 1 auto; min-width: 0; margin: 0 12px; font-size: .86rem; }
+.trail button {
+  border: 0; background: none; padding: 2px 4px; border-radius: 6px;
+  color: var(--accent); font: inherit; cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+}
+.trail button:hover { background: var(--accent-soft); }
+.trail-step { color: var(--faint); }
+.trail-here { font-weight: 600; color: var(--text); padding: 2px 4px; }
 .node.expanded .shape { stroke: var(--muted); }
 .node:hover .shape, .node.selected .shape { stroke: var(--text); stroke-width: 2; }
-.node:focus-visible { outline: none; }
+/* The ring below marks keyboard focus; the browser's own box around a
+   clicked item is dropped. */
+.node:focus, .node:focus-visible { outline: none; }
 .node:focus-visible .ring { stroke: var(--accent); stroke-width: 2.5; fill: none; }
 .node .ring { stroke: none; fill: none; }
+/* Zoomed out, a 7-unit shape is a few pixels: grow shapes a little with the
+   zoom, and give each node an invisible target about 18px across. */
+.node .shape { transform: scale(calc(var(--grow, 1) * min(max(calc(var(--px, 1) * .6), 1), 1.6))); }
+.node .ring { r: min(calc(9px * var(--px, 1)), 13px); fill: transparent; pointer-events: all; }
 
 /* Table view: the accessible source of truth for the same relationships. */
 .table-scroll { max-height: min(60vh, 560px); overflow: auto; }
@@ -301,3 +409,70 @@ body.embedded[data-mode="answer"] #canvas { height: calc(100vh - 128px); }
 .guide .legend { display: grid; gap: 6px; margin: 0; font-size: .78rem; }
 .guide .legend li.legend-note { margin-left: 0; font-style: normal; color: var(--muted); }
 .controls[hidden] { display: none; }
+
+/* Who knows what: domains × departments. */
+.arranged { min-height: 200px; }
+.matrix-scroll, .lanes-scroll { overflow-x: auto; margin-top: 8px; }
+table.matrix { border-collapse: separate; border-spacing: 3px; font-size: .86rem; }
+.matrix th, .matrix td { border: 0; padding: 0; vertical-align: middle; }
+.matrix thead th { position: static; background: none; color: var(--muted); font-size: .78rem; font-weight: 600; text-align: center; padding: 4px; line-height: 1.25; }
+.matrix thead th:first-child, .matrix thead th:nth-last-child(-n+2) { text-align: left; }
+.matrix thead small { display: block; font-weight: 400; color: var(--faint); }
+.matrix tbody th { text-align: left; white-space: nowrap; padding-right: 10px; font-weight: 600; }
+.matrix tbody tr:hover { background: none; }
+.matrix button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.matrix tbody th button:hover, .matrix .owner button:hover { text-decoration: underline; }
+.gap-tag { margin-left: 6px; font-size: .68rem; font-weight: 600; color: var(--danger); border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; }
+.matrix td.cell button {
+  display: block; width: 100%; min-width: 44px; padding: 7px 4px; border-radius: 6px;
+  text-align: center; font-variant-numeric: tabular-nums;
+  background: color-mix(in srgb, var(--accent) var(--share), transparent); color: var(--text);
+}
+.matrix td.cell button.strong { color: #fff; }
+.matrix td.cell button:hover { outline: 2px solid var(--text); outline-offset: -2px; }
+.matrix td.owner { white-space: nowrap; padding: 2px 8px; font-size: .84rem; line-height: 1.3; }
+.owner-department { display: block; color: var(--muted); font-size: .74rem; line-height: 1.2; }
+.matrix td.owner.left { background: #f6e3e0; color: var(--danger); border-radius: 6px; font-weight: 600; }
+.matrix td.owner.left .owner-department { color: var(--danger); }
+
+/* Incidents: one row each, follow-ons indented under their cause. */
+.lanes { display: grid; gap: 12px; min-width: 760px; }
+.lane-group { border: 1px solid var(--line); border-radius: var(--radius-control); overflow: hidden; }
+.lane {
+  display: grid; grid-template-columns: 58px minmax(0, 1fr) 150px 70px 118px 150px; gap: 10px; align-items: center;
+  width: 100%; padding: 8px 12px; border: 0; border-top: 1px solid var(--line); background: var(--sky-raised);
+  font: inherit; font-size: .84rem; text-align: left; color: var(--text); cursor: pointer;
+}
+.lane-group .lane:first-child { border-top: 0; background: var(--sky-high); }
+.lane:hover { background: var(--accent-soft) !important; }
+.lane.head { cursor: default; border: 0; background: none; padding-block: 0; color: var(--faint); font-size: .74rem; font-weight: 600; }
+.lane.head:hover { background: none !important; }
+.lane .when { color: var(--muted); font-variant-numeric: tabular-nums; }
+.lane .what { min-width: 0; padding-left: calc(var(--depth, 0) * 18px); position: relative;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.lane.follow-on .what::before { content: "↳ "; color: var(--faint); }
+.lane .what b { color: var(--ochre); margin-right: 6px; }
+.kind-tag { font-size: .72rem; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-right: 6px; }
+.lane .who { color: var(--ink-2, var(--text)); }
+.lane .keys { display: flex; flex-wrap: wrap; gap: 3px; }
+.key-chip { font-size: .74rem; background: var(--accent-soft); color: var(--accent); border-radius: 999px; padding: 0 7px; white-space: nowrap; }
+.lane .none { color: var(--faint); }
+.lane-note { margin: 0; padding: 5px 12px 7px; font-size: .78rem; color: var(--muted); background: var(--sky-high); border-top: 1px solid var(--line); }
+
+
+/* The company page beside the shared plate: the graph is the page's sheet, and scrolls in it. */
+.kaki > #page.graph-page { flex: 1; min-width: 0; height: auto; overflow-y: auto; background: var(--panel); border-radius: 18px; box-shadow: 0 1px 2px rgb(28 27 34 / .04); }
+body[data-mode="company"]:has(.app-layout.kaki) { margin: 0; height: 100vh; overflow: hidden; }
+
+/* The documents web in Kaki's two colours: the focus is marked in yellow, like
+   a highlighter on the page; its story (lines, beads, neighbours) is violet;
+   everything else is pale violet background. Softer strokes suit the float. */
+#canvas.focusing .node.the-focus .shape { fill: #ffe79a; stroke: #e3b400; stroke-width: 2; }
+#canvas.focusing .node.the-focus .ring { fill: #fff6d2; stroke: none; }
+#canvas.focusing .node.near:not(.the-focus) .shape { fill: #e4e0fa; stroke: #8f85e6; stroke-width: 1.6; }
+#canvas.focusing .edge.near { stroke: #8f85e6; stroke-opacity: .75; stroke-width: 1.6; stroke-linecap: round; }
+#canvas.force.focus .edge.on { stroke: #8f85e6; stroke-opacity: .8; stroke-width: 1.5; stroke-linecap: round; }
+#canvas.force .edge-arrow.story, #canvas.focusing .edge-arrow.story:not(.on) { fill: #8f85e6; opacity: .9; }
+#canvas.force .edge-label { fill: var(--muted); }
+/* Soft corners: the shapes' outlines, and the legend's keys, turn round rather than meet in a point. */
+.shape, .key polygon, .key rect { stroke-linejoin: round; }

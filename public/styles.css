@@ -2368,8 +2368,6 @@ button.todo-item:hover { border-color: var(--accent); background: var(--hover); 
    The walking hand and the name, top left. */
 .plate-head .brand { display: inline-flex; align-items: center; gap: 8px; width: auto; height: auto; border-radius: 0; background: none; color: var(--ink); font: 700 16px/1 var(--f-ui); letter-spacing: -.02em; }
 .plate-head .brand img { width: 26px; height: auto; display: block; }
-.home-win { width: 44px; height: auto; flex: none; }
-.home-win[hidden], .empty-avatar-wrapper[hidden] { display: none; }
 
 /* ------------------------------------------------------------ one reading column
    The home, the conversation and the composer share one measure, centred: without
@@ -2381,54 +2379,189 @@ button.todo-item:hover { border-color: var(--accent); background: var(--hover); 
 .kaki .input-container { padding: 12px 40px 16px; }
 .kaki .chat-form { max-width: 720px; }
 
-/* ------------------------------------------------------------ the page as a spread
-   An editorial grid instead of a centred column: a narrow rail on the left carries
-   labels, times and who is speaking; everything to read starts on one line to its
-   right. The block sits a little left of centre, so the space on the right reads as
-   margin, not as leftover. Boxes give way to rules and weight. */
-.kaki { --rail: 104px; --gutter: 28px; --measure: 620px; --spread: calc(var(--rail) + var(--gutter) + var(--measure)); }
-.kaki .messages-container { padding: 0 40px 32px; }
-.kaki .empty-state.home,
-.kaki .chat-messages { width: 100%; max-width: var(--spread); margin: 0 auto 0 clamp(0px, (100% - var(--spread)) * .38, 180px); padding: 0; text-align: left; }
-.kaki .chat-form { max-width: var(--spread); margin: 0 auto 0 clamp(0px, (100% - var(--spread)) * .38, 180px); padding-left: calc(var(--rail) + var(--gutter)); box-sizing: border-box; }
-.kaki .input-container { padding: 12px 40px 16px; }
-.kaki .privacy-note { justify-content: flex-start; padding-left: 16px; }
+/* ------------------------------------------------------------ a quiet page
+   One or two things in front, the rest in the background. Space does the
+   grouping: related things sit close, unrelated things far apart. Tone before
+   lines, no card inside a card, one accent, one solid button, one illustration.
+   The reading block has a measure; wide screens keep the sides empty. */
+.kaki { --rail: 96px; --gutter: 32px; --measure: 600px; --spread: calc(var(--rail) + var(--gutter) + var(--measure)); --lift: 0 1px 2px rgb(28 27 34 / .04); }
+.app-layout.kaki { background: #f6f6f3; gap: 0; padding: 10px 10px 10px 0; }
 
-/* The headline: large, with air above it; the V (when clear) hangs in the rail. */
-.kaki .home-head { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); column-gap: var(--gutter); align-items: start; margin: 0 0 44px; padding-top: 72px; }
-.kaki .home-head > div { grid-column: 2; }
-.kaki .home-win { grid-column: 1; grid-row: 1; justify-self: end; width: 40px; margin-top: -2px; }
-.kaki .home h2#home-title { font-size: 30px; line-height: 1.15; letter-spacing: -.025em; margin: 0 0 10px; }
-.kaki .home .home-summary { font-size: 15px; line-height: 1.55; color: var(--muted); max-width: 54ch; margin: 0; }
+/* The plate recedes: no sheet of its own, quieter type, one accent for what needs you. */
+.kaki > .plate { background: transparent; border: 0; border-radius: 0; padding: 18px 18px 14px 20px; gap: 30px; }
+.plate .home-group h3, .plate .today-section h3 { font: 500 12.5px/1.4 var(--f-ui); letter-spacing: 0; text-transform: none; color: var(--muted); margin: 0 0 6px; padding: 0 6px; }
+.plate .home-group h3 .count { color: var(--faint); font-style: normal; }
+.plate .task { padding: 5px 6px; gap: 10px; }
+.plate .task-icon { width: 6px; height: 6px; border-radius: 50%; background: var(--faint); box-shadow: none; }
+.plate #home-needs .task-icon { background: var(--accent); }
+.plate .task-title { font-size: 13.5px; color: var(--ink); }
+.plate .task-tag, .plate .task-tag.warn { background: none; border: 0; padding: 0; font: 400 11.5px/1 var(--f-ui); color: var(--faint); }
+.plate-today, .plate-today .today-body { gap: 26px; }
+.plate-today .today-date { color: var(--faint); }
+.plate-today .plan-item, .plate-today .todo-title { font-size: 12.5px; color: var(--ink-2); }
+.plate-today .plan-item { padding: 4px 6px; }
+.plate-today .plan-facts, .plate-today h4 { color: var(--faint); font-weight: 400; }
+.plate-today .todo-item { padding: 4px 6px; }
+.plate-foot { border-top: 0; padding-top: 0; gap: 12px; }
+.plate .as-of { border-color: transparent; background: none; }
 
-/* Each group: its label hangs in the rail, its rows start on the reading line. */
-.kaki #page .home-group { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); column-gap: var(--gutter); margin: 0 0 36px; }
-.kaki #page .home-group > h3 { grid-column: 1; justify-self: end; text-align: right; margin: 11px 0 0; padding: 0; font: 600 11px/1.3 var(--f-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
-.kaki #page .home-group > h3 .count { font: 500 11px/1 var(--f-mono); letter-spacing: 0; }
-.kaki #page .home-group > h3 .text-btn { font: 500 12px/1 var(--f-ui); letter-spacing: 0; text-transform: none; padding: 0; border: 0; background: none; color: var(--accent); }
+/* The page: one white sheet, no outline; the right column a shade apart. */
+.kaki > #page, .kaki > .context { border: 0; border-radius: 18px; box-shadow: var(--lift); }
+.kaki > .context { margin-left: 10px; background: #fcfcfb; }
+.graph-panel-head { border-bottom: 0; padding: 14px 16px 6px; }
+
+.kaki .messages-container { padding: 0 48px 40px; }
+.kaki .empty-state.home { width: 100%; max-width: calc(var(--spread) + 170px); margin: 0 auto 0 clamp(0px, (100% - var(--spread) - 170px) * .35, 160px); padding: 0; text-align: left; }
+.kaki .chat-messages { width: 100%; max-width: var(--spread); margin: 0 auto 0 clamp(0px, (100% - var(--spread) - 170px) * .35, 160px); padding: 48px 0 0; gap: 40px; }
+.kaki .input-container { background: transparent; padding: 10px 48px 18px; }
+.kaki .chat-form { max-width: var(--spread); margin: 0 auto 0 clamp(0px, (100% - var(--spread) - 170px) * .35, 160px); padding-left: calc(var(--rail) + var(--gutter)); box-sizing: border-box; }
+.kaki .privacy-note { justify-content: flex-start; padding-left: 18px; font-size: 11.5px; color: var(--faint); }
+
+/* The one thing: a sentence, large; a line under it; the one solid button. The
+   illustration holds the light side. */
+.kaki .home-head { display: grid; grid-template-columns: var(--rail) minmax(0, var(--measure)) 1fr; column-gap: var(--gutter); align-items: start; margin: 0 0 76px; padding-top: 96px; }
+.kaki .home-lead { grid-column: 2; }
+.kaki .home h2#home-title { font: 700 38px/1.1 var(--f-ui); letter-spacing: -.035em; margin: 0 0 14px; color: var(--ink); }
+.kaki .home .home-summary { font-size: 16px; line-height: 1.7; color: var(--ink-2); max-width: 48ch; margin: 0; }
+.kaki .home-art { grid-column: 3; justify-self: start; width: 104px; height: auto; margin-top: -6px; transform: rotate(-7deg); filter: drop-shadow(0 10px 18px rgb(75 63 209 / .16)); }
+.primary-btn { display: inline-flex; align-items: center; gap: 8px; margin-top: 26px; padding: 11px 20px; border: 0; border-radius: 11px; background: var(--accent); color: #fff; font: 600 14px/1 var(--f-ui); cursor: pointer; box-shadow: 0 1px 2px rgb(75 63 209 / .25); }
+.primary-btn:hover { background: var(--accent-strong, #3d32b8); }
+.primary-btn[hidden] { display: none; }
+
+/* The rest: a small plain label in the rail, rows spaced by their own leading. */
+.kaki #page .home-group { display: grid; grid-template-columns: var(--rail) minmax(0, var(--measure)); column-gap: var(--gutter); margin: 0 0 56px; }
+.kaki #page .home-group > h3 { grid-column: 1; justify-self: end; text-align: right; margin: 7px 0 0; padding: 0; font: 400 12.5px/1.3 var(--f-ui); letter-spacing: 0; text-transform: none; color: var(--faint); display: flex; flex-direction: column; align-items: flex-end; gap: 10px; }
+.kaki #page .home-group > h3 .count { font: 400 12px/1 var(--f-ui); color: var(--faint); font-style: normal; }
+.kaki #page .home-group > h3 .text-btn, .more-btn { font: 400 12.5px/1 var(--f-ui); padding: 0; border: 0; background: none; color: var(--muted); cursor: pointer; }
+.kaki #page .home-group > h3 .text-btn:hover, .more-btn:hover { color: var(--accent); }
 .kaki #page .home-group > :not(h3) { grid-column: 2; min-width: 0; }
+.more-btn { justify-self: start; margin-top: 10px; }
+.more-btn[hidden] { display: none; }
 
-/* Rows are ruled, not boxed. */
-#timeline .entries { gap: 0; }
-#timeline .entry { border-bottom: 1px solid var(--line-2); }
-#timeline .entry-time { width: 44px; text-align: left; }
-#timeline .entry-body { padding: 11px 8px 11px 0; border: 0; border-radius: 0; background: none; }
+#timeline .entries { gap: 2px; }
+#timeline .entry { border: 0; }
+#timeline .entry-time { width: 48px; text-align: left; color: var(--faint); }
+#timeline .entry-body { padding: 7px 0; border: 0; border-radius: 0; background: none; font-size: 14px; }
 #timeline .entry-body:hover { border: 0; color: var(--accent); }
-#timeline .entry-now { padding: 10px 0 0; }
-.kaki #page .home-group .task, .kaki .conversation-item { border-radius: 0; border: 0; border-bottom: 1px solid var(--line-2); margin: 0; padding: 11px 0; background: none; }
+#timeline .entry-title { font-weight: 400; }
+#timeline .entry-meta { color: var(--faint); }
+#timeline .entry-body .line-icon, #timeline .entry-body svg { color: var(--faint); }
+#timeline .entry-now { padding-top: 8px; }
+#timeline .now-line { height: 1px; background: rgb(75 63 209 / .5); }
+.kaki #page .home-group .task, .kaki .conversation-item { border: 0; border-radius: 0; margin: 0; padding: 7px 0; background: none; box-shadow: none; }
 .kaki #page .home-group .task:hover, .kaki .conversation-item:hover { background: none; color: var(--accent); }
+.kaki #page .home-group .task-icon { background: none; color: var(--faint); }
+.kaki .conversation-item .conv-title { font-weight: 400; }
 
-/* The conversation: the question is a heading, the answer is text, the rail says who. */
-.kaki .chat-messages { gap: 28px; padding-top: 40px; }
+/* The conversation: the question large, the answer plain text, the rail says who. */
 .kaki .message-row { display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); column-gap: var(--gutter); }
 .kaki .message-row > .message-bubble { grid-column: 2; max-width: none; }
 .kaki .message-row::before { grid-column: 1; grid-row: 1; justify-self: end; }
-.kaki .message-row.user::before { content: "You"; font: 600 11px/1 var(--f-ui); letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin-top: 9px; }
-.kaki .message-row.assistant::before { content: ""; width: 22px; height: 24px; background: url(/assets/kaki-logo-64.png) center / contain no-repeat; margin-top: 2px; }
-.kaki .message-row.user .message-bubble { background: none; border: 0; padding: 0; font: 600 19px/1.35 var(--f-ui); letter-spacing: -.012em; color: var(--ink); }
+.kaki .message-row.user::before { content: "You"; font: 400 12.5px/1 var(--f-ui); color: var(--faint); margin-top: 9px; }
+.kaki .message-row.assistant::before { content: ""; width: 22px; height: 24px; background: url(/assets/kaki-logo-64.png) center / contain no-repeat; margin-top: 3px; }
+.kaki .message-row.user .message-bubble { background: none; border: 0; padding: 0; font: 600 22px/1.35 var(--f-ui); letter-spacing: -.02em; color: var(--ink); }
 .kaki .message-row.user .message-bubble p { margin: 0; }
-.kaki .message-row.assistant .message-bubble { background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; }
-.kaki .message-row.user + .message-row.assistant { margin-top: -8px; }
-/* With the right column open the page is narrower: the rail keeps only its marks. */
-body.has-context .kaki { --rail: 44px; --gutter: 20px; }
+.kaki .message-row.assistant .message-bubble { background: none; border: 0; box-shadow: none; padding: 0; border-radius: 0; line-height: 1.75; }
+.kaki .message-row.user + .message-row.assistant { margin-top: -16px; }
+.kaki .answer-graph { border: 0; background: #f8f8f6; box-shadow: none; border-radius: 14px; }
+.kaki .answer-graph:hover, .kaki .answer-graph:focus-visible { background: var(--accent-soft); border: 0; }
+.kaki .sources-grid, .kaki .source-row, .kaki .sources-head { border: 0; }
+.kaki .source-row { padding: 4px 0; }
+
+/* The composer: a hairline and the faintest lift; Send is the only fill, and only once there are words. */
+.kaki .input-wrapper { border: 1px solid var(--line); box-shadow: var(--lift); background: #fff; }
+.kaki .input-wrapper:focus-within { border-color: rgb(75 63 209 / .45); box-shadow: 0 0 0 4px rgb(75 63 209 / .08); }
+.kaki .composer-actions .record { color: var(--muted); }
+
+/* With the right column open the page is narrower: the rail keeps only its marks, the illustration steps out. */
+body.has-context .kaki { --rail: 40px; --gutter: 20px; }
 body.has-context .kaki .message-row.user::before { content: none; }
+body.has-context .kaki .home-art { display: none; }
+/* The plate says the day once, at the top. */
+.plate-today .today-head { display: none; }
+.kaki .plate .task-title, .kaki #page .task-title { font-weight: 400; }
+.kaki #home-conversations .conversation-item { border: 0; margin: 0; padding: 7px 0; }
+/* Inside an answer, headings are a step, not a shout; quotes lean on a hairline. */
+.kaki .message-bubble h2, .kaki .message-bubble h3, .kaki .message-bubble h4 { font: 600 16px/1.45 var(--f-ui); letter-spacing: -.005em; margin: 1.7em 0 .35em; color: var(--ink); }
+.kaki .message-bubble blockquote { border-left: 1px solid var(--line); margin: 1em 0; padding: 0 0 0 16px; color: var(--muted); background: none; }
+.kaki #page .conversations-empty { text-align: left; padding: 7px 0; color: var(--faint); }
+/* The walking hand: the video has a white ground, the same white as the sheet, so
+   it is cut to the tile by nothing but the page itself. It does not tilt or cast a
+   shadow (that would show the frame). Reduced motion keeps the still. */
+.kaki .home-walk, .kaki .home-still { grid-column: 3; justify-self: start; width: 132px; height: 132px; object-fit: cover; margin-top: -18px; margin-left: -14px; transform: none; filter: none; background: #fff; }
+.kaki .home-walk[hidden], .kaki .home-art[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .kaki .home-walk { display: none !important; }
+  .kaki #home-art[hidden] { display: block; }
+}
+body.has-context .kaki .home-walk { display: none; }
+/* Tickets: the work in hand, then one quiet line for the rest. */
+.plate-today .todo-state { margin-left: auto; flex: none; font-size: 11.5px; color: var(--faint); }
+.plate-today .todo-rest { margin: 6px 0 0; padding: 0 6px; font-size: 12px; color: var(--faint); }
+.plate-today .todo-rest button { border: 0; background: none; padding: 0; font: inherit; color: var(--muted); cursor: pointer; }
+.plate-today .todo-rest button:hover { color: var(--accent); }
+.plate-today #todo-list, .plate-today #todo-list ul, .plate-today #todo-list li { min-width: 0; max-width: 100%; }
+.plate-today .todo-item { min-width: 0; box-sizing: border-box; overflow: hidden; align-items: center; }
+.kaki .home-walk { object-fit: contain; }
+/* Looking at a past day the date control grows ("As of …", "Now"); it stays on the brand's
+   line: the day drops its weekday (full date on hover) and the pieces sit closer. */
+.plate-head .as-of { min-width: 0; }
+body.viewing-past .plate-head .as-of { gap: 0; }
+body.viewing-past .plate .as-of-field { padding: 0 2px; gap: 4px; }
+body.viewing-past .plate-head .as-of button { padding-left: 4px; padding-right: 4px; }
+/* Pinned candidates: a wide right column, orbit and person side by side. */
+body.context-wide .kaki > .context { width: 640px; }
+body.context-wide .kaki > .context { width: 680px; }
+/* A narrower chat (a column open on the right): the hint stays on one line, Record keeps only its icon. */
+body.has-context .kaki #message-input::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+body.has-context .kaki #message-input { white-space: nowrap; }
+body.has-context .kaki #message-input:focus, body.has-context .kaki #message-input:not(:placeholder-shown) { white-space: normal; }
+body.has-context .kaki .composer-actions .record { font-size: 0; gap: 0; padding: 8px; }
+body.has-context .kaki .composer-actions .record svg { width: 16px; height: 16px; }
+/* A narrower chat: the composer takes the full width, and the question reads as a heading, not a banner. */
+body.has-context .kaki .chat-form { padding-left: 0; }
+body.has-context .kaki .message-row.user .message-bubble { font-size: 18px; }
+/* A long passage handed over (a meeting's hiring need) is text, not a headline. */
+.kaki .message-row.user.long .message-bubble { font: 400 15px/1.7 var(--f-ui); letter-spacing: 0; color: var(--ink-2); }
+/* A column open on the right: the chat gives up its side margins, the words get the width. */
+body.has-context .kaki { --rail: 32px; --gutter: 14px; }
+body.has-context .kaki .messages-container { padding: 0 20px 28px; }
+body.has-context .kaki .input-container { padding: 10px 20px 16px; }
+body.has-context .kaki .chat-messages, body.has-context .kaki .chat-form { margin-left: 0; max-width: none; }
+body.has-context .kaki .message-row.user.long .message-bubble { font-size: 15px; }
+
+/* ------------------------------------------------------------ the plate's ways out
+   Meetings and the map: a line icon and a word each, quiet until pointed at;
+   the one for the page you are on is marked. */
+.plate-nav { display: flex; flex-direction: column; gap: 2px; }
+.plate-nav a { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 9px; color: var(--ink-2); font: 500 13.5px/1.2 var(--f-ui); text-decoration: none; }
+.plate-nav a svg { flex: none; color: var(--muted); }
+.plate-nav a:hover { background: rgb(28 27 34 / .045); color: var(--ink); }
+.plate-nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
+.plate-nav a[aria-current="page"] svg { color: var(--accent); }
+.plate-nav a[hidden] { display: none; }
+.plate-foot { gap: 8px; }
+
+/* Away from the home: what needs you, summed up in one line that leads there. */
+.plate-summary { display: inline-flex; align-self: flex-start; margin: -8px 6px 0; font: 500 12.5px/1.3 var(--f-ui); color: var(--accent); text-decoration: none; }
+.plate-summary:hover { text-decoration: underline; }
+.plate-summary[hidden] { display: none; }
+
+/* Chats on the plate, under the plan and tickets: one line each, the time quiet at the end. */
+.plate #home-conversations h3 { display: flex; align-items: center; gap: 10px; }
+.plate #home-conversations h3 .text-btn { margin-left: auto; padding: 0; border: 0; background: none; font: 400 12px/1 var(--f-ui); color: var(--muted); cursor: pointer; }
+.plate #home-conversations h3 .text-btn + .text-btn { margin-left: 0; }
+.plate #home-conversations h3 .text-btn:hover { color: var(--accent); }
+.plate #home-conversations .conversations-list { display: flex; min-width: 0; flex-direction: column; gap: 0; }
+.kaki .plate #home-conversations .conversation-item { display: flex; min-width: 0; box-sizing: border-box; align-items: center; gap: 8px; width: 100%; padding: 5px 6px; margin: 0; border: 0; border-radius: 8px; background: none; text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
+.kaki .plate #home-conversations .conversation-item:hover, .kaki .plate #home-conversations .conversation-item.active { color: var(--ink); background: rgb(28 27 34 / .045); }
+.plate #home-conversations .conv-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.plate .conversation-item .conv-icon { display: none; }
+.plate #home-conversations .conv-title { font: 400 13px/1.35 var(--f-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plate #home-conversations .conv-meta { flex: none; display: flex; align-items: center; }
+.plate #home-conversations .conv-date { font-size: 11.5px; color: var(--faint); white-space: nowrap; }
+.plate .conversations-empty { padding: 4px 6px; font-size: 12.5px; color: var(--faint); }
+.plate .more-btn { margin: 4px 6px 0; }
+/* The page's group labels sit on one line, the count right after them: "Waiting on others 1". */
+.kaki { --rail: 124px; }
+.kaki #page .home-group > h3 { flex-direction: row; align-items: baseline; gap: 6px; white-space: nowrap; }

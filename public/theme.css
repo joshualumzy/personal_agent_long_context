@@ -41,7 +41,7 @@
   --lavender: #e4ddf8;
   --peach: #ffd2b5;
   --peach-soft: #fff0e4;
-  --mint: #cdefd9;
+  --mint: #f0f0ed;      /* done: a quiet neutral, not a second accent */
   --hl: #ffe79a;
   --hl-row: #fff6d2;
   --hl-edge: #e3b400;
@@ -51,8 +51,8 @@
   --esc-bg: #e4ddf8;
   --alert: #b4501c;
   --alert-bg: #fff0e4;
-  --good: #1d6b45;
-  --good-bg: #e3f6ea;
+  --good: #44424d;
+  --good-bg: #f0f0ed;
   --rec: #e5484d;
   --error-text: #b42318;
   --error-bg: #fdecea;

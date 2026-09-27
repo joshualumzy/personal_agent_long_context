@@ -207,7 +207,7 @@ select {
   background: var(--warn-bg) center / 16px no-repeat;
 }
 .tray .card[data-tier="approval"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a5d00' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 20h9'/%3E%3Cpath d='M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z'/%3E%3C/svg%3E"); }
-.tray .card[data-tier="auto"]::before, .tray .card:is([data-status="executed"])::before { background-color: var(--good-bg); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231d6b45' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 4.5 4.5L19 7'/%3E%3C/svg%3E"); }
+.tray .card[data-tier="auto"]::before, .tray .card:is([data-status="executed"])::before { background-color: var(--good-bg); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2344424d' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 4.5 4.5L19 7'/%3E%3C/svg%3E"); }
 .tray .card[data-tier="blocked"]::before { background-color: var(--error-bg); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b42318' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='8.5'/%3E%3Cpath d='m6 6 12 12'/%3E%3C/svg%3E"); }
 .tray .card > * { grid-column: 2 / 4; }
 .tray .card > .card-head { grid-column: 2; }
@@ -356,7 +356,7 @@ select {
 .tray .card[data-tier="approval"][data-kind="message_draft"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a5d00' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 5h16v11H9l-5 4z'/%3E%3C/svg%3E"); }
 .tray .card[data-tier="approval"][data-kind="doc_draft"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a5d00' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 3h8l4 4v14H6z'/%3E%3Cpath d='M14 3v4h4M9 12h6M9 16h6'/%3E%3C/svg%3E"); }
 .tray .card[data-tier="approval"][data-kind="sheet_draft"]::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%238a5d00' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='4' width='16' height='16' rx='2'/%3E%3Cpath d='M4 10h16M4 15h16M10 4v16'/%3E%3C/svg%3E"); }
-.tray .card[data-status="executed"]::before { background-color: var(--good-bg); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231d6b45' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 4.5 4.5L19 7'/%3E%3C/svg%3E"); }
+.tray .card[data-status="executed"]::before { background-color: var(--good-bg); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2344424d' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 4.5 4.5L19 7'/%3E%3C/svg%3E"); }
 .tray { max-height: min(340px, 50%); }
 
 /* Inside an opened draft, what the agent checked and what it still needs read
@@ -386,7 +386,7 @@ select {
   content: ""; width: 14px; height: 14px; flex: none; background: center / 14px no-repeat;
 }
 .tray .card.selected > .missing .missing-head::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b27c00' stroke-width='2' stroke-linecap='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 8v4M12 16h.01'/%3E%3C/svg%3E"); }
-.tray .card.selected > .checked-notes .missing-head::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231d6b45' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='m8.5 12 2.5 2.5 4.5-5'/%3E%3C/svg%3E"); }
+.tray .card.selected > .checked-notes .missing-head::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2344424d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='m8.5 12 2.5 2.5 4.5-5'/%3E%3C/svg%3E"); }
 .tray .card.selected > .start-options .missing-head::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234b3fd1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='4' y='5' width='16' height='15' rx='2'/%3E%3Cpath d='M4 10h16M9 3v4M15 3v4'/%3E%3C/svg%3E"); }
 .tray .card.selected > .missing ul,
 .tray .card.selected > .checked-notes ul,
@@ -470,3 +470,8 @@ body.in-meeting #picker { display: none; }
 #picker .side-label { font: 500 13px/1.4 var(--f-ui); color: var(--muted); margin: 18px 0 6px; }
 #picker .meeting-list button { font-size: 14px; padding: 9px 10px; }
 body:not(.in-meeting) .no-meeting { margin: 56px auto 0; }
+/* An ended meeting: no dead box, one quiet way on. */
+.live-form[hidden], .ended-note[hidden] { display: none; }
+.ended-note { flex: none; margin: 0; padding: 12px 14px; font-size: 12.5px; color: var(--faint); }
+.follow-up-btn { border: 0; background: none; padding: 0; margin-left: 4px; font: inherit; color: var(--accent); cursor: pointer; }
+.follow-up-btn:hover { text-decoration: underline; }

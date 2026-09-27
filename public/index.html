@@ -7,7 +7,8 @@
       name="description"
       content="Kaki: a workplace agent for SME employees. It sits in your meetings, drafts what was promised, and answers from your company's records."
     />
-    <link rel="icon" type="image/png" href="/assets/kaki-logo-64.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
     <title>Kaki</title>
     <link rel="preload" href="/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/theme.css" />
@@ -39,8 +40,6 @@
             <button type="button" class="as-of-now" id="as-of-now" title="Back to the present" hidden>Now</button>
           </div>
         </div>
-        <div class="home-group" id="home-needs" hidden><h3>Needs you <em class="count"></em><button type="button" id="clear-needs-btn" class="text-btn" title="Review each draft, one at a time" hidden>Clear all</button></h3><div class="tasks"></div></div>
-        <div class="home-group" id="home-waiting" hidden><h3>Waiting on others <em class="count"></em></h3><div class="tasks"></div></div>
         <!-- The signed-in employee's own to-do list and plan, for the chosen day -->
       <section id="today-panel" class="today-panel plate-today" aria-labelledby="today-title" hidden>
         <div class="today-head">
@@ -61,7 +60,8 @@
           <p class="today-note">From the plan record. Shown here to plan with; answers cite only the tickets themselves.</p>
         </div>
       </section>
-        <!-- Company-wide hiring proposals follow the same selected day as the plan. -->
+        <!-- Knowledge gaps, hidden for now (restore by removing this comment). Company-wide hiring
+             proposals follow the same selected day as the plan; plate.js skips them while the panel is absent.
         <section id="gaps-panel" class="plate-gaps" aria-labelledby="gaps-title" hidden>
           <div class="plate-gaps-head">
             <h2 id="gaps-title">Knowledge gaps <span class="gaps-count" id="gaps-count" aria-live="polite" hidden></span></h2>
@@ -82,10 +82,21 @@
           </details>
           <p class="gaps-note">A role is drafted in Hiring only. Nobody is searched or contacted until its criteria are confirmed there.</p>
         </section>
+        -->
+        <div class="home-group" id="home-conversations">
+        <h3>Chats
+          <button type="button" id="new-chat-btn" class="text-btn" title="Start a new chat">New chat</button>
+          <button type="button" id="clear-all-conversations-btn" class="text-btn" title="Clear all recent conversations" hidden>Clear all</button>
+        </h3>
+        <div class="conversations-list" id="conversations-list">
+          <div class="conversations-empty">No saved chats yet</div>
+        </div>
+          <button type="button" id="conversations-more" class="text-btn more-btn" hidden></button>
+        </div>
         <div class="plate-foot">
-          <nav class="plate-links" aria-label="More">
-            <a class="all-meetings" href="/meetings">All meetings</a>
-            <a href="/graph?view=today" id="company-graph-link">Company map</a>
+          <nav class="plate-nav" aria-label="Meetings and the company map">
+            <a id="all-meetings" href="/meetings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span>All meetings</span></a>
+            <a id="company-graph-link" href="/graph"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="7" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.3 8.2 10.7 16M15.8 7.3 13.2 16M8.5 6.8h7"/></svg><span>Company map</span></a>
           </nav>
           <div class="shell-user" id="sidebar-user-container" title="Switch employee persona" role="button" tabindex="0">
             <span class="shell-avatar" id="sidebar-user-avatar" aria-hidden="true">J</span>
@@ -104,26 +115,28 @@
             <div id="empty-state" class="empty-state home" >
               <section id="home" aria-labelledby="home-title">
                 <div class="home-head">
-                  <img id="home-win" class="home-win" src="/assets/kaki-win-128.png" alt="" width="44" height="47" hidden>
-                  <div>
+                  <div class="home-lead">
                     <h2 id="home-title">&nbsp;</h2>
                     <p id="home-summary" class="home-summary"></p>
+                    <button type="button" id="clear-needs-btn" class="primary-btn" title="Each draft in full, one at a time" hidden>Review one by one</button>
                   </div>
+                  <img id="home-art" class="home-art home-still" src="/assets/kaki-walk.jpg" alt="" width="132" height="132">
+                  <video id="home-walk" class="home-art home-walk" autoplay muted loop playsinline preload="auto" poster="/assets/kaki-walk.jpg" width="132" height="132" aria-hidden="true" hidden>
+                    <source src="/assets/kaki-walk.webm" type="video/webm">
+                    <source src="/assets/kaki-walk.mp4" type="video/mp4">
+                  </video>
+                  <video id="home-win" class="home-art home-walk" muted loop playsinline preload="auto" poster="/assets/kaki-win.jpg" width="132" height="132" aria-hidden="true" hidden>
+                    <source src="/assets/kaki-win.webm" type="video/webm">
+                    <source src="/assets/kaki-win.mp4" type="video/mp4">
+                  </video>
                 </div>
+                <div class="home-group" id="home-needs" hidden><h3>Needs you <em class="count"></em></h3><div class="tasks"></div></div>
+                <div class="home-group" id="home-waiting" hidden><h3>Waiting on others <em class="count"></em></h3><div class="tasks"></div></div>
                 <section class="home-group" id="timeline" aria-label="Today">
                   <h3>Today</h3>
                   <div class="entries"></div>
                 </section>
                 <div class="home-group" id="home-done" hidden><h3>Done <em class="count"></em></h3><div class="tasks"></div></div>
-                <div class="home-group" id="home-conversations">
-                  <h3>Earlier chats
-                    <button type="button" id="new-chat-btn" class="text-btn" title="Start a new chat">New chat</button>
-                    <button type="button" id="clear-all-conversations-btn" class="text-btn" title="Clear all recent conversations" hidden>Clear all</button>
-                  </h3>
-                  <div class="conversations-list" id="conversations-list">
-                    <div class="conversations-empty">No saved chats yet</div>
-                  </div>
-                </div>
               </section>
             </div>
             <div id="chat-messages" class="chat-messages"></div>

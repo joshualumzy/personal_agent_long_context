@@ -3,13 +3,73 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" type="image/png" href="/assets/kaki-logo-64.png" />
-  <title>Company Graph</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png" />
+  <title>Kaki · Company map</title>
   <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/styles.css?v=10">
   <link rel="stylesheet" href="/graph/styles.css">
+  <script src="/plate.js?v=1" defer></script>
+  <script src="/shell.js" defer></script>
   <script src="/graph/app.js" defer></script>
 </head>
 <body data-mode="company">
+  <!-- The same plate as the assistant and meetings: what is on your plate, on every page. -->
+  <div class="app-layout kaki">
+
+    <aside id="plate" class="plate" aria-label="On your plate">
+      <div class="plate-head">
+        <a class="brand" href="/" id="home-link" title="Today"><img src="/assets/kaki-logo-64.png" srcset="/assets/kaki-logo-64.png 1x, /assets/kaki-logo-128.png 2x" alt="" width="26" height="28"><span class="brand-name">Kaki</span></a>
+        <div class="as-of" id="as-of" role="group" aria-label="Look at the company as of a day" hidden>
+          <button type="button" class="as-of-step" id="as-of-prev" aria-label="Previous working day" title="Previous working day">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <label class="as-of-field" title="See the company as it stood at the end of a working day">
+            <span class="as-of-caption" id="as-of-caption">Today</span><span class="as-of-label" id="as-of-label"></span>
+            <input type="date" id="as-of-input" aria-describedby="as-of-caption" />
+          </label>
+          <button type="button" class="as-of-step" id="as-of-next" aria-label="Next working day" title="Next working day">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+          <button type="button" class="as-of-now" id="as-of-now" title="Back to the present" hidden>Now</button>
+        </div>
+      </div>
+      <a id="plate-summary" class="plate-summary" href="/" hidden></a>
+      <!-- The signed-in employee's own to-do list and plan, for the chosen day -->
+    <section id="today-panel" class="today-panel plate-today" aria-labelledby="today-title" hidden>
+      <div class="today-head">
+        <div>
+          <h2 id="today-title">Today</h2>
+          <p id="today-date" class="today-date"></p>
+        </div>
+      </div>
+      <div class="today-body" aria-live="polite">
+        <section class="today-section" aria-labelledby="plan-heading">
+          <h3 id="plan-heading">Plan</h3>
+          <ol id="plan-list" class="today-plan"></ol>
+        </section>
+        <section class="today-section" aria-labelledby="todo-heading">
+          <h3 id="todo-heading">My tickets</h3>
+          <div id="todo-list" class="today-list"></div>
+        </section>
+        <p class="today-note">From the plan record. Shown here to plan with; answers cite only the tickets themselves.</p>
+      </div>
+    </section>
+      <div class="plate-foot">
+        <nav class="plate-nav" aria-label="Meetings and the company map">
+          <a id="all-meetings" href="/meetings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg><span>All meetings</span></a>
+          <a id="company-graph-link" href="/graph" aria-current="page"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="7" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><path d="M8.3 8.2 10.7 16M15.8 7.3 13.2 16M8.5 6.8h7"/></svg><span>Company map</span></a>
+        </nav>
+        <div class="shell-user" id="sidebar-user-container" title="Switch employee persona" role="button" tabindex="0">
+          <span class="shell-avatar" id="sidebar-user-avatar" aria-hidden="true">J</span>
+          <span class="shell-who"><span class="shell-name" id="sidebar-user-name">Jax</span><span class="shell-role" id="sidebar-user-role">Backend Engineer</span></span>
+          <button type="button" id="logout-btn" class="shell-out logout-btn" title="Log out" aria-label="Log out"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+        </div>
+      </div>
+    </aside>
+
+    <div id="page" class="graph-page">
+
   <header class="top">
     <div class="title-block">
       <h1>How the company connects</h1>
@@ -26,26 +86,45 @@
 
   <section class="controls" aria-label="What to draw">
 
+    <!-- Six overviews in three groups, by what they are about; the documents
+         web, the most graph-like, first. -->
     <nav class="view-tabs" id="view-tabs" aria-label="Graph">
-      <button type="button" class="view-tab" data-view="today" aria-pressed="false">Where today touched</button>
-      <button type="button" class="view-tab" data-view="org" aria-pressed="false">Departments</button>
-      <button type="button" class="view-tab" data-view="expertise" aria-pressed="false">Who knows what</button>
-      <button type="button" class="view-tab" data-view="incidents" aria-pressed="false">Incidents</button>
-      <button type="button" class="view-tab" data-view="documents" aria-pressed="false">Documents</button>
-      <button type="button" class="view-tab" data-view="customers" aria-pressed="false">Customers &amp; vendors</button>
-      <button type="button" class="view-tab" data-view="timeline" aria-pressed="false">Timeline</button>
+      <div class="view-group" role="group" aria-labelledby="group-knowledge">
+        <span class="view-group-label" id="group-knowledge">Knowledge</span>
+        <button type="button" class="view-tab" data-view="documents" aria-pressed="false">Documents</button>
+        <button type="button" class="view-tab" data-view="expertise" aria-pressed="false">Who knows what</button>
+      </div>
+      <div class="view-group" role="group" aria-labelledby="group-work">
+        <span class="view-group-label" id="group-work">Work</span>
+        <button type="button" class="view-tab" data-view="today" aria-pressed="false">Where today touched</button>
+        <button type="button" class="view-tab" data-view="incidents" aria-pressed="false">Incidents</button>
+        <button type="button" class="view-tab" data-view="timeline" aria-pressed="false">Timeline</button>
+      </div>
+      <div class="view-group" role="group" aria-labelledby="group-organizations">
+        <span class="view-group-label" id="group-organizations">Organizations</span>
+        <button type="button" class="view-tab" data-view="org" aria-pressed="false">Departments</button>
+        <button type="button" class="view-tab" data-view="customers" aria-pressed="false">Customers &amp; vendors</button>
+      </div>
     </nav>
 
-    <fieldset class="categories" id="categories">
-      <legend>Show</legend>
-      <!-- Filled from CATEGORIES in app.js, so the list lives in one place. -->
-    </fieldset>
+    <!-- A menu, not a row of chips: it is used now and then, not read every
+         time. Filled from CATEGORIES in app.js, so the list lives in one place. -->
+    <details class="show-menu" id="show-menu">
+      <summary>Show: <span id="show-summary">everything</span></summary>
+      <fieldset class="categories" id="categories">
+        <legend class="visually-hidden">Show</legend>
+      </fieldset>
+    </details>
+    <!-- What the chosen overview answers, from VIEWS in app.js. -->
+    <p class="view-about" id="view-about"></p>
   </section>
 
   <main class="board">
     <section id="picture" class="picture" aria-labelledby="picture-heading">
       <div class="picture-bar">
         <h2 id="picture-heading">Diagram</h2>
+        <!-- In the documents web: the items put in the middle so far. -->
+        <nav id="trail" class="trail" aria-label="Focused so far" hidden></nav>
         <div class="picture-actions">
           <button type="button" class="quiet" id="fit">Fit</button>
           <button type="button" class="quiet" id="restore" disabled>Back to start</button>
@@ -57,6 +136,9 @@
            aria-describedby="canvas-help">
         <title>People, work, events and documents, joined by how they relate</title>
       </svg>
+      <!-- Views whose data is table-shaped (who knows what, incidents) are
+           drawn here as HTML instead of on the canvas. -->
+      <div id="arranged" class="arranged" hidden></div>
       <p id="canvas-help" class="hint-line">
         Click an item to open it up: its neighbours are added around it, a few of each kind,
         and a “+N more” item stands for the rest — click that for the next few.
@@ -67,11 +149,13 @@
         <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="-4,-7 4,-7 7,0 4,7 -4,7 -7,0" class="n-organization"/></svg>Department, customer or vendor</li>
         <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item"/></svg>Work item or knowledge domain</li>
         <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><rect x="-6" y="-6" width="12" height="12" class="n-event"/></svg>Event</li>
-        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 7,6 -7,6" class="n-document"/></svg>Document</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 6.06,3.5 -6.06,3.5" class="n-document"/></svg>Document</li>
         <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-cluster"/></svg>More of one kind</li>
         <li class="legend-note"><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item incident"/></svg>A red outline means it is part of an incident</li>
         <li class="legend-note"><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item touched"/></svg>Butter means today touched it</li>
       </ul>
+      <!-- Filled from EDGE_STYLES in app.js with the kinds of line on screen. -->
+      <ul class="legend" id="edge-legend"></ul>
     </section>
 
     <section id="table-view" class="table-view" aria-labelledby="table-heading" hidden>
@@ -92,5 +176,7 @@
       <p class="empty">Choose an item to see what it is.</p>
     </aside>
   </main>
+    </div>
+  </div>
 </body>
 </html>

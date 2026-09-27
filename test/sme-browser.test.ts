@@ -101,14 +101,20 @@ describe("SME Assistant shell", () => {
     const page = document.querySelector("#page")!;
     const context = document.querySelector("aside#context")!;
     assert.ok(plate && page && context);
-    // On the plate: the day, what needs you, what waits on others, tickets and plan, and who is signed in.
-    for (const id of ["as-of", "home-needs", "home-waiting", "today-panel", "todo-list", "plan-list", "sidebar-user-container", "logout-btn"]) {
+    // On the plate: the day, the plan and tickets, the chats, the way to meetings and the map, and who is signed in.
+    for (const id of ["as-of", "today-panel", "plan-list", "todo-list", "conversations-list", "new-chat-btn", "all-meetings", "company-graph-link", "sidebar-user-container", "logout-btn"]) {
       assert.ok(plate.querySelector(`#${id}`), `#${id} is on the plate`);
     }
-    // The page: the headline, today's timeline, and the conversation with its composer.
-    for (const id of ["home-title", "timeline", "chat-messages", "chat-form", "conversations-list", "new-chat-btn"]) {
+    // Plan and tickets above the chats: the day's few, then the list that grows.
+    assert.ok(plate.querySelector("#today-panel")!.compareDocumentPosition(plate.querySelector("#conversations-list")!) & 4);
+    // The page: the headline, then what needs you and what waits on others right under it, today's timeline, and the conversation.
+    for (const id of ["home-title", "home-needs", "home-waiting", "timeline", "chat-messages", "chat-form"]) {
       assert.ok(page.querySelector(`#${id}`), `#${id} is on the page`);
     }
+    // The home lists them in full, so its plate needs no summary of them.
+    assert.equal(plate.querySelector("#plate-summary"), null);
+    // Meetings and the map: a line icon and a word each, the way to the other two places.
+    for (const link of plate.querySelectorAll(".plate-nav a")) assert.ok(link.querySelector("svg"), link.textContent!);
     // What it touches: pinned candidates and an answer's graph.
     assert.ok(context.querySelector("#pinned-panel"));
     assert.ok(context.querySelector("#graph-panel"));
@@ -134,6 +140,25 @@ describe("SME Assistant shell", () => {
 });
 
 describe("SME Assistant conversational rendering", () => {
+  test("a question reads as a heading; a long passage handed over reads as text", async () => {
+    const long = "We need to hire: a backend engineer to cover the Kafka on-call load. The key skill is Kafka expertise, because the rotation is stretched and the team is short-handed on backend support.";
+    const page = await openSmePage({
+      respond: signedIn((url) => (url.startsWith("/api/v1/conversations/c1") ? json({ messages: [
+        { role: "user", content: "Was ZD-101 the same bug?" },
+        { role: "assistant", content: "Related, not the same bug.", metadata: {} },
+        { role: "user", content: long },
+        { role: "assistant", content: "The role is already open.", metadata: {} },
+      ] }) : undefined)),
+    });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "the saved conversations");
+    (page.document.querySelector(".conversation-item") as HTMLButtonElement).click();
+    await until(() => page.document.querySelectorAll(".message-row.user").length === 2, "the conversation");
+    const [short, passage] = [...page.document.querySelectorAll(".message-row.user")];
+    assert.equal(short!.classList.contains("long"), false);
+    assert.equal(passage!.classList.contains("long"), true);
+  });
+
   test("renders model Markdown, sanitizes unsafe markup, and shows no model, timing or memory tags", async () => {
     const page = await openSmePage();
     after(() => page.close());
@@ -341,8 +366,12 @@ describe("SME Assistant keeping candidates in view", () => {
     assert.equal(latest.querySelector("iframe"), null, "the pinned panel already shows them");
     assert.match(latest.textContent ?? "", /Shown on the right/);
 
+    // Pinned candidates take a wide right column: the orbit and a person's details side by side.
+    assert.equal(page.document.body.classList.contains("context-wide"), true);
+
     (pinned.querySelector(".unpin-panel") as HTMLButtonElement).click();
     assert.equal(pinned.hasAttribute("hidden"), true);
+    assert.equal(page.document.body.classList.contains("context-wide"), false, "unpinned, the column is narrow again");
     assert.ok(page.document.querySelector(".chat-block .pin-panel:not([hidden])"), "once unpinned, it can be pinned again");
   });
 });
@@ -392,6 +421,54 @@ describe("SME Assistant keeps what it already does", () => {
     item.click();
     await until(() => page.document.querySelector(".message-row.assistant"), "the conversation to load");
     assert.match(page.document.querySelector("#chat-messages")!.textContent!, /Related, not the same bug\./);
+  });
+
+  test("shows the five latest chats; the rest are one click away", async () => {
+    const many = Array.from({ length: 8 }, (_, i) => ({ conversationId: `k${i}`, title: `Question ${i + 1}`, updatedAt: new Date(Date.now() - i * 60_000).toISOString() }));
+    const page = await openSmePage({ respond: signedIn((url, init) => (url === "/api/v1/conversations" && (!init?.method || init.method === "GET") ? json(many) : undefined)) });
+    after(() => page.close());
+    await until(() => page.document.querySelectorAll(".conversation-item").length > 0, "the saved conversations");
+    const visible = () => [...page.document.querySelectorAll(".conversation-item")].filter((item) => !(item as HTMLElement).hidden);
+    assert.equal(visible().length, 5);
+    assert.match(visible()[0]!.textContent!, /Question 1/);
+    const more = page.document.querySelector("#conversations-more") as HTMLButtonElement;
+    assert.equal(more.textContent!.trim(), "Show all 8");
+    more.click();
+    assert.equal(visible().length, 8);
+    assert.equal(more.hidden, true);
+  });
+
+  test("each chat has its own address: opening one names it, a reload comes back to it, a new chat leaves it", async () => {
+    const page = await openSmePage({ respond: signedIn() });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "the saved conversations");
+    (page.document.querySelector(".conversation-item") as HTMLButtonElement).click();
+    await until(() => page.document.querySelector(".message-row.assistant"), "the conversation to load");
+    assert.equal(page.window.location.pathname, "/chat/c1");
+
+    (page.document.querySelector("#new-chat-btn") as HTMLButtonElement).click();
+    assert.equal(page.window.location.pathname, "/");
+
+    // Opened at the chat's address (a reload, or a link): the chat opens by itself.
+    const reloaded = await openSmePage({ path: "/chat/c1", respond: signedIn() });
+    after(() => reloaded.close());
+    await until(() => reloaded.document.querySelector(".message-row.assistant"), "the chat from the address");
+    assert.match(reloaded.document.querySelector("#chat-messages")!.textContent!, /Related, not the same bug\./);
+    assert.equal(reloaded.window.location.pathname, "/chat/c1");
+  });
+
+  test("a new chat takes its address once the first answer names it", async () => {
+    const page = await openSmePage({
+      respond: signedIn((url) => (url === "/api/v1/agent/chat"
+        ? json({ answer: "Not the same bug.", runId: "r", toolCalls: [], sources: [], conversationId: "c9", title: "Was ENG-210 the same bug?" })
+        : undefined)),
+    });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "sign-in to finish");
+    const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
+    input.value = "Was ENG-210 the same bug?";
+    page.document.querySelector("#chat-form")!.dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+    await until(() => page.window.location.pathname === "/chat/c9", "the new chat's address");
   });
 
   test("a new chat clears the conversation on screen", async () => {
@@ -498,7 +575,23 @@ describe("SME Assistant home: what needs you", () => {
     await until(() => page.document.querySelectorAll("#home-needs .task").length === 3, "the drafts that need you");
 
     assert.equal(page.document.querySelector("#home-title")!.textContent, "Jax, 3 things need you.");
-    assert.equal((page.document.querySelector("#home-win") as HTMLElement).hidden, true, "no V while things wait");
+    // One illustration, on the light side: while things wait, the hand walks.
+    const walk = page.document.querySelector("#home-walk") as HTMLVideoElement;
+    assert.equal(walk.hidden, false);
+    assert.ok(walk.muted && walk.loop && walk.autoplay && walk.hasAttribute("playsinline"), "plays by itself, silent, on repeat");
+    assert.match(walk.getAttribute("poster")!, /kaki-walk\.jpg/);
+    assert.equal((page.document.querySelector("#home-art") as HTMLElement).hidden, true);
+    // A video that cannot load leaves the still in its place, whole.
+    const sources = page.document.querySelectorAll("#home-walk source");
+    sources[sources.length - 1]!.dispatchEvent(new page.window.Event("error"));
+    assert.equal(walk.hidden, true);
+    assert.equal((page.document.querySelector("#home-art") as HTMLElement).hidden, false);
+    assert.match(page.document.querySelector("#home-art")!.getAttribute("src")!, /kaki-walk\.jpg/, "the loop's first frame");
+    // The one solid action on the page sits under the headline, not on the plate.
+    const review = page.document.querySelector("#clear-needs-btn") as HTMLButtonElement;
+    assert.ok(page.document.querySelector("#home")!.contains(review));
+    assert.equal(review.hidden, false);
+    assert.equal(review.textContent!.trim(), "Review one by one");
     const rows = [...page.document.querySelectorAll("#home-needs .task")];
     assert.equal(rows[0]!.querySelector(".task-title")!.textContent, "Send follow-up to Owen");
     assert.equal(rows[0]!.querySelector(".task-from")!.textContent, NOC);
@@ -553,8 +646,19 @@ describe("SME Assistant home: what needs you", () => {
     (entries[1]!.querySelector("button") as HTMLButtonElement).click();
     await until(() => page.document.querySelector("#chat-messages .message-row.assistant"), "the chat to open on the page");
 
-    assert.equal(page.document.querySelector("#plate a.all-meetings")!.getAttribute("href"), "/meetings");
+    assert.equal(page.document.querySelector("#plate #all-meetings")!.getAttribute("href"), "/meetings");
     assert.equal(page.document.querySelector("#chat-form a.record")!.getAttribute("href"), "/meetings");
+  });
+
+  test("away from the home, the plate sums up what needs you in one line", async () => {
+    const page = await openSmePage({ respond: signedIn() });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "sign-in to finish");
+    const summary = (page.window as unknown as { plateSummary: (needs: unknown[], waiting: unknown[]) => string }).plateSummary;
+    assert.equal(summary([1, 2, 3, 4], [1]), "4 need you · 1 waiting");
+    assert.equal(summary([1], []), "1 needs you");
+    assert.equal(summary([], [1, 2]), "2 waiting");
+    assert.equal(summary([], []), "");
   });
 
   test("with nothing to approve, says so plainly", async () => {
@@ -562,8 +666,13 @@ describe("SME Assistant home: what needs you", () => {
     after(() => page.close());
     await until(() => page.document.querySelector("#home-done .task"), "the finished work");
     assert.equal(page.document.querySelector("#home-title")!.textContent, "Jax, nothing needs you right now.");
-    // All clear: the hand shows a V beside the headline.
+    // All clear: the hand walks on showing a V, and there is nothing to review.
+    assert.equal((page.document.querySelector("#home-walk") as HTMLElement).hidden, true);
     assert.equal((page.document.querySelector("#home-win") as HTMLElement).hidden, false);
+    // The still under it is the V too: it is what shows when motion is reduced.
+    assert.equal((page.document.querySelector("#home-art") as HTMLElement).hidden, true);
+    assert.match(page.document.querySelector("#home-art")!.getAttribute("src")!, /kaki-win\.jpg/);
+    assert.equal((page.document.querySelector("#clear-needs-btn") as HTMLButtonElement).hidden, true);
   });
 });
 
@@ -588,6 +697,17 @@ function reviewRespond(
       const body = JSON.parse(init.body ?? "{}");
       if (body.payloadHash !== current.payloadHash) return json({ code: "payload_changed", message: "The payload has changed." }, 409);
       const updated = { ...current, status: "executed", result: results[id] ?? { summary: "Done", simulated: false } };
+      byId.set(id, updated);
+      return json(updated);
+    }
+    match = /^\/api\/v1\/meetings\/m1\/actions\/([^/]+)\/edit$/.exec(url);
+    if (match && init?.method === "POST") {
+      // As the server does: the edited payload replaces the old one, and what was missing no longer applies.
+      const id = match[1]!;
+      const current = byId.get(id);
+      if (!current) return json({ code: "not_found", message: "No such action." }, 404);
+      const { missing: _missing, ...rest } = current;
+      const updated = { ...rest, payload: JSON.parse(init.body ?? "{}").payload, payloadHash: `${current.payloadHash}-edited` };
       byId.set(id, updated);
       return json(updated);
     }
@@ -734,7 +854,7 @@ describe("SME Assistant clearing the plate, one draft at a time", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
 
-  test("a calendar draft missing a day shows the day options and cannot be approved from the review", async () => {
+  test("a calendar draft missing a day is settled in the review: pick the day, give the time, then approve", async () => {
     const a1 = action("a1", "calendar_draft", "approval", "proposed", "Checkpoint before the championship", {
       payload: { title: "Checkpoint before the championship", attendees: ["deepa@company.example"], durationMinutes: 30, startOptions: ["2026-09-29", "2026-10-06"] },
       missing: ["Which day: Tue 29 Sept or Tue 6 Oct"],
@@ -745,26 +865,44 @@ describe("SME Assistant clearing the plate, one draft at a time", () => {
     await until(() => clearBtn() && !clearBtn().hidden, "the Clear all button");
     clearBtn().click();
     await until(() => !(page.document.querySelector("#clear-review") as HTMLElement)?.hidden, "the review to open");
-    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /Which day: Tue 29 Sept or Tue 6 Oct/);
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /Which day did they mean\?/);
 
-    // Something is missing: Approve is disabled and sends nothing, however it is triggered.
-    const approveBtn = page.document.querySelector("#clear-approve") as HTMLButtonElement;
-    assert.equal(approveBtn.disabled, true, "Approve is disabled while something is missing");
-    approveBtn.click();
+    // Until the day is settled Approve is disabled and sends nothing, however it is triggered.
+    const approveBtn = () => page.document.querySelector("#clear-approve") as HTMLButtonElement;
+    assert.equal(approveBtn().disabled, true);
+    approveBtn().click();
     page.document.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(page.requests.some((r) => r.url.includes("/approve")), false, "no approve request is sent");
 
-    // It links to the meeting, where the tray lets the employee fill it in.
-    const meetingLink = page.document.querySelector('#clear-fields a[href="/meetings/m1"]') as HTMLAnchorElement;
-    assert.ok(meetingLink, "a link to the meeting page");
+    // The day options are right here; a day alone still needs a time, which is asked, not guessed.
+    const days = [...page.document.querySelectorAll("#clear-fields .clear-day")] as HTMLButtonElement[];
+    assert.deepEqual(days.map((day) => day.textContent), ["Tue 29 Sept", "Tue 6 Oct"]);
+    days[1]!.click();
+    const time = page.document.querySelector("#clear-start-time") as HTMLInputElement;
+    assert.equal(time.value, "");
+    const set = page.document.querySelector("#clear-start-set") as HTMLButtonElement;
+    assert.equal(set.disabled, true, "no time, nothing to set");
+    time.value = "15:00";
+    time.dispatchEvent(new page.window.Event("input", { bubbles: true }));
+    set.click();
 
-    // Skip and Reject still work.
-    (page.document.querySelector("#clear-skip") as HTMLButtonElement).click();
-    await until(() => (page.document.querySelector("#clear-review") as HTMLElement).hidden, "Skip still works and the queue finishes");
-    // Let the plate's refresh (fired by finishClear, not awaited by it) settle before the page closes.
+    // Set is the tray's own edit; once it is saved the draft is whole and can be approved.
+    await until(() => page.requests.some((r) => r.url === "/api/v1/meetings/m1/actions/a1/edit"), "the edit");
+    const edit = page.requests.find((r) => r.url === "/api/v1/meetings/m1/actions/a1/edit")!;
+    const sent = JSON.parse(edit.body!).payload;
+    assert.equal(sent.proposedStart, "2026-10-06T15:00");
+    assert.equal(sent.startOptions, undefined, "the options are settled");
+    await until(() => !approveBtn().disabled, "Approve to open up");
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /2026-10-06T15:00|Tue 6 Oct/);
+
+    approveBtn().click();
+    await until(() => page.requests.some((r) => r.url === "/api/v1/meetings/m1/actions/a1/approve"), "the approve");
+    const approve = page.requests.find((r) => r.url === "/api/v1/meetings/m1/actions/a1/approve")!;
+    assert.match(JSON.parse(approve.body!).payloadHash, /-edited$/, "approves what was just saved");
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
+
 });
 
 describe("SME Assistant evidence list", () => {
@@ -848,7 +986,7 @@ describe("SME Assistant on a chosen day", () => {
   const json = (value: unknown) => new Response(JSON.stringify(value), { status: 200, headers: { "content-type": "application/json" } });
 
   /** A signed-in page whose planner answers by day: the day shows in every title. */
-  async function plannerPage(options: { path?: string; conversations?: unknown; conversation?: unknown; answer?: unknown } = {}) {
+  async function plannerPage(options: { path?: string; conversations?: unknown; conversation?: unknown; answer?: unknown; todo?: unknown[] } = {}) {
     return openSmePage({
       ...(options.path ? { path: options.path } : {}),
       respond: (url, init) => {
@@ -858,7 +996,7 @@ describe("SME Assistant on a chosen day", () => {
         if (url.startsWith("/api/v1/planner/days")) return json({ days: DAYS, first: DAYS[0], last: DAYS.at(-1) });
         const day = new URLSearchParams(url.split("?")[1] ?? "").get("asOf");
         if (url.startsWith("/api/v1/planner/todo")) {
-          return json({ asOf: day, person: "Jax", items: [
+          return json({ asOf: day, person: "Jax", items: options.todo ?? [
             { itemKey: "ENG-107", title: `tagging on ${day}`, status: "In Progress", relation: "assignee", since: "2026-01-02", points: 2, sprintNo: 1, sources: ["ENG-107"] },
             { itemKey: "ORG-105", title: "VPC review", status: "To Do", relation: "reporter", since: "2026-01-02", points: null, sprintNo: null, sources: [] },
           ] });
@@ -908,9 +1046,11 @@ describe("SME Assistant on a chosen day", () => {
     const sections = [...doc.querySelectorAll("#today-panel .today-section h3")].map((heading) => heading.textContent);
     assert.deepEqual(sections, ["Plan", "My tickets"]);
 
-    // Grouped: what Jax works on, then what Jax raised and nobody picked up.
-    const groups = [...doc.querySelectorAll("#todo-list h4")].map((heading) => heading.textContent);
-    assert.deepEqual(groups, ["In progress · 1", "Raised by you, not picked up · 1"]);
+    // What Jax works on, one row each, no group headings; the rest is one quiet line.
+    assert.equal(doc.querySelectorAll("#todo-list h4").length, 0);
+    const shownRows = [...doc.querySelectorAll("#todo-list li")].filter((row) => !(row as HTMLElement).hidden);
+    assert.equal(shownRows.length, 1);
+    assert.match(shownRows[0]!.textContent!, /ENG-107/);
     // A ticket that can be cited opens; one that cannot is plain text.
     assert.equal(doc.querySelectorAll("#todo-list button.todo-item").length, 1);
     // The plan in order, the deferred item struck through with its reason.
@@ -928,6 +1068,9 @@ describe("SME Assistant on a chosen day", () => {
     assert.equal(page.window.location.search, "?asOf=2026-01-05");
     assert.equal(doc.querySelector("#as-of-caption")!.textContent, "As of");
     assert.equal((doc.querySelector("#message-input") as HTMLTextAreaElement).placeholder, "Ask as of Mon 5 Jan");
+    // Beside "As of" and "Now" the day goes without its weekday, which is on hover.
+    assert.equal(doc.querySelector("#as-of-label")!.textContent, "5 Jan");
+    assert.equal((doc.querySelector("#as-of-label") as HTMLElement).title, "Monday, 5 January 2026");
     assert.match(doc.querySelector("#today-date")!.textContent!, /As of/);
     assert.match(doc.querySelector("#todo-list")!.textContent!, /tagging on 2026-01-05/);
     assert.ok(!/2026-01-07/.test(doc.querySelector("#todo-list")!.textContent!), "nothing of the old day is left");
@@ -997,6 +1140,77 @@ describe("SME Assistant on a chosen day", () => {
     await until(() => page.document.querySelector(".as-of-tag"), "the answer's day");
   });
 
+  test("signing in from the dialog fills the plate at once: the day, the plan and the tickets", async () => {
+    let signedInNow = false;
+    const page = await openSmePage({
+      respond: (url, init) => {
+        if (url.startsWith("/api/v1/auth/me")) {
+          return signedInNow
+            ? json({ authenticated: true, employee: { employeeId: "jax", displayName: "Jax" } })
+            : new Response(JSON.stringify({ authenticated: false }), { status: 401, headers: { "content-type": "application/json" } });
+        }
+        if (url === "/api/v1/auth/personas") return json([{ employeeId: "jax", displayName: "Jax", role: "Backend Engineer", department: "Engineering_Backend" }]);
+        if (url === "/api/v1/auth/login" && init?.method === "POST") {
+          signedInNow = true;
+          return json({ employee: { employeeId: "jax", displayName: "Jax" } });
+        }
+        if (url.startsWith("/api/v1/conversations")) return json([]);
+        if (url.startsWith("/api/v1/planner/days")) return json({ days: DAYS, first: DAYS[0], last: DAYS.at(-1) });
+        const day = new URLSearchParams(url.split("?")[1] ?? "").get("asOf");
+        if (url.startsWith("/api/v1/planner/todo")) return json({ asOf: day, person: "Jax", items: [
+          { itemKey: "ENG-107", title: "tagging", status: "In Progress", relation: "assignee", since: "2026-01-02", points: null, sprintNo: null, sources: [] },
+        ] });
+        if (url.startsWith("/api/v1/planner/day")) return json({ asOf: day, person: "Jax", entries: [
+          { seq: 1, title: "refactor", activityType: "deep_work", estHours: 2, collaborators: [], deferred: false, deferReason: null, itemKey: null, sources: [] },
+        ] });
+        return undefined;
+      },
+    });
+    after(() => page.close());
+    const doc = page.document;
+    await until(() => doc.querySelector("#login-dialog")!.hasAttribute("open") && doc.querySelector(".persona-card"), "the sign-in dialog");
+    (doc.querySelector(".persona-card") as HTMLElement).click();
+    (doc.querySelector("#login-password") as HTMLInputElement).value = "password";
+    (doc.querySelector("#login-form") as HTMLFormElement).requestSubmit();
+
+    await until(() => /refactor/.test(doc.querySelector("#plan-list")!.textContent!), "the plan, without a reload");
+    assert.match(doc.querySelector("#todo-list")!.textContent!, /ENG-107/);
+    assert.equal((doc.querySelector("#as-of") as HTMLElement).hidden, false);
+  });
+
+  test("on the plate only the work in hand is listed; not started and raised by you wait on one line", async () => {
+    const ticket = (itemKey: string, title: string, status: string, relation = "assignee") =>
+      ({ itemKey, title, status, relation, since: "2026-01-02", points: null, sprintNo: null, sources: [itemKey] });
+    const page = await plannerPage({ todo: [
+      ticket("ENG-123", "Leader re-election delay", "In Progress"),
+      ticket("ENG-220", "X-Ray tracing", "In Review"),
+      ticket("ORG-105", "VPC performance", "To Do"),
+      ticket("ORG-132", "VPC networking", "To Do"),
+      ticket("ORG-100", "Cost tagging", "To Do", "reporter"),
+    ] });
+    after(() => page.close());
+    const doc = page.document;
+    await until(() => doc.querySelector(".todo-item"), "the to-do list");
+
+    const shown = () => [...doc.querySelectorAll("#todo-list li")].filter((row) => !(row as HTMLElement).hidden).map((row) => row.querySelector(".todo-key")!.textContent);
+    assert.deepEqual(shown(), ["ENG-123", "ENG-220"]);
+    // Review is said once, quietly, on its row.
+    assert.equal(doc.querySelector("#todo-list li:nth-child(2) .todo-state")!.textContent, "in review");
+    assert.equal(doc.querySelector("#todo-list li:nth-child(1) .todo-state"), null);
+
+    const rest = [...doc.querySelectorAll("#todo-list .todo-rest button")];
+    assert.deepEqual(rest.map((button) => button.textContent), ["2 not started", "1 raised by you"]);
+    const labels = () => [...doc.querySelectorAll("#todo-list .todo-rest button")].map((button) => button.textContent);
+    (rest[0] as HTMLButtonElement).click();
+    assert.deepEqual(shown(), ["ENG-123", "ENG-220", "ORG-105", "ORG-132"]);
+    // Opened, it can be closed again from the same place.
+    assert.deepEqual(labels(), ["hide not started", "1 raised by you"]);
+    assert.equal(doc.querySelector("#todo-list .todo-rest button")!.getAttribute("aria-expanded"), "true");
+    (doc.querySelector("#todo-list .todo-rest button") as HTMLButtonElement).click();
+    assert.deepEqual(shown(), ["ENG-123", "ENG-220"]);
+    assert.deepEqual(labels(), ["2 not started", "1 raised by you"]);
+  });
+
   test("on the plate the tickets you raised start folded, and the list says which day of the record it shows", async () => {
     const page = await plannerPage();
     after(() => page.close());
@@ -1007,7 +1221,7 @@ describe("SME Assistant on a chosen day", () => {
     const raised = [...doc.querySelectorAll("#todo-list li")].filter((row) => /VPC review/.test(row.textContent!));
     assert.equal(raised.length, 1);
     assert.equal((raised[0] as HTMLElement).hidden, true);
-    assert.match(doc.querySelector("#todo-list .today-more")!.textContent!, /Show 1/);
+    assert.equal(doc.querySelector("#todo-list .todo-rest")!.textContent, "1 raised by you");
     // The planner's record ends before today: its day is named, even when it is the present.
     assert.match(doc.querySelector("#today-date")!.textContent!, /As of .*2026/);
     // The picker reads as a day, not as a form field.
@@ -1070,7 +1284,8 @@ describe("SME Assistant plate, as shown on camera", () => {
   });
 });
 
-describe("SME Assistant knowledge gaps on the plate", () => {
+// Hidden for now: the panel is commented out in index.html. Restore both together.
+describe.skip("SME Assistant knowledge gaps on the plate", () => {
   const DAYS = ["2026-02-16", "2026-02-17", "2026-02-18"];
   const proposal = (id: string, extra: Record<string, unknown> = {}) => ({
     id,

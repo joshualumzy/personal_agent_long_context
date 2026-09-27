@@ -1601,6 +1601,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     };
 
   app.get("/", serve("index.html", "text/html; charset=utf-8"));
+  // A chat's own address: the same page, which opens that chat (a reload or a shared link comes back to it).
+  app.get("/chat/:conversationId", serve("index.html", "text/html; charset=utf-8"));
   app.get("/sme", async (_request, reply) => reply.redirect("/", 302));
   app.get(
     "/vendor/marked.js",
@@ -1623,10 +1625,27 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     serve("assets/merlion.riv", "application/octet-stream"),
   );
   // The logo (the walking hand) and its all-clear pose, downscaled from the team's artwork.
-  for (const name of ["kaki-logo-64.png", "kaki-logo-128.png", "kaki-win-128.png"]) {
+  for (const name of ["kaki-logo-64.png", "kaki-logo-128.png", "kaki-logo-256.png", "kaki-win-256.png"]) {
     app.get(`/assets/${name}`, serve(`assets/${name}`, "image/png"));
   }
+  app.get("/favicon.ico", serve("favicon.ico", "image/x-icon"));
+  for (const name of ["favicon-32.png", "apple-touch-icon.png"]) {
+    app.get(`/assets/${name}`, serve(`assets/${name}`, "image/png"));
+  }
+  // The walking loops: the shaka while things wait, the V once all is clear.
+  for (const pose of ["kaki-walk", "kaki-win"]) {
+    app.get(`/assets/${pose}.mp4`, serve(`assets/${pose}.mp4`, "video/mp4"));
+    app.get(`/assets/${pose}.webm`, serve(`assets/${pose}.webm`, "video/webm"));
+    app.get(`/assets/${pose}.jpg`, serve(`assets/${pose}.jpg`, "image/jpeg"));
+  }
   app.get("/theme.css", serve("theme.css", "text/css; charset=utf-8"));
+  // The public front page, with screenshots of the product taken from the demo company.
+  app.get("/landing", serve("landing.html", "text/html; charset=utf-8"));
+  app.get("/landing.css", serve("landing.css", "text/css; charset=utf-8"));
+  app.get("/landing.js", serve("landing.js", "text/javascript; charset=utf-8"));
+  for (const shot of ["answer", "source", "meeting", "draft", "map"]) {
+    app.get(`/assets/landing/${shot}.webp`, serve(`assets/landing/${shot}.webp`, "image/webp"));
+  }
   // Shoelace, the UI components, served from its package: only its scripts,
   // styles and icons, only inside its folder.
   app.get<{ Params: { "*": string } }>("/vendor/shoelace/*", async (request, reply) => {

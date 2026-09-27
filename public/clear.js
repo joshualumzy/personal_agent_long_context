@@ -66,7 +66,15 @@ function renderClearFields(item) {
   const payload = action.payload ?? {};
   const parts = [];
 
-  if (Array.isArray(action.missing) && action.missing.length > 0) {
+  if (hasDayOptions(action)) {
+    // The day is settled here, as on the meeting page: pick one of the days they
+    // mentioned; a day alone asks for the time rather than guessing one.
+    parts.push(
+      `<div class="clear-missing clear-when"><p class="clear-missing-head">Which day did they mean?</p><div class="clear-days">${payload.startOptions
+        .map((option) => `<button type="button" class="clear-day" data-option="${escapeHtml(option)}">${escapeHtml(dayLabel(option))}</button>`)
+        .join("")}</div><div class="clear-time" hidden><label for="clear-start-time">At</label><input type="time" id="clear-start-time"><button type="button" class="clear-btn" id="clear-start-set" disabled>Set</button></div></div>`,
+    );
+  } else if (Array.isArray(action.missing) && action.missing.length > 0) {
     const meetingHref = `/meetings/${encodeURIComponent(meeting.meetingId)}`;
     parts.push(
       `<div class="clear-missing"><p class="clear-missing-head">Still needed from you</p><ul>${action.missing
@@ -108,6 +116,69 @@ function renderClearFields(item) {
   }
 
   return parts.join("");
+}
+
+/** A calendar draft that stopped at "which day?" and names the days it could be. */
+function hasDayOptions(action) {
+  return action.kind === "calendar_draft" && isBlocked(action) && Array.isArray(action.payload?.startOptions) && action.payload.startOptions.length > 0;
+}
+
+/** "2026-10-06" as "Tue 6 Oct"; with a time, the time after it. */
+function dayLabel(option) {
+  const date = new Date(`${option.slice(0, 10)}T00:00:00Z`);
+  const day = date.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  return option.includes("T") ? `${day}, ${option.slice(11, 16)}` : day;
+}
+
+/** Saves the chosen start with the tray's own edit; the saved draft has nothing missing and can be approved. */
+async function settleStart(item, start) {
+  const { startOptions: _settled, ...rest } = item.action.payload;
+  setBusy(true);
+  setStatus("Saving…");
+  try {
+    const response = await fetch(
+      `/api/v1/meetings/${encodeURIComponent(item.meeting.meetingId)}/actions/${encodeURIComponent(item.action.id)}/edit`,
+      {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ payload: { ...rest, proposedStart: start } }),
+      },
+    );
+    const updated = await response.json();
+    if (!response.ok) throw new Error(updated.message || "Could not save the day.");
+    item.action = updated;
+    showCurrent();
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "Could not save the day.");
+    setBusy(false);
+  }
+}
+
+function wireDayPicker(item) {
+  const fields = document.querySelector("#clear-fields");
+  const timeRow = fields?.querySelector(".clear-time");
+  const time = fields?.querySelector("#clear-start-time");
+  const set = fields?.querySelector("#clear-start-set");
+  if (!fields || !timeRow || !time || !set) return;
+  let day = null;
+  const ready = () => { set.disabled = !day || !time.value; };
+  for (const button of fields.querySelectorAll(".clear-day")) {
+    button.addEventListener("click", () => {
+      const option = button.dataset.option;
+      if (option.includes("T")) return settleStart(item, option);
+      day = option;
+      for (const other of fields.querySelectorAll(".clear-day")) other.classList.toggle("on", other === button);
+      timeRow.hidden = false;
+      time.focus?.();
+      ready();
+    });
+  }
+  time.addEventListener("input", ready);
+  time.addEventListener("change", ready);
+  set.addEventListener("click", () => {
+    if (day && time.value) settleStart(item, `${day}T${time.value}`);
+  });
 }
 
 function renderClearContext(item) {
@@ -190,10 +261,11 @@ function showCurrent() {
   if (progressEl) progressEl.textContent = `${clearIndex + 1} of ${clearQueue.length}`;
   const fieldsEl = document.querySelector("#clear-fields");
   if (fieldsEl) fieldsEl.innerHTML = renderClearFields(item);
+  wireDayPicker(item);
   const approveBtn = document.querySelector("#clear-approve");
   if (approveBtn) {
     approveBtn.textContent = approveLabel(action);
-    approveBtn.title = isBlocked(action) ? "Fill this in on the meeting page first" : "";
+    approveBtn.title = hasDayOptions(action) ? "Choose the day first" : isBlocked(action) ? "Fill this in on the meeting page first" : "";
   }
 
   renderClearContext(item);

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
@@ -278,12 +279,92 @@ describe("Browser surface", () => {
     const images = [
       document.querySelector("link[rel=icon]")!.getAttribute("href")!,
       document.querySelector("#plate .brand img")!.getAttribute("src")!,
-      document.querySelector("#home-win")!.getAttribute("src")!,
+      // The stills are the loops' first frames: what shows when motion is reduced.
+      document.querySelector("#home-art")!.getAttribute("src")!,
+      document.querySelector("#home-walk")!.getAttribute("poster")!,
+      document.querySelector("#home-win")!.getAttribute("poster")!,
     ];
     for (const url of images) {
       const image = await app.inject({ method: "GET", url });
       assert.equal(image.statusCode, 200, url);
-      assert.equal(image.headers["content-type"], "image/png", url);
+      assert.equal(image.headers["content-type"], url.endsWith(".jpg") ? "image/jpeg" : "image/png", url);
+    }
+    // The walking hand, waving and showing a V: each a short silent loop, in two formats.
+    for (const source of document.querySelectorAll("#home-walk source, #home-win source")) {
+      const video = await app.inject({ method: "GET", url: source.getAttribute("src")! });
+      assert.equal(video.statusCode, 200, source.getAttribute("src")!);
+      assert.equal(video.headers["content-type"], source.getAttribute("type"));
+    }
+    assert.equal(document.querySelectorAll("#home-walk source, #home-win source").length, 4);
+    await app.close();
+  });
+
+  test("the company graph keeps the plate on its left; an answer's graph, framed beside a chat, does not", async () => {
+    const { app } = testApp();
+    const graph = new JSDOM((await app.inject({ method: "GET", url: "/graph" })).body).window.document;
+    const plate = graph.querySelector(".app-layout.kaki > aside#plate")!;
+    assert.ok(plate, "the plate");
+    for (const id of ["home-link", "as-of", "plate-summary", "plan-list", "todo-list", "sidebar-user-container"]) {
+      assert.ok(plate.querySelector(`#${id}`), `#${id} is on the plate`);
+    }
+    // What needs you is listed in full on the home only; here, one line leads there.
+    assert.equal(plate.querySelector("#home-needs"), null);
+    assert.equal(plate.querySelector("#plate-summary")!.getAttribute("href"), "/");
+    assert.ok(graph.querySelector(".app-layout.kaki > #page #canvas"), "the graph is the page beside it");
+    const scripts = [...graph.querySelectorAll("script[src]")].map((script) => script.getAttribute("src")!.split("?")[0]);
+    assert.ok(scripts.includes("/plate.js") && scripts.includes("/shell.js"), "the plate's own scripts");
+
+    // From every plate, Company map opens the graph on its own first view (Documents), not on a chosen one;
+    // the two ways out each carry a line icon, and the one for the page you are on says so.
+    const current: Record<string, string | null> = { "index.html": null, "meetings.html": "all-meetings", "graph.html": "company-graph-link" };
+    for (const page of ["index.html", "meetings.html", "graph.html"]) {
+      const plateDocument = new JSDOM(readFileSync(new URL(`../public/${page}`, import.meta.url), "utf8")).window.document;
+      assert.equal(plateDocument.querySelector("#company-graph-link")!.getAttribute("href"), "/graph", page);
+      assert.equal(plateDocument.querySelector("#all-meetings")!.getAttribute("href"), "/meetings", page);
+      for (const link of plateDocument.querySelectorAll(".plate-nav a")) assert.ok(link.querySelector("svg"), `${page}: ${link.textContent}`);
+      const here = plateDocument.querySelector('.plate-nav a[aria-current="page"]');
+      assert.equal(here?.id ?? null, current[page], page);
+    }
+
+    const answer = new JSDOM((await app.inject({ method: "GET", url: "/graph/answer?q=x" })).body).window.document;
+    assert.equal(answer.querySelector("#plate"), null);
+    await app.close();
+  });
+
+  test("a chat's address serves the assistant page, which opens that chat", async () => {
+    const { app } = testApp();
+    const page = await app.inject({ method: "GET", url: "/chat/c1" });
+    assert.equal(page.statusCode, 200);
+    assert.match(page.headers["content-type"] as string, /^text\/html/);
+    assert.equal(new JSDOM(page.body).window.document.querySelector("head > title")!.textContent, "Kaki");
+    await app.close();
+  });
+
+  test("every page is Kaki in the tab: its name, and the hand as the icon", async () => {
+    const { app } = testApp();
+    const pages: Record<string, string> = {
+      "index.html": "Kaki",
+      "meetings.html": "Kaki · Meetings",
+      "graph.html": "Kaki · Company map",
+      "graph-answer.html": "Kaki · How the evidence connects",
+      "recruiting.html": "Kaki · Hiring",
+      "emergent.html": "Kaki · Read from the writing",
+    };
+    for (const [url, title] of Object.entries(pages)) {
+      const document = new JSDOM(readFileSync(new URL(`../public/${url}`, import.meta.url), "utf8")).window.document;
+      assert.equal(document.querySelector("head > title")!.textContent, title, url);
+      assert.equal(document.querySelector('link[rel="icon"][sizes="32x32"]')!.getAttribute("href"), "/assets/favicon-32.png", url);
+      assert.equal(document.querySelector('link[rel="apple-touch-icon"]')!.getAttribute("href"), "/assets/apple-touch-icon.png", url);
+    }
+    const icons: Record<string, string> = {
+      "/favicon.ico": "image/x-icon",
+      "/assets/favicon-32.png": "image/png",
+      "/assets/apple-touch-icon.png": "image/png",
+    };
+    for (const [url, type] of Object.entries(icons)) {
+      const icon = await app.inject({ method: "GET", url });
+      assert.equal(icon.statusCode, 200, url);
+      assert.equal(icon.headers["content-type"], type, url);
     }
     await app.close();
   });

@@ -519,11 +519,42 @@ function renderSuggestionChips(user) {
   });
 }
 
+// ------------------------------------------------------------ a chat's address
+// Each chat lives at /chat/<id>, so a reload or a shared link comes back to it;
+// the home is /. The chosen day (?asOf=) stays in the query either way.
+function chatFromAddress() {
+  const match = /^\/chat\/([^/]+)\/?$/.exec(location.pathname);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function setChatAddress(conversationId, { replace = false } = {}) {
+  const path = conversationId ? `/chat/${encodeURIComponent(conversationId)}` : "/";
+  if (location.pathname === path) return;
+  history[replace ? "replaceState" : "pushState"](null, "", `${path}${location.search}${location.hash}`);
+}
+
+/** At start (or after signing in), a chat named in the address opens by itself. */
+function openChatFromAddress() {
+  const conversationId = chatFromAddress();
+  if (conversationId && conversationId !== activeConversationId) selectConversation(conversationId, "", { fromAddress: true });
+}
+
+// Back and forward move between chats, and to the home, as links would.
+window.addEventListener("popstate", () => {
+  const conversationId = chatFromAddress();
+  if (conversationId) {
+    if (conversationId !== activeConversationId) selectConversation(conversationId, "", { fromAddress: true });
+  } else if (activeConversationId) {
+    startNewChat({ fromAddress: true });
+  }
+});
+
 // Start New Chat
-function startNewChat() {
+function startNewChat({ fromAddress = false } = {}) {
   chatEpoch += 1;
   historyLoading = null;
   activeConversationId = null;
+  if (!fromAddress) setChatAddress(null);
   chatMessages.innerHTML = "";
   if (emptyState) emptyState.style.display = "block";
   const emptyTitle = document.querySelector("#empty-state-title");
@@ -621,9 +652,14 @@ if (memoryDialog) {
   });
 }
 
+/** Past this many characters a message is a passage handed over (a meeting's hiring need, say), not a question. */
+const LONG_QUESTION = 140;
+
 function appendUserMessage(text) {
   const row = document.createElement("div");
   row.className = "message-row user";
+  // A question reads as a heading; a long passage reads as text.
+  if (String(text).length > LONG_QUESTION) row.classList.add("long");
   row.innerHTML = `<div class="message-bubble"><p>${escapeHtml(text)}</p></div>`;
   chatMessages.appendChild(row);
   scrollToBottom();
@@ -817,6 +853,8 @@ function pinPanel(block) {
   pinnedPanel.querySelector(".pinned-body").replaceChildren(frame);
   pinnedPanel.hidden = false;
   document.body.classList.add("has-pinned");
+  // Candidates need room: the orbit and a person's details side by side.
+  document.body.classList.add("context-wide");
   refreshContext();
   refreshPinButtons();
   document.querySelectorAll(".chat-block").forEach((container) => {
@@ -829,6 +867,7 @@ function unpinPanel() {
   pinnedPanel.hidden = true;
   pinnedPanel.querySelector(".pinned-body").replaceChildren();
   document.body.classList.remove("has-pinned");
+  document.body.classList.remove("context-wide");
   refreshContext();
   refreshPinButtons();
   document.querySelectorAll(".chat-block").forEach((container) => {
@@ -1264,6 +1303,7 @@ async function loadConversations() {
     if (!Array.isArray(conversations) || conversations.length === 0) {
       conversationsList.innerHTML = '<div class="conversations-empty">No saved chats yet</div>';
       if (clearAllConversationsBtn) clearAllConversationsBtn.setAttribute("hidden", "");
+      if (conversationsMore) conversationsMore.hidden = true;
       return;
     }
 
@@ -1311,10 +1351,24 @@ async function loadConversations() {
 
       conversationsList.appendChild(item);
     }
+    // The latest few; the rest wait behind one quiet link.
+    const items = [...conversationsList.querySelectorAll(".conversation-item")];
+    items.forEach((item, index) => { item.hidden = index >= RECENT_CHATS; });
+    if (conversationsMore) {
+      conversationsMore.hidden = items.length <= RECENT_CHATS;
+      conversationsMore.textContent = `Show all ${items.length}`;
+    }
   } catch (err) {
     console.warn("Could not load conversations", err);
   }
 }
+
+const RECENT_CHATS = 5;
+const conversationsMore = document.querySelector("#conversations-more");
+conversationsMore?.addEventListener("click", () => {
+  for (const item of conversationsList.querySelectorAll(".conversation-item")) item.hidden = false;
+  conversationsMore.hidden = true;
+});
 
 if (clearAllConversationsBtn) {
   clearAllConversationsBtn.addEventListener("click", async () => {
@@ -1357,10 +1411,11 @@ function updateConversationTitleUI(convId, title) {
   }
 }
 
-async function selectConversation(conversationId, title) {
+async function selectConversation(conversationId, title, { fromAddress = false } = {}) {
   const asked = ++chatEpoch;
   try {
     activeConversationId = conversationId;
+    if (!fromAddress) setChatAddress(conversationId);
     if (currentChatTitle) currentChatTitle.textContent = title || "SME Assistant";
 
     // Update active class in sidebar
@@ -1443,6 +1498,7 @@ async function selectConversation(conversationId, title) {
       // Nothing of the conversation that was open before may stay under this one's title,
       // and the next message must not go to a conversation that could not be read.
       activeConversationId = null;
+      setChatAddress(null, { replace: true });
       chatMessages.innerHTML = "";
       appendErrorMessage("Could not load this conversation. Pick it again, or start a new chat.");
     }
@@ -1583,6 +1639,7 @@ chatForm.addEventListener("submit", async (e) => {
       }
       if (data.conversationId) {
         activeConversationId = data.conversationId;
+        setChatAddress(data.conversationId, { replace: true });
         if (data.title) {
           updateConversationTitleUI(data.conversationId, data.title);
         }
@@ -1727,6 +1784,7 @@ chatForm.addEventListener("submit", async (e) => {
       }
       if (finalPayload.conversationId) {
         activeConversationId = finalPayload.conversationId;
+        setChatAddress(finalPayload.conversationId, { replace: true });
         if (finalPayload.title) {
           updateConversationTitleUI(finalPayload.conversationId, finalPayload.title);
         }
@@ -2069,7 +2127,11 @@ if (loginForm) {
         if (prevId !== data.employee.employeeId) {
           startNewChat();
         }
+        // The plate and the page belong to whoever just signed in: fill them now, not on the next reload.
+        loadHome();
         await loadConversations();
+        await initPlanner();
+        openChatFromAddress();
         takeOverFromMeeting();
       }
     } catch (err) {
@@ -2132,6 +2194,7 @@ async function initAuth() {
         loadHome();
         await loadConversations();
         await initPlanner();
+        openChatFromAddress();
         takeOverFromMeeting();
         return;
       }
@@ -2278,6 +2341,21 @@ function renderTimeline() {
   list.replaceChildren(...rows, now);
 }
 
+/** The walking loops that failed to load: the still stands in for them from then on. */
+const brokenWalks = new Set();
+for (const id of ["#home-walk", "#home-win"]) {
+  const walk = document.querySelector(id);
+  const sources = walk ? walk.querySelectorAll("source") : [];
+  // A <video> reports a missing file on its last <source>, not on itself.
+  sources[sources.length - 1]?.addEventListener("error", () => {
+    brokenWalks.add(id);
+    if (walk.hidden) return;
+    walk.hidden = true;
+    const art = document.querySelector("#home-art");
+    if (art) art.hidden = false;
+  });
+}
+
 async function loadHome() {
   if (!homeSection) return;
   // The plate fetches the meetings and their actions, and fills its own
@@ -2297,9 +2375,30 @@ async function loadHome() {
       ? `${name}, nothing needs you right now.`
       : `${name}, ${needs.length} ${needs.length === 1 ? "thing needs" : "things need"} you.`;
   }
-  // All clear: the hand shows a V beside the headline.
-  const win = document.querySelector("#home-win");
-  if (win) win.hidden = needs.length > 0;
+  // The one illustration: the hand waves while things wait, and shows a V when all is clear.
+  const art = document.querySelector("#home-art");
+  // Either way it walks (a silent loop): the shaka strides steadily on while things wait,
+  // the V bounces along at an easy stroll once all is clear.
+  const shown = needs.length === 0 ? "#home-win" : "#home-walk";
+  const pace = { "#home-walk": 1, "#home-win": 0.85 };
+  let walking = false;
+  for (const id of ["#home-walk", "#home-win"]) {
+    const walk = document.querySelector(id);
+    if (!walk) continue;
+    walk.muted = true;
+    walk.defaultPlaybackRate = walk.playbackRate = pace[id];
+    walk.hidden = id !== shown || brokenWalks.has(id);
+    if (walk.hidden) walk.pause?.();
+    else {
+      walking = true;
+      walk.play?.()?.catch?.(() => {});
+    }
+  }
+  if (art) {
+    art.hidden = walking;
+    // The still is the loop's first frame, so reduced motion shows the same toy.
+    art.src = `/assets/${needs.length === 0 ? "kaki-win" : "kaki-walk"}.jpg`;
+  }
   const summary = document.querySelector("#home-summary");
   if (summary) summary.innerHTML = homeSummary(needs);
   askForHomeLine(asked, needs, waiting);
