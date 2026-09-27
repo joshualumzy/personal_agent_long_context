@@ -2276,6 +2276,50 @@ button.todo-item:hover { border-color: var(--accent); background: var(--hover); 
 .plate-today .plan-item { display: flex; flex-direction: column; padding: 5px 6px; font-size: 13px; }
 .plate-today .plan-facts { font-size: 11.5px; color: var(--faint); }
 .plate-today .today-more { border: 0; background: none; color: var(--accent); font: 500 12px var(--f-ui); padding: 2px 6px; cursor: pointer; }
+.plate-gaps { display: grid; gap: 8px; padding: 10px 6px 2px; border-top: 1px solid var(--line-2); }
+.plate-gaps[hidden] { display: none; }
+.plate-gaps-head { display: flex; align-items: center; gap: 6px; }
+.plate-gaps h2 { margin: 0; font: 600 11px/1.4 var(--f-ui); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.gaps-count { display: inline-grid; place-items: center; min-width: 17px; min-height: 17px; padding: 0 4px; border-radius: var(--radius-pill); background: var(--warn-bg); color: var(--warn); font: 600 10px/1 var(--f-ui); letter-spacing: 0; }
+.gaps-count[hidden] { display: none; }
+.gaps-notice { margin: 0; padding: 6px 8px; border-radius: 6px; background: var(--alert-bg); color: var(--alert); font-size: 12px; line-height: 1.4; }
+.proposal-list { display: grid; gap: 7px; }
+.proposal-card { border: 1px solid var(--line-2); border-radius: 8px; background: var(--panel-2); padding: 9px; display: grid; gap: 6px; }
+.proposal-card.role_opened { border-color: var(--line); background: var(--panel); }
+.proposal-card.dismissed { opacity: .72; }
+.proposal-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.proposal-head h3 { margin: 0; min-width: 0; font: 600 13px/1.35 var(--f-ui); color: var(--ink); overflow-wrap: anywhere; }
+.proposal-status { flex: none; font-size: 11px; color: var(--muted); }
+.proposal-status.role_opened { color: var(--good); font-weight: 600; }
+.proposal-rules, .proposal-evidence, .proposal-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+.rule-chip { font: 600 10.5px/1 var(--f-ui); padding: 4px 6px; border-radius: var(--radius-pill); background: var(--hover); color: var(--ink-2); }
+.rule-chip.orphaned { background: var(--alert-bg); color: var(--alert); }
+.rule-chip.thin { background: var(--warn-bg); color: var(--warn); }
+.rule-chip.overloaded { background: var(--esc-bg); color: var(--esc); }
+.proposal-reasons { margin: 0; padding-left: 15px; display: grid; gap: 3px; color: var(--ink-2); font-size: 12px; line-height: 1.42; }
+.proposal-role, .gaps-note { margin: 0; color: var(--muted); font-size: 11.5px; line-height: 1.42; }
+.evidence-chip { border: 1px solid var(--line); background: var(--panel); color: var(--accent); cursor: pointer; font: 500 10.5px/1 var(--f-mono); padding: 4px 6px; border-radius: 5px; }
+.evidence-chip:hover:not(:disabled), .evidence-chip:focus-visible { border-color: var(--accent); background: var(--accent-soft); }
+.evidence-chip:disabled { color: var(--muted); cursor: default; }
+.evidence-more { align-self: center; color: var(--muted); font-size: 11px; }
+.proposal-open, .proposal-dismiss { min-height: 32px; border-radius: var(--radius-pill); cursor: pointer; font: 600 11.5px/1 var(--f-ui); padding: 7px 10px; }
+.proposal-open { border: 1px solid var(--accent); background: var(--accent); color: #fff; }
+.proposal-open:hover:not(:disabled) { background: var(--accent-strong); }
+.proposal-open:disabled { opacity: .5; cursor: default; }
+.proposal-dismiss { border: 1px solid var(--line); background: var(--panel); color: var(--muted); }
+.proposal-dismiss:hover { color: var(--ink); background: var(--hover); }
+.proposal-link { display: inline-flex; align-items: center; min-height: 32px; color: var(--accent); font: 600 11.5px/1.2 var(--f-ui); text-decoration: none; }
+.proposal-link:hover, .proposal-link:focus-visible { text-decoration: underline; }
+.proposal-dismissed summary, .health-details summary { cursor: pointer; color: var(--muted); font: 600 11.5px/1.3 var(--f-ui); padding: 5px 0; }
+.proposal-dismissed[open] { display: grid; gap: 7px; }
+.health-details summary { letter-spacing: .04em; text-transform: uppercase; color: var(--faint); }
+.health-scroll { overflow-x: auto; }
+.health-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.health-table th, .health-table td { padding: 5px 4px; border-bottom: 1px solid var(--line-2); text-align: left; white-space: nowrap; }
+.health-table thead th { color: var(--muted); font-weight: 600; }
+.health-table tbody th { color: var(--ink); font-weight: 500; }
+.health-table td:nth-child(n+3) { text-align: right; font-variant-numeric: tabular-nums; }
+.health-table tr.orphaned th, .health-table tr.orphaned td:nth-child(2) { color: var(--alert); }
 .plate-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line-2); }
 .plate-links { display: flex; gap: 12px; padding: 0 6px; }
 .plate-links a { font-size: 12px; color: var(--muted); text-decoration: none; }

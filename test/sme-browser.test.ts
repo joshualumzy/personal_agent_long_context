@@ -1069,3 +1069,83 @@ describe("SME Assistant plate, as shown on camera", () => {
     }
   });
 });
+
+describe("SME Assistant knowledge gaps on the plate", () => {
+  const DAYS = ["2026-02-16", "2026-02-17", "2026-02-18"];
+  const proposal = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    domain: id.split("@")[0],
+    name: id.split("@")[0],
+    openedOn: id.split("@")[1],
+    status: "open",
+    reasons: [{ rule: "orphaned", text: "Morgan, who owned it, left on 2026-02-17, and nobody has taken it on for 2 working days." }],
+    evidence: ["CONF-ENG-300", "ENG-173"],
+    suggestedTitle: "Backend engineer to own it",
+    ...extra,
+  });
+
+  test("proposals share the selected day, make a role draft, and retain a dismissed proposal", async () => {
+    const state = { opened: false, dismissed: false };
+    const page = await openSmePage({
+      respond: (url, init) => {
+        if (url.startsWith("/api/v1/auth/me")) return json({ authenticated: true, employee: JAX });
+        if (url.startsWith("/api/v1/conversations")) return json([]);
+        if (url.startsWith("/api/v1/planner/days")) return json({ days: DAYS, first: DAYS[0], last: DAYS.at(-1) });
+        if (url.startsWith("/api/v1/planner/")) return json({ items: [], entries: [] });
+        const day = new URLSearchParams(url.split("?")[1] ?? "").get("asOf");
+        if (url.startsWith("/api/v1/gaps/proposals?")) {
+          const k8s = proposal("kubernetes-deploy@2026-02-18", state.opened ? { status: "role_opened", roleId: "r1" } : {});
+          const terraform = proposal("terraform-infra@2026-01-30", {
+            status: state.dismissed ? "dismissed" : "open",
+            reasons: [{ rule: "thin", text: `Only 3 people worked on terraform-infra, as of ${day}.` }],
+          });
+          return json({ asOf: day, canOpenRoles: true, proposals: day === "2026-02-16" ? [terraform] : [k8s, terraform] });
+        }
+        if (url.startsWith("/api/v1/gaps/health?")) {
+          return json({ asOf: day, domains: [
+            { name: "kubernetes-deploy", owner: "Morgan", ownerActive: false, ownerLoad: 1, activeContributors30d: ["Sanjay"], incidents30d: ["ENG-173"] },
+          ] });
+        }
+        if (url.endsWith("/open-role") && init?.method === "POST") {
+          state.opened = true;
+          return json({ roleId: "r1", title: "Backend engineer, kubernetes-deploy" }, 201);
+        }
+        if (url.endsWith("/dismiss") && init?.method === "POST") {
+          state.dismissed = true;
+          return new Response(null, { status: 204 });
+        }
+        return undefined;
+      },
+    });
+    after(() => page.close());
+    const doc = page.document;
+    await until(() => doc.querySelectorAll(".proposal-card").length === 2, "the gap proposals");
+
+    const plate = doc.querySelector("#plate")!;
+    assert.equal((doc.querySelector("#gaps-panel") as HTMLElement).hidden, false);
+    assert.ok(plate.contains(doc.querySelector("#gaps-panel")));
+    assert.equal(doc.querySelector("#gaps-count")!.textContent, "2");
+    assert.match(doc.querySelector(".proposal-card")!.textContent!, /terraform-infra/);
+    assert.equal(doc.querySelectorAll(".evidence-chip").length, 4);
+    assert.match(doc.querySelector("#health-rows tr")!.textContent!, /Morgan \(left\)/);
+
+    (doc.querySelector('[data-proposal-id="kubernetes-deploy@2026-02-18"] .proposal-open') as HTMLButtonElement).click();
+    await until(() => doc.querySelector(".proposal-link"), "the drafted role link");
+    assert.equal(doc.querySelector(".proposal-link")!.getAttribute("href"), "/recruiting?role=r1");
+    assert.equal(doc.querySelector("#gaps-count")!.textContent, "1");
+
+    (doc.querySelector('[data-proposal-id="terraform-infra@2026-01-30"] .proposal-dismiss') as HTMLButtonElement).click();
+    await until(() => doc.querySelector(".proposal-dismissed"), "the dismissed proposal fold");
+    assert.equal(doc.querySelector(".proposal-dismissed summary")!.textContent, "Dismissed · 1");
+
+    const input = doc.querySelector("#as-of-input") as HTMLInputElement;
+    input.value = "2026-02-16";
+    input.dispatchEvent(new page.window.Event("change", { bubbles: true }));
+    await until(
+      () => doc.querySelectorAll(".proposal-card").length === 1
+        && /terraform-infra/.test(doc.querySelector(".proposal-card")?.textContent ?? ""),
+      "the proposals for the earlier day",
+    );
+    assert.ok(page.requests.some((request) => request.url === "/api/v1/gaps/health?asOf=2026-02-16"));
+  });
+});

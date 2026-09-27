@@ -61,6 +61,27 @@
           <p class="today-note">From the plan record. Shown here to plan with; answers cite only the tickets themselves.</p>
         </div>
       </section>
+        <!-- Company-wide hiring proposals follow the same selected day as the plan. -->
+        <section id="gaps-panel" class="plate-gaps" aria-labelledby="gaps-title" hidden>
+          <div class="plate-gaps-head">
+            <h2 id="gaps-title">Knowledge gaps <span class="gaps-count" id="gaps-count" aria-live="polite" hidden></span></h2>
+          </div>
+          <p id="gaps-notice" class="gaps-notice" role="status" hidden></p>
+          <div id="proposal-list" class="proposal-list"></div>
+          <details class="health-details" id="health-details">
+            <summary>Every domain</summary>
+            <div class="health-scroll">
+              <table class="health-table">
+                <caption class="visually-hidden">Each knowledge domain's owner and recent activity on this day</caption>
+                <thead>
+                  <tr><th scope="col">Domain</th><th scope="col">Owner</th><th scope="col" title="Domains this owner holds">Holds</th><th scope="col" title="People who worked on it in the last 30 days">People</th><th scope="col" title="Incidents in the last 30 days">Inc.</th></tr>
+                </thead>
+                <tbody id="health-rows"></tbody>
+              </table>
+            </div>
+          </details>
+          <p class="gaps-note">A role is drafted in Hiring only. Nobody is searched or contacted until its criteria are confirmed there.</p>
+        </section>
         <div class="plate-foot">
           <nav class="plate-links" aria-label="More">
             <a class="all-meetings" href="/meetings">All meetings</a>

@@ -90,7 +90,7 @@ export function reasonsOn(
   if (context.fullWindow && contributors <= THIN_FRACTION * context.medianContributors) {
     reasons.push({
       rule: "thin",
-      text: `Only ${contributors} ${contributors === 1 ? "person" : "people"} worked on ${health.name} in the last ${HEALTH_WINDOW_DAYS} days, against ${context.medianContributors} for the typical domain.`,
+      text: `Only ${contributors} ${contributors === 1 ? "person" : "people"} worked on ${health.name} in the last ${HEALTH_WINDOW_DAYS} days, against ${Math.round(context.medianContributors)} for the typical domain.`,
     });
   }
   if (health.owner && health.ownerActive && health.ownerLoad >= OVERLOAD_MIN_DOMAINS

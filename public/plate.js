@@ -113,6 +113,7 @@ function refreshTodayPanelForNewUser() {
   if (workingDays.length) {
     plannerEpoch += 1;
     loadTodayPanel();
+    if (gapsAvailable) loadGaps();
   }
 }
 
@@ -172,6 +173,7 @@ function showDay(day) {
   document.body.classList.toggle("viewing-past", Boolean(day));
   writeDayToAddress(day);
   loadTodayPanel();
+  if (gapsAvailable) loadGaps();
 }
 
 /**
@@ -397,6 +399,267 @@ async function loadTodayPanel() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Knowledge gaps: company-wide hiring proposals on the plate
+// ---------------------------------------------------------------------------
+//
+// These follow the selected day, but are deliberately separate from the
+// employee's own plan. Opening a role drafts it in Hiring; it never searches
+// for or contacts anyone from this plate.
+
+const gapsPanel = document.querySelector("#gaps-panel");
+const gapsCount = document.querySelector("#gaps-count");
+const gapsNotice = document.querySelector("#gaps-notice");
+const proposalList = document.querySelector("#proposal-list");
+const healthDetails = document.querySelector("#health-details");
+const healthRows = document.querySelector("#health-rows");
+let gapsAvailable = false;
+let gapsEpoch = 0;
+
+const GAP_RULE_LABELS = {
+  orphaned: "No owner",
+  thin: "Few people on it",
+  overloaded: "Owner stretched",
+};
+
+function gapsDay() {
+  return viewDay ?? workingDays[workingDays.length - 1];
+}
+
+function showGapsNotice(message = "") {
+  if (!gapsNotice) return;
+  gapsNotice.hidden = !message;
+  gapsNotice.textContent = message;
+}
+
+function proposalCard(proposal, canOpenRoles) {
+  const card = document.createElement("article");
+  card.className = `proposal-card ${proposal.status}`;
+  card.dataset.proposalId = proposal.id;
+
+  const head = document.createElement("div");
+  head.className = "proposal-head";
+  const title = document.createElement("h3");
+  title.textContent = proposal.name ?? proposal.domain ?? "Untitled domain";
+  const status = document.createElement("span");
+  status.className = `proposal-status ${proposal.status}`;
+  status.textContent = proposal.status === "role_opened"
+    ? "Role opened"
+    : proposal.status === "dismissed"
+      ? "Dismissed"
+      : `Open since ${formatDay(proposal.openedOn)}`;
+  head.append(title, status);
+
+  const rules = document.createElement("div");
+  rules.className = "proposal-rules";
+  for (const reason of proposal.reasons ?? []) {
+    const chip = document.createElement("span");
+    chip.className = `rule-chip ${reason.rule}`;
+    chip.textContent = GAP_RULE_LABELS[reason.rule] ?? reason.rule;
+    rules.appendChild(chip);
+  }
+
+  const reasons = document.createElement("ul");
+  reasons.className = "proposal-reasons";
+  for (const reason of proposal.reasons ?? []) {
+    const item = document.createElement("li");
+    item.textContent = reason.text;
+    reasons.appendChild(item);
+  }
+
+  const role = document.createElement("p");
+  role.className = "proposal-role";
+  role.textContent = `Suggested role: ${proposal.suggestedTitle}`;
+  card.append(head, rules, reasons, role);
+
+  if (proposal.evidence?.length) {
+    const evidence = document.createElement("div");
+    evidence.className = "proposal-evidence";
+    evidence.setAttribute("aria-label", "Evidence");
+    for (const sourceId of proposal.evidence.slice(0, 6)) {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "evidence-chip";
+      chip.textContent = sourceId;
+      chip.title = plateSourceHandler ? `Open ${sourceId}` : sourceId;
+      chip.disabled = !plateSourceHandler;
+      chip.addEventListener("click", () => plateSourceHandler?.(sourceId));
+      evidence.appendChild(chip);
+    }
+    if (proposal.evidence.length > 6) {
+      const more = document.createElement("span");
+      more.className = "evidence-more";
+      more.textContent = `+${proposal.evidence.length - 6}`;
+      evidence.appendChild(more);
+    }
+    card.appendChild(evidence);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "proposal-actions";
+  if (proposal.status === "role_opened" && proposal.roleId) {
+    const link = document.createElement("a");
+    link.className = "proposal-link";
+    link.href = `/recruiting?role=${encodeURIComponent(proposal.roleId)}`;
+    link.textContent = "See the role in Hiring";
+    actions.appendChild(link);
+  } else if (proposal.status === "open") {
+    const open = document.createElement("button");
+    open.type = "button";
+    open.className = "proposal-open";
+    open.textContent = "Open role";
+    open.disabled = !canOpenRoles;
+    open.title = canOpenRoles
+      ? "Drafts the role in Hiring. Its criteria wait for someone to confirm them; nobody is searched or contacted yet."
+      : "Hiring is not set up here.";
+    open.addEventListener("click", () => actOnProposal(proposal, "open-role", open));
+    const dismiss = document.createElement("button");
+    dismiss.type = "button";
+    dismiss.className = "proposal-dismiss";
+    dismiss.textContent = "Dismiss";
+    dismiss.addEventListener("click", () => actOnProposal(proposal, "dismiss", dismiss));
+    actions.append(open, dismiss);
+  }
+  if (actions.children.length) card.appendChild(actions);
+  return card;
+}
+
+async function actOnProposal(proposal, action, button) {
+  const epoch = gapsEpoch;
+  button.disabled = true;
+  showGapsNotice();
+  try {
+    const response = await fetch(`/api/v1/gaps/proposals/${encodeURIComponent(proposal.id)}/${action}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ asOf: gapsDay() }),
+    });
+    if (response.status === 401) {
+      plateAuthRequiredHandler();
+      return;
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.message || "That did not work.");
+    }
+    if (epoch === gapsEpoch) await loadGaps();
+  } catch (error) {
+    button.disabled = false;
+    showGapsNotice(error instanceof Error ? error.message : "That did not work.");
+  }
+}
+
+function renderProposals(proposals, canOpenRoles) {
+  if (!proposalList) return;
+  proposalList.replaceChildren();
+  const order = { open: 0, role_opened: 1, dismissed: 2 };
+  const sorted = [...proposals].sort((a, b) =>
+    (order[a.status] ?? 3) - (order[b.status] ?? 3) || String(a.openedOn).localeCompare(String(b.openedOn)),
+  );
+  const open = sorted.filter((proposal) => proposal.status === "open");
+  if (gapsCount) {
+    gapsCount.hidden = open.length === 0;
+    gapsCount.textContent = String(open.length);
+  }
+  if (!sorted.length) {
+    const empty = document.createElement("p");
+    empty.className = "today-empty";
+    empty.textContent = "No domain looks at risk on this day.";
+    proposalList.appendChild(empty);
+    return;
+  }
+  for (const proposal of sorted.filter((item) => item.status !== "dismissed")) {
+    proposalList.appendChild(proposalCard(proposal, canOpenRoles));
+  }
+  const dismissed = sorted.filter((item) => item.status === "dismissed");
+  if (dismissed.length) {
+    const fold = document.createElement("details");
+    fold.className = "proposal-dismissed";
+    const summary = document.createElement("summary");
+    summary.textContent = `Dismissed · ${dismissed.length}`;
+    fold.appendChild(summary);
+    for (const proposal of dismissed) fold.appendChild(proposalCard(proposal, canOpenRoles));
+    proposalList.appendChild(fold);
+  }
+}
+
+function renderHealth(domains) {
+  if (!healthRows) return;
+  healthRows.replaceChildren();
+  for (const domain of domains) {
+    const row = document.createElement("tr");
+    if (!domain.ownerActive) row.className = "orphaned";
+    const cells = [
+      domain.name,
+      domain.owner ? (domain.ownerActive ? domain.owner : `${domain.owner} (left)`) : "—",
+      domain.owner ? String(domain.ownerLoad) : "—",
+      String(domain.activeContributors30d?.length ?? 0),
+      String(domain.incidents30d?.length ?? 0),
+    ];
+    cells.forEach((text, index) => {
+      const cell = document.createElement(index === 0 ? "th" : "td");
+      if (index === 0) cell.scope = "row";
+      cell.textContent = text;
+      row.appendChild(cell);
+    });
+    healthRows.appendChild(row);
+  }
+}
+
+async function loadGaps() {
+  if (!gapsAvailable || !proposalList) return;
+  const epoch = ++gapsEpoch;
+  const query = `asOf=${encodeURIComponent(gapsDay())}`;
+  showGapsNotice();
+  try {
+    const [proposals, health] = await Promise.all([
+      fetch(`/api/v1/gaps/proposals?${query}`, { credentials: "same-origin" }),
+      fetch(`/api/v1/gaps/health?${query}`, { credentials: "same-origin" }),
+    ]);
+    if (epoch !== gapsEpoch) return;
+    if (proposals.status === 401) {
+      plateAuthRequiredHandler();
+      return;
+    }
+    if (proposals.status === 503) {
+      gapsAvailable = false;
+      if (gapsPanel) gapsPanel.hidden = true;
+      return;
+    }
+    if (!proposals.ok) throw new Error("Could not load the proposals for this day.");
+    const body = await proposals.json();
+    if (epoch !== gapsEpoch) return;
+    renderProposals(body.proposals ?? [], Boolean(body.canOpenRoles));
+    if (health.ok) {
+      const healthBody = await health.json();
+      if (epoch === gapsEpoch) renderHealth(healthBody.domains ?? []);
+    } else if (healthDetails) {
+      healthDetails.hidden = true;
+    }
+  } catch (error) {
+    if (epoch !== gapsEpoch) return;
+    proposalList.replaceChildren();
+    showGapsNotice(error instanceof Error ? error.message : "Could not load the proposals for this day.");
+  }
+}
+
+async function initGaps() {
+  if (!gapsPanel || !workingDays.length) return;
+  try {
+    const response = await fetch(`/api/v1/gaps/proposals?asOf=${encodeURIComponent(gapsDay())}`, { credentials: "same-origin" });
+    if (response.status === 401) {
+      plateAuthRequiredHandler();
+      return;
+    }
+    gapsAvailable = response.ok;
+  } catch (_) {
+    gapsAvailable = false;
+  }
+  gapsPanel.hidden = !gapsAvailable;
+  if (gapsAvailable) await loadGaps();
+}
+
 /** After sign-in: the days to choose from, then the day in the address. */
 async function initPlanner() {
   try {
@@ -420,6 +683,7 @@ async function initPlanner() {
   // On the plate, tickets and plan are always shown where there is a planner.
   setTodayPanelOpen(true, false);
   showDay(day);
+  await initGaps();
 }
 
 // ---------------------------------------------------------------------------
