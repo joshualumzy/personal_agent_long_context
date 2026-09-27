@@ -351,3 +351,114 @@ describe("SME Assistant keeping candidates in view", () => {
   });
 });
 
+
+// What the assistant page already does for a signed-in employee. The page's
+// layout is about to change; these describe behaviour that has to survive it.
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+const JAX = { employeeId: "jax", displayName: "Jax", role: "Backend Engineer", department: "Engineering_Backend" };
+
+async function until(check: () => unknown, what: string, ms = 2_000) {
+  const deadline = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${what}.`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+function signedIn(extra: PageOptions["respond"] = () => undefined): PageOptions["respond"] {
+  return (url, init) => {
+    const own = extra(url, init);
+    if (own) return own;
+    if (url === "/api/v1/auth/me") return json({ authenticated: true, employee: JAX });
+    if (url === "/api/v1/conversations" && (!init?.method || init.method === "GET")) {
+      return json([{ conversationId: "c1", title: "Was ZD-101 the same bug?", updatedAt: new Date().toISOString() }]);
+    }
+    if (url === "/api/v1/conversations/c1") {
+      return json({ messages: [
+        { role: "user", content: "Was ZD-101 the same bug?" },
+        { role: "assistant", content: "Related, not the same bug.", metadata: {} },
+      ] });
+    }
+    return undefined;
+  };
+}
+
+describe("SME Assistant keeps what it already does", () => {
+  test("lists the employee's saved conversations and opens one", async () => {
+    const page = await openSmePage({ respond: signedIn() });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "the saved conversations");
+
+    const item = page.document.querySelector(".conversation-item") as HTMLButtonElement;
+    assert.match(item.textContent!, /Was ZD-101 the same bug\?/);
+    item.click();
+    await until(() => page.document.querySelector(".message-row.assistant"), "the conversation to load");
+    assert.match(page.document.querySelector("#chat-messages")!.textContent!, /Related, not the same bug\./);
+  });
+
+  test("a new chat clears the conversation on screen", async () => {
+    const page = await openSmePage({ respond: signedIn() });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "the saved conversations");
+    (page.document.querySelector(".conversation-item") as HTMLButtonElement).click();
+    await until(() => page.document.querySelector(".message-row.assistant"), "the conversation to load");
+
+    (page.document.querySelector("#new-chat-btn") as HTMLButtonElement).click();
+    assert.equal(page.document.querySelector("#chat-messages")!.children.length, 0);
+  });
+
+  test("clearing all conversations asks first, then deletes them", async () => {
+    const page = await openSmePage({
+      respond: signedIn((url, init) => (url === "/api/v1/conversations" && init?.method === "DELETE" ? json({ ok: true }) : undefined)),
+      setup: (window) => { (window as unknown as { confirm: () => boolean }).confirm = () => true; },
+    });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "the saved conversations");
+
+    const clear = page.document.querySelector("#clear-all-conversations-btn") as HTMLButtonElement;
+    assert.equal(clear.hidden, false);
+    clear.click();
+    // The first request loaded the list; the next one is the delete.
+    await until(() => page.requests.filter((request) => request.url === "/api/v1/conversations").length >= 2, "the delete");
+  });
+
+  test("clicking the signed-in employee opens the directory to switch persona", async () => {
+    const page = await openSmePage({ respond: signedIn((url) => (url === "/api/v1/auth/personas" ? json([JAX, { employeeId: "deepa", displayName: "Deepa", role: "Infra Lead", department: "Engineering_Backend" }]) : undefined)) });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "sign-in to finish");
+    assert.equal(page.document.querySelector("#login-dialog")!.hasAttribute("open"), false);
+
+    (page.document.querySelector("#sidebar-user-container") as HTMLElement).click();
+    await until(() => page.document.querySelector("#login-dialog")!.hasAttribute("open"), "the directory");
+    await until(() => /Deepa/.test(page.document.querySelector("#persona-grid")!.textContent!), "the personas");
+  });
+
+  test("logging out ends the session and asks to sign in again", async () => {
+    const page = await openSmePage({ respond: signedIn((url) => (url === "/api/v1/auth/logout" ? json({ ok: true }) : undefined)) });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "sign-in to finish");
+
+    (page.document.querySelector("#logout-btn") as HTMLButtonElement).click();
+    await until(() => page.requests.some((request) => request.url === "/api/v1/auth/logout"), "the logout request");
+    await until(() => page.document.querySelector("#login-dialog")!.hasAttribute("open"), "the sign-in dialog");
+  });
+
+  test("a cited source opens in a dialog with its full text", async () => {
+    const page = await openSmePage({
+      respond: signedIn((url) => (url === "/api/v1/company/sources/CONF-ENG-239"
+        ? json({ sourceId: "CONF-ENG-239", sourceType: "confluence", title: "Remote config design", body: "The whole page.", department: "Engineering" })
+        : undefined)),
+    });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "sign-in to finish");
+    const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
+    input.value = "What is the latest project?";
+    page.document.querySelector("#chat-form")!.dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+    await until(() => page.document.querySelector('.message-row.assistant [data-source-id="CONF-ENG-239"]'), "the cited source");
+
+    (page.document.querySelector('.message-row.assistant [data-source-id="CONF-ENG-239"]') as HTMLElement).click();
+    await until(() => page.document.querySelector("#source-title")!.textContent === "Remote config design", "the source dialog");
+  });
+});
