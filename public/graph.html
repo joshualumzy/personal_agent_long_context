@@ -35,19 +35,30 @@
       <select id="question"></select>
     </div>
 
+    <nav class="layer-tabs" id="layer-tabs" aria-label="Graph layer">
+      <button type="button" class="layer-tab on" id="layer-main" aria-pressed="true" data-layer="main">Main</button>
+      <button type="button" class="layer-tab" id="layer-person" aria-pressed="false" data-layer="person">People</button>
+      <button type="button" class="layer-tab" id="layer-causal" aria-pressed="false" data-layer="causal">Causal chains</button>
+    </nav>
+
+    <div class="field" id="query-field">
+      <label for="query">Ask a question</label>
+      <input type="text" id="query" placeholder="e.g. why did the TiDB migration slip?">
+    </div>
+
     <div class="field" id="view-field">
-      <label for="view">Show</label>
+      <label for="view">Or pick a filter</label>
       <select id="view">
+        <option value="query" selected>Follow a question above</option>
         <option value="incidents">Artifacts caught up in incidents</option>
-        <option value="chain">One causal chain</option>
+        <option value="chain">One causal chain, by source id</option>
         <option value="type">Everything of one kind</option>
       </select>
     </div>
 
     <div class="field" id="seed-field" hidden>
       <label for="seed">Starting document</label>
-      <input type="text" id="seed" value="EVT-1-sprint_planned-49"
-             placeholder="a source id, such as CONF-ENG-022">
+      <input type="text" id="seed" placeholder="a source id, such as CONF-ENG-022">
     </div>
 
     <div class="field" id="depth-field" hidden>
@@ -78,6 +89,7 @@
     </div>
 
     <button type="submit" class="primary" id="draw">Draw</button>
+    <button type="button" class="quiet" id="restore" disabled>Restore original</button>
   </form>
 
   <p id="provenance" class="provenance" hidden></p>
@@ -93,7 +105,8 @@
         <title>Documents and people, joined by how they reference one another</title>
       </svg>
       <p id="canvas-help" class="hint-line">
-        Tab moves between items. Enter opens the details of the focused item.
+        Click a node to expand from it. Double-click for its attributes and evidence.
+        Tab moves between items with a keyboard; Enter opens the focused item.
       </p>
       <ul class="legend" id="legend-recorded">
         <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item"/></svg>Domain, ticket, or other item</li>

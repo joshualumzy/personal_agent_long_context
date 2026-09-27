@@ -138,6 +138,11 @@ describe("the company graph", () => {
     assert.match(details, /Design: vendor audit/);
     assert.match(details, /Connected to/);
 
+    // On the main tab a click also re-centers the graph on the clicked node —
+    // a second, background fetch (the mock resolves it immediately, but it is
+    // still a promise this test has to let settle before closing the window).
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
     // The page polls on an interval, and jsdom timers are real Node timers, so
     // the window has to be closed or the test process never exits.
     window.close();

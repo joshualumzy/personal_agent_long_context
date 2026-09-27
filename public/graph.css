@@ -43,6 +43,17 @@ button, .quiet { font: inherit; cursor: pointer; }
 .quiet:hover { border-color: var(--muted); }
 .quiet.on { border-color: var(--aqua); color: var(--aqua); }
 
+/* Layer tabs: a separate row from Picture/Table — those switch how the
+   current layer is rendered, these switch which layer it is. */
+.layer-tabs { display: flex; gap: 6px; margin: 0; }
+.layer-tab {
+  border: 1px solid var(--line); border-radius: var(--radius-control);
+  padding: 6px 12px; background: var(--sky-raised); color: var(--muted);
+  font: inherit; font-size: .88rem; cursor: pointer;
+}
+.layer-tab:hover { border-color: var(--muted); }
+.layer-tab.on { border-color: var(--gold); color: var(--gold); background: var(--sky-high); font-weight: 600; }
+
 /* Header */
 .top {
   flex: none; display: flex; justify-content: space-between; align-items: flex-end; gap: 24px;
@@ -150,6 +161,23 @@ td.kind { color: var(--muted); white-space: nowrap; }
 .details .neighbours button {
   border: 0; background: none; padding: 0; color: var(--aqua); font: inherit;
   text-align: left; cursor: pointer; text-decoration: underline;
+}
+
+/* Attributes/Evidence sub-tabs inside a double-clicked node's details. */
+.detail-tabs { display: flex; gap: 6px; margin: 0 0 10px; }
+.detail-tab {
+  border: 1px solid var(--line); border-radius: var(--radius-control);
+  padding: 4px 10px; background: transparent; color: var(--muted);
+  font: inherit; font-size: .82rem; cursor: pointer;
+}
+.detail-tab.on { border-color: var(--aqua); color: var(--aqua); font-weight: 600; }
+.evidence-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.evidence-list li { border-top: 1px solid var(--line); padding-top: 8px; }
+.evidence-list li:first-child { border-top: none; padding-top: 0; }
+.evidence-title { margin: 0; font-weight: 600; font-size: .88rem; }
+.evidence-excerpt {
+  margin: 4px 0 0; color: var(--muted); font-size: .82rem;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 
 @media (max-width: 900px) {
