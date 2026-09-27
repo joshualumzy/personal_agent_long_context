@@ -11,6 +11,10 @@
   --gold: #1f6d5f;
   --aqua: #4f8f82;
   --ochre: #b7862b;
+  /* Two more fills, so each of the five node kinds has its own. Chosen to sit
+     in the same muted range as the rest rather than shouting over them. */
+  --slate: #5b6b7c;
+  --indigo: #4a6fa5;
   --danger: #9a382f;
   --on-accent: #ffffff;
   --radius-control: 10px;
@@ -107,16 +111,21 @@ h2 { margin: 0 0 8px; font-family: Georgia, "Songti SC", serif; font-size: 1.05r
 
 .legend { list-style: none; display: flex; flex-wrap: wrap; gap: 14px; margin: 10px 2px 0; padding: 0; color: var(--muted); font-size: .82rem; }
 .legend li { display: flex; align-items: center; gap: 6px; }
+/* Set apart from the five kinds above it: this one describes a state, not a
+   kind, and should not read as a sixth entry in the taxonomy. */
+.legend li.legend-note { margin-left: auto; font-style: italic; color: var(--faint); }
 .key { width: 14px; height: 14px; flex: none; }
 
-/* Nodes are told apart by shape as well as colour. */
-.n-artifact { fill: var(--gold); }
-.n-artifact.incident { fill: var(--danger); }
+/* Nodes are told apart by shape as well as colour: five kinds, five shapes,
+   five fills, no two alike. 'Part of an incident' is deliberately not a sixth
+   kind — it is a state any item or event can be in, so it reads as a red
+   outline on whatever shape the node already has. */
+.n-person { fill: var(--aqua); }
+.n-organization { fill: var(--slate); }
 .n-item { fill: var(--gold); }
-.n-item.incident { fill: var(--danger); }
 .n-event { fill: var(--ochre); }
-.n-actor { fill: var(--aqua); }
-.n-organization { fill: var(--faint); }
+.n-document { fill: var(--indigo); }
+.shape.incident { stroke: var(--danger); stroke-width: 2.5; }
 /* The emergent graph has its own taxonomy, so its own pair of shapes. */
 .n-entity { fill: var(--aqua); }
 .n-kind { fill: var(--ochre); }

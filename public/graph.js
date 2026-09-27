@@ -60,6 +60,16 @@ const state = {
   // clicks around; this is specifically the first one drawn.
   mainOriginalSeed: null,
   evidenceCache: new Map(),
+  // What the current picture is about: the concentric layout puts this at the
+  // centre and everything else at its own hop distance from it. Null lets the
+  // layout pick the best-connected node, which is what the layer tabs want.
+  centreId: null,
+  // Where each node was last drawn, so a redraw can keep them in place
+  // instead of relaying out the whole picture.
+  positions: new Map(),
+  // Which nodes have already been expanded, so clicking one twice does not
+  // refetch a neighbourhood already merged in.
+  expanded: new Set(),
 };
 
 function svg(tag, attributes = {}) {
@@ -106,136 +116,176 @@ function nodeKind(node) {
   // thing an Entity, and the categories it groups them under EntityType.
   if (node.type === "Entity") return "entity";
   if (node.type === "EntityType") return "kind";
-  // The recorded graph's own five kinds. 'document' still splits on category,
-  // since the deterministic graph only ever gives 'document' to a confluence
-  // page — the category check exists for the earlier shape of this data and
-  // stays harmless if it never matches 'sim_event' again.
+  // The recorded graph's own five kinds, named exactly as the backend names
+  // them so there is one vocabulary rather than three.
   if (node.type === "person") return "person";
   if (node.type === "organization") return "organization";
   if (node.type === "item") return "item";
   if (node.type === "event") return "event";
-  if (node.type === "document") return node.category === "artifact" ? "artifact" : "event";
+  if (node.type === "document") return "document";
   return "entity";
 }
 
 function describeKind(node) {
+  const incident = node.isIncident ? ", part of an incident" : "";
   switch (nodeKind(node)) {
     case "person": return "Person";
     case "organization": return "Organization";
-    case "item": return node.isIncident ? "Item, part of an incident" : "Item";
-    case "event": return "Simulation event";
+    case "item": return `Item${incident}`;
+    case "event": return `Event${incident}`;
+    case "document": return `Document${incident}`;
     case "entity": return "Something named in the writing";
     case "kind": return "A kind of thing";
-    default: return node.isIncident ? "Artifact, part of an incident" : "Artifact";
+    default: return "Item";
   }
 }
 
-/**
- * A plain spring/repulsion layout. Enough for a hundred nodes, and it avoids
- * pulling in a graph library for one page.
- */
-function layout(nodes, edges) {
-  const positions = new Map();
-  nodes.forEach((node, index) => {
-    const angle = seedNumber(node.id) * Math.PI * 2;
-    const radius = 90 + (index % 7) * 26;
-    positions.set(node.id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius, vx: 0, vy: 0 });
-  });
+// The outermost ring's radius. The viewBox is 840x640, so this leaves room for
+// a node's caption without clipping.
+const LAYOUT_RADIUS = 260;
 
-  const linked = edges.filter((edge) => positions.has(edge.source) && positions.has(edge.target));
+/** The best-connected node, used as the centre when the caller has no
+ * particular one in mind (the layer tabs, which have no seed). */
+function highestDegree(nodes, edges) {
+  if (nodes.length === 0) return null;
   const degree = new Map(nodes.map((node) => [node.id, 0]));
-  for (const edge of linked) {
-    degree.set(edge.source, (degree.get(edge.source) ?? 0) + 1);
-    degree.set(edge.target, (degree.get(edge.target) ?? 0) + 1);
+  for (const edge of edges) {
+    if (degree.has(edge.source)) degree.set(edge.source, degree.get(edge.source) + 1);
+    if (degree.has(edge.target)) degree.set(edge.target, degree.get(edge.target) + 1);
+  }
+  return [...degree.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))[0][0];
+}
+
+/** How many hops each node sits from the centre, by breadth-first search over
+ * the undirected graph. This is the number the layout turns into a radius. */
+function ringsFrom(nodes, edges, centreId) {
+  const present = new Set(nodes.map((node) => node.id));
+  const adjacency = new Map(nodes.map((node) => [node.id, []]));
+  for (const edge of edges) {
+    if (!present.has(edge.source) || !present.has(edge.target)) continue;
+    adjacency.get(edge.source).push(edge.target);
+    adjacency.get(edge.target).push(edge.source);
   }
 
-  for (let step = 0; step < 320; step += 1) {
-    const cooling = 1 - step / 320;
-
-    for (const [idA, a] of positions) {
-      for (const [idB, b] of positions) {
-        if (idA >= idB) continue;
-        const dx = a.x - b.x;
-        const dy = a.y - b.y;
-        const distance = Math.hypot(dx, dy) || 0.01;
-        const push = Math.min(2600 / (distance * distance), 14);
-        const ux = (dx / distance) * push;
-        const uy = (dy / distance) * push;
-        a.vx += ux; a.vy += uy;
-        b.vx -= ux; b.vy -= uy;
+  const ring = new Map();
+  if (centreId && present.has(centreId)) {
+    ring.set(centreId, 0);
+    let frontier = [centreId];
+    let depth = 0;
+    while (frontier.length > 0) {
+      depth += 1;
+      const next = [];
+      for (const id of frontier) {
+        for (const neighbour of adjacency.get(id) ?? []) {
+          if (ring.has(neighbour)) continue;
+          ring.set(neighbour, depth);
+          next.push(neighbour);
+        }
       }
-    }
-
-    for (const edge of linked) {
-      const a = positions.get(edge.source);
-      const b = positions.get(edge.target);
-      const dx = b.x - a.x;
-      const dy = b.y - a.y;
-      const distance = Math.hypot(dx, dy) || 0.01;
-      const pull = (distance - 96) * 0.012;
-      const ux = (dx / distance) * pull;
-      const uy = (dy / distance) * pull;
-      a.vx += ux; a.vy += uy;
-      b.vx -= ux; b.vy -= uy;
-    }
-
-    for (const [id, point] of positions) {
-      // Weak pull to the middle, weaker for well-connected nodes so hubs settle
-      // centrally instead of being dragged outward by everything they touch.
-      const gravity = 0.0016 / (1 + (degree.get(id) ?? 0) * 0.12);
-      point.vx -= point.x * gravity * 60;
-      point.vy -= point.y * gravity * 60;
-
-      point.x += point.vx * cooling;
-      point.y += point.vy * cooling;
-      point.vx *= 0.82;
-      point.vy *= 0.82;
+      frontier = next;
     }
   }
 
-  // Fit to the viewBox with a margin, so a sparse slice is not tiny and a dense
-  // one does not spill outside.
-  const xs = [...positions.values()].map((p) => p.x);
-  const ys = [...positions.values()].map((p) => p.y);
-  const spanX = Math.max(...xs) - Math.min(...xs) || 1;
-  const spanY = Math.max(...ys) - Math.min(...ys) || 1;
-  const scale = Math.min(720 / spanX, 520 / spanY, 2.4);
-  const midX = (Math.max(...xs) + Math.min(...xs)) / 2;
-  const midY = (Math.max(...ys) + Math.min(...ys)) / 2;
-  for (const point of positions.values()) {
-    point.x = (point.x - midX) * scale;
-    point.y = (point.y - midY) * scale;
+  // Anything the centre cannot reach goes one ring past the furthest thing it
+  // can, so disconnected nodes are visibly outside the structure rather than
+  // mixed into it.
+  const reached = [...ring.values()];
+  const outer = (reached.length > 0 ? Math.max(...reached) : 0) + 1;
+  for (const node of nodes) {
+    if (!ring.has(node.id)) ring.set(node.id, outer);
+  }
+  return ring;
+}
+
+/**
+ * A concentric layout: the centre is what the view is about, and a node's
+ * distance from it is how many hops away it is. Unlike the force simulation
+ * this replaced, both coordinates mean something, it is O(n) rather than 320
+ * iterations of O(n²), and it is stable — adding nodes does not move the ones
+ * already on screen, which is what makes click-to-expand additive.
+ *
+ * `options.pinned` carries positions already assigned on a previous draw;
+ * those nodes keep exactly where they were and only new ones get placed.
+ */
+function layout(nodes, edges, options = {}) {
+  const positions = new Map();
+  if (nodes.length === 0) return positions;
+
+  const pinned = options.pinned ?? new Map();
+  const present = new Set(nodes.map((node) => node.id));
+  const centreId = options.centreId && present.has(options.centreId)
+    ? options.centreId
+    : highestDegree(nodes, edges);
+  const ring = ringsFrom(nodes, edges, centreId);
+
+  const byRing = new Map();
+  for (const node of nodes) {
+    const index = ring.get(node.id) ?? 0;
+    if (!byRing.has(index)) byRing.set(index, []);
+    byRing.get(index).push(node);
+  }
+  // Within a ring, group by kind so one kind occupies a contiguous arc instead
+  // of being scattered around it, then by id so the order never shuffles
+  // between draws of the same slice.
+  for (const list of byRing.values()) {
+    list.sort((left, right) =>
+      nodeKind(left).localeCompare(nodeKind(right)) || left.id.localeCompare(right.id));
+  }
+
+  const maxRing = Math.max(...byRing.keys());
+  const gap = maxRing > 0 ? LAYOUT_RADIUS / maxRing : 0;
+
+  for (const [index, list] of byRing) {
+    // Each ring starts at its own angle, so consecutive rings do not line up
+    // radially and make the picture look like spokes.
+    const offset = seedNumber(`ring-${index}`) * Math.PI * 2;
+    const radius = gap * index;
+    list.forEach((node, position) => {
+      const already = pinned.get(node.id);
+      if (already) {
+        positions.set(node.id, { x: already.x, y: already.y });
+        return;
+      }
+      if (index === 0) {
+        positions.set(node.id, { x: 0, y: 0 });
+        return;
+      }
+      const angle = offset + (position / list.length) * Math.PI * 2;
+      positions.set(node.id, { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius });
+    });
   }
   return positions;
 }
 
 function shapeFor(node) {
   const kind = nodeKind(node);
-  if (kind === "person" || kind === "actor") {
-    return svg("polygon", { points: "0,-7 7,0 0,7 -7,0", class: "shape n-actor" });
+  // One shape per kind, so the picture still reads without colour. The
+  // incident class only adds an outline — it never replaces the fill, which
+  // would cost the node its kind.
+  const incident = node.isIncident ? " incident" : "";
+  if (kind === "person") {
+    return svg("polygon", { points: "0,-7 7,0 0,7 -7,0", class: `shape n-person${incident}` });
   }
   if (kind === "organization") {
-    return svg("polygon", { points: "-7,-6 7,-6 7,6 -7,6", class: "shape n-organization" });
-  }
-  if (kind === "event") {
-    return svg("rect", { x: -6, y: -6, width: 12, height: 12, class: "shape n-event" });
+    return svg("polygon", {
+      points: "-4,-7 4,-7 7,0 4,7 -4,7 -7,0",
+      class: `shape n-organization${incident}`,
+    });
   }
   if (kind === "item") {
-    return svg("circle", {
-      r: 7,
-      class: `shape n-item${node.isIncident ? " incident" : ""}`,
-    });
+    return svg("circle", { r: 7, class: `shape n-item${incident}` });
+  }
+  if (kind === "event") {
+    return svg("rect", { x: -6, y: -6, width: 12, height: 12, class: `shape n-event${incident}` });
+  }
+  if (kind === "document") {
+    return svg("polygon", { points: "0,-7 7,6 -7,6", class: `shape n-document${incident}` });
   }
   if (kind === "kind") {
     return svg("rect", { x: -6, y: -6, width: 12, height: 12, class: "shape n-kind" });
   }
-  if (kind === "entity") {
-    return svg("circle", { r: 7, class: "shape n-entity" });
-  }
-  return svg("circle", {
-    r: 7,
-    class: `shape n-artifact${node.isIncident ? " incident" : ""}`,
-  });
+  return svg("circle", { r: 7, class: "shape n-entity" });
 }
 
 /**
@@ -263,10 +313,26 @@ function drawPicture() {
   canvas.replaceChildren(title);
 
   const { nodes, edges } = state.slice;
-  const cap = state.layer === "main" ? MAIN_LAYER_CAP : MAX_DRAWN;
+  // The main tab's 20 is a budget for the *first* view being legible, not a
+  // hard ceiling: once the reader has expanded something they have asked for a
+  // bigger picture, and trimming back to 20 would throw away nodes they just
+  // added. MAX_DRAWN is the real ceiling either way.
+  const cap = state.layer !== "main" || state.expanded.size > 0
+    ? MAX_DRAWN
+    : MAIN_LAYER_CAP;
   const drawn = mostConnected(nodes, edges, cap);
   const visible = new Set(drawn.map((node) => node.id));
-  const positions = layout(drawn, edges);
+  const positions = layout(drawn, edges, {
+    centreId: state.centreId,
+    // Nodes already on screen keep their place, so expanding one does not
+    // rearrange everything the reader has already made sense of.
+    pinned: state.positions,
+  });
+  // Remembered for the next draw's pinning, trimmed to what is actually on
+  // screen so a node dropped from the slice does not keep a stale position.
+  state.positions = new Map(
+    [...positions].filter(([id]) => visible.has(id)).map(([id, point]) => [id, point]),
+  );
 
   const edgeLayer = svg("g");
   for (const edge of edges) {
@@ -296,12 +362,13 @@ function drawPicture() {
       shapeFor(node),
       Object.assign(svg("text", { y: 19, class: "caption" }), { textContent: shortLabel(node) }),
     );
-    // Single click: select, and — on the main tab, where a node is something
-    // to move toward rather than a fixed member of a fixed set — re-center
-    // the graph on it. Double click: open its details, regardless of tab.
+    // Single click: select, and grow the picture outward from this node — the
+    // neighbours are merged in, so nothing already on screen is lost. Double
+    // click: open its details. expandFrom decides for itself which tabs it
+    // applies to.
     group.addEventListener("click", () => {
       select(node.id);
-      if (state.layer === "main") recenterOn(node.id);
+      expandFrom(node.id);
     });
     group.addEventListener("dblclick", (event) => {
       event.preventDefault();
@@ -311,7 +378,7 @@ function drawPicture() {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
         select(node.id);
-        if (state.layer === "main") recenterOn(node.id);
+        expandFrom(node.id);
       }
     });
     // Tabbing onto a node shows its details, so the rail follows the keyboard.
@@ -403,16 +470,24 @@ function focusNode(id) {
 }
 
 /**
- * Re-center the main tab on a clicked node: a fresh graphSlice({seed, depth:1})
- * request, replacing the canvas rather than adding to it. The main tab is
- * "what is near this one thing", one thing at a time — not an
- * ever-accumulating picture — so a click moves the center instead of
- * appending a second neighbourhood onto the first.
+ * Expand the clicked node in place: fetch its immediate neighbourhood and
+ * merge it into what is already drawn, rather than replacing the picture.
+ * The graph grows outward from wherever the reader started, and because the
+ * concentric layout pins nodes it has already placed, nothing that was on
+ * screen moves when new nodes arrive.
+ *
+ * Expanding the same node twice is a no-op: it is recorded in state.expanded
+ * and its neighbours are already in the slice.
  */
-async function recenterOn(id) {
-  // Re-centering is a recorded-graph, main-tab idea: the emergent graph is
-  // one question's own fixed export, nothing to move a seed through.
+async function expandFrom(id) {
+  // Expanding is a recorded-graph, main-tab idea: the emergent graph is one
+  // question's own fixed export with no seed to follow outward, and the
+  // person/causal layers are defined by an edge type — pulling in a node's
+  // full neighbourhood there would drag in edges the layer excludes and stop
+  // it being that layer.
   if (state.source !== "recorded" || state.layer !== "main") return;
+  if (state.expanded.has(id)) return;
+
   $("#status-line").textContent = "Loading…";
   try {
     const cached = state.cache.main.get(id);
@@ -422,7 +497,8 @@ async function recenterOn(id) {
       includeActors: $("#include-actors").checked ? "true" : "false",
     })}`);
     if (!cached) state.cache.main.set(id, slice);
-    state.slice = slice;
+    state.expanded.add(id);
+    state.slice = mergeSlices(state.slice, slice);
     drawPicture();
     drawTable();
     reportCounts();
@@ -430,6 +506,32 @@ async function recenterOn(id) {
   } catch (error) {
     showError(error instanceof Error ? error.message : String(error));
   }
+}
+
+/** Union of two slices: nodes deduped by id, edges by the triple that makes
+ * one unique. The existing slice wins on conflict, so a node already drawn
+ * keeps the form the reader has been looking at. */
+function mergeSlices(current, addition) {
+  if (!current) return addition;
+  const nodes = [...current.nodes];
+  const seenNodes = new Set(nodes.map((node) => node.id));
+  for (const node of addition.nodes) {
+    if (seenNodes.has(node.id)) continue;
+    seenNodes.add(node.id);
+    nodes.push(node);
+  }
+
+  const edges = [...current.edges];
+  const edgeKey = (edge) => `${edge.source}\u0000${edge.target}\u0000${edge.type}`;
+  const seenEdges = new Set(edges.map(edgeKey));
+  for (const edge of addition.edges) {
+    const key = edgeKey(edge);
+    if (seenEdges.has(key)) continue;
+    seenEdges.add(key);
+    edges.push(edge);
+  }
+
+  return { nodes, edges, truncated: current.truncated || addition.truncated };
 }
 
 /**
@@ -627,9 +729,18 @@ async function request() {
   if (state.layer === "person" || state.layer === "causal") {
     const parameters = new URLSearchParams({
       edgeTypes: LAYER_EDGE_TYPES[state.layer].join(","),
-      includeActors: "true",
       limit: "100",
     });
+    // includeActors pulls in the person/organization nodes an 'involves' edge
+    // reaches from whatever the layer's own edge type already selected. The
+    // causal layer's edges (caused_by/escalated_via) never touch a person —
+    // only 'involves' does — so asking for actors there would add person
+    // nodes with no edge of this layer's own type to draw, stranding them as
+    // isolated points. The person layer is exactly the opposite case: without
+    // this, edgeTypes=involves alone already returns everyone 'involves'
+    // reaches (both people and the events/documents that involve them), so it
+    // does not need actors added either — kept explicit rather than left to
+    // read as an oversight.
     return `/api/v1/graph?${parameters}`;
   }
 
@@ -681,7 +792,11 @@ async function fetchSlice(url) {
 
 function reportCounts() {
   const { nodes, edges } = state.slice;
-  const cap = state.layer === "main" ? MAIN_LAYER_CAP : MAX_DRAWN;
+  // Same rule as drawPicture, so the count of what is not drawn matches what
+  // actually was not drawn.
+  const cap = state.layer !== "main" || state.expanded.size > 0
+    ? MAX_DRAWN
+    : MAIN_LAYER_CAP;
   const hidden = Math.max(nodes.length - cap, 0);
   $("#status-line").textContent = [
     `${nodes.length} items, ${edges.length} relationships`,
@@ -755,6 +870,12 @@ async function draw() {
   $("#error").hidden = true;
   $("#status-line").textContent = "Loading…";
   state.source = $("#source").value;
+  // A fresh draw is a new picture, not a growth of the current one, so no
+  // node keeps its old place, nothing counts as already expanded, and the
+  // centre is recomputed below.
+  state.positions = new Map();
+  state.centreId = null;
+  state.expanded = new Set();
 
   try {
     if (state.source === "emergent") {
@@ -767,6 +888,10 @@ async function draw() {
     state.slice = await fetchSlice(url);
     if (state.source === "recorded" && state.layer === "main" && state.mainOriginalSeed) {
       state.cache.main.set(state.mainOriginalSeed, state.slice);
+      // The seed the question resolved to is what the picture is about, so it
+      // is the centre. The sentinel used when no question was asked is not a
+      // real node, so that case falls through to the best-connected node.
+      if (state.mainOriginalSeed !== MAIN_NO_SEED_KEY) state.centreId = state.mainOriginalSeed;
     }
     if (state.source === "recorded" && (state.layer === "person" || state.layer === "causal")) {
       state.cache[state.layer] = state.slice;
@@ -788,10 +913,12 @@ async function draw() {
   }
 }
 
-/** Redraw whichever tab is open from its own cached first slice. Main
- * returns to the question most recently asked; person/causal return to
- * their one fixed slice. A no-op, not an error, if nothing has been drawn
- * yet to restore. */
+/** Redraw whichever tab is open from its own cached first slice, discarding
+ * everything clicking around has grown onto it. Main returns to the question
+ * most recently asked; person/causal return to their one fixed slice. This is
+ * the only way back once the picture has been expanded, which is why the
+ * remembered positions and the expanded set are cleared with it. A no-op, not
+ * an error, if nothing has been drawn yet to restore. */
 function restoreOriginal() {
   if (state.source !== "recorded") return;
   const cached = state.layer === "main"
@@ -799,6 +926,8 @@ function restoreOriginal() {
     : state.cache[state.layer];
   if (!cached) return;
   state.slice = cached;
+  state.positions = new Map();
+  state.expanded = new Set();
   drawPicture();
   drawTable();
   reportCounts();
@@ -816,6 +945,12 @@ function switchLayer(layer) {
     button.setAttribute("aria-pressed", String(button.dataset.layer === layer));
   }
   syncFields();
+
+  // Each layer is its own picture: positions from the layer being left would
+  // pin nodes to places that meant something in a different graph.
+  state.positions = new Map();
+  state.expanded = new Set();
+  state.centreId = null;
 
   const cached = layer === "main" ? state.cache.main.get(state.mainOriginalSeed) : state.cache[layer];
   if (cached) {

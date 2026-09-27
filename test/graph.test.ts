@@ -119,13 +119,17 @@ describe("the company graph", () => {
     const labels = nodes.map((node) => node.getAttribute("aria-label"));
     assert.ok(labels.some((label) => label?.includes("Person")));
     assert.ok(labels.some((label) => label?.includes("part of an incident")));
-    assert.ok(labels.some((label) => label?.includes("Simulation event")));
+    assert.ok(labels.some((label) => label?.includes("Event")));
+    assert.ok(labels.some((label) => label?.includes("Document")));
 
-    // Shape, not just colour, distinguishes the three kinds.
-    assert.equal(document.querySelectorAll(".node polygon.n-actor").length, 1);
+    // Shape, not just colour, distinguishes the kinds: one shape per kind.
+    assert.equal(document.querySelectorAll(".node polygon.n-person").length, 1);
     assert.equal(document.querySelectorAll(".node rect.n-event").length, 1);
-    assert.equal(document.querySelectorAll(".node circle.n-artifact").length, 1);
+    assert.equal(document.querySelectorAll(".node polygon.n-document").length, 1);
     assert.equal(document.querySelectorAll(".node circle.n-item").length, 1);
+    // The incident state is an outline on the shape it already has, never a
+    // different fill — otherwise a node loses its kind to its status.
+    assert.equal(document.querySelectorAll(".node circle.n-item.incident").length, 1);
 
     // The table carries the same relationships, so the picture is not the only
     // way to read them.
@@ -145,6 +149,62 @@ describe("the company graph", () => {
 
     // The page polls on an interval, and jsdom timers are real Node timers, so
     // the window has to be closed or the test process never exits.
+    window.close();
+  });
+
+  test("clicking a node grows the picture, and Restore original puts it back", async () => {
+    // The expansion has to return something the base slice does not, or a
+    // merge and a replacement would look identical.
+    const expansion: GraphSlice = {
+      nodes: [
+        { id: "CONF-ENG-022", type: "document", label: "Design: vendor audit" },
+        { id: "NEW-1", type: "item", label: "Newly reached ticket" },
+      ],
+      edges: [{ source: "CONF-ENG-022", target: "NEW-1", type: "produced" }],
+      truncated: false,
+    };
+
+    const { base } = await start(knowledgeWithGraph([]));
+    const [html, script] = await Promise.all([
+      fetch(`${base}/graph`).then((response) => response.text()),
+      fetch(`${base}/graph/app.js`).then((response) => response.text()),
+    ]);
+    const dom = new JSDOM(html, { url: `${base}/graph`, runScripts: "outside-only" });
+    const { window } = dom;
+    Object.defineProperty(window, "fetch", {
+      value: async (url: string) =>
+        new Response(
+          JSON.stringify(String(url).includes("seed=") ? expansion : slice),
+          { status: 200 },
+        ),
+      configurable: true,
+    });
+    window.eval(script);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    const document = window.document;
+    assert.equal(document.querySelectorAll(".node").length, 4, "the first draw");
+
+    // Expanding keeps everything already on screen and adds what it reached.
+    const before = [...document.querySelectorAll(".node")]
+      .map((node) => node.getAttribute("data-id"));
+    document.querySelector('.node[data-id="CONF-ENG-022"]')!
+      .dispatchEvent(new window.Event("click"));
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    const after = [...document.querySelectorAll(".node")]
+      .map((node) => node.getAttribute("data-id"));
+    assert.equal(after.length, 5, "the expansion should add a node, not replace the slice");
+    assert.ok(after.includes("NEW-1"), "the newly reached node should be drawn");
+    for (const id of before) {
+      assert.ok(after.includes(id), `${id} should survive an expansion`);
+    }
+
+    // Restore original is the way back from a grown picture.
+    document.querySelector("#restore")!.dispatchEvent(new window.Event("click"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(document.querySelectorAll(".node").length, 4, "restored to the first draw");
+
     window.close();
   });
 
