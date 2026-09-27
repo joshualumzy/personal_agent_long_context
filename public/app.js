@@ -775,21 +775,9 @@ function renderBlocks(bubble, blocks, live) {
   head.className = "chat-block-head";
   const label = document.createElement("span");
   label.textContent = `Hiring · ${PANEL_LABELS[block.view] || "Candidates"}`;
-  const open = document.createElement("a");
-  open.href = block.roleId ? `/recruiting?role=${encodeURIComponent(block.roleId)}` : "/recruiting";
-  open.target = "_blank";
-  open.rel = "noopener";
-  open.innerHTML = `Open full page ${lineIcon("external", 12)}`;
   head.append(label);
-  if (block.roleId) {
-    const pin = document.createElement("button");
-    pin.type = "button";
-    pin.className = "pin-panel";
-    pin.innerHTML = `${lineIcon("pin", 12)}Pin beside the chat`;
-    pin.addEventListener("click", () => pinPanel(block));
-    head.append(pin);
-  }
-  head.append(open);
+  // The panel is where hiring happens; pinning keeps it in view, so there is no separate full page.
+  if (block.roleId) head.append(pinButton(block));
 
   const body = document.createElement("div");
   body.className = "chat-block-body";
@@ -814,6 +802,24 @@ function showsPinned(block) {
   return Boolean(pinnedRole) && block.roleId === pinnedRole && (block.view || "pool") === "pool";
 }
 
+function pinButton(block) {
+  const pin = document.createElement("button");
+  pin.type = "button";
+  pin.className = "pin-panel";
+  pin.innerHTML = `${lineIcon("pin", 12)}Pin beside the chat`;
+  pin.hidden = pinnedRole === block.roleId;
+  pin.addEventListener("click", () => pinPanel(block));
+  return pin;
+}
+
+// A role already pinned offers no second pin; unpinning brings the buttons back.
+function refreshPinButtons() {
+  document.querySelectorAll(".chat-block").forEach((container) => {
+    const pin = container.querySelector(".pin-panel");
+    if (pin && container.recruitingBlock) pin.hidden = pinnedRole === container.recruitingBlock.roleId;
+  });
+}
+
 function markShownOnRight(container) {
   const note = document.createElement("p");
   note.className = "chat-block-note";
@@ -830,6 +836,7 @@ function pinPanel(block) {
   pinnedPanel.querySelector(".pinned-body").replaceChildren(frame);
   pinnedPanel.hidden = false;
   document.body.classList.add("has-pinned");
+  refreshPinButtons();
   document.querySelectorAll(".chat-block").forEach((container) => {
     if (container.recruitingBlock && showsPinned(container.recruitingBlock)) markShownOnRight(container);
   });
@@ -840,6 +847,7 @@ function unpinPanel() {
   pinnedPanel.hidden = true;
   pinnedPanel.querySelector(".pinned-body").replaceChildren();
   document.body.classList.remove("has-pinned");
+  refreshPinButtons();
   document.querySelectorAll(".chat-block").forEach((container) => {
     if (container.recruitingBlock && container.querySelector(".chat-block-note")) foldPanel(container, container.recruitingBlock);
   });

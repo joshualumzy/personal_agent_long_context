@@ -699,7 +699,7 @@ body {
   height: 150px;
   max-width: 100%;
   cursor: pointer;
-  filter: drop-shadow(0 10px 16px rgba(75, 63, 209, 0.16));
+  filter: drop-shadow(0 10px 16px rgba(24, 24, 27, 0.11));
   display: block;
 }
 
@@ -786,7 +786,7 @@ body {
   background: var(--panel);
   border: 1px solid var(--line);
   border-bottom-left-radius: 4px;
-  box-shadow: 0 4px 18px rgba(40, 30, 120, 0.04);
+  box-shadow: 0 4px 18px rgba(24, 24, 27, 0.04);
 }
 
 /* Message Content Markdown */
@@ -1057,13 +1057,13 @@ body {
   border: 1px solid var(--line);
   border-radius: 20px;
   padding: 12px 14px 10px 18px;
-  box-shadow: 0 4px 14px rgba(40, 30, 120, 0.04);
+  box-shadow: 0 4px 14px rgba(24, 24, 27, 0.04);
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 .input-wrapper:focus-within {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(75, 63, 209, 0.14);
+  box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.10);
 }
 
 textarea#message-input {
@@ -1549,7 +1549,7 @@ dialog::backdrop {
 .persona-card.selected {
   border-color: var(--accent);
   background: var(--accent-soft);
-  box-shadow: 0 0 0 2px rgba(75, 63, 209, 0.22);
+  box-shadow: 0 0 0 2px rgba(24, 24, 27, 0.15);
 }
 
 .persona-avatar {
@@ -1633,7 +1633,7 @@ dialog::backdrop {
 .auth-form input[type="password"]:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(75, 63, 209, 0.15);
+  box-shadow: 0 0 0 3px rgba(24, 24, 27, 0.10);
 }
 
 .auth-form .form-hint {
@@ -1848,3 +1848,15 @@ button, input, textarea, select { font-family: inherit; }
 .model-selector-btn:hover { background: var(--hover); border-color: var(--line); }
 .model-dot-icon { background: var(--good); }
 .employee-badge { border: 0; padding: 0; background: none; box-shadow: none; }
+
+/* A narrow chat (candidates pinned beside it) keeps its header on one line. */
+.header-content { min-width: 0; }
+.brand { min-width: 0; flex: 1; }
+.header-titles { min-width: 0; }
+.brand h1 { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.header-actions { flex: none; }
+.model-selector-btn, .pill-btn { white-space: nowrap; }
+body.has-pinned .header-action-label { display: none; }
+
+/* One violet action per screen: Send. Your own words sit on a quiet grey. */
+.message-row.user .message-bubble { background: var(--neutral-soft); }

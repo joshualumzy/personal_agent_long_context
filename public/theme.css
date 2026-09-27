@@ -1,5 +1,6 @@
-/* Shared look for every page: lavender ground, white working surface, one
-   violet accent, sunflower for "this is the line it came from". Each page's
+/* Shared look for every page: a quiet cool-grey ground, white working surface,
+   one violet accent kept for the single action that matters on a screen, and
+   sunflower for "this is the line it came from". Status colours carry the rest. Each page's
    own stylesheet builds on these tokens. Fonts are served from this origin
    because the content security policy blocks font CDNs. */
 
@@ -24,19 +25,22 @@
 
 :root {
   color-scheme: light;
-  --bg: #f1f0fa;
+  --bg: #f4f4f7;
   --panel: #ffffff;
-  --panel-2: #fcfcfe;
+  --panel-2: #fafafb;
   --ink: #1c1a33;
-  --ink-2: #3a3754;
-  --muted: #6a6784;
-  --faint: #9b98b3;
-  --line: #e3e0f2;
-  --line-2: #efedf8;
-  --hover: #f5f4fc;
+  --ink-2: #3f3d52;
+  --muted: #6b6a7b;
+  --faint: #a09fae;
+  --line: #e6e5ec;
+  --line-2: #f0eff4;
+  --hover: #f2f2f6;
   --accent: #4b3fd1;
   --accent-strong: #3e33b8;
   --accent-soft: #eeecfa;
+  /* A quiet fill for secondary surfaces (your own messages, answer cards,
+     criteria). Violet stays for the one action that matters on a screen. */
+  --neutral-soft: #f1f1f5;
   --hl: #ffe79a;
   --hl-row: #fff7d6;
   --hl-edge: #e3b400;
@@ -58,8 +62,8 @@
   --radius-control: 10px;
   --radius-surface: 14px;
   --radius-float: 16px;
-  --shadow-float: 0 16px 36px -16px rgba(40, 30, 120, 0.3), 0 1px 2px rgba(40, 30, 120, 0.05);
-  --shadow-soft: 0 1px 2px rgba(40, 30, 120, 0.06);
+  --shadow-float: 0 16px 36px -18px rgba(28, 26, 51, 0.28), 0 1px 2px rgba(28, 26, 51, 0.05);
+  --shadow-soft: 0 1px 2px rgba(28, 26, 51, 0.07);
   --side-w: 248px;
 }
 
@@ -144,7 +148,7 @@
   --sl-color-primary-900: #272075;
   --sl-color-primary-950: #1c1a33;
   --sl-input-border-color: var(--line);
-  --sl-input-border-color-hover: #c9c3f3;
+  --sl-input-border-color-hover: #d6d5de;
   --sl-input-border-color-focus: var(--accent);
   --sl-input-color: var(--ink-2);
   --sl-input-placeholder-color: var(--faint);

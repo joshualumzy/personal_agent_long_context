@@ -5,14 +5,14 @@
   --sky-high: var(--hover);
   --text: var(--ink);
   --gold: var(--accent);
-  --aqua: #6d62dc;
+  --aqua: #0f766e;
   --ochre: #b27c00;
-  /* Five node kinds, five fills in the theme's range: violet, lavender-grey, amber, blue, teal. */
-  --slate: #8a86a8;
+  /* Five node kinds, five fills told apart at a glance: ink, teal, grey, amber, blue. */
+  --slate: #a1a1aa;
   --indigo: #3f7bd9;
   --danger: var(--error-text);
   --on-accent: #ffffff;
-  --edge: #b9b5d0;
+  --edge: #d4d4d8;
   font-family: var(--f-ui);
   font-size: 14px;
   line-height: 1.5;
@@ -263,3 +263,4 @@ h2 { font-weight: 600; font-size: 13px; }
   .shell { display: block; height: auto; }
   .main { margin: 0 8px 8px; }
 }
+.example { color: var(--ink-2); }

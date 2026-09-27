@@ -251,9 +251,11 @@ describe("SME Assistant keeping candidates in view", () => {
     };
 
     await send("Find me a backend engineer", 1);
+    assert.equal(page.document.querySelector(".chat-block a"), null, "no separate full page: the panel is the place, and it can be pinned");
     const pin = page.document.querySelector(".chat-block .pin-panel") as HTMLButtonElement;
     assert.ok(pin, "a candidate panel can be pinned");
     pin.click();
+    assert.equal(page.document.querySelector(".chat-block .pin-panel:not([hidden])"), null, "a pinned role offers no second pin");
 
     const pinned = page.document.querySelector("#pinned-panel")!;
     assert.equal(pinned.hasAttribute("hidden"), false);
@@ -266,6 +268,7 @@ describe("SME Assistant keeping candidates in view", () => {
 
     (pinned.querySelector(".unpin-panel") as HTMLButtonElement).click();
     assert.equal(pinned.hasAttribute("hidden"), true);
+    assert.ok(page.document.querySelector(".chat-block .pin-panel:not([hidden])"), "once unpinned, it can be pinned again");
   });
 });
 
