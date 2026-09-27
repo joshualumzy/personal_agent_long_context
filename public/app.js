@@ -1025,28 +1025,6 @@ function sourceTitle(source) {
   return String(source.title || source.sourceId || "").replace(/[\s:]+$/, "");
 }
 
-/** The line the source holds, as plain text: no Markdown, no field names, and
- * not opening by repeating the title. */
-function sourceExcerpt(source, title) {
-  // Drop what is page furniture rather than content: headings, a page's
-  // ID/Author/Date header, and a table's divider row.
-  const lines = String(source.excerpt || "").split(/\n+/).filter((line) =>
-    !/^\s*#/.test(line) &&
-    !/^\s*\|?[\s:|-]+\|?\s*$/.test(line) &&
-    !/^(id|author|date|owner|status|tags?|created|updated)\s*:/i.test(line.replace(/^[\s*_>|-]+/, "").replace(/\*\*/g, "")));
-  let text = lines.join(" ")
-    .replace(/^[a-z_]+:\s*/, "")
-    .replace(/[#*_`>|]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  const plainTitle = title.replace(/\s+/g, " ").trim();
-  if (plainTitle && text.toLowerCase().startsWith(plainTitle.toLowerCase())) {
-    text = text.slice(plainTitle.length).replace(/^[\s:.,-]+/, "");
-  }
-  text = text.charAt(0).toUpperCase() + text.slice(1);
-  return text.length > 140 ? `${text.slice(0, 139).trimEnd()}\u2026` : text;
-}
-
 /** A key people say out loud (ENG-148, CONF-ENG-150), then the date. A
  * storage id such as slack_incidents_2026-01-23T10:00:00 is never shown. */
 function sourceMeta(source) {
@@ -1085,6 +1063,7 @@ function answerGraphPreview(question, sources) {
     <span class="answer-graph-caption">
       <span class="answer-graph-title">${lineIcon("graph", 12)}How the evidence connects</span>
       <span class="answer-graph-count">Loading…</span>
+      <span class="answer-graph-open">Open the graph →</span>
     </span>`;
   button.addEventListener("click", () => openAnswerGraph(question, sources));
 
@@ -1120,7 +1099,7 @@ async function loadAnswerGraphPreview(button, question, sources) {
     button.classList.remove("loading");
     const seeds = nodes.length - 1;
     button.querySelector(".answer-graph-count").textContent =
-      `${seeds} ${seeds === 1 ? "thing" : "things"} it points to · click to explore`;
+      `${seeds} ${seeds === 1 ? "thing" : "things"} it points to`;
   } catch {
     // The answer stands without its picture.
     button.remove();

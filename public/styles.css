@@ -2093,3 +2093,10 @@ body.has-pinned .header-action-label { display: none; }
 .source-row .source-meta { flex: none; font: 400 11px/1.4 var(--f-mono); color: var(--faint); }
 .sources-more { border: 0; background: none; padding: 4px 0 0; font: 500 12px/1.4 var(--f-ui); color: var(--accent); cursor: pointer; }
 .sources-more:hover { text-decoration: underline; }
+
+/* The answer's graph caption: short lines that do not wrap, ending in what a
+   click does. */
+.answer-graph-caption { flex: 0 0 196px; gap: 3px; }
+.answer-graph-title { white-space: nowrap; font-size: 13px; font-weight: 600; color: var(--ink); }
+.answer-graph-count { white-space: nowrap; font-size: 12px; }
+.answer-graph-open { font-size: 12px; font-weight: 500; color: var(--accent); }
