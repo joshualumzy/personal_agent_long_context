@@ -2395,13 +2395,16 @@ async function loadHome() {
   }
   // The one illustration: the hand waves while things wait, and shows a V when all is clear.
   const art = document.querySelector("#home-art");
-  // Either way it walks (a silent loop): the shaka while things wait, the V once all is clear.
+  // Either way it walks (a silent loop): the shaka strides steadily on while things wait,
+  // the V bounces along at an easy stroll once all is clear.
   const shown = needs.length === 0 ? "#home-win" : "#home-walk";
+  const pace = { "#home-walk": 1, "#home-win": 0.85 };
   let walking = false;
   for (const id of ["#home-walk", "#home-win"]) {
     const walk = document.querySelector(id);
     if (!walk) continue;
     walk.muted = true;
+    walk.defaultPlaybackRate = walk.playbackRate = pace[id];
     walk.hidden = id !== shown || brokenWalks.has(id);
     if (walk.hidden) walk.pause?.();
     else {
