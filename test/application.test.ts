@@ -299,6 +299,23 @@ describe("Browser surface", () => {
     await app.close();
   });
 
+  test("the company graph keeps the plate on its left; an answer's graph, framed beside a chat, does not", async () => {
+    const { app } = testApp();
+    const graph = new JSDOM((await app.inject({ method: "GET", url: "/graph" })).body).window.document;
+    const plate = graph.querySelector(".app-layout.kaki > aside#plate")!;
+    assert.ok(plate, "the plate");
+    for (const id of ["home-link", "as-of", "home-needs", "home-waiting", "plan-list", "todo-list", "sidebar-user-container"]) {
+      assert.ok(plate.querySelector(`#${id}`), `#${id} is on the plate`);
+    }
+    assert.ok(graph.querySelector(".app-layout.kaki > #page #canvas"), "the graph is the page beside it");
+    const scripts = [...graph.querySelectorAll("script[src]")].map((script) => script.getAttribute("src")!.split("?")[0]);
+    assert.ok(scripts.includes("/plate.js") && scripts.includes("/shell.js"), "the plate's own scripts");
+
+    const answer = new JSDOM((await app.inject({ method: "GET", url: "/graph/answer?q=x" })).body).window.document;
+    assert.equal(answer.querySelector("#plate"), null);
+    await app.close();
+  });
+
   test("a chat's address serves the assistant page, which opens that chat", async () => {
     const { app } = testApp();
     const page = await app.inject({ method: "GET", url: "/chat/c1" });

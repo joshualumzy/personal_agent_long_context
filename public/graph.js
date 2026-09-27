@@ -2252,6 +2252,11 @@ $("#fit").addEventListener("click", () => {
   const question = (parameters.get("q") ?? "").trim();
   // Inside the chat's dialog, which already shows the question.
   if (parameters.get("embed") === "1") document.body.classList.add("embedded");
+  // The company page carries the shared plate (plate.js), filled as on the assistant and meetings.
+  if (document.querySelector("#plate") && typeof loadPlateNeeds === "function") {
+    loadPlateNeeds();
+    initPlanner();
+  }
   if (MODE === "answer") {
     state.origin = question;
     state.query = question;
