@@ -74,7 +74,7 @@ SMALL_ITEM_TYPES = ("invoice", "sf_opp", "zd_ticket", "nps_survey")
 # separately: three rows merge into one event node per incident.
 STANDALONE_EVENT_TYPES = (
     "design_discussion", "jira_ticket_created", "ticket_progress",
-    "pr_review", "sprint_planned", "escalation_chain",
+    "pr_review", "sprint_planned", "escalation_chain", "confluence_created",
 )
 
 
@@ -279,11 +279,14 @@ def build_involves_edges(cursor) -> int:
 def build_produced_edges(cursor) -> int:
     """event -> item/document it resulted in, from each event's own facts.
 
-    Three sources, each a different shape of "this event made that":
+    Four sources, each a different shape of "this event made that":
       - jira_ticket_created / ticket_progress / pr_review name the jira/pr id
         they are about, in original_links
       - design_discussion names a confluence page only when facts.spawned_doc
         is true — 158 of 462 rows, not the rest
+      - confluence_created names the page it made directly, in original_links —
+        unlike knowledge_gap_detected, which also carries a confluence link but
+        to a page that already existed, not one it produced
       - the incident's postmortem (a confluence page, when one exists) is
         produced by the merged incident node
     """
@@ -318,6 +321,26 @@ def build_produced_edges(cursor) -> int:
     )
     discussions = cursor.rowcount
 
+    # confluence_created names the page it made directly, the same shape as
+    # the ticket/PR block above with a different key. knowledge_gap_detected
+    # also carries original_links.confluence, on all 264 of its rows, but it
+    # is naming a page that already existed when the gap was found — every one
+    # of those pages was created before the detecting event's own timestamp —
+    # so it is deliberately excluded here rather than folded in.
+    cursor.execute(
+        """
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+        SELECT DISTINCT en.node_id, dn.node_id, 'produced'
+        FROM source_documents d
+        JOIN graph_nodes en ON en.node_type = 'event' AND en.ref_key = d.source_id
+        JOIN graph_nodes dn ON dn.node_type = 'document'
+                            AND dn.ref_key = d.original_links->>'confluence'
+        WHERE d.source_type = 'confluence_created'
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    created = cursor.rowcount
+
     # An incident's postmortem, found the same way import_registries.py finds
     # the incident's own timing: the postmortem_created row whose causal_chain
     # starts with this incident's jira id.
@@ -338,7 +361,7 @@ def build_produced_edges(cursor) -> int:
         ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
         """
     )
-    return tickets + discussions + cursor.rowcount
+    return tickets + discussions + created + cursor.rowcount
 
 
 def build_escalated_via_edges(cursor) -> int:
