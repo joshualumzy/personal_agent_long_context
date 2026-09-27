@@ -23,9 +23,11 @@ never nodes of their own. See issue #11 for the reasoning.
   document    confluence pages — the only artifact type left as a document,
               because a person genuinely cites "CONF-ENG-022" by name
 
-organization has no data yet: actor_kind is 'employee' for all 76 actors, and
-sf_account (the vendor/customer registry) has zero rows in this corpus. The
-type is declared and left empty rather than populated with a guess.
+organization covers the seven customer accounts named in crm_touchpoint,
+proactive_outreach_initiated, and zd_ticket_opened — actors the corpus had
+already recorded, but with actor_kind left at its 'employee' default (migration
+010 corrects it to 'customer', keyed by name rather than guessed). sf_account,
+the fuller vendor/customer registry, still has zero rows in this corpus.
 
 Traversal is plain SQL, same recursive-CTE shape as before, now over 'produced'
 and 'caused_by' rather than one undifferentiated 'references':
@@ -91,6 +93,10 @@ def build_person_nodes(cursor) -> int:
     Reading through actor_identity rather than actors.name directly is what
     makes 'Ethan' and 'Ethan Patel' one node: the view already resolves an
     alias to the actor it was merged into (migration 008).
+
+    Restricted to actor_kind = 'employee' so a customer organization named in
+    actors — 'Metro United FC', for instance — becomes an 'organization' node
+    below instead of a 'person' one.
     """
     cursor.execute(
         """
@@ -100,6 +106,29 @@ def build_person_nodes(cursor) -> int:
             jsonb_build_object('role', a.role, 'dept', a.dept)
         FROM actor_identity ai
         JOIN actors a ON a.actor_id = ai.actor_id
+        WHERE a.actor_kind = 'employee'
+        ON CONFLICT (node_type, ref_key) DO UPDATE SET
+            label = EXCLUDED.label, props = EXCLUDED.props
+        """
+    )
+    return cursor.rowcount
+
+
+def build_organization_nodes(cursor) -> int:
+    """The customer/vendor organizations named in actors, keyed by actor_kind
+    rather than a hard-coded name list (migration 010 fixes actor_kind on the
+    seven customer accounts this corpus names; the query does not need its own
+    copy of that list to stay in sync with it).
+    """
+    cursor.execute(
+        """
+        INSERT INTO graph_nodes (node_type, node_subtype, ref_key, label, props)
+        SELECT DISTINCT
+            'organization', a.actor_kind, a.name, a.name,
+            jsonb_build_object('actor_kind', a.actor_kind)
+        FROM actor_identity ai
+        JOIN actors a ON a.actor_id = ai.actor_id
+        WHERE a.actor_kind IN ('customer', 'vendor')
         ON CONFLICT (node_type, ref_key) DO UPDATE SET
             label = EXCLUDED.label, props = EXCLUDED.props
         """
@@ -254,18 +283,24 @@ def build_incident_event_nodes(cursor) -> int:
 # Edges
 # ---------------------------------------------------------------------------
 def build_involves_edges(cursor) -> int:
-    """event/document -> person, from the normalized actor junction.
+    """event/document -> person/organization, from the normalized actor
+    junction.
 
     Resolved through actor_identity so a document naming "Ethan" links to the
-    same person node a document naming "Ethan Patel" does.
+    same person node a document naming "Ethan Patel" does. Both 'person' and
+    'organization' are valid targets: the same actors list that names an
+    employee also names a customer account like "Metro United FC" wherever a
+    document is about that account, and those are graph_nodes of node_type
+    'organization' now, not 'person'.
     """
     cursor.execute(
         """
         INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
-        SELECT DISTINCT sn.node_id, pn.node_id, 'involves'
+        SELECT DISTINCT sn.node_id, an.node_id, 'involves'
         FROM document_actors da
         JOIN actor_identity ai ON ai.actor_id = da.actor_id
-        JOIN graph_nodes pn ON pn.node_type = 'person' AND pn.ref_key = (
+        JOIN graph_nodes an ON an.node_type IN ('person', 'organization')
+                            AND an.ref_key = (
             SELECT name FROM actors WHERE actor_id = ai.actor_id
         )
         JOIN graph_nodes sn ON sn.ref_key = da.source_id
@@ -439,6 +474,7 @@ def main() -> int:
                 print("Cleared the existing graph.", file=sys.stderr)
 
             print(f"person nodes:      {build_person_nodes(cursor)}", file=sys.stderr)
+            print(f"organization nodes: {build_organization_nodes(cursor)}", file=sys.stderr)
             print(f"domain item nodes: {build_domain_item_nodes(cursor)}", file=sys.stderr)
             print(f"work item nodes:   {build_work_item_nodes(cursor)}", file=sys.stderr)
             print(f"document nodes:    {build_confluence_document_nodes(cursor)}", file=sys.stderr)
