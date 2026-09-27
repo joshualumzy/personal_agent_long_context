@@ -84,47 +84,38 @@ async function openSmePage(options: PageOptions = {}) {
 }
 
 describe("SME Assistant shell", () => {
-  test("sits in the shared shell, with the assistant as the current page", async () => {
+  test("one entry: a top bar with Kaki and the signed-in employee, and no sidebar", async () => {
     // The shell is plain markup, so the page's script does not need to run.
     const app = buildApp({ memory: new DeterministicMemoryProvider() });
     after(() => app.close());
     const html = (await app.inject({ method: "GET", url: "/" })).body;
-    const page = { document: new JSDOM(html).window.document };
+    const document = new JSDOM(html).window.document;
 
-    const links = [...page.document.querySelectorAll("#sidebar .app-nav a")];
-    assert.deepEqual(
-      links.map((link) => link.getAttribute("href")),
-      ["/meetings", "/", "/graph"],
-    );
-    assert.equal(page.document.querySelector('.app-nav a[aria-current="page"]')?.getAttribute("href"), "/");
-    const sheets = [...page.document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.getAttribute("href"));
+    const brand = document.querySelector(".topbar a.brand")!;
+    assert.equal(brand.getAttribute("href"), "/");
+    assert.match(brand.textContent!, /Kaki/);
+    assert.ok(document.querySelector(".topbar #sidebar-user-container"), "the employee sits in the top bar");
+    assert.ok(document.querySelector(".topbar #logout-btn"));
+
+    assert.equal(document.querySelector("#sidebar"), null, "no sidebar");
+    assert.equal(document.querySelector(".app-nav"), null, "no app links: one entry");
+    assert.equal(document.querySelector("#model-selector-btn"), null, "no model picker");
+    assert.equal(document.querySelector("#inspect-memory-btn"), null, "no Working Context button");
+    assert.doesNotMatch(html, /Apex Athletics/);
+    const sheets = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.getAttribute("href"));
     assert.equal(sheets[0], "/theme.css", "the shared theme loads before the page's own styles");
   });
 });
 
 describe("SME Assistant conversational rendering", () => {
-  test("renders model Markdown, sanitizes unsafe markup, and displays working context", async () => {
+  test("renders model Markdown, sanitizes unsafe markup, and shows no model, timing or memory tags", async () => {
     const page = await openSmePage();
     after(() => page.close());
     const statusIndicator = page.document.querySelector("#status-indicator");
     assert.equal(statusIndicator?.hasAttribute("hidden"), true);
 
-    const sidebar = page.document.querySelector("#sidebar");
-    assert.ok(sidebar);
     assert.ok(page.document.querySelector("#new-chat-btn"));
     assert.ok(page.document.querySelector("#conversations-list"));
-    const toggleBtn = page.document.querySelector("#toggle-sidebar-btn") as HTMLButtonElement;
-    assert.ok(toggleBtn);
-    const collapseBtn = page.document.querySelector("#collapse-sidebar-btn") as HTMLButtonElement;
-    assert.ok(collapseBtn);
-
-    // Verify minimizing sidebar via collapse button
-    collapseBtn.click();
-    assert.equal(sidebar?.classList.contains("collapsed"), true);
-
-    // Verify reopening sidebar via toggle button
-    toggleBtn.click();
-    assert.equal(sidebar?.classList.contains("collapsed"), false);
 
     const form = page.document.querySelector("#chat-form") as HTMLFormElement;
     const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
@@ -153,11 +144,9 @@ describe("SME Assistant conversational rendering", () => {
     assert.ok(citationBtn);
     assert.equal(citationBtn.getAttribute("data-source-id"), "CONF-ENG-239");
 
-    // Verify working context indicators
-    const contextTags = assistantRow.querySelector(".context-tags");
-    assert.ok(contextTags);
-    assert.match(contextTags.textContent ?? "", /Working memory updated/);
-    assert.match(contextTags.textContent ?? "", /Working context referenced/);
+    // The model, the timing and the working-context notes are not shown.
+    assert.equal(assistantRow.querySelector(".context-tags"), null);
+    assert.doesNotMatch(assistantRow.textContent ?? "", /Working (memory|context)|SoCLaaS|first token/);
   });
 
   test("an answer with evidence shows how that evidence connects, and opens it larger", async () => {
@@ -239,26 +228,6 @@ describe("SME Assistant conversational rendering", () => {
     assert.ok(page.document.querySelector(".source-card"), "the evidence itself is still there");
   });
 
-  test("the graph entry sits with the other apps in the sidebar and leads somewhere", async () => {
-    const app = buildApp({ memory: new DeterministicMemoryProvider() });
-    try {
-      const page = await app.inject({ method: "GET", url: "/" });
-      const dom = new JSDOM(page.body);
-      const document = dom.window.document;
-
-      // One way in from every page: the shared sidebar, next to Meetings and the assistant.
-      const links = document.querySelectorAll('a[href="/graph"]');
-      assert.equal(links.length, 1, "one way into the graph, not two");
-      const link = links[0]!;
-      assert.ok(link.closest("#sidebar .app-nav"), "the graph is one of the apps in the sidebar");
-      assert.match(link.textContent!, /Graph/);
-
-      assert.equal((await app.inject({ method: "GET", url: "/graph" })).statusCode, 200);
-      dom.window.close();
-    } finally {
-      await app.close();
-    }
-  });
 });
 
 describe("SME Assistant taking over from a meeting", () => {
@@ -460,5 +429,79 @@ describe("SME Assistant keeps what it already does", () => {
 
     (page.document.querySelector('.message-row.assistant [data-source-id="CONF-ENG-239"]') as HTMLElement).click();
     await until(() => page.document.querySelector("#source-title")!.textContent === "Remote config design", "the source dialog");
+  });
+});
+
+// The home screen leads with what the employee has to do, gathered from their meetings.
+const NOC = "NOC SLA escalation & weekly sync";
+function action(id: string, kind: string, tier: string, status: string, title: string, extra: Record<string, unknown> = {}) {
+  return {
+    id, meetingId: "m1", kind, tier, status, title, version: 1, evidence: [], dedupeKey: id, payloadHash: "h",
+    createdAt: "2026-09-27T02:00:00.000Z", trigger: { segmentIndex: 3, speaker: "Jax", quote: `quote for ${id}` },
+    payload: {}, ...extra,
+  };
+}
+function meetingsRespond(actions: unknown[]): PageOptions["respond"] {
+  return signedIn((url) => {
+    if (url === "/api/v1/meetings") {
+      return json([
+        { meetingId: "m1", title: NOC, status: "ended", startedAt: "2026-09-27T02:00:00.000Z", actionCount: actions.length },
+        { meetingId: "product-tour", title: "Welcome: a 3-minute tour of Meetings", status: "ended", startedAt: "2026-09-20T02:00:00.000Z", actionCount: 9 },
+      ]);
+    }
+    if (url === "/api/v1/meetings/m1") return json({ meetingId: "m1", title: NOC, status: "ended", actions });
+    if (url === "/api/v1/meetings/product-tour") {
+      return json({ meetingId: "product-tour", title: "Welcome: a 3-minute tour of Meetings", status: "ended", actions: [action("tour-email", "email_draft", "approval", "proposed", "Email the launch partners")] });
+    }
+    return undefined;
+  });
+}
+
+describe("SME Assistant home: what needs you", () => {
+  test("says how many drafts wait for you and lists each with the meeting and the words it came from", async () => {
+    const page = await openSmePage({ respond: meetingsRespond([
+      action("a1", "email_draft", "approval", "proposed", "Send follow-up to Owen"),
+      action("a2", "ticket_draft", "approval", "proposed", "Add consumer-lag alerting"),
+      action("a3", "calendar_draft", "approval", "proposed", "Checkpoint before the championship", { missing: ["Which day: Tue 29 Sept or Tue 6 Oct"] }),
+      action("a4", "escalation", "escalate", "escalated", "20% discount for NOTC", { payload: { subject: "20% discount", reason: "Pricing", requiredApprover: "Finance lead" } }),
+      action("a5", "answer_question", "auto", "executed", "Was ENG-148 the same bug?"),
+      action("a6", "email_draft", "approval", "rejected", "A draft you turned down"),
+    ]) });
+    after(() => page.close());
+    await until(() => page.document.querySelectorAll("#home-needs .task").length === 3, "the drafts that need you");
+
+    assert.equal(page.document.querySelector("#home-title")!.textContent, "Jax, 3 things need you.");
+    const rows = [...page.document.querySelectorAll("#home-needs .task")];
+    assert.match(rows[0]!.textContent!, /Send follow-up to Owen/);
+    assert.match(rows[0]!.textContent!, new RegExp(NOC.replace(/[&]/g, "&")));
+    assert.match(rows[0]!.textContent!, /quote for a1/);
+    assert.equal(rows[0]!.getAttribute("href"), "/meetings/m1");
+    assert.match(rows[2]!.textContent!, /Which day: Tue 29 Sept or Tue 6 Oct/);
+    // The sample tour is not work: its drafts are not counted.
+    assert.doesNotMatch(page.document.querySelector("#home-needs")!.textContent!, /launch partners/);
+
+    const waiting = page.document.querySelector("#home-waiting")!;
+    assert.match(waiting.textContent!, /20% discount for NOTC/);
+    assert.match(waiting.textContent!, /Finance lead/);
+    assert.match(page.document.querySelector("#home-done")!.textContent!, /Was ENG-148 the same bug\?/);
+    assert.doesNotMatch(page.document.querySelector("#home")!.textContent!, /A draft you turned down/);
+  });
+
+  test("lists the meetings, the tour among them, with a way to start a new one", async () => {
+    const page = await openSmePage({ respond: meetingsRespond([]) });
+    after(() => page.close());
+    await until(() => page.document.querySelectorAll("#home-meetings a.meeting").length === 2, "the meetings");
+
+    const links = [...page.document.querySelectorAll("#home-meetings a.meeting")].map((link) => link.getAttribute("href"));
+    assert.deepEqual(links, ["/meetings/m1", "/meetings/product-tour"]);
+    assert.equal(page.document.querySelector("#home-meetings a.new-meeting")!.getAttribute("href"), "/meetings");
+    assert.equal(page.document.querySelector("#chat-form a.record")!.getAttribute("href"), "/meetings");
+  });
+
+  test("with nothing to approve, says so plainly", async () => {
+    const page = await openSmePage({ respond: meetingsRespond([action("a5", "answer_question", "auto", "executed", "Was ENG-148 the same bug?")]) });
+    after(() => page.close());
+    await until(() => page.document.querySelector("#home-done .task"), "the finished work");
+    assert.equal(page.document.querySelector("#home-title")!.textContent, "Jax, nothing needs you right now.");
   });
 });

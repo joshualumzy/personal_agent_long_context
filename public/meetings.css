@@ -460,3 +460,27 @@ select {
 .side-form .primary:hover { background: var(--hover); }
 .doc .card[data-tier] { background: var(--neutral-soft); }
 .assistant-pending { background: var(--neutral-soft); }
+
+/* ------------------------------------------------------------ Kaki: one entry
+   No sidebar: a top bar with the Kaki mark (home) and the signed-in employee.
+   With no meeting open, the list and "New live meeting" sit in the page. */
+.shell-main { margin: 0; height: 100vh; border: 0; border-radius: 0; background: var(--bg); }
+.topbar { display: flex; align-items: center; gap: 12px; padding: 12px 22px; border-bottom: 1px solid var(--line-2); background: var(--panel); flex: none; }
+.topbar .brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; color: var(--ink); font: 600 18px/1 var(--f-display); letter-spacing: -0.02em; }
+.topbar .brand-mark { width: 20px; height: 20px; fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.topbar .shell-user { margin: 0 0 0 auto; padding: 4px 6px 4px 4px; border: 0; gap: 8px; }
+.topbar .shell-avatar { width: 28px; height: 28px; font-size: 12px; }
+/* Only the avatar shows; the name and Log out appear beside it on hover or focus. */
+.topbar .shell-avatar { order: 2; }
+.topbar .shell-who, .topbar .shell-out { display: none; }
+.topbar .shell-user:hover .shell-who, .topbar .shell-user:focus-within .shell-who { display: block; }
+.topbar .shell-user:hover .shell-out:not([hidden]), .topbar .shell-user:focus-within .shell-out:not([hidden]) { display: grid; }
+.topbar .shell-user { position: absolute; right: 22px; }
+.topbar { position: relative; }
+.topbar .shell-role { display: none; }
+.topbar .shell-name { font-size: 13px; font-weight: 500; }
+#picker { width: min(560px, calc(100% - 32px)); margin: 8px auto 40px; }
+body.in-meeting #picker { display: none; }
+#picker .side-label { font: 500 13px/1.4 var(--f-ui); color: var(--muted); margin: 18px 0 6px; }
+#picker .meeting-list button { font-size: 14px; padding: 9px 10px; }
+body:not(.in-meeting) .no-meeting { margin: 56px auto 0; }

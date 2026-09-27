@@ -242,3 +242,13 @@ body.embedded #canvas { height: min(62vh, 640px); }
 body:has(> .shell) { margin: 0; height: 100vh; overflow: hidden; background: var(--bg); }
 .shell { height: 100vh; display: flex; }
 .shell .main { flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
+
+/* One violet family for the node kinds (kept apart by shade and shape), the
+   same as the answer's graph in the chat. */
+:root {
+  --gold: #4b3fd1;
+  --aqua: #8f85e6;
+  --ochre: #b3abee;
+  --slate: #3d32b8;
+  --indigo: #a79fec;
+}

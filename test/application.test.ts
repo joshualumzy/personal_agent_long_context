@@ -228,7 +228,7 @@ describe("Browser surface", () => {
     const response = await app.inject({ method: "GET", url: "/" });
 
     assert.equal(response.statusCode, 200);
-    assert.match(response.body, /SME Assistant/);
+    assert.match(response.body, /<title>Kaki<\/title>/);
     assert.match(response.body, /id="chat-form"/);
     assert.match(response.body, /id="message-input"/);
     await app.close();

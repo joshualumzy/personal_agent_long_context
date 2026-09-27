@@ -230,26 +230,38 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
 const text = (element: Element | null) => (element?.textContent ?? "").replace(/\s+/g, " ").trim();
 
 describe("Meetings page", () => {
-  test("sits in the shared shell, with Meetings as the current page", async () => {
+  test("one entry: a top bar with Kaki that leads home, and no sidebar", async () => {
     const page = await openMeetingsPage();
     after(() => page.close());
 
-    const links = [...page.document.querySelectorAll(".app-nav a")];
-    assert.deepEqual(
-      links.map((link) => link.getAttribute("href")),
-      ["/meetings", "/", "/graph"],
-    );
-    assert.equal(page.document.querySelector('.app-nav a[aria-current="page"]')?.getAttribute("href"), "/meetings");
+    const brand = page.document.querySelector(".topbar a.brand")!;
+    assert.equal(brand.getAttribute("href"), "/");
+    assert.match(brand.textContent!, /Kaki/);
+    assert.equal(page.document.querySelector(".app-nav"), null, "no app links: one entry");
+    assert.equal(page.document.querySelector("aside.shell-side"), null, "no sidebar");
     assert.ok(page.document.querySelector('link[href="/theme.css"]'));
+    assert.doesNotMatch(page.document.body.innerHTML, /Apex Athletics/);
   });
 
-  test("shows whoever is signed in at the foot of the sidebar, with their initial", async () => {
+  test("with no meeting open, offers the meetings and a new one in the page itself", async () => {
     const page = await openMeetingsPage();
     after(() => page.close());
 
-    await page.until(() => text(page.document.querySelector(".shell-user .shell-name")) === "Priya", "the signed-in person");
-    assert.equal(text(page.document.querySelector(".shell-user .shell-role")), "Product Designer");
-    assert.equal(text(page.document.querySelector(".shell-user .shell-avatar")), "P");
+    const picker = page.document.querySelector("#picker")!;
+    assert.ok(picker.closest(".shell-main"), "the list sits in the page, not in a sidebar");
+    assert.ok(picker.querySelector("#meeting-list"));
+    assert.ok(picker.querySelector("#new-meeting-form"));
+    // Replaying an OrgForge meeting is for testing: kept, but out of sight.
+    assert.equal(page.document.querySelector("#replay-box")!.hasAttribute("hidden"), true);
+    assert.ok(page.document.querySelector("#replay-box #replay-select"));
+  });
+
+  test("shows whoever is signed in in the top bar, with their initial", async () => {
+    const page = await openMeetingsPage();
+    after(() => page.close());
+
+    await page.until(() => text(page.document.querySelector(".topbar .shell-user .shell-name")) === "Priya", "the signed-in person");
+    assert.equal(text(page.document.querySelector(".topbar .shell-user .shell-avatar")), "P");
   });
 
   test("puts what needs you in the tray, what it found in the notes, and the words in the side panel", async () => {

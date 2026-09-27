@@ -7,11 +7,28 @@ import { buildApp } from "../src/http-app.js";
 import type { MeetingActions } from "../src/meetings/domain.js";
 import { MemoryRoleRepository, RoleBoard } from "../src/recruiting/roles.js";
 
-// Switching between the three apps must not move the sidebar: the same
-// pieces sit at the same pixels on every page. jsdom has no layout, so this
-// measures in a real browser.
-// /graph is drawn without the shell: it opens inside the chat's dialog.
-const PAGES = ["/", "/meetings", "/recruiting", "/graph/emergent"];
+// Moving between pages must not move the frame: the same pieces sit at the
+// same pixels. jsdom has no layout, so this measures in a real browser.
+// Kaki's one entry (the assistant and meetings) has a top bar and no sidebar;
+// the pages not yet brought into it (recruiting, the emergent graph) keep the
+// older sidebar, the same on each. /graph opens inside the chat's dialog.
+const TOPBAR_PAGES = ["/", "/meetings"];
+const PAGES = ["/recruiting", "/graph/emergent"];
+
+const MEASURE_TOP = `(() => {
+  const rect = (element) => {
+    if (!element) return null;
+    const { left, top, width, height } = element.getBoundingClientRect();
+    return [left, top, width, height].map(Math.round);
+  };
+  return {
+    bar: rect(document.querySelector(".topbar")),
+    brand: rect(document.querySelector(".topbar .brand")),
+    avatar: rect(document.querySelector(".topbar .shell-user .shell-avatar")),
+    brandFont: getComputedStyle(document.querySelector(".topbar .brand")).fontFamily,
+    sidebar: rect(document.querySelector(".shell-side")),
+  };
+})()`;
 
 const MEASURE = `(() => {
   const rect = (element) => {
@@ -66,6 +83,25 @@ describe("Shared shell layout", () => {
     await app.close();
   });
 
+  async function measureTop(path: string) {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 820 } });
+    await page.goto(`${base}${path}`);
+    await page.evaluate(() => document.fonts.ready);
+    const boxes = await page.evaluate<Record<string, unknown>>(MEASURE_TOP);
+    await page.close();
+    return boxes;
+  }
+
+  test("puts the top bar, the Kaki mark and the employee at the same pixels on the assistant and meetings", async () => {
+    const [first, ...rest] = await Promise.all(TOPBAR_PAGES.map(measureTop));
+    assert.ok(first!.bar, "the assistant page has the top bar");
+    assert.ok(first!.avatar, "the signed-in employee sits in the top bar");
+    assert.equal(first!.sidebar, null, "and no sidebar");
+    rest.forEach((other, index) => {
+      assert.deepEqual(other, first, `${TOPBAR_PAGES[index + 1]} differs from /`);
+    });
+  });
+
   async function measure(path: string) {
     const page = await browser.newPage({ viewport: { width: 1400, height: 820 } });
     await page.goto(`${base}${path}`);
@@ -76,13 +112,13 @@ describe("Shared shell layout", () => {
     return boxes;
   }
 
-  test("puts the sidebar, the workspace name and the app links at the same pixels on every page", async () => {
+  test("the pages that keep the sidebar put it at the same pixels", async () => {
     const [first, ...rest] = await Promise.all(PAGES.map(measure));
-    assert.ok(first!.sidebar, "the assistant page has the shared sidebar");
+    assert.ok(first!.sidebar, "the recruiting page has the shared sidebar");
     assert.equal(first!.links.length, 3);
     assert.ok(first!.user, "the signed-in person sits at the foot of the sidebar");
     rest.forEach((other, index) => {
-      assert.deepEqual(other, first, `${PAGES[index + 1]} differs from /`);
+      assert.deepEqual(other, first, `${PAGES[index + 1]} differs from ${PAGES[0]}`);
     });
   });
 

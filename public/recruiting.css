@@ -332,3 +332,9 @@ body.embed .main { margin: 0; height: 100vh; border: 0; border-radius: 0; }
 .chip.nice { background: transparent; border-color: var(--line); border-style: dashed; color: var(--ink-2); }
 .ring.r100 { fill: rgb(75 63 209 / .04); stroke: rgb(75 63 209 / .22); }
 .node .select-ring { stroke: var(--ink); }
+
+/* The orbit in one violet family: the closer the match, the deeper the violet. */
+.node.t100 .dot, .s100 { fill: var(--accent); background: var(--accent); }
+.node.t75 .dot, .s75 { fill: #8f85e6; background: #8f85e6; }
+.node.t50 .dot, .s50 { fill: #c9c3f3; background: #c9c3f3; }
+.ring { stroke: #dbd7f7; }

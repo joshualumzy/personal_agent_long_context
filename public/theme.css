@@ -1,6 +1,6 @@
-/* Shared look for every page: a quiet cool-grey ground, white working surface,
-   one violet accent kept for the single action that matters on a screen, and
-   sunflower for "this is the line it came from". Status colours carry the rest. Each page's
+/* Shared look for every page: a near-white ground, white working surface,
+   one indigo accent kept for the single action that matters on a screen, and
+   butter-yellow for "this is the line it came from". Status colours carry the rest. Each page's
    own stylesheet builds on these tokens. Fonts are served from this origin
    because the content security policy blocks font CDNs. */
 
@@ -25,33 +25,40 @@
 
 :root {
   color-scheme: light;
-  --bg: #f4f4f7;
+  /* Paper and marker: a near-white ground, near-black ink, one indigo for the
+     next thing to press and for Kaki itself, and four marker colours that each
+     mean one thing (waiting on you, someone else's call, money or missing, done). */
+  --bg: #fbfbfa;
   --panel: #ffffff;
-  --panel-2: #fafafb;
-  --ink: #1c1a33;
-  --ink-2: #3f3d52;
-  --muted: #6b6a7b;
-  --faint: #a09fae;
-  --line: #e6e5ec;
-  --line-2: #f0eff4;
-  --hover: #f2f2f6;
+  --panel-2: #fafaf8;
+  --ink: #1c1b22;
+  --ink-2: #44424d;
+  --muted: #7a7885;
+  --faint: #a9a7b3;
+  --line: #e7e6e2;
+  --line-2: #f0f0ed;
+  --hover: #f4f4f1;
   --accent: #4b3fd1;
-  --accent-strong: #3e33b8;
-  --accent-soft: #eeecfa;
-  /* A quiet fill for secondary surfaces (your own messages, answer cards,
-     criteria). Violet stays for the one action that matters on a screen. */
-  --neutral-soft: #f1f1f5;
+  --accent-strong: #3d32b8;
+  --accent-soft: #eeedfb;
+  --neutral-soft: #f0f0eb;
+  --butter: #ffe79a;
+  --butter-soft: #fff6d2;
+  --lavender: #e4ddf8;
+  --peach: #ffd2b5;
+  --peach-soft: #fff0e4;
+  --mint: #cdefd9;
   --hl: #ffe79a;
-  --hl-row: #fff7d6;
+  --hl-row: #fff6d2;
   --hl-edge: #e3b400;
   --warn: #8a5d00;
-  --warn-bg: #fff1cf;
-  --esc: #9d2a6b;
-  --esc-bg: #fce7f3;
-  --alert: #c2410c;
-  --alert-bg: #fff3ea;
+  --warn-bg: #fff6d2;
+  --esc: #4f43b8;
+  --esc-bg: #e4ddf8;
+  --alert: #b4501c;
+  --alert-bg: #fff0e4;
   --good: #1d6b45;
-  --good-bg: #e6f4ec;
+  --good-bg: #e3f6ea;
   --rec: #e5484d;
   --error-text: #b42318;
   --error-bg: #fdecea;
@@ -62,7 +69,7 @@
   --radius-control: 10px;
   --radius-surface: 14px;
   --radius-float: 16px;
-  --shadow-float: 0 16px 36px -18px rgba(28, 26, 51, 0.28), 0 1px 2px rgba(28, 26, 51, 0.05);
+  --shadow-float: 0 12px 32px -16px rgba(75, 63, 209, 0.28), 0 1px 2px rgba(28, 27, 34, 0.05);
   --shadow-soft: 0 1px 2px rgba(28, 26, 51, 0.07);
   --side-w: 248px;
 }

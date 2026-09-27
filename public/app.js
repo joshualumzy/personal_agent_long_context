@@ -53,7 +53,8 @@ const stored = {
   },
 };
 
-let activeModel = stored.get("sme_selected_model") || "soclaas";
+// With no model picker on the page, answers always come from the default model.
+let activeModel = modelSelectorBtn ? stored.get("sme_selected_model") || "soclaas" : "soclaas";
 
 // Auth & Persona Dialog elements
 const loginDialog = document.querySelector("#login-dialog");
@@ -128,6 +129,15 @@ const LINE_ICONS = {
   stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
   external: '<path d="M7 17 17 7"/><path d="M7 7h10v10"/>',
   graph: '<circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="7" r="2.5"/><circle cx="11" cy="18" r="2.5"/><path d="M7.5 6.3l9 .5"/><path d="M6.2 8.3l3.6 7.4"/><path d="M17.6 9.1l-5.3 6.8"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
+  ticket: '<path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z"/>',
+  calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+  people: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5a3 3 0 0 1 0 6M18 20a5 5 0 0 0-3-4.6"/>',
+  doc: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
+  hand: '<path d="M8 11V5a1.5 1.5 0 0 1 3 0v5M11 10V4a1.5 1.5 0 0 1 3 0v6M14 10V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a5 5 0 0 1-4.3-2.5L3.5 13a1.5 1.5 0 0 1 2.6-1.5L8 14"/>',
+  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+  play: '<path d="M7 5v14l11-7z"/>',
+  chevron: '<path d="m9 6 6 6-6 6"/>',
   pin: '<path d="M12 17v5"/><path d="M9 10.76V6h6v4.76a2 2 0 0 0 1.11 1.79l1.78.9A2 2 0 0 1 19 15.24V17H5v-1.76a2 2 0 0 1 1.11-1.79l1.78-.9A2 2 0 0 0 9 10.76Z"/><path d="M8 3h8"/>',
 };
 
@@ -328,13 +338,15 @@ if (sidebarOverlay) {
   sidebarOverlay.addEventListener("click", () => setSidebarCollapsed(true));
 }
 
-// Keyboard shortcut: Cmd+B (Mac) or Ctrl+B (Windows/Linux)
-document.addEventListener("keydown", (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
-    e.preventDefault();
-    toggleSidebar();
-  }
-});
+// Keyboard shortcut: Cmd+B (Mac) or Ctrl+B (Windows/Linux), only while there is a sidebar.
+if (sidebar) {
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "b") {
+      e.preventDefault();
+      toggleSidebar();
+    }
+  });
+}
 
 // Restore sidebar state from localStorage or default on mobile
 try {
@@ -553,7 +565,8 @@ function startNewChat() {
     emptyTitle.textContent = `How can I help you today, ${currentUser.displayName}?`;
   }
   renderSuggestionChips(currentUser);
-  if (currentChatTitle) currentChatTitle.textContent = "SME Assistant";
+  if (currentUser) loadHome();
+  if (currentChatTitle) currentChatTitle.textContent = "Kaki";
   document.querySelectorAll(".conversation-item").forEach((el) => el.classList.remove("active"));
   if (isMobile()) setSidebarCollapsed(true);
   messageInput.focus();
@@ -865,6 +878,17 @@ function attachAssistantMeta(bubble, data) {
   const contextTags = document.createElement("div");
   contextTags.className = "context-tags";
 
+  if (data.stopped) {
+    const stopTag = document.createElement("span");
+    stopTag.className = "context-tag";
+    stopTag.innerHTML = `${lineIcon("stop", 12)}Stopped`;
+    stopTag.title = "Response generation was cancelled by user";
+    contextTags.appendChild(stopTag);
+  }
+
+  // Not shown for now: which model answered, how long it took, and the
+  // working-context notes. Kept here to bring back.
+  /*
   if (data.model) {
     const modelTag = document.createElement("span");
     modelTag.className = `context-tag model-badge ${data.model}`;
@@ -874,14 +898,6 @@ function attachAssistantMeta(bubble, data) {
         ? "Answered using Claude 3.5 Sonnet on AWS Bedrock"
         : "Answered using Qwen 2.5 32B on NUS SoCLaaS";
     contextTags.appendChild(modelTag);
-  }
-
-  if (data.stopped) {
-    const stopTag = document.createElement("span");
-    stopTag.className = "context-tag";
-    stopTag.innerHTML = `${lineIcon("stop", 12)}Stopped`;
-    stopTag.title = "Response generation was cancelled by user";
-    contextTags.appendChild(stopTag);
   }
 
   const runtime = formatRuntime(data.durationMs, data.ttftMs);
@@ -914,6 +930,8 @@ function attachAssistantMeta(bubble, data) {
       contextTags.appendChild(tag);
     }
   }
+
+  */
 
   if (contextTags.children.length > 0) {
     meta.appendChild(contextTags);
@@ -2067,6 +2085,7 @@ async function initAuth() {
           return;
         }
         updateUserDisplay(data.employee);
+        loadHome();
         await loadConversations();
         takeOverFromMeeting();
         return;
@@ -2076,6 +2095,140 @@ async function initAuth() {
 
   // 401 or failure: authoritative sign-in required
   handleAuthRequired();
+}
+
+// ---------------------------------------------------------------------------
+// Home: what needs you, gathered from your meetings
+// ---------------------------------------------------------------------------
+
+/** The sample meeting that explains the product; listed, but its drafts are not work. */
+const TOUR_MEETING_ID = "product-tour";
+const homeSection = document.querySelector("#home");
+let homeRequest = 0;
+
+const HOME_KINDS = {
+  email_draft: ["Email", "mail"],
+  ticket_draft: ["Ticket", "ticket"],
+  calendar_draft: ["Calendar invite", "calendar"],
+  message_draft: ["Message", "message"],
+  doc_draft: ["Document", "doc"],
+  sheet_draft: ["Sheet", "doc"],
+  hiring_request: ["Hiring request", "people"],
+  escalation: ["Someone else's call", "hand"],
+  answer_question: ["Answered", "book"],
+  flag_conflict: ["Heads up", "alert"],
+};
+
+function homeTask({ action, meeting }, part) {
+  const [kindLabel, icon] = HOME_KINDS[action.kind] ?? ["Action", "check"];
+  const row = document.createElement("a");
+  row.className = `task ${part}`;
+  row.href = `/meetings/${encodeURIComponent(meeting.meetingId)}`;
+  const quote = action.trigger?.quote ? ` · “${action.trigger.quote}” · ${action.trigger.speaker ?? ""}` : "";
+  let sub = `${meeting.title}${quote}`;
+  if (part === "waiting") {
+    const approver = action.payload?.requiredApprover;
+    const reason = String(action.payload?.reason ?? "").trim();
+    sub = `${approver ? `Needs ${approver}. ` : ""}${reason}${reason && !/[.!?]$/.test(reason) ? "." : ""} From ${meeting.title}.`;
+  }
+  if (part === "done") sub = meeting.title;
+  const need = part === "needs" && Array.isArray(action.missing) && action.missing.length > 0
+    ? `<span class="need"><b>Needs input:</b> ${escapeHtml(action.missing[0])}</span>` : "";
+  const go = part === "needs" ? '<span class="task-go">Review</span>' : "";
+  row.innerHTML = `
+    <span class="task-icon ${part}">${lineIcon(icon, 15)}</span>
+    <span class="task-body"><b>${escapeHtml(action.title)}<span class="kind">${escapeHtml(kindLabel)}</span></b><span class="sub">${escapeHtml(sub.trim())}</span>${need}</span>
+    ${go}${lineIcon("chevron", 14)}`;
+  return row;
+}
+
+function fillHomeGroup(id, items, part) {
+  const group = document.querySelector(id);
+  if (!group) return;
+  group.hidden = items.length === 0;
+  group.querySelector(".count").textContent = String(items.length);
+  const list = group.querySelector(".tasks");
+  list.replaceChildren(...items.map((item) => homeTask(item, part)));
+}
+
+function homeSummary(needs, waiting) {
+  const parts = [];
+  if (needs.length > 0) {
+    const titles = [...new Set(needs.map((item) => item.meeting.title))];
+    const from = titles.length === 1 ? `<mark>${escapeHtml(titles[0])}</mark>` : `${titles.length} meetings`;
+    parts.push(needs.length === 1 ? `It is a draft from ${from}.` : `All ${needs.length} are drafts from ${from}.`);
+  }
+  const call = waiting.find((item) => item.action.payload?.requiredApprover);
+  if (call) {
+    const subject = call.action.payload.subject || call.action.title;
+    parts.push(`${escapeHtml(subject)} is <mark>${escapeHtml(call.action.payload.requiredApprover)}’s call</mark>, not yours.`);
+  }
+  return parts.join(" ");
+}
+
+function renderHomeMeetings(meetings) {
+  const group = document.querySelector("#home-meetings");
+  if (!group) return;
+  group.querySelector(".count").textContent = String(meetings.length);
+  const rows = meetings.map((meeting) => {
+    const row = document.createElement("a");
+    row.className = "meeting";
+    row.href = `/meetings/${encodeURIComponent(meeting.meetingId)}`;
+    const tour = meeting.meetingId === TOUR_MEETING_ID;
+    const when = tour ? "Sample" : meeting.status === "live" ? "Live" : formatRelativeTime(meeting.startedAt);
+    row.innerHTML = `${lineIcon(tour ? "play" : "mic", 14)}<span class="t">${escapeHtml(meeting.title)}</span><span class="when">${escapeHtml(when)}</span>${lineIcon("chevron", 14)}`;
+    return row;
+  });
+  group.querySelector(".rows").replaceChildren(...rows);
+}
+
+async function loadHome() {
+  if (!homeSection) return;
+  const asked = ++homeRequest;
+  let meetings = [];
+  try {
+    const response = await fetch("/api/v1/meetings", { credentials: "same-origin" });
+    if (response.ok) meetings = await response.json();
+  } catch (_) {
+    // The home shows no meetings, and the chat still works.
+  }
+  if (asked !== homeRequest || !Array.isArray(meetings)) return;
+  meetings = [...meetings].sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
+  renderHomeMeetings(meetings);
+
+  const withWork = meetings.filter((meeting) => meeting.meetingId !== TOUR_MEETING_ID && meeting.actionCount !== 0).slice(0, 8);
+  const states = await Promise.all(withWork.map((meeting) =>
+    fetch(`/api/v1/meetings/${encodeURIComponent(meeting.meetingId)}`, { credentials: "same-origin" })
+      .then((response) => (response.ok ? response.json() : null))
+      .catch(() => null)));
+  if (asked !== homeRequest) return;
+
+  const needs = [];
+  const waiting = [];
+  const done = [];
+  states.forEach((state, index) => {
+    if (!state || !Array.isArray(state.actions)) return;
+    const meeting = withWork[index];
+    for (const action of state.actions) {
+      const item = { action, meeting };
+      if (action.tier === "approval" && action.status === "proposed") needs.push(item);
+      else if (action.status === "escalated") waiting.push(item);
+      else if (action.status === "executed") done.push(item);
+    }
+  });
+
+  const name = currentUser?.displayName || "You";
+  const title = document.querySelector("#home-title");
+  if (title) {
+    title.textContent = needs.length === 0
+      ? `${name}, nothing needs you right now.`
+      : `${name}, ${needs.length} ${needs.length === 1 ? "thing needs" : "things need"} you.`;
+  }
+  const summary = document.querySelector("#home-summary");
+  if (summary) summary.innerHTML = homeSummary(needs, waiting);
+  fillHomeGroup("#home-needs", needs, "needs");
+  fillHomeGroup("#home-waiting", waiting, "waiting");
+  fillHomeGroup("#home-done", done.slice(0, 5), "done");
 }
 
 /**
