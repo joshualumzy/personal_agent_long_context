@@ -101,8 +101,11 @@ h2 { margin: 0 0 8px; font-family: Georgia, "Songti SC", serif; font-size: 1.05r
 /* Nodes are told apart by shape as well as colour. */
 .n-artifact { fill: var(--gold); }
 .n-artifact.incident { fill: var(--danger); }
+.n-item { fill: var(--gold); }
+.n-item.incident { fill: var(--danger); }
 .n-event { fill: var(--ochre); }
 .n-actor { fill: var(--aqua); }
+.n-organization { fill: var(--faint); }
 /* The emergent graph has its own taxonomy, so its own pair of shapes. */
 .n-entity { fill: var(--aqua); }
 .n-kind { fill: var(--ochre); }

@@ -14,9 +14,16 @@ import { pgVector } from "../embeddings.js";
 type GraphNodeRow = {
   ref_key: string;
   node_type: string;
+  node_subtype: string | null;
   label: string;
   props: Record<string, unknown> | null;
 };
+
+const GRAPH_NODE_TYPES = ["person", "organization", "item", "event", "document"] as const;
+
+function isGraphNodeType(value: string): value is GraphNode["type"] {
+  return (GRAPH_NODE_TYPES as readonly string[]).includes(value);
+}
 
 /** graph_nodes.props is denormalized precisely so this needs no extra query. */
 function graphNode(row: GraphNodeRow): GraphNode {
@@ -24,8 +31,9 @@ function graphNode(row: GraphNodeRow): GraphNode {
   const day = props.simulation_day;
   return {
     id: row.ref_key,
-    type: row.node_type === "actor" ? "actor" : "document",
+    type: isGraphNodeType(row.node_type) ? row.node_type : "item",
     label: row.label,
+    ...(row.node_subtype ? { subtype: row.node_subtype } : {}),
     ...(typeof props.source_type === "string" ? { sourceType: props.source_type } : {}),
     ...(typeof props.category === "string" ? { category: props.category } : {}),
     ...(typeof props.department === "string" && props.department
@@ -206,11 +214,14 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
   /**
    * Artifacts reached by stepping through the event that produced the seeds.
    *
-   * In this corpus a simulation event references the artifacts it produced, and
-   * artifacts never reference events, so siblings are found by following the
-   * incoming edges of a seed to the events that caused it, then the outgoing
-   * edges of those events. The events are only ever traversed; what comes back
-   * is artifacts, so nothing an employee could not have seen is returned.
+   * In this corpus an event produces the artifacts it results in — a ticket
+   * lifecycle event produces the jira/PR item it is about, a design discussion
+   * produces the confluence page it spawned — and artifacts never produce
+   * events back. Siblings are found by following the incoming 'produced' edges
+   * of a seed to the events that made it, then those events' other outgoing
+   * 'produced' edges. The events are only ever traversed; what comes back is
+   * artifacts (document or item), so nothing an employee could not have seen
+   * is returned.
    *
    * Two hops exactly. A third hop leaves the shared cause behind and the
    * connection stops meaning anything.
@@ -220,23 +231,24 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     const result = await this.pool.query<EvidenceRow>(
       `WITH seeds AS (
          SELECT node_id FROM graph_nodes
-         WHERE node_type = 'document' AND ref_key = ANY($1::text[])
+         WHERE node_type IN ('document', 'item') AND ref_key = ANY($1::text[])
        ),
        causes AS (
          SELECT DISTINCT e.src_node_id AS node_id
          FROM graph_edges e JOIN seeds ON e.dst_node_id = seeds.node_id
-         WHERE e.edge_type = 'references'
+         WHERE e.edge_type = 'produced'
        ),
        siblings AS (
          SELECT DISTINCT e.dst_node_id AS node_id
          FROM graph_edges e JOIN causes ON e.src_node_id = causes.node_id
-         WHERE e.edge_type = 'references'
+         WHERE e.edge_type = 'produced'
        )
        SELECT d.source_id, d.source_type, d.title,
               left(d.body, 1800) AS excerpt, d.occurred_at, d.department,
               NULL::double precision AS score
        FROM siblings
-       JOIN graph_nodes n ON n.node_id = siblings.node_id AND n.node_type = 'document'
+       JOIN graph_nodes n ON n.node_id = siblings.node_id
+                          AND n.node_type IN ('document', 'item')
        JOIN source_documents d ON d.source_id = n.ref_key
        WHERE d.category = 'artifact'
          AND NOT (d.source_id = ANY($1::text[]))
@@ -290,22 +302,25 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     return { nodes, edges, truncated: documents.length >= limit };
   }
 
-  /** Documents reachable from a seed along 'references', depth- and cycle-bounded. */
+  /** Nodes reachable from a seed along 'produced'/'escalated_via', depth- and
+   * cycle-bounded. The seed is looked up by ref_key alone — an incident's seed
+   * is an 'event' node, a confluence page's is a 'document' — so this does not
+   * assume what kind of node the caller is starting from. */
   private async causalChainNodes(seed: string, depth: number, limit: number) {
     const bounded = Math.min(Math.max(depth, 1), 6);
     const result = await this.pool.query<GraphNodeRow>(
       `WITH RECURSIVE chain AS (
            SELECT node_id, 0 AS depth, ARRAY[node_id] AS path
            FROM graph_nodes
-           WHERE node_type = 'document' AND ref_key = $1
+           WHERE ref_key = $1
          UNION ALL
            SELECT e.dst_node_id, c.depth + 1, c.path || e.dst_node_id
            FROM chain c
            JOIN graph_edges e ON e.src_node_id = c.node_id
-                              AND e.edge_type = 'references'
+                              AND e.edge_type IN ('produced', 'escalated_via')
            WHERE c.depth < $2 AND NOT e.dst_node_id = ANY(c.path)
        )
-       SELECT DISTINCT n.ref_key, n.node_type, n.label, n.props
+       SELECT DISTINCT n.ref_key, n.node_type, n.node_subtype, n.label, n.props
        FROM chain c JOIN graph_nodes n ON n.node_id = c.node_id
        ORDER BY n.ref_key
        LIMIT $3`,
@@ -315,7 +330,10 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
   }
 
   private async filteredNodes(request: GraphSliceRequest, limit: number) {
-    const conditions = ["node_type = 'document'"];
+    // Filtering by category/sourceType/department/incident is about an
+    // artifact or an event, never a person node — actors carry none of those
+    // props — so this excludes 'person' rather than assuming 'document'.
+    const conditions = ["node_type <> 'person'"];
     const parameters: unknown[] = [];
     const next = () => `$${parameters.length + 1}`;
 
@@ -345,16 +363,16 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     return result.rows.map(graphNode);
   }
 
-  private async actorsOf(documentKeys: string[], limit: number) {
+  private async actorsOf(nodeKeys: string[], limit: number) {
     const result = await this.pool.query<GraphNodeRow>(
-      `SELECT DISTINCT a.ref_key, a.node_type, a.label, a.props
+      `SELECT DISTINCT a.ref_key, a.node_type, a.node_subtype, a.label, a.props
        FROM graph_nodes d
        JOIN graph_edges e ON e.src_node_id = d.node_id AND e.edge_type = 'involves'
-       JOIN graph_nodes a ON a.node_id = e.dst_node_id AND a.node_type = 'actor'
-       WHERE d.node_type = 'document' AND d.ref_key = ANY($1::text[])
+       JOIN graph_nodes a ON a.node_id = e.dst_node_id AND a.node_type = 'person'
+       WHERE d.ref_key = ANY($1::text[])
        ORDER BY a.ref_key
        LIMIT $2`,
-      [documentKeys, limit],
+      [nodeKeys, limit],
     );
     return result.rows.map(graphNode);
   }

@@ -18,10 +18,12 @@ export interface Evidence {
   score?: number;
 }
 
-/** One node of a graph slice. `id` is the natural key: a source id, or a name. */
+/** One node of a graph slice. `id` is the natural key: a source id, a domain
+ * key, or a resolved person name. */
 export interface GraphNode {
   id: string;
-  type: "document" | "actor";
+  type: "person" | "organization" | "item" | "event" | "document";
+  subtype?: string;
   label: string;
   sourceType?: string;
   category?: string;

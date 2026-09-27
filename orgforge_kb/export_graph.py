@@ -1,17 +1,21 @@
 #!/usr/bin/env python3
 """Export a slice of the deterministic graph as JSON.
 
-The whole graph is far too large to render — 22,606 nodes and 58,366 edges — so
-every export is a slice. Two ways to choose one:
+The whole graph is far too large to render — about 2,200 nodes and 5,800 edges
+across five kinds (person, organization, item, event, document) — so every
+export is a slice. Two ways to choose one:
 
-``--seed SOURCE_ID``
-    Walk the causal chain outward from one document and export what it reaches.
-    This is the view that shows how an incident, ticket or sprint actually
-    unfolded, and it is bounded by ``--depth``.
+``--seed REF_KEY``
+    Walk the causal chain outward from one node along 'produced'/'escalated_via'
+    and export what it reaches. This is the view that shows how an incident,
+    ticket, or design discussion actually unfolded, bounded by ``--depth``. The
+    seed can be any node's ref_key: an incident's is its jira id, a confluence
+    page's is its source_id.
 
 ``--category`` / ``--source-type`` / ``--department`` / ``--incidents-only``
-    Export a filtered set of documents and every edge between them. Useful for
-    "all incident artifacts" or "everything Engineering_Backend touched".
+    Export a filtered set of items/events/documents and every edge between
+    them. Useful for "all incidents" or "everything Engineering_Backend
+    touched".
 
 Output is a single JSON object::
 
@@ -19,14 +23,15 @@ Output is a single JSON object::
      "edges": [{"source", "target", "type", ...props}],
      "meta":  {...how this slice was chosen...}}
 
-Node ids are the natural keys already used in the database, so a document id is
-its ``source_id`` and an actor id is the actor's name. The shape feeds a
-force-directed front end (vis.js, D3, Cytoscape) directly, and is a reasonable
-interchange format for loading the same slice into a graph database.
+Node ids are the natural keys already used in the database: a jira/PR/
+confluence source_id, a domain's registry key, an incident's jira id, or a
+resolved person's canonical name. The shape feeds a force-directed front end
+(vis.js, D3, Cytoscape) directly, and is a reasonable interchange format for
+loading the same slice into a graph database.
 
 Usage
 -----
-    DATABASE_URL=... python3 export_graph.py --seed EVT-1-sprint_planned-49 --depth 3
+    DATABASE_URL=... python3 export_graph.py --seed ENG-112 --depth 3
     DATABASE_URL=... python3 export_graph.py --incidents-only --include-actors
     DATABASE_URL=... python3 export_graph.py --category artifact --limit 300 -o graph.json
 """
@@ -51,22 +56,24 @@ MAX_NODES = 5_000
 
 
 def seed_slice(cursor, seed: str, depth: int) -> list[int]:
-    """Node ids reachable from one document along 'references', within depth.
+    """Node ids reachable from one node along 'produced'/'escalated_via'.
 
-    Cycle-guarded by carrying the visited path, which the corpus needs: chains
-    can loop back when two artifacts cite each other.
+    The seed can be any node type — an incident's ref_key is its jira id and its
+    node_type is 'event', a confluence page's is 'document' — so this looks it
+    up by ref_key alone. Cycle-guarded by carrying the visited path, which
+    matters once escalated_via can point back toward where a chain started.
     """
     cursor.execute(
         """
         WITH RECURSIVE chain AS (
             SELECT node_id, 0 AS depth, ARRAY[node_id] AS path
             FROM graph_nodes
-            WHERE node_type = 'document' AND ref_key = %s
+            WHERE ref_key = %s
           UNION ALL
             SELECT e.dst_node_id, c.depth + 1, c.path || e.dst_node_id
             FROM chain c
             JOIN graph_edges e ON e.src_node_id = c.node_id
-                               AND e.edge_type = 'references'
+                               AND e.edge_type IN ('produced', 'escalated_via')
             WHERE c.depth < %s AND NOT e.dst_node_id = ANY(c.path)
         )
         SELECT DISTINCT node_id FROM chain
@@ -79,12 +86,15 @@ def seed_slice(cursor, seed: str, depth: int) -> list[int]:
 def filtered_slice(cursor, category: Optional[str], source_type: Optional[str],
                    department: Optional[str], incidents_only: bool,
                    limit: int) -> list[int]:
-    """Document node ids matching the given filters.
+    """Node ids matching the given filters, excluding person nodes.
 
     The filters read from graph_nodes.props, which build_graph.py denormalized
     for exactly this reason: no join back to source_documents is needed.
+    category/source_type/department/is_incident are all props of an item,
+    event, or document — never a person — so this excludes 'person' rather
+    than assuming any one of the other four kinds.
     """
-    conditions = ["node_type = 'document'"]
+    conditions = ["node_type <> 'person'"]
     parameters: list[Any] = []
 
     if category:
@@ -112,15 +122,15 @@ def filtered_slice(cursor, category: Optional[str], source_type: Optional[str],
     return [row[0] for row in cursor.fetchall()]
 
 
-def attached_actors(cursor, node_ids: list[int]) -> list[int]:
-    """Actor nodes involved in any of the given documents."""
+def attached_people(cursor, node_ids: list[int]) -> list[int]:
+    """Person nodes involved in any of the given nodes."""
     if not node_ids:
         return []
     cursor.execute(
         """
         SELECT DISTINCT e.dst_node_id
         FROM graph_edges e
-        JOIN graph_nodes n ON n.node_id = e.dst_node_id
+        JOIN graph_nodes n ON n.node_id = e.dst_node_id AND n.node_type = 'person'
         WHERE e.src_node_id = ANY(%s) AND e.edge_type = 'involves'
         """,
         (node_ids,),
@@ -178,7 +188,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--seed", help="export the causal chain from this source_id")
+    parser.add_argument("--seed", help="export the causal chain from this ref_key")
     parser.add_argument("--depth", type=int, default=3,
                         help="how far to walk from --seed (default: 3)")
     parser.add_argument("--category", choices=["artifact", "sim_event", "sim_config"])
@@ -199,14 +209,14 @@ def main() -> int:
     with psycopg.connect(database_url) as connection:
         with connection.cursor() as cursor:
             if arguments.seed:
-                document_ids = seed_slice(cursor, arguments.seed, arguments.depth)
-                if not document_ids:
+                node_ids = seed_slice(cursor, arguments.seed, arguments.depth)
+                if not node_ids:
                     raise SystemExit(
-                        f"No document node for source_id {arguments.seed!r}."
+                        f"No node with ref_key {arguments.seed!r}."
                     )
                 selection = {"seed": arguments.seed, "depth": arguments.depth}
             else:
-                document_ids = filtered_slice(
+                node_ids = filtered_slice(
                     cursor, arguments.category, arguments.source_type,
                     arguments.department, arguments.incidents_only, arguments.limit,
                 )
@@ -218,9 +228,8 @@ def main() -> int:
                     "limit": arguments.limit,
                 }
 
-            node_ids = list(document_ids)
             if arguments.include_actors:
-                node_ids += attached_actors(cursor, document_ids)
+                node_ids = node_ids + attached_people(cursor, node_ids)
             node_ids = list(dict.fromkeys(node_ids))
 
             if len(node_ids) > MAX_NODES:

@@ -18,13 +18,13 @@ import type {
 const slice: GraphSlice = {
   nodes: [
     { id: "CONF-ENG-022", type: "document", label: "Design: vendor audit", category: "artifact", sourceType: "confluence", department: "Engineering_Backend" },
-    { id: "EVT-2-sprint_planned-9", type: "document", label: "Sprint Planned", category: "sim_event", sourceType: "sprint_planned" },
-    { id: "HR-101", type: "document", label: "Conduct vendor audit", category: "artifact", sourceType: "jira", isIncident: true },
-    { id: "Jax", type: "actor", label: "Jax" },
+    { id: "EVT-2-sprint_planned-9", type: "event", label: "Sprint Planned", category: "sim_event", sourceType: "sprint_planned" },
+    { id: "HR-101", type: "item", label: "Conduct vendor audit", category: "artifact", sourceType: "jira", isIncident: true },
+    { id: "Jax", type: "person", label: "Jax" },
   ],
   edges: [
-    { source: "EVT-2-sprint_planned-9", target: "CONF-ENG-022", type: "references" },
-    { source: "EVT-2-sprint_planned-9", target: "HR-101", type: "references" },
+    { source: "EVT-2-sprint_planned-9", target: "CONF-ENG-022", type: "produced" },
+    { source: "EVT-2-sprint_planned-9", target: "HR-101", type: "produced" },
     { source: "CONF-ENG-022", target: "Jax", type: "involves" },
   ],
   truncated: false,
@@ -124,7 +124,8 @@ describe("the company graph", () => {
     // Shape, not just colour, distinguishes the three kinds.
     assert.equal(document.querySelectorAll(".node polygon.n-actor").length, 1);
     assert.equal(document.querySelectorAll(".node rect.n-event").length, 1);
-    assert.equal(document.querySelectorAll(".node circle.n-artifact").length, 2);
+    assert.equal(document.querySelectorAll(".node circle.n-artifact").length, 1);
+    assert.equal(document.querySelectorAll(".node circle.n-item").length, 1);
 
     // The table carries the same relationships, so the picture is not the only
     // way to read them.

@@ -65,14 +65,23 @@ function nodeKind(node) {
   // thing an Entity, and the categories it groups them under EntityType.
   if (node.type === "Entity") return "entity";
   if (node.type === "EntityType") return "kind";
-  if (node.type === "actor") return "actor";
+  // The recorded graph's own five kinds. 'document' still splits on category,
+  // since the deterministic graph only ever gives 'document' to a confluence
+  // page — the category check exists for the earlier shape of this data and
+  // stays harmless if it never matches 'sim_event' again.
+  if (node.type === "person") return "person";
+  if (node.type === "organization") return "organization";
+  if (node.type === "item") return "item";
+  if (node.type === "event") return "event";
   if (node.type === "document") return node.category === "artifact" ? "artifact" : "event";
   return "entity";
 }
 
 function describeKind(node) {
   switch (nodeKind(node)) {
-    case "actor": return "Person";
+    case "person": return "Person";
+    case "organization": return "Organization";
+    case "item": return node.isIncident ? "Item, part of an incident" : "Item";
     case "event": return "Simulation event";
     case "entity": return "Something named in the writing";
     case "kind": return "A kind of thing";
@@ -161,11 +170,20 @@ function layout(nodes, edges) {
 
 function shapeFor(node) {
   const kind = nodeKind(node);
-  if (kind === "actor") {
+  if (kind === "person" || kind === "actor") {
     return svg("polygon", { points: "0,-7 7,0 0,7 -7,0", class: "shape n-actor" });
+  }
+  if (kind === "organization") {
+    return svg("polygon", { points: "-7,-6 7,-6 7,6 -7,6", class: "shape n-organization" });
   }
   if (kind === "event") {
     return svg("rect", { x: -6, y: -6, width: 12, height: 12, class: "shape n-event" });
+  }
+  if (kind === "item") {
+    return svg("circle", {
+      r: 7,
+      class: `shape n-item${node.isIncident ? " incident" : ""}`,
+    });
   }
   if (kind === "kind") {
     return svg("rect", { x: -6, y: -6, width: 12, height: 12, class: "shape n-kind" });

@@ -95,10 +95,12 @@ def find_seeds(cursor, query: str, limit: int) -> tuple[list[str], str]:
 def expand_by_graph(cursor, seeds: list[str], limit: int) -> list[str]:
     """Directly linked artifacts, plus artifacts that share a cause.
 
-    The second kind matters more than it sounds: links run overwhelmingly from a
-    simulation event to the artifacts it produced, so a ticket and the call it
-    came out of are siblings under one event rather than neighbours. The event is
-    only stepped through.
+    The second kind matters more than it sounds: an event produces the
+    artifacts it results in, so a ticket and the confluence page written about
+    it are siblings under one event rather than neighbours. The event is only
+    stepped through, via 'produced' — never returned, and never a person or a
+    domain, both filtered out below since only document/item nodes are
+    artifacts a person could have written.
     """
     if not seeds:
         return []
@@ -106,33 +108,33 @@ def expand_by_graph(cursor, seeds: list[str], limit: int) -> list[str]:
         """
         WITH seed_nodes AS (
             SELECT node_id FROM graph_nodes
-            WHERE node_type = 'document' AND ref_key = ANY(%s::text[])
+            WHERE node_type IN ('document', 'item') AND ref_key = ANY(%s::text[])
         ),
         direct AS (
             SELECT e.dst_node_id AS node_id
             FROM graph_edges e JOIN seed_nodes s ON e.src_node_id = s.node_id
-            WHERE e.edge_type = 'references'
+            WHERE e.edge_type = 'produced'
             UNION
             SELECT e.src_node_id
             FROM graph_edges e JOIN seed_nodes s ON e.dst_node_id = s.node_id
-            WHERE e.edge_type = 'references'
+            WHERE e.edge_type = 'produced'
         ),
         causes AS (
             SELECT e.src_node_id AS node_id
             FROM graph_edges e JOIN seed_nodes s ON e.dst_node_id = s.node_id
-            WHERE e.edge_type = 'references'
+            WHERE e.edge_type = 'produced'
         ),
         siblings AS (
             SELECT e.dst_node_id AS node_id
             FROM graph_edges e JOIN causes c ON e.src_node_id = c.node_id
-            WHERE e.edge_type = 'references'
+            WHERE e.edge_type = 'produced'
         ),
         reached AS (
             SELECT node_id FROM direct UNION SELECT node_id FROM siblings
         )
         SELECT DISTINCT n.ref_key
         FROM reached r
-        JOIN graph_nodes n ON n.node_id = r.node_id AND n.node_type = 'document'
+        JOIN graph_nodes n ON n.node_id = r.node_id AND n.node_type IN ('document', 'item')
         JOIN source_documents d ON d.source_id = n.ref_key
         WHERE d.category = 'artifact'
           AND NOT (n.ref_key = ANY(%s::text[]))
