@@ -311,6 +311,12 @@ describe("Browser surface", () => {
     const scripts = [...graph.querySelectorAll("script[src]")].map((script) => script.getAttribute("src")!.split("?")[0]);
     assert.ok(scripts.includes("/plate.js") && scripts.includes("/shell.js"), "the plate's own scripts");
 
+    // From every plate, Company map opens the graph on its own first view (Documents), not on a chosen one.
+    for (const page of ["index.html", "meetings.html", "graph.html"]) {
+      const plateDocument = new JSDOM(readFileSync(new URL(`../public/${page}`, import.meta.url), "utf8")).window.document;
+      assert.equal(plateDocument.querySelector("#company-graph-link")!.getAttribute("href"), "/graph", page);
+    }
+
     const answer = new JSDOM((await app.inject({ method: "GET", url: "/graph/answer?q=x" })).body).window.document;
     assert.equal(answer.querySelector("#plate"), null);
     await app.close();
