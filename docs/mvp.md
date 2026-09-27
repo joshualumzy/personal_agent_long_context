@@ -84,7 +84,7 @@ The system may propose a hire when a knowledge domain is at risk: its owner has 
 
 - Recruiting, and the proposals, are visible to every signed-in employee in the MVP. There is no manager role yet.
 - A proposal only proposes. Opening a role from it starts a draft; confirming criteria, searching for candidates and any outreach stay with a person, as in the rest of recruiting.
-- Proposals are computed from employee-visible artifacts, the deployed graph, and one more approved offline projection, `employee_roster` (who joined and left on which day, without the reason). The roster follows the planner projection's rules: it may be shown, and it is never Company Evidence.
+- Proposals are computed from employee-visible artifacts, the deployed graph, and two more approved offline projections: `employee_roster` (who joined and left on which day, without the reason) and `domain_owner_history` (each domain's designated owner, dated from the registry and the recorded hand-overs). Both follow the planner projection's rules: they may be shown, and they are never Company Evidence.
 - `knowledge_gap_detected` events and the registry's gap fields (`gap_classification`, `documentation_coverage`, `is_genesis_gap`) are simulator output that benchmark questions are built on. They are read only by the offline backtest (`eval/orgforge/gap_truth.py`), never at runtime, and never by the agent.
 
 ## MVP Acceptance Criteria

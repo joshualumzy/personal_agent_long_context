@@ -2,11 +2,13 @@
 """Build the dated projections: day plans, ticket states and the roster.
 
 No language model is involved, and nothing is guessed: every row comes from a
-field the corpus states. Three tables, all rebuilt in full on every run (see
-database/migrations/019_asof_projection.sql and 020_employee_roster.sql):
+field the corpus states. Four tables, all rebuilt in full on every run (see
+database/migrations/019_asof_projection.sql, 020_employee_roster.sql and
+021_domain_owner_history.sql):
 
   day_plan_entry   one row per item of one person's plan for one day, read
                    from dept_plan_created.facts.engineer_plans[].agenda[]
+  domain_owner_history  each domain's designated owner, dated
   employee_roster  who worked here, with join and leave days (no reason);
                    the staff are everyone in a day plan, dated by hire and
                    departure events
@@ -246,6 +248,46 @@ def roster_rows(entries: Iterable[dict], hires: Iterable[dict], departures: Iter
     return [people[name] for name in sorted(people)]
 
 
+def owner_history(domains: Iterable[dict], handovers: Iterable[dict], roster: Iterable[dict]) -> list[dict]:
+    """Date each domain's designated owners.
+
+    domains: {key, former_owner, primary_owner} from the registry.
+    handovers: {domain, day, new_owner, event}, a recorded hand-over.
+    roster: employee_roster rows, for join and leave days.
+
+    The former owner holds the domain from before the record. Each hand-over
+    passes it on that day. If the registry's current owner never received it
+    through a hand-over, they take it when the former owner leaves, or when
+    they join, whichever is later — and if neither is known, from before the
+    record. An owner who has left still holds it on paper: that is what makes
+    it orphaned.
+    """
+    by_person = {row["person"]: row for row in roster}
+    rows: list[dict] = []
+    for domain in sorted(domains, key=lambda d: d["key"]):
+        changes: list[tuple[str | None, str, list[str]]] = []  # (from, owner, derived_from)
+        if domain.get("former_owner"):
+            changes.append((None, domain["former_owner"], []))
+        passes = sorted((h for h in handovers if h["domain"] == domain["key"]), key=lambda h: h["day"])
+        for handover in passes:
+            changes.append((handover["day"], handover["new_owner"], [handover["event"]]))
+        primary = domain.get("primary_owner")
+        if primary and primary not in {owner for _, owner, _ in changes[1:]} and primary != domain.get("former_owner"):
+            former = by_person.get(domain.get("former_owner") or "", {})
+            joined = by_person.get(primary, {}).get("joined_on")
+            candidates = [day for day in (former.get("left_on"), joined) if day]
+            changes.append((max(candidates) if candidates else None, primary, []))
+        # Order by day (before-the-record first); a later change ends the one before.
+        changes.sort(key=lambda change: change[0] or "")
+        for index, (start, owner, derived) in enumerate(changes):
+            end = changes[index + 1][0] if index + 1 < len(changes) else None
+            if start is not None and end is not None and end <= start:
+                continue
+            rows.append({"domain_key": domain["key"], "owner": owner, "valid_from": start,
+                         "valid_to": end, "derived_from": derived})
+    return rows
+
+
 def plan_changes(entries: Iterable[dict], known: set[str]) -> list[Change]:
     """A day plan listing a ticket says who is working on it that day."""
     return [
@@ -365,7 +407,29 @@ def read(cursor) -> tuple[list[dict], list[dict], dict]:
                 moves[kind].append({"person": name or actor, "day": day, "role": role,
                                     "department": department, "event": event_id})
     roster = roster_rows(entries, moves["employee_hired"], moves["employee_departed"])
-    return entries, states, {"skipped_progress": skipped, "undated": undated, "roster": roster}
+
+    # Domain owners over time: the registry's former and current owner, and
+    # the hand-overs (who took which domain on which day, nothing else).
+    cursor.execute("SELECT domain_key, name, former_owner, primary_owner FROM domains ORDER BY domain_key")
+    registry = [{"key": key, "name": name, "former_owner": former, "primary_owner": primary}
+                for key, name, former, primary in cursor.fetchall()]
+    names = {_key(domain["name"]): domain["key"] for domain in registry}
+    names.update({_key(domain["key"]): domain["key"] for domain in registry})
+    cursor.execute(
+        f"""
+        SELECT source_id, {DAY}, facts->>'domain', facts->>'new_owner'
+        FROM source_documents WHERE source_type = 'domain_ownership_claimed' AND {DAY} IS NOT NULL
+        ORDER BY occurred_at, source_id
+        """
+    )
+    handovers = [{"domain": names.get(_key(domain or "")), "day": day, "new_owner": owner, "event": event_id}
+                 for event_id, day, domain, owner in cursor.fetchall() if owner]
+    owners = owner_history(registry, handovers, roster)
+    return entries, states, {"skipped_progress": skipped, "undated": undated, "roster": roster, "owners": owners}
+
+
+def _key(text: str) -> str:
+    return "".join(ch for ch in text.lower() if ch.isalnum())
 
 
 def write(cursor, table: str, rows: list[dict], chunk: int = 200) -> None:
@@ -390,6 +454,7 @@ def main() -> int:
             write(cursor, "day_plan_entry", entries)
             write(cursor, "work_item_state", states)
             write(cursor, "employee_roster", report["roster"])
+            write(cursor, "domain_owner_history", report["owners"])
         connection.commit()
 
     people = len({entry["person"] for entry in entries})
@@ -403,6 +468,8 @@ def main() -> int:
     roster = report["roster"]
     print(f"employee_roster: {len(roster)} people, {sum(1 for row in roster if row['joined_on'])} joined, "
           f"{sum(1 for row in roster if row['left_on'])} left", file=sys.stderr)
+    print(f"domain_owner_history: {len(report['owners'])} ownerships over "
+          f"{len({row['domain_key'] for row in report['owners']})} domains", file=sys.stderr)
     if report["skipped_progress"]:
         print(f"skipped {report['skipped_progress']} progress events for tickets with no jira artifact",
               file=sys.stderr)

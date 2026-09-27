@@ -1,5 +1,6 @@
 import type { ChatBlock } from "./agent-extension.js";
 import type { AsOf } from "./as-of.js";
+import type { DomainHealth } from "./domain-health.js";
 
 export interface EmployeePersona {
   employeeId: string;
@@ -234,6 +235,8 @@ export interface CompanyKnowledge {
   dayPlan?(person: string, day: AsOf): Promise<DayPlanEntry[]>;
   /** Everyone on the roster, marked employed or not on day D. */
   roster?(day: AsOf): Promise<RosterEntry[]>;
+  /** Every knowledge domain's health on day D (src/domain-health.ts). */
+  domainHealth?(day: AsOf): Promise<DomainHealth[]>;
   close?(): Promise<void>;
 }
 

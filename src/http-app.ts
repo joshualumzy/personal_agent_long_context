@@ -838,6 +838,23 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       }
       return reply.send({ ...base, entries: await knowledge.dayPlan(person, resolved.day) });
     };
+  /**
+   * Every knowledge domain's health on a day: owner and whether still here,
+   * the owner's load, who worked in it lately, recent incidents. Visible to
+   * every signed-in employee in the MVP (docs/mvp.md).
+   */
+  app.get<{ Querystring: { asOf?: string } }>("/api/v1/gaps/health", async (request, reply) => {
+    const employee = await requireEmployee(request, reply);
+    if (!employee) return;
+    const knowledge = options.companyKnowledge;
+    if (!knowledge?.domainHealth) {
+      return reply.code(503).send({ message: "Domain health is not configured." });
+    }
+    const resolved = await resolveRequestedDay(request.query.asOf?.trim() || undefined);
+    if (!resolved.ok) return reply.code(resolved.status).send({ error: "invalid_as_of", message: resolved.error });
+    return reply.send({ asOf: resolved.day, domains: await knowledge.domainHealth(resolved.day) });
+  });
+
   app.get("/api/v1/planner/todo", plannerRoute("todo"));
   app.get("/api/v1/planner/day", plannerRoute("day"));
 
