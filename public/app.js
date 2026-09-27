@@ -896,7 +896,10 @@ function attachAssistantMeta(bubble, data) {
     if (data.personalMemory.status === "unavailable") {
       const tag = document.createElement("span");
       tag.className = "context-tag unavailable";
-      tag.innerHTML = `${lineIcon("alert", 12)}Personal memory unavailable`;
+      // On a past day memory is set aside on purpose, which is not a fault.
+      tag.innerHTML = data.asOf
+        ? `${lineIcon("book", 12)}Memory set aside for this day`
+        : `${lineIcon("alert", 12)}Personal memory unavailable`;
       if (data.personalMemory.reason) tag.title = data.personalMemory.reason;
       contextTags.appendChild(tag);
     } else if (data.personalMemory.answer && data.personalMemory.answer.trim().length > 0) {
