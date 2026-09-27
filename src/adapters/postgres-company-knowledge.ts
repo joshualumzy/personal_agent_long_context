@@ -327,19 +327,12 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     after: string | null,
     types: string[] | null,
   ): Promise<Evidence[]> {
-    // Any of the query's words, not all of them: a model writes long queries
-    // ("Confluence page TitanDB legacy auth AWS cost"), and requiring every word
-    // left the keyword half of the search empty. ts_rank_cd still ranks a
-    // record that matches more of the words, closer together, higher. The
-    // lexemes are already stemmed, so they are cast rather than re-parsed.
+    // Every word of the query must match. Matching any word was tried: it found
+    // more of the right records but lowered accuracy on OrgForge's valid
+    // questions (62% and 59% against 69% and 66%), as loosely related records
+    // led the model to conclude things had happened when they had not.
     const result = await this.pool.query<EvidenceRow>(
-      `WITH requested AS (
-         SELECT coalesce(
-                  (SELECT string_agg(quote_literal(lexeme), ' | ')::tsquery
-                   FROM unnest(tsvector_to_array(to_tsvector('english', $1))) AS lexeme),
-                  websearch_to_tsquery('english', $1)
-                ) AS query
-       ),
+      `WITH requested AS (SELECT websearch_to_tsquery('english', $1) AS query),
        ranked AS (
          SELECT c.source_id, c.content,
                 ts_rank_cd(

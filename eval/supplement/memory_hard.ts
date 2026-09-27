@@ -15,8 +15,8 @@ import { judgeAgainstReference, judgeOptionsFromEnvironment } from "../orgforge/
 import { chat, login, memory, memoryMatching } from "./memory-client.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const OWNER = "sam";
-const OTHER = "reese";
+const OWNER = process.env.MEMORY_OWNER ?? "sam";
+const OTHER = process.env.MEMORY_OTHER ?? "reese";
 
 /** Ordinary company questions, asked between telling and asking back. */
 const DISTRACTIONS = [
