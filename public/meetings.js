@@ -1700,6 +1700,10 @@ function init() {
   loadMeetingList();
   loadReplayList();
   loadIntegrations();
+  // The plate: what needs you, waiting on others, and the day's tickets and
+  // plan. This page is only ever reached signed in, so no auth check first.
+  loadPlateNeeds();
+  initPlanner();
 
   const fromAddress = meetingIdInAddress();
   if (fromAddress) openMeeting(fromAddress, { fromAddress: true });

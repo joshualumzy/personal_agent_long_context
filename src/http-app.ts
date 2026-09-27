@@ -1472,6 +1472,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   });
   app.get("/shell.js", serve("shell.js", "text/javascript; charset=utf-8"));
   app.get("/shoelace-setup.js", serve("shoelace-setup.js", "text/javascript; charset=utf-8"));
+  // The plate: shared by the assistant and the meetings page.
+  app.get("/plate.js", serve("plate.js", "text/javascript; charset=utf-8"));
   app.get("/app.js", serve("app.js", "text/javascript; charset=utf-8"));
   app.get("/styles.css", serve("styles.css", "text/css; charset=utf-8"));
   app.get("/clear.js", serve("clear.js", "text/javascript; charset=utf-8"));

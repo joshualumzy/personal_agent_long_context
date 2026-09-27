@@ -117,34 +117,8 @@ function scrollToBottom() {
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
 }
 
-// Line icons in the same stroke style as the sidebar toggle. Emoji are never used as icons.
-const LINE_ICONS = {
-  check: '<path d="M20 6 9 17l-5-5"/>',
-  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
-  trash: '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
-  message: '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
-  save: '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/>',
-  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
-  book: '<path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/>',
-  stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
-  external: '<path d="M7 17 17 7"/><path d="M7 7h10v10"/>',
-  graph: '<circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="7" r="2.5"/><circle cx="11" cy="18" r="2.5"/><path d="M7.5 6.3l9 .5"/><path d="M6.2 8.3l3.6 7.4"/><path d="M17.6 9.1l-5.3 6.8"/>',
-  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
-  ticket: '<path d="M3 8a2 2 0 0 0 2-2h14a2 2 0 0 0 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 0-2 2H5a2 2 0 0 0-2-2v-2a2 2 0 0 0 0-4z"/>',
-  calendar: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
-  people: '<circle cx="9" cy="8" r="3"/><path d="M3 20a6 6 0 0 1 12 0"/><path d="M16 5a3 3 0 0 1 0 6M18 20a5 5 0 0 0-3-4.6"/>',
-  doc: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>',
-  hand: '<path d="M8 11V5a1.5 1.5 0 0 1 3 0v5M11 10V4a1.5 1.5 0 0 1 3 0v6M14 10V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a5 5 0 0 1-4.3-2.5L3.5 13a1.5 1.5 0 0 1 2.6-1.5L8 14"/>',
-  mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
-  play: '<path d="M7 5v14l11-7z"/>',
-  chevron: '<path d="m9 6 6 6-6 6"/>',
-  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
-  pin: '<path d="M12 17v5"/><path d="M9 10.76V6h6v4.76a2 2 0 0 0 1.11 1.79l1.78.9A2 2 0 0 1 19 15.24V17H5v-1.76a2 2 0 0 1 1.11-1.79l1.78-.9A2 2 0 0 0 9 10.76Z"/><path d="M8 3h8"/>',
-};
-
-function lineIcon(name, size = 14) {
-  return `<svg class="line-icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${LINE_ICONS[name] ?? ""}</svg>`;
-}
+// LINE_ICONS, lineIcon and escapeHtml are defined in plate.js, loaded before
+// this script; every page that shows the plate shares that one copy.
 
 /** A person is shown by their initial; the directory's emoji avatars are not used. */
 function initialOf(name) {
@@ -159,13 +133,6 @@ function avatarMarkup(person) {
 function returnAddress() {
   const next = new URLSearchParams(location.search).get("next");
   return next && next.startsWith("/") && !next.startsWith("//") && !next.startsWith("/\\") ? next : null;
-}
-
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text;
-  // Quotes too: the result also goes inside attribute values.
-  return div.innerHTML.replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 }
 
 function formatRelativeTime(dateString) {
@@ -601,6 +568,7 @@ async function showSource(sourceId) {
     alert("Could not load source details.");
   }
 }
+setPlateSourceHandler(showSource);
 
 closeSourceBtn.addEventListener("click", () => sourceDialog.close());
 sourceDialog.addEventListener("click", (e) => {
@@ -1577,7 +1545,7 @@ chatForm.addEventListener("submit", async (e) => {
     if (activeConversationId) {
       payload.conversationId = activeConversationId;
     }
-    if (viewDay) payload.asOf = viewDay;
+    if (currentViewDay()) payload.asOf = currentViewDay();
 
     const response = await fetch("/api/v1/agent/chat", {
       method: "POST",
@@ -1875,6 +1843,7 @@ function handleAuthRequired() {
   renderSuggestionChips(null);
   openLoginDialog();
 }
+setPlateAuthRequiredHandler(handleAuthRequired);
 
 async function handleLogout() {
   try {
@@ -1911,11 +1880,7 @@ function updateUserDisplay(user) {
   if (memoryTitle) {
     memoryTitle.textContent = `${user.displayName}'s Active Working Memory`;
   }
-  // Another employee's list must not stay on screen under this one's name.
-  if (typeof loadTodayPanel === "function" && workingDays.length) {
-    plannerEpoch += 1;
-    loadTodayPanel();
-  }
+  refreshTodayPanelForNewUser();
 }
 
 function renderPersonaCards(personas, activeId) {
@@ -2163,320 +2128,15 @@ if (sidebarUserContainer) {
 
 
 // ---------------------------------------------------------------------------
-// The chosen day, and the Today panel
+// The chosen day, and the Today panel: showDay, chooseDay, loadTodayPanel,
+// renderTodo, renderPlan, initPlanner and the rest live in plate.js, shared
+// with the meetings page. A change of day here interrupts the open
+// conversation, which only the assistant page has.
 // ---------------------------------------------------------------------------
-//
-// The company can be looked at from the end of any working day in the record.
-// `viewDay` is that day, or null for the present. It lives in the address
-// (?asOf=), so a reload or a shared link opens on the same day. A new chat
-// takes the day on screen; a conversation keeps the day it was begun on, and
-// opening one moves the picker to its day.
 
-const asOfGroup = document.querySelector("#as-of");
-const asOfInput = document.querySelector("#as-of-input");
-const asOfCaption = document.querySelector("#as-of-caption");
-const asOfPrev = document.querySelector("#as-of-prev");
-const asOfNext = document.querySelector("#as-of-next");
-const asOfNow = document.querySelector("#as-of-now");
-const todayToggle = document.querySelector("#today-toggle");
-const todayPanel = document.querySelector("#today-panel");
-const todayDate = document.querySelector("#today-date");
-const todoList = document.querySelector("#todo-list");
-const planList = document.querySelector("#plan-list");
-const companyGraphLink = document.querySelector("#company-graph-link");
-
-/** The working days, oldest first; empty until loaded, or where there are none. */
-let workingDays = [];
-let viewDay = null;
-/** Bumped on every change of day or person, so a slow answer for the old one is dropped. */
-let plannerEpoch = 0;
-
-function requestedDayFromAddress() {
-  const value = new URLSearchParams(location.search).get("asOf");
-  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
-}
-
-function writeDayToAddress(day) {
-  const params = new URLSearchParams(location.search);
-  if (day) params.set("asOf", day);
-  else params.delete("asOf");
-  const query = params.toString();
-  history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}${location.hash}`);
-}
-
-/** The working day on or before `day`, as the server reads it; null outside the record. */
-function workingDayFor(day) {
-  if (!day || !workingDays.length || day < workingDays[0] || day > workingDays[workingDays.length - 1]) return null;
-  let chosen = workingDays[0];
-  for (const candidate of workingDays) {
-    if (candidate > day) break;
-    chosen = candidate;
-  }
-  return chosen;
-}
-
-function formatDay(day) {
-  const date = new Date(`${day}T00:00:00Z`);
-  return date.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-}
-
-/** Shows `day` (or the present) in the picker, the header and the panel, and reloads the panel. */
-function showDay(day) {
-  viewDay = day;
-  plannerEpoch += 1;
-  const shown = day ?? workingDays[workingDays.length - 1] ?? "";
-  if (asOfInput) asOfInput.value = shown;
-  if (asOfCaption) asOfCaption.textContent = day ? "As of" : "Today";
-  if (asOfGroup) asOfGroup.classList.toggle("past", Boolean(day));
-  if (asOfNow) asOfNow.hidden = !day;
-  const index = workingDays.indexOf(shown);
-  if (asOfPrev) asOfPrev.disabled = index <= 0;
-  if (asOfNext) asOfNext.disabled = index < 0 || index >= workingDays.length - 1;
-  // The company graph is not yet read by date: while looking at a past day it is not offered.
-  if (companyGraphLink) companyGraphLink.hidden = Boolean(day);
-  document.body.classList.toggle("viewing-past", Boolean(day));
-  writeDayToAddress(day);
-  loadTodayPanel();
-}
-
-/**
- * The picker's own choice. A day inside the record snaps to its working day;
- * the last working day is the present. Moving the day away from the open
- * conversation's day starts a new chat, since that conversation keeps its own.
- */
-function chooseDay(requested) {
-  if (!workingDays.length) return;
-  const snapped = workingDayFor(requested);
-  if (requested && !snapped) {
-    showModelNotice(`Pick a day from ${formatDay(workingDays[0])} to ${formatDay(workingDays[workingDays.length - 1])}.`);
-    showDay(viewDay);
-    return;
-  }
-  const day = snapped && snapped !== workingDays[workingDays.length - 1] ? snapped : null;
-  if (day === viewDay) {
-    showDay(day);
-    return;
-  }
+setPlateDayChangeHandler(() => {
   if (activeConversationId && chatMessages.children.length > 0) startNewChat();
-  showDay(day);
-}
-
-asOfInput?.addEventListener("change", () => chooseDay(asOfInput.value || null));
-asOfPrev?.addEventListener("click", () => {
-  const index = workingDays.indexOf(asOfInput.value);
-  if (index > 0) chooseDay(workingDays[index - 1]);
 });
-asOfNext?.addEventListener("click", () => {
-  const index = workingDays.indexOf(asOfInput.value);
-  if (index >= 0 && index < workingDays.length - 1) chooseDay(workingDays[index + 1]);
-});
-asOfNow?.addEventListener("click", () => chooseDay(null));
-
-/** Opening a conversation shows the day it was asked on. */
-function showConversationDay(day) {
-  if (!workingDays.length) return;
-  const known = day && workingDays.includes(day) ? day : null;
-  if (known !== viewDay) showDay(known);
-}
-
-function setTodayPanelOpen(open, remember = true) {
-  if (!todayPanel) return;
-  todayPanel.hidden = !open;
-  todayToggle?.setAttribute("aria-pressed", String(open));
-  document.body.classList.toggle("today-open", open);
-  if (remember) stored.set("sme_today_panel", open ? "open" : "closed");
-}
-
-todayToggle?.addEventListener("click", () => setTodayPanelOpen(todayPanel.hidden));
-document.querySelector("#today-close")?.addEventListener("click", () => setTodayPanelOpen(false));
-
-const TODO_GROUPS = [
-  { title: "In progress", match: (item) => item.relation === "assignee" && item.status === "In Progress" },
-  { title: "In review", match: (item) => item.relation === "assignee" && item.status === "In Review" },
-  { title: "Not started", match: (item) => item.relation === "assignee" && item.status !== "In Progress" && item.status !== "In Review" },
-  { title: "Raised by you, not picked up", relation: "reporter", match: (item) => item.relation === "reporter" },
-];
-
-const ACTIVITY_LABELS = {
-  deep_work: "Focus work",
-  design_discussion: "Design discussion",
-  async_question: "Question",
-  "1on1": "1:1",
-  mentoring: "Mentoring",
-  code_review: "Code review",
-  meeting: "Meeting",
-};
-
-function activityLabel(type) {
-  if (!type) return "";
-  return ACTIVITY_LABELS[type] ?? type.replace(/_/g, " ").replace(/^./, (first) => first.toUpperCase());
-}
-
-function hoursLabel(hours) {
-  if (typeof hours !== "number") return "";
-  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)}h`;
-}
-
-function renderTodo(items) {
-  todoList.replaceChildren();
-  if (!items.length) {
-    const empty = document.createElement("p");
-    empty.className = "today-empty";
-    empty.textContent = "Nothing open on your list.";
-    todoList.appendChild(empty);
-    return;
-  }
-  for (const group of TODO_GROUPS) {
-    const members = items.filter(group.match);
-    if (!members.length) continue;
-    const heading = document.createElement("h4");
-    heading.textContent = `${group.title} · ${members.length}`;
-    const list = document.createElement("ul");
-    // What others were meant to pick up can run long; the first few are enough to see it.
-    const shown = group.relation === "reporter" ? 5 : members.length;
-    members.forEach((item, index) => {
-      const row = document.createElement("li");
-      const citable = item.sources?.includes(item.itemKey);
-      const open = document.createElement(citable ? "button" : "div");
-      open.className = "todo-item";
-      if (citable) {
-        open.type = "button";
-        open.title = `Open ${item.itemKey}`;
-        open.addEventListener("click", () => showSource(item.itemKey));
-      }
-      const key = document.createElement("span");
-      key.className = "todo-key";
-      key.textContent = item.itemKey;
-      const title = document.createElement("span");
-      title.className = "todo-title";
-      title.textContent = item.title || item.itemKey;
-      const facts = document.createElement("span");
-      facts.className = "todo-facts";
-      facts.textContent = [
-        typeof item.points === "number" ? `${item.points} pt` : "",
-        item.sprintNo ? `Sprint ${item.sprintNo}` : "",
-        item.since ? `since ${formatDay(item.since)}` : "",
-      ].filter(Boolean).join(" · ");
-      open.append(key, title, facts);
-      row.appendChild(open);
-      if (index >= shown) row.hidden = true;
-      list.appendChild(row);
-    });
-    todoList.append(heading, list);
-    if (members.length > shown) {
-      const more = document.createElement("button");
-      more.type = "button";
-      more.className = "today-more";
-      more.textContent = `Show ${members.length - shown} more`;
-      more.addEventListener("click", () => {
-        list.querySelectorAll("li[hidden]").forEach((row) => { row.hidden = false; });
-        more.remove();
-      });
-      todoList.appendChild(more);
-    }
-  }
-}
-
-function renderPlan(entries) {
-  planList.replaceChildren();
-  if (!entries.length) {
-    const empty = document.createElement("li");
-    empty.className = "today-empty";
-    empty.textContent = "No plan recorded for this day.";
-    planList.appendChild(empty);
-    return;
-  }
-  for (const entry of entries) {
-    const row = document.createElement("li");
-    row.className = entry.deferred ? "plan-item deferred" : "plan-item";
-    const title = document.createElement("span");
-    title.className = "plan-title";
-    title.textContent = entry.title;
-    const facts = document.createElement("span");
-    facts.className = "plan-facts";
-    facts.textContent = [
-      activityLabel(entry.activityType),
-      hoursLabel(entry.estHours),
-      entry.collaborators?.length ? `with ${entry.collaborators.join(", ")}` : "",
-      entry.itemKey || "",
-    ].filter(Boolean).join(" · ");
-    row.append(title, facts);
-    if (entry.deferred) {
-      const note = document.createElement("span");
-      note.className = "plan-deferred";
-      note.textContent = entry.deferReason ? `Deferred: ${entry.deferReason}` : "Deferred";
-      row.appendChild(note);
-    }
-    planList.appendChild(row);
-  }
-}
-
-function showPanelMessage(text) {
-  const note = document.createElement("p");
-  note.className = "today-empty";
-  note.textContent = text;
-  todoList.replaceChildren(note);
-  planList.replaceChildren();
-}
-
-/** Fetches the list and plan for the day on screen; anything older is discarded. */
-async function loadTodayPanel() {
-  if (!todayPanel || !workingDays.length || !currentUser) return;
-  const epoch = plannerEpoch;
-  const day = viewDay ?? workingDays[workingDays.length - 1];
-  todayDate.textContent = viewDay ? `As of ${formatDay(day)}` : formatDay(day);
-  document.querySelector("#today-title").textContent = viewDay ? "That day" : "Today";
-  todoList.setAttribute("aria-busy", "true");
-  // The old day's lists must not linger under the new day's heading.
-  showPanelMessage("Loading…");
-  try {
-    const query = `asOf=${encodeURIComponent(day)}`;
-    const [todo, plan] = await Promise.all([
-      fetch(`/api/v1/planner/todo?${query}`, { credentials: "same-origin" }),
-      fetch(`/api/v1/planner/day?${query}`, { credentials: "same-origin" }),
-    ]);
-    if (epoch !== plannerEpoch) return;
-    if (todo.status === 401 || plan.status === 401) {
-      handleAuthRequired();
-      return;
-    }
-    if (!todo.ok || !plan.ok) throw new Error("planner");
-    const [todoBody, planBody] = await Promise.all([todo.json(), plan.json()]);
-    if (epoch !== plannerEpoch) return;
-    renderTodo(todoBody.items ?? []);
-    renderPlan(planBody.entries ?? []);
-  } catch (_) {
-    if (epoch === plannerEpoch) showPanelMessage("Could not load your list for this day.");
-  } finally {
-    if (epoch === plannerEpoch) todoList.removeAttribute("aria-busy");
-  }
-}
-
-/** After sign-in: the days to choose from, then the day in the address. */
-async function initPlanner() {
-  try {
-    const response = await fetch("/api/v1/planner/days", { credentials: "same-origin" });
-    if (!response.ok) return;
-    const body = await response.json();
-    workingDays = Array.isArray(body.days) ? body.days : [];
-  } catch (_) {
-    return;
-  }
-  if (!workingDays.length) return;
-  if (asOfInput) {
-    asOfInput.min = workingDays[0];
-    asOfInput.max = workingDays[workingDays.length - 1];
-  }
-  if (asOfGroup) asOfGroup.hidden = false;
-  if (todayToggle) todayToggle.hidden = false;
-  const requested = requestedDayFromAddress();
-  const snapped = workingDayFor(requested);
-  const day = snapped && snapped !== workingDays[workingDays.length - 1] ? snapped : null;
-  // Open by default on a wide screen, or whenever a past day was asked for; a choice to close it is kept.
-  // On the plate, tickets and plan are always shown where there is a planner.
-  setTodayPanelOpen(true, false);
-  showDay(day);
-}
 
 async function initAuth() {
   try {
@@ -2506,65 +2166,13 @@ async function initAuth() {
 // ---------------------------------------------------------------------------
 // Home: what needs you, gathered from your meetings
 // ---------------------------------------------------------------------------
+//
+// TOUR_MEETING_ID, homeTask, fillHomeGroup and loadPlateNeeds (which fetches
+// the meetings and their actions, and fills #home-needs/#home-waiting) live
+// in plate.js, shared with the meetings page. loadHome, below, builds on
+// what that call found for the parts only the assistant's own home shows.
 
-/** The sample meeting that explains the product; listed, but its drafts are not work. */
-const TOUR_MEETING_ID = "product-tour";
 const homeSection = document.querySelector("#home");
-let homeRequest = 0;
-
-const HOME_KINDS = {
-  email_draft: ["Email", "mail"],
-  ticket_draft: ["Ticket", "ticket"],
-  calendar_draft: ["Calendar invite", "calendar"],
-  message_draft: ["Message", "message"],
-  doc_draft: ["Document", "doc"],
-  sheet_draft: ["Sheet", "doc"],
-  hiring_request: ["Hiring request", "people"],
-  escalation: ["Someone else's call", "hand"],
-  answer_question: ["Answered", "book"],
-  flag_conflict: ["Heads up", "alert"],
-};
-
-/** A title without the kind the icon already shows ("Email: ", "Escalation:
- * Approval required: "). */
-function taskTitle(title) {
-  const plain = String(title || "")
-    .replace(/^(email|ticket|calendar|hiring|escalation|answer|message|doc|document|sheet|heads up|conflict)\s*:\s*/i, "")
-    .replace(/^approval required\s*:\s*/i, "");
-  return plain.charAt(0).toUpperCase() + plain.slice(1);
-}
-
-function homeTask({ action, meeting }, part, oneMeeting = false) {
-  const [kindLabel, icon] = HOME_KINDS[action.kind] ?? ["Action", "check"];
-  const row = document.createElement("a");
-  row.className = `task ${part}`;
-  row.href = `/meetings/${encodeURIComponent(meeting.meetingId)}`;
-  // One short line: what it is, a tag when something is missing or someone
-  // else decides, and the meeting it came from. The words and who said them
-  // are in the meeting.
-  let tag = "";
-  if (part === "needs" && Array.isArray(action.missing) && action.missing.length > 0) {
-    tag = `<span class="task-tag need" title="${escapeHtml(action.missing[0])}">Needs input</span>`;
-  }
-  if (part === "waiting" && action.payload?.requiredApprover) {
-    tag = `<span class="task-tag waiting" title="${escapeHtml(action.payload.reason ?? "")}">${escapeHtml(action.payload.requiredApprover)}</span>`;
-  }
-  const go = part === "needs" ? '<span class="task-go">Review</span>' : lineIcon("chevron", 14);
-  row.innerHTML = `
-    <span class="task-icon ${part}" title="${escapeHtml(kindLabel)}">${lineIcon(icon, 14)}</span>
-    <span class="task-title">${escapeHtml(taskTitle(action.title))}</span>${tag}
-    <span class="task-from"${oneMeeting ? " hidden" : ""}>${escapeHtml(meeting.title)}</span>${go}`;
-  return row;
-}
-
-function fillHomeGroup(id, items, part, oneMeeting = false) {
-  const group = document.querySelector(id);
-  if (!group) return;
-  group.hidden = items.length === 0;
-  group.querySelector(".count").textContent = String(items.length);
-  const list = group.querySelector(".tasks");
-  list.replaceChildren(...items.map((item) => homeTask(item, part, oneMeeting)));
-}
 
 function homeSummary(needs) {
   if (needs.length === 0) return "";
@@ -2582,7 +2190,7 @@ function renderHomeMeetings(meetings) {
     const row = document.createElement("a");
     row.className = "meeting";
     row.href = `/meetings/${encodeURIComponent(meeting.meetingId)}`;
-    const tour = meeting.meetingId === TOUR_MEETING_ID;
+    const tour = isTourMeeting(meeting.meetingId);
     const when = tour ? "Sample" : meeting.status === "live" ? "Live" : formatRelativeTime(meeting.startedAt);
     row.innerHTML = `${lineIcon(tour ? "play" : "mic", 14)}<span class="t">${escapeHtml(meeting.title)}</span><span class="when">${escapeHtml(when)}</span>${lineIcon("chevron", 14)}`;
     return row;
@@ -2622,7 +2230,7 @@ async function askForHomeLine(asked, needs, waiting) {
     }
   }
   const summary = document.querySelector("#home-summary");
-  if (sentence && summary && asked === homeRequest) summary.textContent = sentence;
+  if (sentence && summary && isLatestHomeRequest(asked)) summary.textContent = sentence;
 }
 
 // ---------------------------------------------------------------------------
@@ -2649,7 +2257,7 @@ function renderTimeline() {
   if (!list) return;
   const entries = [
     ...lastMeetings
-      .filter((meeting) => meeting.meetingId !== TOUR_MEETING_ID && isToday(meeting.startedAt))
+      .filter((meeting) => !isTourMeeting(meeting.meetingId) && isToday(meeting.startedAt))
       .map((meeting) => ({ kind: "meeting", at: meeting.startedAt, meeting })),
     ...lastConversations
       .filter((conversation) => isToday(conversation.updatedAt))
@@ -2693,40 +2301,15 @@ function renderTimeline() {
 
 async function loadHome() {
   if (!homeSection) return;
-  const asked = ++homeRequest;
-  let meetings = [];
-  try {
-    const response = await fetch("/api/v1/meetings", { credentials: "same-origin" });
-    if (response.ok) meetings = await response.json();
-  } catch (_) {
-    // The home shows no meetings, and the chat still works.
-  }
-  if (asked !== homeRequest || !Array.isArray(meetings)) return;
-  meetings = [...meetings].sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
+  // The plate fetches the meetings and their actions, and fills its own
+  // "Needs you" / "Waiting on others"; this builds the rest of the home
+  // screen on what it found, rather than asking again.
+  const result = await loadPlateNeeds();
+  if (!result) return;
+  const { asked, meetings, needs, waiting, done, oneMeeting } = result;
   renderHomeMeetings(meetings);
   lastMeetings = meetings;
   renderTimeline();
-
-  const withWork = meetings.filter((meeting) => meeting.meetingId !== TOUR_MEETING_ID && meeting.actionCount !== 0).slice(0, 8);
-  const states = await Promise.all(withWork.map((meeting) =>
-    fetch(`/api/v1/meetings/${encodeURIComponent(meeting.meetingId)}`, { credentials: "same-origin" })
-      .then((response) => (response.ok ? response.json() : null))
-      .catch(() => null)));
-  if (asked !== homeRequest) return;
-
-  const needs = [];
-  const waiting = [];
-  const done = [];
-  states.forEach((state, index) => {
-    if (!state || !Array.isArray(state.actions)) return;
-    const meeting = withWork[index];
-    for (const action of state.actions) {
-      const item = { action, meeting };
-      if (action.tier === "approval" && action.status === "proposed") needs.push(item);
-      else if (action.status === "escalated") waiting.push(item);
-      else if (action.status === "executed") done.push(item);
-    }
-  });
 
   const name = currentUser?.displayName || "You";
   const title = document.querySelector("#home-title");
@@ -2739,9 +2322,6 @@ async function loadHome() {
   if (summary) summary.innerHTML = homeSummary(needs);
   askForHomeLine(asked, needs, waiting);
   // Everything from one meeting: the headline names it, so the rows do not repeat it.
-  const oneMeeting = new Set([...needs, ...waiting, ...done].map((item) => item.meeting.meetingId)).size <= 1;
-  fillHomeGroup("#home-needs", needs, "needs", oneMeeting);
-  fillHomeGroup("#home-waiting", waiting, "waiting", oneMeeting);
   fillHomeGroup("#home-done", done.slice(0, 5), "done", oneMeeting);
   // Hook for public/clear.js: the drafts that need approval, freshly gathered.
   document.dispatchEvent(new CustomEvent("kaki:home-needs", { detail: { needs } }));

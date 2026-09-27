@@ -112,8 +112,8 @@ async function openMeetingsPage(path = "/meetings") {
 async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: string) {
   const { port } = app.server.address() as AddressInfo;
   const base = `http://127.0.0.1:${port}`;
-  const [html, markedScript, domPurifyScript, shellScript, script] = await Promise.all(
-    [pagePath, "/vendor/marked.js", "/vendor/dompurify.js", "/shell.js", "/meetings/app.js"].map((path) =>
+  const [html, markedScript, domPurifyScript, plateScript, shellScript, script] = await Promise.all(
+    [pagePath, "/vendor/marked.js", "/vendor/dompurify.js", "/plate.js", "/shell.js", "/meetings/app.js"].map((path) =>
       fetch(`${base}${path}`).then((response) => response.text()),
     ),
   );
@@ -156,6 +156,9 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
       if (path === "/api/v1/auth/me") {
         return json({ authenticated: true, employee: { employeeId: "priya", displayName: "Priya", role: "Product Designer" } });
       }
+      // The plate's own reads: what needs Priya (none, in this scenario) and her planner.
+      if (path === "/api/v1/meetings/m1") return json({ meetingId: "m1", title: meeting.title, status: "live", actions: [] });
+      if (path === "/api/v1/planner/days") return json({ days: [] });
       return json({});
     },
   });
@@ -182,6 +185,7 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
 
   window.eval(markedScript);
   window.eval(domPurifyScript);
+  window.eval(plateScript);
   window.eval(shellScript);
   window.eval(script);
   // jsdom fires DOMContentLoaded itself while the document is still loading;
@@ -197,10 +201,20 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
     }
   };
 
-  // The page loads its lists on start; closing it before they land would
-  // leave their renders running against a closed window.
+  // What the page and its plate both fetch on start: the meeting list, the
+  // replays and integrations offered by the page itself, who is signed in,
+  // and the plate's own "needs you" and planner reads.
+  const FIRST_LOADS = [
+    "/api/v1/meetings",
+    "/api/v1/meetings/replays",
+    "/api/v1/meetings/integrations",
+    "/api/v1/auth/me",
+    "/api/v1/meetings/m1",
+    "/api/v1/planner/days",
+  ];
+  // Closing the page before they land would leave their renders running against a closed window.
   await until(
-    () => loaded.size === 4 && document.querySelector("#meeting-list button"),
+    () => FIRST_LOADS.every((path) => loaded.has(path)) && document.querySelector("#meeting-list button"),
     "the page's first loads",
   );
   await new Promise((resolve) => setTimeout(resolve, 20));
@@ -230,11 +244,11 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
 const text = (element: Element | null) => (element?.textContent ?? "").replace(/\s+/g, " ").trim();
 
 describe("Meetings page", () => {
-  test("one entry: a top bar with Kaki that leads home, and no sidebar", async () => {
+  test("one entry: the plate with Kaki that leads home, and no sidebar", async () => {
     const page = await openMeetingsPage();
     after(() => page.close());
 
-    const brand = page.document.querySelector(".topbar a.brand")!;
+    const brand = page.document.querySelector("#plate .brand")!;
     assert.equal(brand.getAttribute("href"), "/");
     assert.match(brand.textContent!, /Kaki/);
     assert.equal(page.document.querySelector(".app-nav"), null, "no app links: one entry");
@@ -256,12 +270,12 @@ describe("Meetings page", () => {
     assert.ok(page.document.querySelector("#replay-box #replay-select"));
   });
 
-  test("shows whoever is signed in in the top bar, with their initial", async () => {
+  test("shows whoever is signed in on the plate, with their initial", async () => {
     const page = await openMeetingsPage();
     after(() => page.close());
 
-    await page.until(() => text(page.document.querySelector(".topbar .shell-user .shell-name")) === "Priya", "the signed-in person");
-    assert.equal(text(page.document.querySelector(".topbar .shell-user .shell-avatar")), "P");
+    await page.until(() => text(page.document.querySelector("#plate .shell-user .shell-name")) === "Priya", "the signed-in person");
+    assert.equal(text(page.document.querySelector("#plate .shell-user .shell-avatar")), "P");
   });
 
   test("puts what needs you in the tray, what it found in the notes, and the words in the side panel", async () => {
