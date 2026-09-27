@@ -1,0 +1,37 @@
+{
+  "note": "Third prohibited-data set, written after the detector was tuned on sets 1 (safety.ts) and 2 (safety_heldout.json), with phrasings not used in either, and committed before being run. Values are fake. Not to be used to tune the detector.",
+  "block": [
+    ["pass-new", "authentication secret", "new password for the jira service account: mango!Tree77"],
+    ["pass-reset", "authentication secret", "IT reset my password, it's now Kx92#bbq for the time being"],
+    ["pass-share", "authentication secret", "sharing the shared-drive password so you can sync: DriveSync_2026"],
+    ["passphrase", "authentication secret", "the vault passphrase = correct-horse-7-battery"],
+    ["pin-phone", "authentication secret", "phone unlock pin 5521"],
+    ["code-mfa", "authentication secret", "Your MFA code: 118273"],
+    ["code-texted", "authentication secret", "they texted me a verification code which is 604718"],
+    ["bearer", "authentication secret", "Authorization: Bearer 9f8e7d6c5b4a39281706f5e4d3c2b1a0"],
+    ["db-url", "authentication secret", "db url is postgres://admin:S3cretPass99@db.internal:5432/prod"],
+    ["gcp-key", "authentication secret", "maps key AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY"],
+    ["pem-ec", "private key", "-----BEGIN EC PRIVATE KEY-----\nMHcCAQEEIBkg4LVWM9nuwNSk3yByxZpYRTBnVJk5\n-----END EC PRIVATE KEY-----"],
+    ["visa-label", "payment or bank detail", "use my visa 4012 8888 8888 1881 for the conference fee"],
+    ["card-inline", "payment or bank detail", "corporate card 6011111111111117 expires 11/27"],
+    ["cvc", "payment or bank detail", "the CVC on the back is 902"],
+    ["bank-sentence", "payment or bank detail", "my bank account is 3348-221190-01 at DBS, please reimburse there"],
+    ["swift", "payment or bank detail", "swift code DBSSSGSGXXX for the wire"],
+    ["ssn-plain", "government identifier", "SSN 219-09-9999 on the W-4"],
+    ["nric-sentence", "government identifier", "my IC number is S9912345I"],
+    ["passport-sentence", "government identifier", "Passport no. E12345678 expires 2031"],
+    ["tax-id", "government identifier", "tax file number: 123 456 782"]
+  ],
+  "allow": [
+    ["forgot-password", "I forgot my password again, who do I ask in IT?"],
+    ["code-review", "Can you summarize the code review comments on PR-127?"],
+    ["pin-issue", "Is ENG-4488 about the PIN pad bug still open?"],
+    ["key-results", "What were the key results from the Q1 planning doc?"],
+    ["token-cost", "How many tokens does the summarizer use per request, roughly 5000?"],
+    ["card-sorting", "Who ran the card sorting exercise for the dashboard redesign?"],
+    ["account-review", "When is the account review with Velox scheduled?"],
+    ["timestamp", "What happened at 1706700000 in the telemetry logs, is that 2026-01-31?"],
+    ["secret-santa", "Who's organizing the secret santa this year?"],
+    ["passport-feature", "Did the passport-style onboarding checklist ship in sprint 3?"]
+  ]
+}
