@@ -1378,6 +1378,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.get("/shoelace-setup.js", serve("shoelace-setup.js", "text/javascript; charset=utf-8"));
   app.get("/app.js", serve("app.js", "text/javascript; charset=utf-8"));
   app.get("/styles.css", serve("styles.css", "text/css; charset=utf-8"));
+  app.get("/clear.js", serve("clear.js", "text/javascript; charset=utf-8"));
+  app.get("/clear.css", serve("clear.css", "text/css; charset=utf-8"));
   app.get("/sme.js", serve("app.js", "text/javascript; charset=utf-8"));
   app.get("/sme.css", serve("styles.css", "text/css; charset=utf-8"));
 

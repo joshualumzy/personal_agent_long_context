@@ -19,11 +19,12 @@ async function openSmePage(options: PageOptions = {}) {
   await app.listen({ host: "127.0.0.1", port: 0 });
   const { port } = app.server.address() as AddressInfo;
   const base = `http://127.0.0.1:${port}`;
-  const [html, markedScript, domPurifyScript, script] = await Promise.all([
+  const [html, markedScript, domPurifyScript, script, clearScript] = await Promise.all([
     fetch(`${base}/`).then((response) => response.text()),
     fetch(`${base}/vendor/marked.js`).then((response) => response.text()),
     fetch(`${base}/vendor/dompurify.js`).then((response) => response.text()),
     fetch(`${base}/app.js`).then((response) => response.text()),
+    fetch(`${base}/clear.js`).then((response) => response.text()),
   ]);
   const dom = new JSDOM(html, { url: `${base}${options.path ?? "/"}`, runScripts: "outside-only" });
   const { window } = dom;
@@ -72,6 +73,7 @@ async function openSmePage(options: PageOptions = {}) {
   window.eval(markedScript);
   window.eval(domPurifyScript);
   window.eval(script);
+  window.eval(clearScript);
 
   return {
     app,
@@ -547,6 +549,143 @@ describe("SME Assistant home: what needs you", () => {
     after(() => page.close());
     await until(() => page.document.querySelector("#home-done .task"), "the finished work");
     assert.equal(page.document.querySelector("#home-title")!.textContent, "Jax, nothing needs you right now.");
+  });
+});
+
+// "Clear all": approving what needs you, one draft at a time, without leaving the home page.
+/** Mutable meeting-actions backend for the review flow: approve/reject really change status,
+ * so a second read (the plate's refresh once the queue is done) sees the new state. */
+function reviewRespond(
+  actions: Array<ReturnType<typeof action>>,
+  results: Record<string, { summary: string; simulated: boolean; handoffUrl?: string }> = {},
+): PageOptions["respond"] {
+  const byId = new Map(actions.map((entry) => [entry.id as string, entry as Record<string, unknown>]));
+  return signedIn((url, init) => {
+    if (url === "/api/v1/meetings") {
+      return json([{ meetingId: "m1", title: NOC, status: "ended", startedAt: "2026-09-27T02:00:00.000Z", actionCount: actions.length }]);
+    }
+    if (url === "/api/v1/meetings/m1") return json({ meetingId: "m1", title: NOC, status: "ended", actions: [...byId.values()] });
+    let match = /^\/api\/v1\/meetings\/m1\/actions\/([^/]+)\/approve$/.exec(url);
+    if (match && init?.method === "POST") {
+      const id = match[1]!;
+      const current = byId.get(id);
+      if (!current) return json({ code: "not_found", message: "No such action." }, 404);
+      const body = JSON.parse(init.body ?? "{}");
+      if (body.payloadHash !== current.payloadHash) return json({ code: "payload_changed", message: "The payload has changed." }, 409);
+      const updated = { ...current, status: "executed", result: results[id] ?? { summary: "Done", simulated: false } };
+      byId.set(id, updated);
+      return json(updated);
+    }
+    match = /^\/api\/v1\/meetings\/m1\/actions\/([^/]+)\/reject$/.exec(url);
+    if (match && init?.method === "POST") {
+      const id = match[1]!;
+      const current = byId.get(id);
+      if (!current) return json({ code: "not_found", message: "No such action." }, 404);
+      const updated = { ...current, status: "rejected" };
+      byId.set(id, updated);
+      return json(updated);
+    }
+    return undefined;
+  });
+}
+
+describe("SME Assistant clearing the plate, one draft at a time", () => {
+  test("Clear all opens a focused review: the full draft, where it came from, approve calls the tray's endpoint and opens the handoff", async () => {
+    const a1 = action("a1", "email_draft", "approval", "proposed", "Email: Send follow-up to Owen", {
+      payload: { to: "owen@notc.example", subject: "Root cause and the fix", body: "Hi Owen,\n\nAs promised, here is the root cause." },
+      trigger: { segmentIndex: 4, speaker: "Jax", quote: "I'll send a follow-up email today with the root cause." },
+      evidence: [{ sourceId: "ENG-210", sourceType: "jira", title: "Commit race, open", excerpt: "" }],
+    });
+    const a2 = action("a2", "ticket_draft", "approval", "proposed", "Add consumer-lag alerting", {
+      payload: { title: "Add consumer-lag alerting", description: "Alert before we breach the SLA.", assignee: "Ben", due: "2026-10-03" },
+      trigger: { segmentIndex: 6, speaker: "Deepa", quote: "I'll add consumer-lag alerting on that path." },
+    });
+    const opened: string[] = [];
+    const page = await openSmePage({
+      respond: reviewRespond([a1, a2], { a1: { summary: "Ready in Gmail", simulated: false, handoffUrl: "https://mail.google.com/mail/?view=cm&to=owen@notc.example" } }),
+      setup: (window) => { (window as unknown as { open: (url: string) => void }).open = (url: string) => { opened.push(url); }; },
+    });
+    after(() => page.close());
+
+    const clearBtn = () => page.document.querySelector("#clear-needs-btn") as HTMLButtonElement;
+    await until(() => clearBtn() && !clearBtn().hidden, "the Clear all button");
+
+    clearBtn().click();
+    await until(() => !(page.document.querySelector("#clear-review") as HTMLElement)?.hidden, "the review to open");
+
+    assert.equal(page.document.querySelector("#clear-progress")!.textContent, "1 of 2");
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /owen@notc\.example/);
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /Root cause and the fix/);
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /As promised, here is the root cause\./);
+
+    // What it touches: the quote and speaker it came from, and what it was built from.
+    const context = page.document.querySelector("#clear-context")!;
+    assert.match(context.textContent!, /I'll send a follow-up email today with the root cause\./);
+    assert.match(context.textContent!, /NOC SLA escalation/);
+    assert.match(context.textContent!, /Jax/);
+    assert.match(context.textContent!, /ENG-210/);
+    assert.equal((page.document.querySelector("#context") as HTMLElement).hidden, false);
+    assert.equal((page.document.querySelector(".chat-main") as HTMLElement).hidden, true);
+
+    // Approve: the same endpoint the tray uses; an approved email opens the handoff, like the tray does.
+    (page.document.querySelector("#clear-approve") as HTMLButtonElement).click();
+    await until(() => opened.length > 0, "the handoff to open");
+    assert.match(opened[0]!, /mail\.google\.com/);
+    await until(() => page.document.querySelector("#clear-progress")!.textContent === "2 of 2", "the next draft");
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /Alert before we breach the SLA\./);
+
+    // Reject the ticket: same endpoint the tray uses.
+    (page.document.querySelector("#clear-reject") as HTMLButtonElement).click();
+    await until(() => (page.document.querySelector("#clear-review") as HTMLElement).hidden, "the review to close once the queue is done");
+    assert.equal((page.document.querySelector(".chat-main") as HTMLElement).hidden, false);
+
+    assert.equal(page.requests.some((r) => r.url === "/api/v1/meetings/m1/actions/a1/approve"), true);
+    assert.equal(page.requests.some((r) => r.url === "/api/v1/meetings/m1/actions/a2/reject"), true);
+    // Nothing is sent without the user's own approve click.
+    assert.equal(page.requests.some((r) => r.url === "/api/v1/meetings/m1/actions/a2/approve"), false);
+    // The queue is done: the plate is refreshed.
+    assert.ok(page.requests.filter((r) => r.url === "/api/v1/meetings/m1").length >= 2, "the plate is refreshed once the queue is done");
+  });
+
+  test("S skips without sending anything, Enter approves what is on screen, a hiring request shows the requirement", async () => {
+    const a1 = action("a1", "ticket_draft", "approval", "proposed", "File the postmortem ticket", {
+      payload: { title: "File the postmortem ticket", description: "Write up ENG-210.", assignee: "Jax", due: "2026-10-01" },
+    });
+    const a2 = action("a2", "hiring_request", "approval", "proposed", "Hiring request: Need a backend engineer", {
+      payload: { requirement: "A backend engineer to help scale ingestion." },
+    });
+    const page = await openSmePage({
+      respond: reviewRespond([a1, a2]),
+      setup: (window) => { (window as unknown as { open: (url: string) => void }).open = () => {}; },
+    });
+    after(() => page.close());
+    const clearBtn = () => page.document.querySelector("#clear-needs-btn") as HTMLButtonElement;
+    await until(() => clearBtn() && !clearBtn().hidden, "the Clear all button");
+    clearBtn().click();
+    await until(() => !(page.document.querySelector("#clear-review") as HTMLElement)?.hidden, "the review to open");
+
+    page.document.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "s", bubbles: true }));
+    await until(() => page.document.querySelector("#clear-progress")!.textContent === "2 of 2", "S to skip to the next draft");
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /A backend engineer to help scale ingestion\./);
+    assert.equal(page.requests.some((r) => r.url.includes("/actions/a1/")), false, "skip sends nothing");
+
+    page.document.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await until(() => (page.document.querySelector("#clear-review") as HTMLElement).hidden, "Enter approves the last draft and the queue finishes");
+    assert.equal(page.requests.some((r) => r.url === "/api/v1/meetings/m1/actions/a2/approve"), true);
+  });
+
+  test("a calendar draft missing a day shows the day options", async () => {
+    const a1 = action("a1", "calendar_draft", "approval", "proposed", "Checkpoint before the championship", {
+      payload: { title: "Checkpoint before the championship", attendees: ["deepa@company.example"], durationMinutes: 30, startOptions: ["2026-09-29", "2026-10-06"] },
+      missing: ["Which day: Tue 29 Sept or Tue 6 Oct"],
+    });
+    const page = await openSmePage({ respond: reviewRespond([a1]) });
+    after(() => page.close());
+    const clearBtn = () => page.document.querySelector("#clear-needs-btn") as HTMLButtonElement;
+    await until(() => clearBtn() && !clearBtn().hidden, "the Clear all button");
+    clearBtn().click();
+    await until(() => !(page.document.querySelector("#clear-review") as HTMLElement)?.hidden, "the review to open");
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /Which day: Tue 29 Sept or Tue 6 Oct/);
   });
 });
 
