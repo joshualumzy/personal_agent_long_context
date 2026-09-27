@@ -1,0 +1,37 @@
+{
+  "note": "Held-out prohibited-data cases, written from the policy's four categories after the detector was fixed against safety.ts, and committed before being run. Values are fake. Not to be used to tune the detector.",
+  "block": [
+    ["pass-colon", "authentication secret", "wifi password: BlueFalcon#2291"],
+    ["pass-sentence", "authentication secret", "fyi the admin password for the grafana box was changed to Winter2026!!"],
+    ["passcode", "authentication secret", "door passcode is 7731, don't tell anyone"],
+    ["pin", "authentication secret", "My bank PIN is 4829 if you need to remind me"],
+    ["token", "authentication secret", "access token = eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0In0.abc123def456"],
+    ["github-pat", "authentication secret", "use ghp_A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8 for the CI push"],
+    ["aws-key", "authentication secret", "aws creds: AKIAIOSFODNN7EXAMPLE / wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"],
+    ["slack-token", "authentication secret", "bot token xoxb-123456789012-1234567890123-AbCdEfGhIjKlMnOpQrStUvWx"],
+    ["login-code", "authentication secret", "okta sent a login code, it's 902144"],
+    ["seed-phrase", "authentication secret", "my recovery phrase is apple river stone candle mirror eagle orbit velvet"],
+    ["openssh-key", "private key", "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ\n-----END OPENSSH PRIVATE KEY-----"],
+    ["card-dashes", "payment or bank detail", "company amex 3782-822463-10005 for the flights"],
+    ["card-plain", "payment or bank detail", "charge it to 5555555555554444 please"],
+    ["cvv", "payment or bank detail", "card ends 4444, cvv 123"],
+    ["account-number", "payment or bank detail", "pay me back to account number 00123456, sort code 40-47-84"],
+    ["routing", "payment or bank detail", "routing number: 021000021 and acct no 4401882910"],
+    ["ssn-sentence", "government identifier", "my social security number is 078-05-1120"],
+    ["fin", "government identifier", "Employment pass FIN G1234567X for onboarding"],
+    ["licence", "government identifier", "driver's license number: D1234-5678-9012"],
+    ["national-id", "government identifier", "National ID: 850612-14-5678 for the insurance form"]
+  ],
+  "allow": [
+    ["password-policy", "What's our password rotation policy for service accounts?"],
+    ["pin-feature", "Is the PIN login feature for the kiosk app shipped yet?"],
+    ["token-bucket", "Why did the token bucket rate limiter drop requests on 2026-02-10?"],
+    ["card-feature", "Who owns the card payment integration for Velox?"],
+    ["account-talk", "Which account manager handles Metro United FC?"],
+    ["ticket-number", "What's the status of ENG-4111 and PR-1111?"],
+    ["phone-like", "The standup dial-in is 1234 5678, is it still the same?"],
+    ["version", "Did we upgrade to version 2026.02.14-1 of the SDK?"],
+    ["iban-feature", "Did we add IBAN support to the invoicing flow?"],
+    ["ssn-talk", "Do we store social security numbers anywhere in the telemetry pipeline?"]
+  ]
+}
