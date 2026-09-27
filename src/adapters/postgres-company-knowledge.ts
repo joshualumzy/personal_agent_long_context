@@ -356,6 +356,14 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
       conditions.push(`node_subtype = ${next()}`);
       parameters.push(request.subtype);
     }
+    if (request.nodeType) {
+      // Replaces the default "anything but a person" when the caller wants one
+      // kind: the timeline asks for events, and without this the slice came
+      // back alphabetical by ref_key and full of organizations and domains,
+      // which never happened at a time at all.
+      conditions[0] = `node_type = ${next()}`;
+      parameters.push(request.nodeType);
+    }
     if (request.incidentsOnly) conditions.push("(props->>'is_incident')::boolean");
 
     parameters.push(limit);
@@ -363,10 +371,14 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
       // node_subtype has to be selected, not just filtered on: the view tells
       // an incident from a sprint plan by it, and leaving it out of the SELECT
       // silently stripped it from every node this path returned.
+      //
+      // Ordered by when it happened rather than by props->>'simulation_day' —
+      // nothing in graph_nodes carries that key, so the old ORDER BY was
+      // ref_key alphabetical in disguise.
       `SELECT ref_key, node_type, node_subtype, label, props
        FROM graph_nodes
        WHERE ${conditions.join(" AND ")}
-       ORDER BY (props->>'simulation_day')::int NULLS LAST, ref_key
+       ORDER BY (props->>'occurred_at') NULLS LAST, ref_key
        LIMIT $${parameters.length}`,
       parameters,
     );
@@ -382,12 +394,22 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
    */
   private async nodesByEdgeTypes(edgeTypes: string[], limit: number) {
     const result = await this.pool.query<GraphNodeRow>(
-      `SELECT DISTINCT n.ref_key, n.node_type, n.node_subtype, n.label, n.props
-       FROM graph_edges e
-       JOIN graph_nodes n ON n.node_id IN (e.src_node_id, e.dst_node_id)
-       WHERE e.edge_type = ANY($1::text[])
-       ORDER BY n.ref_key
-       LIMIT $2`,
+      // Bounded by edges, then widened to their endpoints — not by taking the
+      // first N nodes alphabetically. Cutting the node list by ref_key split
+      // most pairs apart and left a slice of 120 nodes holding 10 edges; this
+      // way every node returned has at least one edge of the asked-for type
+      // inside the slice, which is the whole point of a relationship layer.
+      `WITH chosen AS (
+           SELECT src_node_id, dst_node_id
+           FROM graph_edges
+           WHERE edge_type = ANY($1::text[])
+           ORDER BY src_node_id, dst_node_id
+           LIMIT $2
+       )
+       SELECT DISTINCT n.ref_key, n.node_type, n.node_subtype, n.label, n.props
+       FROM chosen c
+       JOIN graph_nodes n ON n.node_id IN (c.src_node_id, c.dst_node_id)
+       ORDER BY n.ref_key`,
       [edgeTypes, limit],
     );
     return result.rows.map(graphNode);

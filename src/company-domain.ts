@@ -67,6 +67,12 @@ export interface GraphSliceRequest {
    * anything flagged as incident-related.
    */
   subtype?: string;
+  /**
+   * Keep only nodes of this node type. The filter path otherwise returns
+   * anything that is not a person, which is right for a category filter and
+   * wrong for the timeline, where only events have a time to be placed at.
+   */
+  nodeType?: string;
   incidentsOnly?: boolean;
   includeActors?: boolean;
   limit?: number;

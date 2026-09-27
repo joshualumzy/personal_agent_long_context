@@ -36,7 +36,12 @@ const MAIN_LAYER_CAP = 20;
 const LAYER_EDGE_TYPES = {
   person: ["involves"],
   causal: ["caused_by", "escalated_via"],
+  domain: ["knows_about", "owns_domain"],
 };
+
+// The layers that are a filter over edge types, as opposed to the main tab
+// (query-centred) and the timeline (every event, laid out by when).
+const EDGE_TYPE_LAYERS = new Set(Object.keys(LAYER_EDGE_TYPES));
 
 // Stands in for state.mainOriginalSeed when the main tab has drawn its
 // no-question-asked-yet fallback, so the cache/restore logic always has a
@@ -54,7 +59,7 @@ const state = {
   // (one entry, since there is no seed to vary) and by seed id for main
   // (one entry per node visited, so returning to a node already seen does
   // not re-fetch it).
-  cache: { main: new Map(), person: null, causal: null },
+  cache: { main: new Map(), person: null, causal: null, domain: null, timeline: null },
   // The main tab's own starting slice — what "Restore original" returns to —
   // kept separate from state.cache.main because that map grows as the user
   // clicks around; this is specifically the first one drawn.
@@ -258,6 +263,56 @@ function layout(nodes, edges, options = {}) {
   return positions;
 }
 
+/**
+ * A timeline: x is when the thing happened, y is a lane per department. Both
+ * coordinates carry meaning, which a force simulation cannot do and a
+ * concentric layout does not try to — "what happened around the same time" is
+ * a question about time, so time has to be an axis.
+ *
+ * Nodes with no timestamp (12 of 2,352 event nodes) go in a lane of their own
+ * at the bottom rather than being dropped or silently placed at the epoch.
+ */
+function timelineLayout(nodes) {
+  const positions = new Map();
+  if (nodes.length === 0) return positions;
+
+  const timeOf = (node) => {
+    const raw = node.props?.occurred_at;
+    const parsed = raw ? Date.parse(String(raw)) : Number.NaN;
+    return Number.isFinite(parsed) ? parsed : null;
+  };
+
+  const times = nodes.map(timeOf).filter((value) => value !== null);
+  const earliest = times.length > 0 ? Math.min(...times) : 0;
+  const latest = times.length > 0 ? Math.max(...times) : 1;
+  const span = latest - earliest || 1;
+
+  // One lane per department, ordered by name so the lanes do not reshuffle
+  // between draws. Undated nodes get the last lane.
+  const departments = [...new Set(nodes.map((node) => node.department).filter(Boolean))].sort();
+  const UNDATED_LANE = "—";
+  const lanes = [...departments, UNDATED_LANE];
+  const laneOf = (node) =>
+    timeOf(node) === null ? UNDATED_LANE : (node.department ?? departments[0] ?? UNDATED_LANE);
+
+  const laneHeight = lanes.length > 1 ? 480 / (lanes.length - 1) : 0;
+  // Several events can share a timestamp, which would stack them on one point;
+  // nudge each successive one down a little within its lane.
+  const seenAt = new Map();
+
+  for (const node of nodes) {
+    const time = timeOf(node);
+    const x = time === null ? 380 : -380 + ((time - earliest) / span) * 760;
+    const laneIndex = lanes.indexOf(laneOf(node));
+    const key = `${laneIndex}:${Math.round(x)}`;
+    const stacked = seenAt.get(key) ?? 0;
+    seenAt.set(key, stacked + 1);
+    const y = -240 + laneIndex * laneHeight + (stacked % 4) * 9;
+    positions.set(node.id, { x, y });
+  }
+  return positions;
+}
+
 function shapeFor(node) {
   const kind = nodeKind(node);
   // One shape per kind, so the picture still reads without colour. The
@@ -322,12 +377,16 @@ function drawPicture() {
     : MAIN_LAYER_CAP;
   const drawn = mostConnected(nodes, edges, cap);
   const visible = new Set(drawn.map((node) => node.id));
-  const positions = layout(drawn, edges, {
-    centreId: state.centreId,
-    // Nodes already on screen keep their place, so expanding one does not
-    // rearrange everything the reader has already made sense of.
-    pinned: state.positions,
-  });
+  // The timeline puts time on an axis; every other layer is about structure,
+  // so distance from a centre is the more useful thing to encode.
+  const positions = state.layer === "timeline"
+    ? timelineLayout(drawn)
+    : layout(drawn, edges, {
+        centreId: state.centreId,
+        // Nodes already on screen keep their place, so expanding one does not
+        // rearrange everything the reader has already made sense of.
+        pinned: state.positions,
+      });
   // Remembered for the next draw's pinning, trimmed to what is actually on
   // screen so a node dropped from the slice does not keep a stale position.
   state.positions = new Map(
@@ -726,22 +785,26 @@ async function request() {
     return slug ? `/api/v1/graph/emergent/graphs/${encodeURIComponent(slug)}` : null;
   }
 
-  if (state.layer === "person" || state.layer === "causal") {
+  if (EDGE_TYPE_LAYERS.has(state.layer)) {
     const parameters = new URLSearchParams({
       edgeTypes: LAYER_EDGE_TYPES[state.layer].join(","),
-      limit: "100",
+      limit: "120",
     });
     // includeActors pulls in the person/organization nodes an 'involves' edge
-    // reaches from whatever the layer's own edge type already selected. The
-    // causal layer's edges (caused_by/escalated_via) never touch a person —
-    // only 'involves' does — so asking for actors there would add person
-    // nodes with no edge of this layer's own type to draw, stranding them as
-    // isolated points. The person layer is exactly the opposite case: without
-    // this, edgeTypes=involves alone already returns everyone 'involves'
-    // reaches (both people and the events/documents that involve them), so it
-    // does not need actors added either — kept explicit rather than left to
-    // read as an oversight.
+    // reaches from whatever the layer's own edge type already selected. None
+    // of these layers wants that: the causal layer's edges never touch a
+    // person, so asking for actors there would strand person nodes with no
+    // edge of this layer's type to draw; the person and domain layers already
+    // reach everyone their own edge type connects.
     return `/api/v1/graph?${parameters}`;
+  }
+
+  if (state.layer === "timeline") {
+    // Every event, laid out by when it happened. nodeType=event is not
+    // optional here: without it the slice comes back ordered by ref_key and
+    // filled with organizations and domains, which have no timestamp at all —
+    // the first version of this drew 120 nodes and no timeline.
+    return `/api/v1/graph?${new URLSearchParams({ nodeType: "event", limit: "120" })}`;
   }
 
   const view = $("#view").value;
@@ -894,7 +957,7 @@ async function draw() {
       // real node, so that case falls through to the best-connected node.
       if (state.mainOriginalSeed !== MAIN_NO_SEED_KEY) state.centreId = state.mainOriginalSeed;
     }
-    if (state.source === "recorded" && (state.layer === "person" || state.layer === "causal")) {
+    if (state.source === "recorded" && state.layer !== "main") {
       state.cache[state.layer] = state.slice;
     }
     drawPicture();
@@ -968,7 +1031,9 @@ function switchLayer(layer) {
 function syncFields() {
   const emergent = $("#source").value === "emergent";
   const view = $("#view").value;
-  const onLayerTabs = state.layer === "person" || state.layer === "causal";
+  // Every layer other than main is a fixed view of one kind of relationship:
+  // none of the query, seed or filter controls apply to it.
+  const onLayerTabs = state.layer !== "main";
   // Each emergent graph is one question's own extraction; none of the
   // slicing or layering applies to it, and which question is the only
   // choice that does.
