@@ -147,6 +147,74 @@ function splitList(value: string): string[] {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
+/** A timestamp's calendar day where the server runs, not UTC: "today" for
+ * the "Where today touched" view is the day someone here would call today. */
+function localDay(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * The company evidence one employee's day has cited so far: the evidence on
+ * the actions of the meetings they started today, and the sources of the
+ * assistant messages in the conversations they touched today. Only their own
+ * meetings and conversations are read — a meeting or a conversation belonging
+ * to someone else is skipped without looking at what is in it beyond who
+ * owns it and when it happened.
+ *
+ * Order is meetings before conversations, each in the order the service and
+ * the store return them; duplicates keep their first position.
+ */
+async function todaysSourceIds(
+  employeeId: string,
+  meetings: MeetingActions | undefined,
+  conversationStore: ConversationStore | undefined,
+): Promise<string[]> {
+  const today = localDay(new Date());
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  const add = (sourceId: string | undefined) => {
+    if (sourceId && !seen.has(sourceId)) {
+      seen.add(sourceId);
+      ids.push(sourceId);
+    }
+  };
+
+  if (meetings) {
+    const summaries = await meetings.list();
+    const startedToday = summaries.filter((summary) => localDay(new Date(summary.startedAt)) === today);
+    for (const summary of startedToday) {
+      const state = await meetings.get(summary.meetingId);
+      if (!state || state.employeeId.toLowerCase() !== employeeId.toLowerCase()) continue;
+      for (const action of state.actions) {
+        for (const evidence of action.evidence) add(evidence.sourceId);
+      }
+    }
+  }
+
+  if (conversationStore) {
+    const conversations = await conversationStore.list(employeeId);
+    const updatedToday = conversations.filter((summary) => localDay(new Date(summary.updatedAt)) === today);
+    for (const summary of updatedToday) {
+      const detail = await conversationStore.get(summary.conversationId, employeeId);
+      if (!detail) continue;
+      for (const message of detail.messages) {
+        if (message.role !== "assistant") continue;
+        const sources = message.metadata?.sources;
+        if (!Array.isArray(sources)) continue;
+        for (const source of sources) {
+          const sourceId = (source as { sourceId?: unknown } | null)?.sourceId;
+          if (typeof sourceId === "string") add(sourceId);
+        }
+      }
+    }
+  }
+
+  return ids;
+}
+
 export function buildApp(options: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     logger: options.logger ?? false,
@@ -1050,6 +1118,34 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         : reply.code(404).send({ message: "Source not found." });
     },
   );
+
+  /**
+   * "Where today touched": the part of the company graph the signed-in
+   * employee's day touched, drawn around the evidence cited in the meetings
+   * they started today and the conversations they had today (todaysSourceIds).
+   * There is no person parameter: another employee's day cannot be asked for.
+   *
+   * Built with the same graphQuery a question's graph uses, the question
+   * being the word "Today" and the evidence being what today cited; `touched`
+   * names the nodes that evidence reached, so the page can highlight exactly
+   * those and nothing an expansion adds later. Nothing cited today is an
+   * empty slice, not an error.
+   */
+  app.get("/api/v1/graph/today", async (request, reply) => {
+    const employee = await requireEmployee(request, reply);
+    if (!employee) return;
+    const knowledge = options.companyKnowledge;
+    if (!knowledge?.graphQuery) {
+      return reply.code(503).send({ message: "The graph is not configured." });
+    }
+    const sourceIds = await todaysSourceIds(employee.employeeId, options.meetings?.service, options.conversationStore);
+    if (sourceIds.length === 0) {
+      return reply.send({ nodes: [], edges: [], truncated: false, touched: [] });
+    }
+    const slice = await knowledge.graphQuery({ query: "Today", evidence: sourceIds });
+    const touched = slice.nodes.filter((node) => node.id !== slice.centre).map((node) => node.id);
+    return reply.send({ ...slice, touched });
+  });
 
   /** One of the fixed company-overview subgraphs, by name. */
   app.get<{ Params: { name: string } }>("/api/v1/graph/view/:name", async (request, reply) => {

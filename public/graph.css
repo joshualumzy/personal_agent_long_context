@@ -267,6 +267,11 @@ body:has(> .shell) { margin: 0; height: 100vh; overflow: hidden; background: var
 .n-cluster { fill: #ffffff; stroke: #b9b2ee !important; }
 .node:hover .shape, .node.selected .shape { stroke: var(--accent); stroke-width: 2.2; }
 .node.selected .shape.incident { stroke: var(--danger); }
+/* "Where today touched": what the signed-in employee's day cited, on the
+   today view. Fill always says "touched"; an incident's red outline still
+   wins over the amber one, so a touched incident reads as both at once. */
+.shape.touched { fill: #fff6d2 !important; }
+.shape.touched:not(.incident) { stroke: #e3b400 !important; stroke-width: 2; }
 .edge { stroke: #d9d5f6; stroke-opacity: 1; }
 .edge.matches { stroke: #b9b2ee; stroke-opacity: 1; stroke-dasharray: 4 4; }
 .key .n-person, .key .n-organization, .key .n-item, .key .n-event, .key .n-document { stroke: #8f85e6; stroke-width: 1.3; }

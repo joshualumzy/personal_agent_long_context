@@ -26,6 +26,7 @@
   <section class="controls" aria-label="What to draw">
 
     <nav class="view-tabs" id="view-tabs" aria-label="Graph">
+      <button type="button" class="view-tab" data-view="today" aria-pressed="false">Where today touched</button>
       <button type="button" class="view-tab" data-view="org" aria-pressed="false">Departments</button>
       <button type="button" class="view-tab" data-view="expertise" aria-pressed="false">Who knows what</button>
       <button type="button" class="view-tab" data-view="incidents" aria-pressed="false">Incidents</button>
@@ -68,6 +69,7 @@
         <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 7,6 -7,6" class="n-document"/></svg>Document</li>
         <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-cluster"/></svg>More of one kind</li>
         <li class="legend-note"><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item incident"/></svg>A red outline means it is part of an incident</li>
+        <li class="legend-note"><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item touched"/></svg>Butter means today touched it</li>
       </ul>
     </section>
 
