@@ -852,6 +852,7 @@ function pinPanel(block) {
   pinnedPanel.querySelector(".pinned-body").replaceChildren(frame);
   pinnedPanel.hidden = false;
   document.body.classList.add("has-pinned");
+  refreshContext();
   refreshPinButtons();
   document.querySelectorAll(".chat-block").forEach((container) => {
     if (container.recruitingBlock && showsPinned(container.recruitingBlock)) markShownOnRight(container);
@@ -863,6 +864,7 @@ function unpinPanel() {
   pinnedPanel.hidden = true;
   pinnedPanel.querySelector(".pinned-body").replaceChildren();
   document.body.classList.remove("has-pinned");
+  refreshContext();
   refreshPinButtons();
   document.querySelectorAll(".chat-block").forEach((container) => {
     if (container.recruitingBlock && container.querySelector(".chat-block-note")) foldPanel(container, container.recruitingBlock);
@@ -1169,43 +1171,34 @@ function drawAnswerGraph(svg, slice) {
 
 /** The full graph page for this answer, in a dialog over the chat: expand by
  * clicking, filter by kind, read each item's details and evidence. */
+/** The context column shows whatever is in it: pinned candidates, an answer's graph. */
+function refreshContext() {
+  const context = document.querySelector("#context");
+  if (!context) return;
+  const graph = document.querySelector("#graph-panel");
+  context.hidden = pinnedPanel.hidden && (!graph || graph.hidden);
+  document.body.classList.toggle("has-context", !context.hidden);
+}
+
+function closeAnswerGraph() {
+  const panel = document.querySelector("#graph-panel");
+  if (!panel) return;
+  panel.hidden = true;
+  panel.querySelector("iframe").removeAttribute("src");
+  refreshContext();
+}
+document.querySelector("#graph-panel .graph-panel-close")?.addEventListener("click", closeAnswerGraph);
+
+/** Opens the answer's graph beside the page, in the context column. */
 function openAnswerGraph(question, sources) {
-  let dialog = document.querySelector("#answer-graph-dialog");
-  if (!dialog) {
-    dialog = document.createElement("dialog");
-    dialog.id = "answer-graph-dialog";
-    dialog.className = "answer-graph-dialog";
-    dialog.setAttribute("aria-label", "How this answer's evidence connects");
-    dialog.innerHTML = `
-      <div class="answer-graph-dialog-bar">
-        <span class="answer-graph-dialog-title"></span>
-        <button type="button" class="close-btn" aria-label="Close the graph" title="Close (Esc)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
-      </div>
-      <iframe title="How this answer's evidence connects"></iframe>`;
-    dialog.querySelector(".close-btn").addEventListener("click", () => dialog.close());
-    // Esc pressed inside the graph goes to the frame's document, not to the
-    // dialog; the frame is same-origin, so listen there too.
-    dialog.querySelector("iframe").addEventListener("load", (event) => {
-      try {
-        event.target.contentWindow.addEventListener("keydown", (key) => {
-          if (key.key === "Escape") dialog.close();
-        });
-      } catch {
-        // Not reachable: the close button and a click outside still work.
-      }
-    });
-    // Clicking the dim area outside the sheet closes it too.
-    dialog.addEventListener("click", (event) => {
-      if (event.target === dialog) dialog.close();
-    });
-    document.body.appendChild(dialog);
-  }
-  dialog.querySelector(".answer-graph-dialog-title").textContent = question;
+  const panel = document.querySelector("#graph-panel");
+  if (!panel) return;
+  panel.querySelector(".graph-panel-title").textContent = question;
   const params = answerGraphParams(question, sources);
   params.set("embed", "1");
-  dialog.querySelector("iframe").src = `/graph/answer?${params}`;
-  if (typeof dialog.showModal === "function") dialog.showModal();
-  else dialog.setAttribute("open", "");
+  panel.querySelector("iframe").src = `/graph/answer?${params}`;
+  panel.hidden = false;
+  refreshContext();
 }
 
 function appendErrorMessage(message) {
@@ -1298,6 +1291,8 @@ async function loadConversations() {
       return;
     }
     const conversations = await response.json();
+    lastConversations = Array.isArray(conversations) ? conversations : [];
+    renderTimeline();
     // A list asked for later (after a delete, say) may already be drawn.
     if (asked !== listRequest) return;
 
@@ -2478,8 +2473,8 @@ async function initPlanner() {
   const snapped = workingDayFor(requested);
   const day = snapped && snapped !== workingDays[workingDays.length - 1] ? snapped : null;
   // Open by default on a wide screen, or whenever a past day was asked for; a choice to close it is kept.
-  const remembered = stored.get("sme_today_panel");
-  setTodayPanelOpen(Boolean(day) || (remembered ? remembered === "open" : !isMobile()), false);
+  // On the plate, tickets and plan are always shown where there is a planner.
+  setTodayPanelOpen(true, false);
   showDay(day);
 }
 
@@ -2630,6 +2625,72 @@ async function askForHomeLine(asked, needs, waiting) {
   if (sentence && summary && asked === homeRequest) summary.textContent = sentence;
 }
 
+// ---------------------------------------------------------------------------
+// Today's page: the day's meetings and chats, in the order they happened
+// ---------------------------------------------------------------------------
+
+let lastMeetings = [];
+let lastConversations = [];
+
+function isToday(iso) {
+  const when = new Date(iso);
+  if (Number.isNaN(when.getTime())) return false;
+  const now = new Date();
+  return when.getFullYear() === now.getFullYear() && when.getMonth() === now.getMonth() && when.getDate() === now.getDate();
+}
+
+function clockTime(iso) {
+  const when = new Date(iso);
+  return `${String(when.getHours()).padStart(2, "0")}:${String(when.getMinutes()).padStart(2, "0")}`;
+}
+
+function renderTimeline() {
+  const list = document.querySelector("#timeline .entries");
+  if (!list) return;
+  const entries = [
+    ...lastMeetings
+      .filter((meeting) => meeting.meetingId !== TOUR_MEETING_ID && isToday(meeting.startedAt))
+      .map((meeting) => ({ kind: "meeting", at: meeting.startedAt, meeting })),
+    ...lastConversations
+      .filter((conversation) => isToday(conversation.updatedAt))
+      .map((conversation) => ({ kind: "chat", at: conversation.updatedAt, conversation })),
+  ].sort((a, b) => String(a.at).localeCompare(String(b.at)));
+
+  const rows = entries.map((entry) => {
+    const row = document.createElement("div");
+    row.className = `entry ${entry.kind}`;
+    const time = document.createElement("span");
+    time.className = "entry-time";
+    time.textContent = clockTime(entry.at);
+    let body;
+    if (entry.kind === "meeting") {
+      body = document.createElement("a");
+      body.href = `/meetings/${encodeURIComponent(entry.meeting.meetingId)}`;
+      const live = entry.meeting.status === "live";
+      body.innerHTML = `${lineIcon("mic", 14)}<span class="entry-title">${escapeHtml(entry.meeting.title)}</span><span class="entry-meta">${live ? "Live" : "Minutes"}</span>`;
+    } else {
+      body = document.createElement("button");
+      body.type = "button";
+      body.innerHTML = `${lineIcon("message", 14)}<span class="entry-title">${escapeHtml(entry.conversation.title)}</span><span class="entry-meta">Chat</span>`;
+      body.addEventListener("click", () => selectConversation(entry.conversation.conversationId, entry.conversation.title));
+    }
+    body.className = "entry-body";
+    row.append(time, body);
+    return row;
+  });
+  const now = document.createElement("div");
+  now.className = "entry-now";
+  now.innerHTML = `<span class="entry-time">${escapeHtml(clockTime(new Date().toISOString()))}</span><span class="now-line" aria-hidden="true"></span>`;
+  if (rows.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "timeline-empty";
+    empty.textContent = "Nothing on today's page yet. Record a meeting or ask Kaki something.";
+    list.replaceChildren(empty);
+    return;
+  }
+  list.replaceChildren(...rows, now);
+}
+
 async function loadHome() {
   if (!homeSection) return;
   const asked = ++homeRequest;
@@ -2643,6 +2704,8 @@ async function loadHome() {
   if (asked !== homeRequest || !Array.isArray(meetings)) return;
   meetings = [...meetings].sort((a, b) => String(b.startedAt).localeCompare(String(a.startedAt)));
   renderHomeMeetings(meetings);
+  lastMeetings = meetings;
+  renderTimeline();
 
   const withWork = meetings.filter((meeting) => meeting.meetingId !== TOUR_MEETING_ID && meeting.actionCount !== 0).slice(0, 8);
   const states = await Promise.all(withWork.map((meeting) =>

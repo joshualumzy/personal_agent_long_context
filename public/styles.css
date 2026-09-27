@@ -2233,3 +2233,72 @@ button.todo-item:hover { border-color: var(--accent); background: var(--hover); 
 /* The teammate's day picker, Today and graph buttons sit in the top bar, left of the avatar. */
 .topbar-tools { margin-left: auto; margin-right: 44px; display: flex; align-items: center; gap: 8px; }
 .topbar { box-sizing: border-box; height: 56px; padding-top: 0; padding-bottom: 0; }
+
+/* ------------------------------------------------------------ Kaki: three columns
+   One question per column. The plate: what is on my plate (by state). The
+   page: today, in the order it happened, and whatever is open. The context:
+   what the open thing touches (an answer's graph, pinned candidates). */
+.app-layout.kaki { display: flex; gap: 8px; padding: 8px; box-sizing: border-box; height: 100vh; background: #f6f6f3; }
+.kaki > .plate, .kaki > #page, .kaki > .context { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; min-height: 0; }
+.kaki > #page.chat-panel.shell-main { flex: 1; margin: 0; height: auto; min-width: 0; }
+
+.plate { width: 292px; flex: none; box-sizing: border-box; padding: 12px 10px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; }
+.plate-head { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
+.plate-head .brand { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 8px; background: var(--accent); color: #fff; font: 700 13px/1 var(--f-ui); text-decoration: none; flex: none; }
+.plate-head .as-of { margin-left: auto; }
+.plate .home-group { margin: 0; }
+.plate .home-group h3, .plate .today-section h3 { font: 600 11px/1.4 var(--f-ui); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); margin: 0 0 4px; padding: 0 6px; display: flex; gap: 6px; align-items: center; }
+.plate .task { padding: 6px; margin: 0; border-top: 0; border-radius: 8px; gap: 8px; }
+.plate .task-icon { width: 14px; height: 14px; border-radius: 4px; }
+.plate .task-icon svg { display: none; }
+.plate .task-title { font-size: 13px; }
+.plate .task-from, .plate .task-go, .plate .task > .line-icon:last-child { display: none; }
+.plate .task-tag { margin-left: auto; }
+.plate-today { position: static; width: auto; height: auto; border: 0; box-shadow: none; background: none; padding: 0; display: flex; flex-direction: column; gap: 14px; }
+.plate-today .today-head { display: none; }
+.plate-today .today-body { padding: 0; overflow: visible; display: flex; flex-direction: column; gap: 14px; }
+.plate-today .today-note { display: none; }
+.plate-today h4 { font: 500 11.5px/1.4 var(--f-ui); color: var(--faint); margin: 6px 6px 2px; text-transform: none; letter-spacing: 0; }
+.plate-today ul, .plate-today ol { list-style: none; margin: 0; padding: 0; }
+.plate-today .todo-item { display: flex; gap: 8px; align-items: baseline; width: 100%; padding: 5px 6px; border: 0; border-radius: 8px; background: none; text-align: left; font: inherit; color: inherit; }
+.plate-today .todo-item:hover { background: var(--hover); }
+.plate-today .todo-key { font: 500 11px/1 var(--f-mono); color: var(--muted); flex: none; }
+.plate-today .todo-title { font-size: 13px; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plate-today .todo-facts { display: none; }
+.plate-today .plan-item { display: flex; flex-direction: column; padding: 5px 6px; font-size: 13px; }
+.plate-today .plan-facts { font-size: 11.5px; color: var(--faint); }
+.plate-today .today-more { border: 0; background: none; color: var(--accent); font: 500 12px var(--f-ui); padding: 2px 6px; cursor: pointer; }
+.plate-foot { margin-top: auto; display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line-2); }
+.plate-links { display: flex; gap: 12px; padding: 0 6px; }
+.plate-links a { font-size: 12px; color: var(--muted); text-decoration: none; }
+.plate-links a:hover { color: var(--ink); }
+.plate .shell-user { position: static; margin: 0; padding: 4px 6px; border: 0; }
+.plate .shell-avatar { width: 28px; height: 28px; font-size: 12px; order: 0; }
+.plate .shell-who, .plate .shell-out { display: grid; }
+.plate .shell-role { display: block; }
+
+/* The page */
+.kaki .empty-state.home { max-width: 720px; padding: 28px 28px 24px; }
+.kaki .home-head { margin-bottom: 18px; gap: 14px; }
+.kaki .home .empty-avatar-wrapper, .kaki .home .sobo-canvas { width: 44px; height: 44px; }
+.kaki .home h2#home-title { font-size: 24px; margin-bottom: 6px; }
+.kaki .home .home-summary { font-size: 14.5px; }
+#timeline .entries { display: flex; flex-direction: column; gap: 6px; }
+#timeline .entry, #timeline .entry-now { display: flex; gap: 12px; align-items: center; }
+#timeline .entry-time { width: 40px; flex: none; font: 500 11px/1 var(--f-mono); color: var(--faint); text-align: right; }
+#timeline .entry-body { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); color: var(--ink); text-decoration: none; font: inherit; font-size: 13.5px; text-align: left; cursor: pointer; }
+#timeline .entry-body:hover { border-color: var(--accent); }
+#timeline .entry-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+#timeline .entry-meta { font-size: 12px; color: var(--muted); }
+#timeline .entry-now .entry-time { color: var(--accent); }
+#timeline .now-line { flex: 1; height: 2px; border-radius: 2px; background: var(--accent); }
+#timeline .timeline-empty { font-size: 13px; color: var(--muted); margin: 0; }
+
+/* What it touches */
+.context { width: 380px; flex: none; display: flex; flex-direction: column; overflow: hidden; }
+.context .pinned-panel { position: static; width: auto; height: auto; flex: 1; border: 0; box-shadow: none; }
+.graph-panel { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.graph-panel[hidden] { display: none; }
+.graph-panel-head { display: flex; align-items: center; gap: 8px; padding: 12px 14px; border-bottom: 1px solid var(--line-2); }
+.graph-panel-title { flex: 1; min-width: 0; font: 600 13px/1.35 var(--f-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.graph-panel iframe { flex: 1; width: 100%; border: 0; }

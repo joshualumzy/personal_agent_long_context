@@ -17,18 +17,11 @@
     <script src="/app.js?v=7" defer></script>
   </head>
   <body>
-    <div class="app-layout">
+    <div class="app-layout kaki">
 
-      <!-- Main Chat Area -->
-      <div class="chat-panel shell-main">
-        <header class="app-header topbar">
-          <a class="brand" href="/" id="home-link" title="Home">
-            <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>
-            <span>Kaki</span>
-          </a>
-          <h1 id="current-chat-title" class="visually-hidden">Kaki</h1>
-          <div class="topbar-tools">
-          <!-- The day the company is looked at from. Hidden where there are no dates. -->
+      <aside id="plate" class="plate" aria-label="On your plate">
+        <div class="plate-head">
+          <a class="brand" href="/" id="home-link" title="Today"><span class="brand-mark" aria-hidden="true">K</span><span class="visually-hidden">Kaki</span></a>
           <div class="as-of" id="as-of" role="group" aria-label="Look at the company as of a day" hidden>
             <button type="button" class="as-of-step" id="as-of-prev" aria-label="Previous working day" title="Previous working day">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
@@ -42,27 +35,45 @@
             </button>
             <button type="button" class="as-of-now" id="as-of-now" title="Back to the present" hidden>Now</button>
           </div>
-
-          <button type="button" id="today-toggle" class="pill-btn" aria-controls="today-panel" aria-pressed="false" aria-label="To-do list and plan for the day" title="Your to-do list and plan for the day" hidden>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3 6 1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2"/></svg>
-          </button>
-
-          <a href="/graph" id="company-graph-link" class="pill-btn pill-link" aria-label="Company Graph" title="See how documents, people and events connect">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <circle cx="12" cy="5" r="2" />
-              <circle cx="5" cy="18" r="2" />
-              <circle cx="19" cy="18" r="2" />
-              <path d="m10.8 6.7-4.6 9.1M13.2 6.7l4.6 9.1M7 18h10" />
-            </svg>
-            <span class="header-action-label">Company Graph</span>
-          </a>
+        </div>
+        <div class="home-group" id="home-needs" hidden><h3>Needs you <em class="count"></em></h3><div class="tasks"></div></div>
+        <div class="home-group" id="home-waiting" hidden><h3>Waiting on others <em class="count"></em></h3><div class="tasks"></div></div>
+        <!-- The signed-in employee's own to-do list and plan, for the chosen day -->
+      <section id="today-panel" class="today-panel plate-today" aria-labelledby="today-title" hidden>
+        <div class="today-head">
+          <div>
+            <h2 id="today-title">Today</h2>
+            <p id="today-date" class="today-date"></p>
           </div>
+        </div>
+        <div class="today-body" aria-live="polite">
+          <section class="today-section" aria-labelledby="todo-heading">
+            <h3 id="todo-heading">My tickets</h3>
+            <div id="todo-list" class="today-list"></div>
+          </section>
+          <section class="today-section" aria-labelledby="plan-heading">
+            <h3 id="plan-heading">Plan</h3>
+            <ol id="plan-list" class="today-plan"></ol>
+          </section>
+          <p class="today-note">From the plan record. Shown here to plan with; answers cite only the tickets themselves.</p>
+        </div>
+      </section>
+        <div class="plate-foot">
+          <nav class="plate-links" aria-label="More">
+            <a class="all-meetings" href="/meetings">All meetings</a>
+            <a href="/graph" id="company-graph-link">Company map</a>
+          </nav>
           <div class="shell-user" id="sidebar-user-container" title="Switch employee persona" role="button" tabindex="0">
             <span class="shell-avatar" id="sidebar-user-avatar" aria-hidden="true">J</span>
             <span class="shell-who"><span class="shell-name" id="sidebar-user-name">Jax</span><span class="shell-role" id="sidebar-user-role">Backend Engineer</span></span>
             <button type="button" id="logout-btn" class="shell-out logout-btn" title="Log out" aria-label="Log out"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
           </div>
-        </header>
+        </div>
+      </aside>
+
+      <!-- Today's page -->
+      <div class="chat-panel shell-main" id="page">
+        <h1 id="current-chat-title" class="visually-hidden">Kaki</h1>
 
         <main class="chat-main">
           <div id="messages-container" class="messages-container">
@@ -77,15 +88,13 @@
                     <p id="home-summary" class="home-summary"></p>
                   </div>
                 </div>
-                <div class="home-group" id="home-needs" hidden><h3>Needs you <em class="count"></em></h3><div class="tasks"></div></div>
-                <div class="home-group" id="home-waiting" hidden><h3>Waiting on others <em class="count"></em></h3><div class="tasks"></div></div>
+                <section class="home-group" id="timeline" aria-label="Today">
+                  <h3>Today</h3>
+                  <div class="entries"></div>
+                </section>
                 <div class="home-group" id="home-done" hidden><h3>Done <em class="count"></em></h3><div class="tasks"></div></div>
-                <div class="home-group" id="home-meetings">
-                  <h3>Meetings <em class="count"></em><a class="new-meeting" href="/meetings"><span class="rec-dot" aria-hidden="true"></span>New live meeting</a></h3>
-                  <div class="rows"></div>
-                </div>
                 <div class="home-group" id="home-conversations">
-                  <h3>Recent conversations
+                  <h3>Earlier chats
                     <button type="button" id="new-chat-btn" class="text-btn" title="Start a new chat">New chat</button>
                     <button type="button" id="clear-all-conversations-btn" class="text-btn" title="Clear all recent conversations" hidden>Clear all</button>
                   </h3>
@@ -140,39 +149,26 @@
         </main>
       </div>
 
-      <!-- A role's candidates, pinned beside the chat while the conversation goes on -->
-      <aside id="pinned-panel" class="pinned-panel" aria-label="Pinned candidates" hidden>
-        <div class="pinned-head">
-          <span id="pinned-title">Hiring · Candidates</span>
-          <button type="button" class="unpin-panel" title="Unpin" aria-label="Unpin the candidates">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
-        </div>
-        <div class="pinned-body"></div>
-      </aside>
 
-      <!-- The signed-in employee's own to-do list and plan, for the chosen day -->
-      <aside id="today-panel" class="today-panel" aria-labelledby="today-title" hidden>
-        <div class="today-head">
-          <div>
-            <h2 id="today-title">Today</h2>
-            <p id="today-date" class="today-date"></p>
+
+      <aside id="context" class="context" aria-label="What it touches" hidden>
+        <!-- A role's candidates, pinned beside the chat while the conversation goes on -->
+        <aside id="pinned-panel" class="pinned-panel" aria-label="Pinned candidates" hidden>
+          <div class="pinned-head">
+            <span id="pinned-title">Hiring · Candidates</span>
+            <button type="button" class="unpin-panel" title="Unpin" aria-label="Unpin the candidates">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
           </div>
-          <button type="button" class="today-close" id="today-close" title="Close" aria-label="Close the to-do list and plan">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
-        </div>
-        <div class="today-body" aria-live="polite">
-          <section class="today-section" aria-labelledby="todo-heading">
-            <h3 id="todo-heading">To do</h3>
-            <div id="todo-list" class="today-list"></div>
-          </section>
-          <section class="today-section" aria-labelledby="plan-heading">
-            <h3 id="plan-heading">Plan for the day</h3>
-            <ol id="plan-list" class="today-plan"></ol>
-          </section>
-          <p class="today-note">From the plan record. Shown here to plan with; answers cite only the tickets themselves.</p>
-        </div>
+          <div class="pinned-body"></div>
+        </aside>
+        <section id="graph-panel" class="graph-panel" aria-label="How the evidence connects" hidden>
+          <div class="graph-panel-head">
+            <span class="graph-panel-title">How it connects</span>
+            <button type="button" class="close-btn graph-panel-close" aria-label="Close the graph" title="Close"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+          </div>
+          <iframe title="How this answer's evidence connects"></iframe>
+        </section>
       </aside>
 
       <!-- Source Inspection Dialog -->

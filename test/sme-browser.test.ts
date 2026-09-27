@@ -86,21 +86,31 @@ async function openSmePage(options: PageOptions = {}) {
 }
 
 describe("SME Assistant shell", () => {
-  test("one entry: a top bar with Kaki and the signed-in employee, and no sidebar", async () => {
+  test("three columns, one question each: what is on my plate, today's page, what it touches", async () => {
     // The shell is plain markup, so the page's script does not need to run.
     const app = buildApp({ memory: new DeterministicMemoryProvider() });
     after(() => app.close());
     const html = (await app.inject({ method: "GET", url: "/" })).body;
     const document = new JSDOM(html).window.document;
 
-    const brand = document.querySelector(".topbar a.brand")!;
-    assert.equal(brand.getAttribute("href"), "/");
-    assert.match(brand.textContent!, /Kaki/);
-    assert.ok(document.querySelector(".topbar #sidebar-user-container"), "the employee sits in the top bar");
-    assert.ok(document.querySelector(".topbar #logout-btn"));
+    const plate = document.querySelector("aside#plate")!;
+    const page = document.querySelector("#page")!;
+    const context = document.querySelector("aside#context")!;
+    assert.ok(plate && page && context);
+    // On the plate: the day, what needs you, what waits on others, tickets and plan, and who is signed in.
+    for (const id of ["as-of", "home-needs", "home-waiting", "today-panel", "todo-list", "plan-list", "sidebar-user-container", "logout-btn"]) {
+      assert.ok(plate.querySelector(`#${id}`), `#${id} is on the plate`);
+    }
+    // The page: the headline, today's timeline, and the conversation with its composer.
+    for (const id of ["home-title", "timeline", "chat-messages", "chat-form", "conversations-list", "new-chat-btn"]) {
+      assert.ok(page.querySelector(`#${id}`), `#${id} is on the page`);
+    }
+    // What it touches: pinned candidates and an answer's graph.
+    assert.ok(context.querySelector("#pinned-panel"));
+    assert.ok(context.querySelector("#graph-panel"));
 
-    assert.equal(document.querySelector("#sidebar"), null, "no sidebar");
-    assert.equal(document.querySelector(".app-nav"), null, "no app links: one entry");
+    assert.equal(document.querySelector(".topbar"), null, "no top bar");
+    assert.equal(document.querySelector("#today-toggle"), null, "the plan is always on the plate, not behind a button");
     assert.equal(document.querySelector("#model-selector-btn"), null, "no model picker");
     assert.equal(document.querySelector("#inspect-memory-btn"), null, "no Working Context button");
     assert.doesNotMatch(html, /Apex Athletics/);
@@ -197,10 +207,11 @@ describe("SME Assistant conversational rendering", () => {
     assert.equal(preview.querySelectorAll("svg g").length, 3);
     assert.match(preview.textContent!, /2 things it points to/);
 
-    // Clicking opens the answer's graph page in a dialog, same question, same sources.
+    // Clicking opens the answer's graph beside the page, in the context column: same question, same sources.
     (preview as HTMLButtonElement).click();
-    const dialog = page.document.querySelector("#answer-graph-dialog")!;
-    assert.ok(dialog.hasAttribute("open"));
+    const dialog = page.document.querySelector("#graph-panel")!;
+    assert.equal((dialog as HTMLElement).hidden, false);
+    assert.equal((page.document.querySelector("#context") as HTMLElement).hidden, false);
     const frame = new URL(dialog.querySelector("iframe")!.getAttribute("src")!, "http://x");
     assert.equal(frame.pathname, "/graph/answer");
     assert.equal(frame.searchParams.get("q"), "What is the latest project?");
@@ -498,14 +509,36 @@ describe("SME Assistant home: what needs you", () => {
     assert.doesNotMatch(page.document.querySelector("#home")!.textContent!, /A draft you turned down/);
   });
 
-  test("lists the meetings, the tour among them, with a way to start a new one", async () => {
-    const page = await openSmePage({ respond: meetingsRespond([]) });
+  test("today's page lists today's meetings and chats in time order, with a way to every meeting", async () => {
+    const at = (hours: number, minutes: number) => { const d = new Date(); d.setHours(hours, minutes, 0, 0); return d.toISOString(); };
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+    const page = await openSmePage({ respond: signedIn((url) => {
+      if (url === "/api/v1/meetings") {
+        return json([
+          { meetingId: "m1", title: NOC, status: "ended", startedAt: at(10, 0), actionCount: 0 },
+          { meetingId: "old", title: "Last week's sync", status: "ended", startedAt: yesterday, actionCount: 0 },
+          { meetingId: "product-tour", title: "Welcome: a 3-minute tour of Meetings", status: "ended", startedAt: yesterday, actionCount: 9 },
+        ]);
+      }
+      if (url === "/api/v1/conversations" ) return json([{ conversationId: "c1", title: "Was ZD-101 the same bug?", updatedAt: at(12, 10) }]);
+      return undefined;
+    }) });
     after(() => page.close());
-    await until(() => page.document.querySelectorAll("#home-meetings a.meeting").length === 2, "the meetings");
+    await until(() => page.document.querySelectorAll("#timeline .entry").length === 2, "today's entries");
 
-    const links = [...page.document.querySelectorAll("#home-meetings a.meeting")].map((link) => link.getAttribute("href"));
-    assert.deepEqual(links, ["/meetings/m1", "/meetings/product-tour"]);
-    assert.equal(page.document.querySelector("#home-meetings a.new-meeting")!.getAttribute("href"), "/meetings");
+    const entries = [...page.document.querySelectorAll("#timeline .entry")];
+    assert.match(entries[0]!.textContent!, /10:00/);
+    assert.match(entries[0]!.textContent!, /NOC SLA escalation/);
+    assert.equal(entries[0]!.querySelector("a")!.getAttribute("href"), "/meetings/m1");
+    assert.match(entries[1]!.textContent!, /12:10/);
+    assert.match(entries[1]!.textContent!, /Was ZD-101 the same bug\?/);
+    assert.doesNotMatch(page.document.querySelector("#timeline")!.textContent!, /Last week's sync/, "only today");
+
+    // Opening today's chat shows it on the page.
+    (entries[1]!.querySelector("button") as HTMLButtonElement).click();
+    await until(() => page.document.querySelector("#chat-messages .message-row.assistant"), "the chat to open on the page");
+
+    assert.equal(page.document.querySelector("#plate a.all-meetings")!.getAttribute("href"), "/meetings");
     assert.equal(page.document.querySelector("#chat-form a.record")!.getAttribute("href"), "/meetings");
   });
 
@@ -751,7 +784,6 @@ describe("SME Assistant on a chosen day", () => {
     await until(() => page.requests.some((request) => request.url.startsWith("/api/v1/planner/days")), "the planner check");
     await new Promise((resolve) => setTimeout(resolve, 30));
     assert.equal((page.document.querySelector("#as-of") as HTMLElement).hidden, true);
-    assert.equal((page.document.querySelector("#today-toggle") as HTMLElement).hidden, true);
     assert.equal((page.document.querySelector("#today-panel") as HTMLElement).hidden, true);
   });
 });
