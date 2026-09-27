@@ -10,11 +10,11 @@
     <title>SME Employee Assistant</title>
     <link rel="preload" href="/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/theme.css" />
-    <link rel="stylesheet" href="/styles.css?v=9" />
+    <link rel="stylesheet" href="/styles.css?v=10" />
     <script src="/vendor/marked.js" defer></script>
     <script src="/vendor/dompurify.js" defer></script>
     <script src="/vendor/rive.js" defer></script>
-    <script src="/app.js?v=6" defer></script>
+    <script src="/app.js?v=7" defer></script>
   </head>
   <body>
     <div class="app-layout">
@@ -117,7 +117,26 @@
                 </div>
               </div>
 
-              <a href="/graph" class="pill-btn pill-link" aria-label="Company Graph" title="See how documents, people and events connect">
+              <!-- The day the company is looked at from. Hidden where there are no dates. -->
+              <div class="as-of" id="as-of" role="group" aria-label="Look at the company as of a day" hidden>
+                <button type="button" class="as-of-step" id="as-of-prev" aria-label="Previous working day" title="Previous working day">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
+                <label class="as-of-field" title="See the company as it stood at the end of a working day">
+                  <span class="as-of-caption" id="as-of-caption">Today</span>
+                  <input type="date" id="as-of-input" aria-describedby="as-of-caption" />
+                </label>
+                <button type="button" class="as-of-step" id="as-of-next" aria-label="Next working day" title="Next working day">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+                <button type="button" class="as-of-now" id="as-of-now" title="Back to the present" hidden>Now</button>
+              </div>
+
+              <button type="button" id="today-toggle" class="pill-btn" aria-controls="today-panel" aria-pressed="false" aria-label="To-do list and plan for the day" title="Your to-do list and plan for the day" hidden>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><path d="m3 6 1 1 2-2M3 12l1 1 2-2M3 18l1 1 2-2"/></svg>
+              </button>
+
+              <a href="/graph" id="company-graph-link" class="pill-btn pill-link" aria-label="Company Graph" title="See how documents, people and events connect">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <circle cx="12" cy="5" r="2" />
                   <circle cx="5" cy="18" r="2" />
@@ -210,6 +229,30 @@
           </button>
         </div>
         <div class="pinned-body"></div>
+      </aside>
+
+      <!-- The signed-in employee's own to-do list and plan, for the chosen day -->
+      <aside id="today-panel" class="today-panel" aria-labelledby="today-title" hidden>
+        <div class="today-head">
+          <div>
+            <h2 id="today-title">Today</h2>
+            <p id="today-date" class="today-date"></p>
+          </div>
+          <button type="button" class="today-close" id="today-close" title="Close" aria-label="Close the to-do list and plan">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+        <div class="today-body" aria-live="polite">
+          <section class="today-section" aria-labelledby="todo-heading">
+            <h3 id="todo-heading">To do</h3>
+            <div id="todo-list" class="today-list"></div>
+          </section>
+          <section class="today-section" aria-labelledby="plan-heading">
+            <h3 id="plan-heading">Plan for the day</h3>
+            <ol id="plan-list" class="today-plan"></ol>
+          </section>
+          <p class="today-note">From the plan record. Shown here to plan with; answers cite only the tickets themselves.</p>
+        </div>
       </aside>
 
       <!-- Source Inspection Dialog -->

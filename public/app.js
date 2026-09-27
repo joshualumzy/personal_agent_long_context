@@ -128,6 +128,7 @@ const LINE_ICONS = {
   stop: '<rect x="6" y="6" width="12" height="12" rx="2"/>',
   external: '<path d="M7 17 17 7"/><path d="M7 7h10v10"/>',
   graph: '<circle cx="5" cy="6" r="2.5"/><circle cx="19" cy="7" r="2.5"/><circle cx="11" cy="18" r="2.5"/><path d="M7.5 6.3l9 .5"/><path d="M6.2 8.3l3.6 7.4"/><path d="M17.6 9.1l-5.3 6.8"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   pin: '<path d="M12 17v5"/><path d="M9 10.76V6h6v4.76a2 2 0 0 0 1.11 1.79l1.78.9A2 2 0 0 1 19 15.24V17H5v-1.76a2 2 0 0 1 1.11-1.79l1.78-.9A2 2 0 0 0 9 10.76Z"/><path d="M8 3h8"/>',
 };
 
@@ -895,7 +896,10 @@ function attachAssistantMeta(bubble, data) {
     if (data.personalMemory.status === "unavailable") {
       const tag = document.createElement("span");
       tag.className = "context-tag unavailable";
-      tag.innerHTML = `${lineIcon("alert", 12)}Personal memory unavailable`;
+      // On a past day memory is set aside on purpose, which is not a fault.
+      tag.innerHTML = data.asOf
+        ? `${lineIcon("book", 12)}Memory set aside for this day`
+        : `${lineIcon("alert", 12)}Personal memory unavailable`;
       if (data.personalMemory.reason) tag.title = data.personalMemory.reason;
       contextTags.appendChild(tag);
     } else if (data.personalMemory.answer && data.personalMemory.answer.trim().length > 0) {
@@ -907,13 +911,22 @@ function attachAssistantMeta(bubble, data) {
     }
   }
 
+  if (data.asOf) {
+    const tag = document.createElement("span");
+    tag.className = "context-tag as-of-tag";
+    tag.innerHTML = `${lineIcon("clock", 12)}As of ${escapeHtml(data.asOf)}`;
+    tag.title = "Answered from the end of this working day: nothing after it was read.";
+    contextTags.prepend(tag);
+  }
+
   if (contextTags.children.length > 0) {
     meta.appendChild(contextTags);
   }
 
   // The answer's graph: a small picture of what its evidence connects to,
-  // above the evidence itself. Opens larger on click.
-  if (data.question && data.sources && data.sources.length > 0) {
+  // above the evidence itself. Opens larger on click. The graph is not read by
+  // date yet, so an answer from a past day has none.
+  if (!data.asOf && data.question && data.sources && data.sources.length > 0) {
     meta.appendChild(answerGraphPreview(data.question, data.sources));
   }
 
@@ -1320,6 +1333,7 @@ async function selectConversation(conversationId, title) {
     if (asked !== chatEpoch) return;
 
     chatMessages.innerHTML = "";
+    showConversationDay(detail.messages?.[0]?.metadata?.asOf ?? null);
     if (detail.messages && detail.messages.length > 0) {
       if (emptyState) emptyState.style.display = "none";
       let askedBefore;
@@ -1337,6 +1351,7 @@ async function selectConversation(conversationId, title) {
             ttftMs: typeof msg.metadata?.ttftMs === "number" ? msg.metadata.ttftMs : undefined,
             model: msg.metadata?.model,
             blocks: msg.metadata?.blocks,
+            asOf: typeof msg.metadata?.asOf === "string" ? msg.metadata.asOf : undefined,
             fromHistory: true,
           });
         }
@@ -1469,6 +1484,7 @@ chatForm.addEventListener("submit", async (e) => {
     if (activeConversationId) {
       payload.conversationId = activeConversationId;
     }
+    if (viewDay) payload.asOf = viewDay;
 
     const response = await fetch("/api/v1/agent/chat", {
       method: "POST",
@@ -1784,6 +1800,11 @@ function updateUserDisplay(user) {
   if (memoryTitle) {
     memoryTitle.textContent = `${user.displayName}'s Active Working Memory`;
   }
+  // Another employee's list must not stay on screen under this one's name.
+  if (typeof loadTodayPanel === "function" && workingDays.length) {
+    plannerEpoch += 1;
+    loadTodayPanel();
+  }
 }
 
 function renderPersonaCards(personas, activeId) {
@@ -2029,6 +2050,323 @@ if (sidebarUserContainer) {
   });
 }
 
+
+// ---------------------------------------------------------------------------
+// The chosen day, and the Today panel
+// ---------------------------------------------------------------------------
+//
+// The company can be looked at from the end of any working day in the record.
+// `viewDay` is that day, or null for the present. It lives in the address
+// (?asOf=), so a reload or a shared link opens on the same day. A new chat
+// takes the day on screen; a conversation keeps the day it was begun on, and
+// opening one moves the picker to its day.
+
+const asOfGroup = document.querySelector("#as-of");
+const asOfInput = document.querySelector("#as-of-input");
+const asOfCaption = document.querySelector("#as-of-caption");
+const asOfPrev = document.querySelector("#as-of-prev");
+const asOfNext = document.querySelector("#as-of-next");
+const asOfNow = document.querySelector("#as-of-now");
+const todayToggle = document.querySelector("#today-toggle");
+const todayPanel = document.querySelector("#today-panel");
+const todayDate = document.querySelector("#today-date");
+const todoList = document.querySelector("#todo-list");
+const planList = document.querySelector("#plan-list");
+const companyGraphLink = document.querySelector("#company-graph-link");
+
+/** The working days, oldest first; empty until loaded, or where there are none. */
+let workingDays = [];
+let viewDay = null;
+/** Bumped on every change of day or person, so a slow answer for the old one is dropped. */
+let plannerEpoch = 0;
+
+function requestedDayFromAddress() {
+  const value = new URLSearchParams(location.search).get("asOf");
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
+function writeDayToAddress(day) {
+  const params = new URLSearchParams(location.search);
+  if (day) params.set("asOf", day);
+  else params.delete("asOf");
+  const query = params.toString();
+  history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}${location.hash}`);
+}
+
+/** The working day on or before `day`, as the server reads it; null outside the record. */
+function workingDayFor(day) {
+  if (!day || !workingDays.length || day < workingDays[0] || day > workingDays[workingDays.length - 1]) return null;
+  let chosen = workingDays[0];
+  for (const candidate of workingDays) {
+    if (candidate > day) break;
+    chosen = candidate;
+  }
+  return chosen;
+}
+
+function formatDay(day) {
+  const date = new Date(`${day}T00:00:00Z`);
+  return date.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
+/** Shows `day` (or the present) in the picker, the header and the panel, and reloads the panel. */
+function showDay(day) {
+  viewDay = day;
+  plannerEpoch += 1;
+  const shown = day ?? workingDays[workingDays.length - 1] ?? "";
+  if (asOfInput) asOfInput.value = shown;
+  if (asOfCaption) asOfCaption.textContent = day ? "As of" : "Today";
+  if (asOfGroup) asOfGroup.classList.toggle("past", Boolean(day));
+  if (asOfNow) asOfNow.hidden = !day;
+  const index = workingDays.indexOf(shown);
+  if (asOfPrev) asOfPrev.disabled = index <= 0;
+  if (asOfNext) asOfNext.disabled = index < 0 || index >= workingDays.length - 1;
+  // The company graph is not yet read by date: while looking at a past day it is not offered.
+  if (companyGraphLink) companyGraphLink.hidden = Boolean(day);
+  document.body.classList.toggle("viewing-past", Boolean(day));
+  writeDayToAddress(day);
+  loadTodayPanel();
+}
+
+/**
+ * The picker's own choice. A day inside the record snaps to its working day;
+ * the last working day is the present. Moving the day away from the open
+ * conversation's day starts a new chat, since that conversation keeps its own.
+ */
+function chooseDay(requested) {
+  if (!workingDays.length) return;
+  const snapped = workingDayFor(requested);
+  if (requested && !snapped) {
+    showModelNotice(`Pick a day from ${formatDay(workingDays[0])} to ${formatDay(workingDays[workingDays.length - 1])}.`);
+    showDay(viewDay);
+    return;
+  }
+  const day = snapped && snapped !== workingDays[workingDays.length - 1] ? snapped : null;
+  if (day === viewDay) {
+    showDay(day);
+    return;
+  }
+  if (activeConversationId && chatMessages.children.length > 0) startNewChat();
+  showDay(day);
+}
+
+asOfInput?.addEventListener("change", () => chooseDay(asOfInput.value || null));
+asOfPrev?.addEventListener("click", () => {
+  const index = workingDays.indexOf(asOfInput.value);
+  if (index > 0) chooseDay(workingDays[index - 1]);
+});
+asOfNext?.addEventListener("click", () => {
+  const index = workingDays.indexOf(asOfInput.value);
+  if (index >= 0 && index < workingDays.length - 1) chooseDay(workingDays[index + 1]);
+});
+asOfNow?.addEventListener("click", () => chooseDay(null));
+
+/** Opening a conversation shows the day it was asked on. */
+function showConversationDay(day) {
+  if (!workingDays.length) return;
+  const known = day && workingDays.includes(day) ? day : null;
+  if (known !== viewDay) showDay(known);
+}
+
+function setTodayPanelOpen(open, remember = true) {
+  if (!todayPanel) return;
+  todayPanel.hidden = !open;
+  todayToggle?.setAttribute("aria-pressed", String(open));
+  document.body.classList.toggle("today-open", open);
+  if (remember) stored.set("sme_today_panel", open ? "open" : "closed");
+}
+
+todayToggle?.addEventListener("click", () => setTodayPanelOpen(todayPanel.hidden));
+document.querySelector("#today-close")?.addEventListener("click", () => setTodayPanelOpen(false));
+
+const TODO_GROUPS = [
+  { title: "In progress", match: (item) => item.relation === "assignee" && item.status === "In Progress" },
+  { title: "In review", match: (item) => item.relation === "assignee" && item.status === "In Review" },
+  { title: "Not started", match: (item) => item.relation === "assignee" && item.status !== "In Progress" && item.status !== "In Review" },
+  { title: "Raised by you, not picked up", relation: "reporter", match: (item) => item.relation === "reporter" },
+];
+
+const ACTIVITY_LABELS = {
+  deep_work: "Focus work",
+  design_discussion: "Design discussion",
+  async_question: "Question",
+  "1on1": "1:1",
+  mentoring: "Mentoring",
+  code_review: "Code review",
+  meeting: "Meeting",
+};
+
+function activityLabel(type) {
+  if (!type) return "";
+  return ACTIVITY_LABELS[type] ?? type.replace(/_/g, " ").replace(/^./, (first) => first.toUpperCase());
+}
+
+function hoursLabel(hours) {
+  if (typeof hours !== "number") return "";
+  return `${Number.isInteger(hours) ? hours : hours.toFixed(1)}h`;
+}
+
+function renderTodo(items) {
+  todoList.replaceChildren();
+  if (!items.length) {
+    const empty = document.createElement("p");
+    empty.className = "today-empty";
+    empty.textContent = "Nothing open on your list.";
+    todoList.appendChild(empty);
+    return;
+  }
+  for (const group of TODO_GROUPS) {
+    const members = items.filter(group.match);
+    if (!members.length) continue;
+    const heading = document.createElement("h4");
+    heading.textContent = `${group.title} · ${members.length}`;
+    const list = document.createElement("ul");
+    // What others were meant to pick up can run long; the first few are enough to see it.
+    const shown = group.relation === "reporter" ? 5 : members.length;
+    members.forEach((item, index) => {
+      const row = document.createElement("li");
+      const citable = item.sources?.includes(item.itemKey);
+      const open = document.createElement(citable ? "button" : "div");
+      open.className = "todo-item";
+      if (citable) {
+        open.type = "button";
+        open.title = `Open ${item.itemKey}`;
+        open.addEventListener("click", () => showSource(item.itemKey));
+      }
+      const key = document.createElement("span");
+      key.className = "todo-key";
+      key.textContent = item.itemKey;
+      const title = document.createElement("span");
+      title.className = "todo-title";
+      title.textContent = item.title || item.itemKey;
+      const facts = document.createElement("span");
+      facts.className = "todo-facts";
+      facts.textContent = [
+        typeof item.points === "number" ? `${item.points} pt` : "",
+        item.sprintNo ? `Sprint ${item.sprintNo}` : "",
+        item.since ? `since ${formatDay(item.since)}` : "",
+      ].filter(Boolean).join(" · ");
+      open.append(key, title, facts);
+      row.appendChild(open);
+      if (index >= shown) row.hidden = true;
+      list.appendChild(row);
+    });
+    todoList.append(heading, list);
+    if (members.length > shown) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "today-more";
+      more.textContent = `Show ${members.length - shown} more`;
+      more.addEventListener("click", () => {
+        list.querySelectorAll("li[hidden]").forEach((row) => { row.hidden = false; });
+        more.remove();
+      });
+      todoList.appendChild(more);
+    }
+  }
+}
+
+function renderPlan(entries) {
+  planList.replaceChildren();
+  if (!entries.length) {
+    const empty = document.createElement("li");
+    empty.className = "today-empty";
+    empty.textContent = "No plan recorded for this day.";
+    planList.appendChild(empty);
+    return;
+  }
+  for (const entry of entries) {
+    const row = document.createElement("li");
+    row.className = entry.deferred ? "plan-item deferred" : "plan-item";
+    const title = document.createElement("span");
+    title.className = "plan-title";
+    title.textContent = entry.title;
+    const facts = document.createElement("span");
+    facts.className = "plan-facts";
+    facts.textContent = [
+      activityLabel(entry.activityType),
+      hoursLabel(entry.estHours),
+      entry.collaborators?.length ? `with ${entry.collaborators.join(", ")}` : "",
+      entry.itemKey || "",
+    ].filter(Boolean).join(" · ");
+    row.append(title, facts);
+    if (entry.deferred) {
+      const note = document.createElement("span");
+      note.className = "plan-deferred";
+      note.textContent = entry.deferReason ? `Deferred: ${entry.deferReason}` : "Deferred";
+      row.appendChild(note);
+    }
+    planList.appendChild(row);
+  }
+}
+
+function showPanelMessage(text) {
+  const note = document.createElement("p");
+  note.className = "today-empty";
+  note.textContent = text;
+  todoList.replaceChildren(note);
+  planList.replaceChildren();
+}
+
+/** Fetches the list and plan for the day on screen; anything older is discarded. */
+async function loadTodayPanel() {
+  if (!todayPanel || !workingDays.length || !currentUser) return;
+  const epoch = plannerEpoch;
+  const day = viewDay ?? workingDays[workingDays.length - 1];
+  todayDate.textContent = viewDay ? `As of ${formatDay(day)}` : formatDay(day);
+  document.querySelector("#today-title").textContent = viewDay ? "That day" : "Today";
+  todoList.setAttribute("aria-busy", "true");
+  // The old day's lists must not linger under the new day's heading.
+  showPanelMessage("Loading…");
+  try {
+    const query = `asOf=${encodeURIComponent(day)}`;
+    const [todo, plan] = await Promise.all([
+      fetch(`/api/v1/planner/todo?${query}`, { credentials: "same-origin" }),
+      fetch(`/api/v1/planner/day?${query}`, { credentials: "same-origin" }),
+    ]);
+    if (epoch !== plannerEpoch) return;
+    if (todo.status === 401 || plan.status === 401) {
+      handleAuthRequired();
+      return;
+    }
+    if (!todo.ok || !plan.ok) throw new Error("planner");
+    const [todoBody, planBody] = await Promise.all([todo.json(), plan.json()]);
+    if (epoch !== plannerEpoch) return;
+    renderTodo(todoBody.items ?? []);
+    renderPlan(planBody.entries ?? []);
+  } catch (_) {
+    if (epoch === plannerEpoch) showPanelMessage("Could not load your list for this day.");
+  } finally {
+    if (epoch === plannerEpoch) todoList.removeAttribute("aria-busy");
+  }
+}
+
+/** After sign-in: the days to choose from, then the day in the address. */
+async function initPlanner() {
+  try {
+    const response = await fetch("/api/v1/planner/days", { credentials: "same-origin" });
+    if (!response.ok) return;
+    const body = await response.json();
+    workingDays = Array.isArray(body.days) ? body.days : [];
+  } catch (_) {
+    return;
+  }
+  if (!workingDays.length) return;
+  if (asOfInput) {
+    asOfInput.min = workingDays[0];
+    asOfInput.max = workingDays[workingDays.length - 1];
+  }
+  if (asOfGroup) asOfGroup.hidden = false;
+  if (todayToggle) todayToggle.hidden = false;
+  const requested = requestedDayFromAddress();
+  const snapped = workingDayFor(requested);
+  const day = snapped && snapped !== workingDays[workingDays.length - 1] ? snapped : null;
+  // Open by default on a wide screen, or whenever a past day was asked for; a choice to close it is kept.
+  const remembered = stored.get("sme_today_panel");
+  setTodayPanelOpen(Boolean(day) || (remembered ? remembered === "open" : !isMobile()), false);
+  showDay(day);
+}
+
 async function initAuth() {
   try {
     const res = await fetch("/api/v1/auth/me", { credentials: "same-origin" });
@@ -2042,6 +2380,7 @@ async function initAuth() {
         }
         updateUserDisplay(data.employee);
         await loadConversations();
+        await initPlanner();
         takeOverFromMeeting();
         return;
       }

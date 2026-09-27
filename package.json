@@ -24,6 +24,8 @@
     "meetings:tour": "node --env-file=.env --import tsx scripts/seed-product-tour.ts",
     "orgforge:ingest": "set -a; . ./.env; set +a; HF_HOME=tmp/orgforge/hf-cache .venv/bin/python scripts/orgforge/ingest.py",
     "test:orgforge": ".venv/bin/python scripts/orgforge/test_ingest.py",
+    "orgforge:timeline": "set -a; . ./.env; set +a; .venv/bin/python orgforge_kb/build_timeline.py",
+    "test:timeline": ".venv/bin/python -m unittest orgforge_kb/test_build_timeline.py",
     "orgforge:embed": "node --env-file=.env --import tsx scripts/orgforge/embed.ts",
     "linkedin:login": "node --env-file-if-exists=.env --import tsx scripts/linkedin-inbox.ts --login",
     "linkedin:sync": "node --env-file-if-exists=.env --import tsx scripts/linkedin-inbox.ts",
