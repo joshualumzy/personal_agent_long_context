@@ -918,6 +918,9 @@ function moveDrawn() {
       element.setAttribute("x2", b.x); element.setAttribute("y2", b.y);
     } else if (element.tagName === "polygon") {
       element.setAttribute("points", arrowPoints(a, b, Number(element.dataset.gap ?? 11)));
+    } else if (element.tagName === "circle") {
+      const bead = beadPoint(a, b, Number(element.dataset.gap ?? 11));
+      element.setAttribute("cx", bead.x); element.setAttribute("cy", bead.y);
     } else {
       const chosen = element.dataset.along ? Number(element.dataset.along) : null;
       const at = labelPoint(a, b, element.dataset.source, element.dataset.target, chosen);
@@ -1058,6 +1061,12 @@ function declutter() {
       word.classList.add("crowded");
     }
   }
+}
+
+/** The point `gap` short of `b`, on the line from `a`: where a line's bead sits. */
+function beadPoint(a, b, gap) {
+  const length = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+  return { x: b.x - ((b.x - a.x) / length) * gap, y: b.y - ((b.y - a.y) / length) * gap };
 }
 
 /** An arrowhead `gap` short of `b`, on the line from `a`. */
@@ -1325,11 +1334,13 @@ function drawPicture() {
     if (edge.type === "caused_by") {
       edgeLayer.append(svg("polygon", { points: arrowPoints(a, b), class: "edge-arrow", ...ends }));
     } else if (lit === " near") {
-      // A story line says which way it reads: the arrow points at the page
-      // an incident produced, at the domain a page is about.
-      const gap = (reach(edge.target) + 3).toFixed(1);
-      edgeLayer.append(svg("polygon", {
-        points: arrowPoints(a, b, Number(gap)), class: "edge-arrow story", "data-gap": gap, ...ends,
+      // A story line says which way it reads: a soft bead just short of the
+      // page an incident produced, of the domain a page is about. Round, not a
+      // point: the web floats, and a spike would read as sharp against it.
+      const gap = (reach(edge.target) + 5).toFixed(1);
+      const bead = beadPoint(a, b, Number(gap));
+      edgeLayer.append(svg("circle", {
+        cx: bead.x, cy: bead.y, r: 3.2, class: "edge-arrow story", "data-gap": gap, ...ends,
       }));
     }
     // "matches" only says the question found it, which its place already says.

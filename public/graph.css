@@ -463,3 +463,14 @@ table.matrix { border-collapse: separate; border-spacing: 3px; font-size: .86rem
 /* The company page beside the shared plate: the graph is the page's sheet, and scrolls in it. */
 .kaki > #page.graph-page { flex: 1; min-width: 0; height: auto; overflow-y: auto; background: var(--panel); border-radius: 18px; box-shadow: 0 1px 2px rgb(28 27 34 / .04); }
 body[data-mode="company"]:has(.app-layout.kaki) { margin: 0; height: 100vh; overflow: hidden; }
+
+/* The documents web in Kaki's two colours: the focus is marked in yellow, like
+   a highlighter on the page; its story (lines, beads, neighbours) is violet;
+   everything else is pale violet background. Softer strokes suit the float. */
+#canvas.focusing .node.the-focus .shape { fill: #ffe79a; stroke: #e3b400; stroke-width: 2; }
+#canvas.focusing .node.the-focus .ring { fill: #fff6d2; stroke: none; }
+#canvas.focusing .node.near:not(.the-focus) .shape { fill: #e4e0fa; stroke: #8f85e6; stroke-width: 1.6; }
+#canvas.focusing .edge.near { stroke: #8f85e6; stroke-opacity: .75; stroke-width: 1.6; stroke-linecap: round; }
+#canvas.force.focus .edge.on { stroke: #8f85e6; stroke-opacity: .8; stroke-width: 1.5; stroke-linecap: round; }
+#canvas.force .edge-arrow.story, #canvas.focusing .edge-arrow.story:not(.on) { fill: #8f85e6; opacity: .9; }
+#canvas.force .edge-label { fill: var(--muted); }

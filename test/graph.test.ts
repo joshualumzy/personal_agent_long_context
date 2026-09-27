@@ -235,6 +235,8 @@ describe("the company graph", () => {
     assert.deepEqual([...document.querySelectorAll(".edge-label")].map((label) => label.textContent).sort(),
       ["cites", "produced", "wrote", "wrote"]);
     assert.equal(document.querySelectorAll(".edge-arrow.story").length, 4);
+    // The way a line reads is a soft bead at its far end, not a spike: the web floats.
+    assert.equal(document.querySelectorAll("circle.edge-arrow.story").length, 4);
     assert.match(document.querySelector("#details .name")!.textContent!, /TitanDB migration notes/);
 
     // Clicking a neighbour makes it the focus, with a trail back; it does not
