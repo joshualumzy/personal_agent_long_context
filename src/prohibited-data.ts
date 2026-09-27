@@ -39,7 +39,7 @@ interface Rule {
 }
 
 const secretLabel =
-  "password|passphrase|passwd|pin(?: code| number)?|api[ _-]?key|secret[ _-]?key|access[ _-]?token|refresh[ _-]?token|bearer[ _-]?token|auth(?:entication)?[ _-]?token|client[ _-]?secret|one[ _-]?time[ _-]?(?:code|password)|otp|2fa[ _-]?code|verification[ _-]?code|security[ _-]?code|recovery[ _-]?code";
+  "password|passphrase|passwd|pwd|pw|pin(?: code| number)?|api[ _-]?key|secret[ _-]?key|access[ _-]?token|refresh[ _-]?token|bearer[ _-]?token|auth(?:entication)?[ _-]?token|client[ _-]?secret|one[ _-]?time[ _-]?(?:code|password)|otp|2fa[ _-]?code|verification[ _-]?code|security[ _-]?code|recovery[ _-]?code";
 
 function luhn(digits: string): boolean {
   const cleaned = digits.replace(/[^\d]/g, "");
@@ -111,6 +111,16 @@ const rules: Rule[] = [
     ),
   },
   {
+    // "The 2FA code they sent me is 482913": a few words may sit between the
+    // label and the value here, because the value must be a short run of digits.
+    // Allowing that for every label would read "the password reset flow is
+    // broken" as a password.
+    id: "one-time-code",
+    category: "authentication secret",
+    pattern:
+      /\b(?:otp|2fa|mfa|one[ -]?time|verification|login|sms|auth(?:entication)?)[ _-]?(?:code|pin)?\b[^\n.?!]{0,30}?\b(?:is|was|=|:)[ \t]*(\d{4,8})\b/i,
+  },
+  {
     id: "vendor-key-prefix",
     category: "authentication secret",
     pattern:
@@ -151,7 +161,7 @@ const rules: Rule[] = [
   {
     id: "iban",
     category: "payment or bank detail",
-    pattern: /\biban\b\W{0,3}([A-Z]{2}\d{2}[ ]?(?:[A-Z0-9]{2,4}[ ]?){3,8})\b/i,
+    pattern: /\biban\b[ \t]*(?:(?:is|was|=|:|#)[ \t]*)?([A-Z]{2}\d{2}[ ]?(?:[A-Z0-9]{2,4}[ ]?){3,8})\b/i,
   },
   {
     id: "swift-bic",

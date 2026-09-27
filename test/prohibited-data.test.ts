@@ -195,3 +195,34 @@ describe("Prohibited Data gate", () => {
     await app.close();
   });
 });
+
+describe("Prohibited Data detector: shorthand and loose phrasing", () => {
+  test("blocks secrets written the way people type them", async () => {
+    const { detectProhibitedData } = await import("../src/prohibited-data.js");
+    const secrets: Array<[string, string]> = [
+      ["vpn pw: Qx7!mR2#vL9p, keep it handy", "authentication secret"],
+      ["my pwd is hunter2hunter2", "authentication secret"],
+      ["The 2FA code they sent me is 482913, can you log it?", "authentication secret"],
+      ["verification code: 551204", "authentication secret"],
+      ["For my reimbursement, my IBAN is GB82 WEST 1234 5698 7654 32", "payment or bank detail"],
+      ["IBAN: DE89370400440532013000", "payment or bank detail"],
+    ];
+    for (const [text, category] of secrets) {
+      assert.equal(detectProhibitedData(text)?.category, category, text);
+    }
+  });
+
+  test("leaves ordinary work messages alone", async () => {
+    const { detectProhibitedData } = await import("../src/prohibited-data.js");
+    for (const text of [
+      "the password reset flow is broken again",
+      "The login page is slow; the 2FA code step is 3 screens long",
+      "Which ticket tracks the API key rotation work?",
+      "IBAN validation is failing in the test suite",
+      "The SMS code delivery rate was 97% last week",
+      "pw reset emails go out at 9am",
+    ]) {
+      assert.equal(detectProhibitedData(text), null, text);
+    }
+  });
+});
