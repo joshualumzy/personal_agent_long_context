@@ -225,7 +225,7 @@ describe("SME Assistant conversational rendering", () => {
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.equal(page.document.querySelector(".answer-graph"), null);
-    assert.ok(page.document.querySelector(".source-card"), "the evidence itself is still there");
+    assert.ok(page.document.querySelector(".source-row"), "the evidence itself is still there");
   });
 
 });
@@ -503,5 +503,45 @@ describe("SME Assistant home: what needs you", () => {
     after(() => page.close());
     await until(() => page.document.querySelector("#home-done .task"), "the finished work");
     assert.equal(page.document.querySelector("#home-title")!.textContent, "Jax, nothing needs you right now.");
+  });
+});
+
+describe("SME Assistant evidence list", () => {
+  test("lists each source on one line, in plain words, three at first, the rest a click away", async () => {
+    const answer = {
+      answer: "Not the same bug [source:ENG-148].",
+      runId: "cards",
+      toolCalls: [],
+      sources: [
+        { sourceId: "slack_incidents_2026-01-23T10:00:00", sourceType: "slack", title: "#general:", excerpt: "Deepa: offsets are resetting", occurredAt: "2026-01-23T10:00:00.000Z" },
+        { sourceId: "CONF-ENG-150", sourceType: "confluence", title: "Postmortem: P1 incident ENG-148", excerpt: "The offset reset policy was misconfigured.", occurredAt: "2026-01-28T09:00:00.000Z" },
+        { sourceId: "ZD-101", sourceType: "zd_ticket", title: "ZD-101", excerpt: "telemetry ingestion", occurredAt: "2026-02-20T11:51:00.000Z" },
+        { sourceId: "ENG-210", sourceType: "jira", title: "ENG-210", excerpt: "race", occurredAt: "2026-02-24T16:22:00.000Z" },
+        { sourceId: "email_2026-02-25T09:00:00", sourceType: "email", title: "Re: SLA", excerpt: "credit", occurredAt: "2026-02-25T09:00:00.000Z" },
+      ],
+    };
+    const page = await openSmePage({ respond: signedIn((url) => (url.startsWith("/api/v1/agent/chat") ? json(answer) : undefined)) });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "sign-in to finish");
+    const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
+    input.value = "Is ENG-210 the same bug as ENG-148?";
+    page.document.querySelector("#chat-form")!.dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+    await until(() => page.document.querySelectorAll(".source-row").length === 5, "the sources");
+
+    const list = page.document.querySelector(".sources-list")!;
+    assert.match(list.querySelector(".sources-head")!.textContent!, /5 sources/);
+    const rows = [...list.querySelectorAll(".source-row")] as HTMLElement[];
+    assert.deepEqual(rows.map((row) => row.hidden), [false, false, false, true, true], "three at first");
+    assert.equal(rows[0]!.querySelector(".source-kind")!.textContent, "Slack message");
+    assert.equal(rows[0]!.querySelector(".source-title")!.textContent, "#general");
+    assert.equal(rows[0]!.querySelector(".source-meta")!.textContent, "23 Jan 2026");
+    assert.equal(rows[1]!.querySelector(".source-meta")!.textContent, "CONF-ENG-150 · 28 Jan 2026");
+    assert.doesNotMatch(list.textContent!, /slack_incidents_2026|email_2026/, "never a storage id");
+    assert.equal(list.querySelector(".source-excerpt"), null, "the excerpt waits for the source to be opened");
+
+    const more = list.querySelector(".sources-more") as HTMLButtonElement;
+    assert.match(more.textContent!, /Show 2 more/);
+    more.click();
+    assert.deepEqual(rows.map((row) => row.hidden), [false, false, false, false, false]);
   });
 });

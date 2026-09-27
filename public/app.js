@@ -273,7 +273,8 @@ function setAnswerHtml(container, sanitizedHtml) {
         button.type = "button";
         button.className = "inline-citation";
         button.dataset.sourceId = id;
-        button.textContent = id;
+        button.textContent = citationLabel(id);
+        button.title = id;
         pieces.append(button);
       }
       at = match.index + match[0].length;
@@ -943,29 +944,121 @@ function attachAssistantMeta(bubble, data) {
     meta.appendChild(answerGraphPreview(data.question, data.sources));
   }
 
-  // Sources grid
+  // Sources: one line each, three at first; opening one shows its full text.
   if (data.sources && data.sources.length > 0) {
-    const sourcesGrid = document.createElement("div");
-    sourcesGrid.className = "sources-grid";
-
-    for (const source of data.sources) {
-      const card = document.createElement("button");
-      card.type = "button";
-      card.className = "source-card";
-      card.innerHTML = `
-        <span>${escapeHtml(source.sourceType || "source")}</span>
-        <strong>${escapeHtml(source.title || source.sourceId)}</strong>
-        <small>${escapeHtml(source.sourceId)}</small>
-      `;
-      card.addEventListener("click", () => showSource(source.sourceId));
-      sourcesGrid.appendChild(card);
+    const SHOWN = 3;
+    const list = document.createElement("div");
+    // sources-grid kept for what already looks for it.
+    list.className = "sources-list sources-grid";
+    const head = document.createElement("div");
+    head.className = "sources-head";
+    head.textContent = `${data.sources.length} ${data.sources.length === 1 ? "source" : "sources"}`;
+    list.appendChild(head);
+    const rows = data.sources.map((source, index) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "source-row";
+      row.title = source.sourceId;
+      row.hidden = index >= SHOWN;
+      row.innerHTML = `
+        <span class="source-kind">${escapeHtml(sourceKind(source.sourceType))}</span>
+        <span class="source-title">${escapeHtml(sourceTitle(source))}</span>
+        <span class="source-meta">${escapeHtml(sourceMeta(source))}</span>`;
+      row.addEventListener("click", () => showSource(source.sourceId));
+      list.appendChild(row);
+      return row;
+    });
+    if (rows.length > SHOWN) {
+      const more = document.createElement("button");
+      more.type = "button";
+      more.className = "sources-more";
+      more.textContent = `Show ${rows.length - SHOWN} more`;
+      more.addEventListener("click", () => {
+        rows.forEach((row) => { row.hidden = false; });
+        more.remove();
+      });
+      list.appendChild(more);
     }
-    meta.appendChild(sourcesGrid);
+    meta.appendChild(list);
   }
 
   if (meta.children.length > 0) {
     bubble.appendChild(meta);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Evidence cards: what a source is, in plain words
+// ---------------------------------------------------------------------------
+
+const SOURCE_KINDS = {
+  confluence: "Confluence page",
+  slack: "Slack message",
+  email: "Email",
+  jira: "Jira ticket",
+  zd_ticket: "Support ticket",
+  zoom_transcript: "Meeting transcript",
+  pr: "Pull request",
+  sf_opp: "Sales opportunity",
+  sf_account: "Customer account",
+  datadog_alert: "Alert",
+  invoice: "Invoice",
+  nps_survey: "Customer survey",
+};
+
+/** What a citation chip reads: the key people say (ZD-101), or for a stored
+ * message, just what it is. */
+function citationLabel(id) {
+  if (/^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*-\d+$/.test(id)) return id;
+  const prefix = id.split("_")[0];
+  const short = { slack: "Slack", email: "Email", zoom: "Meeting", datadog: "Alert" }[prefix];
+  return short ?? (id.length > 18 ? `${id.slice(0, 17)}\u2026` : id);
+}
+
+function sourceKind(type) {
+  if (SOURCE_KINDS[type]) return SOURCE_KINDS[type];
+  const words = String(type || "source").replace(/_/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+function sourceTitle(source) {
+  return String(source.title || source.sourceId || "").replace(/[\s:]+$/, "");
+}
+
+/** The line the source holds, as plain text: no Markdown, no field names, and
+ * not opening by repeating the title. */
+function sourceExcerpt(source, title) {
+  // Drop what is page furniture rather than content: headings, a page's
+  // ID/Author/Date header, and a table's divider row.
+  const lines = String(source.excerpt || "").split(/\n+/).filter((line) =>
+    !/^\s*#/.test(line) &&
+    !/^\s*\|?[\s:|-]+\|?\s*$/.test(line) &&
+    !/^(id|author|date|owner|status|tags?|created|updated)\s*:/i.test(line.replace(/^[\s*_>|-]+/, "").replace(/\*\*/g, "")));
+  let text = lines.join(" ")
+    .replace(/^[a-z_]+:\s*/, "")
+    .replace(/[#*_`>|]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const plainTitle = title.replace(/\s+/g, " ").trim();
+  if (plainTitle && text.toLowerCase().startsWith(plainTitle.toLowerCase())) {
+    text = text.slice(plainTitle.length).replace(/^[\s:.,-]+/, "");
+  }
+  text = text.charAt(0).toUpperCase() + text.slice(1);
+  return text.length > 140 ? `${text.slice(0, 139).trimEnd()}\u2026` : text;
+}
+
+/** A key people say out loud (ENG-148, CONF-ENG-150), then the date. A
+ * storage id such as slack_incidents_2026-01-23T10:00:00 is never shown. */
+function sourceMeta(source) {
+  const parts = [];
+  if (/^[A-Z][A-Z0-9]*(-[A-Z0-9]+)*-\d+$/.test(source.sourceId || "") && source.sourceId !== sourceTitle(source)) {
+    parts.push(source.sourceId);
+  }
+  const when = source.occurredAt ? new Date(source.occurredAt) : null;
+  if (when && !Number.isNaN(when.getTime())) {
+    parts.push(when.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }));
+  }
+  return parts.join(" \u00b7 ");
 }
 
 // ---------------------------------------------------------------------------

@@ -2065,3 +2065,31 @@ body.has-pinned .header-action-label { display: none; }
 .ag-query { fill: var(--accent); }
 .ag-edge { stroke: #d9d5f6; stroke-opacity: 1; }
 .ag-edge.matches { stroke: #b9b2ee; stroke-opacity: 1; stroke-dasharray: 3 3; }
+
+/* Citations, as in the design: the key in small mono indigo on a pale violet chip. */
+.inline-citation {
+  display: inline; font: 500 11px/1 var(--f-mono); color: var(--accent); background: var(--accent-soft);
+  border: 0; border-radius: 4px; padding: 2px 5px; margin: 0 1px 0 3px; vertical-align: 1px; cursor: pointer; white-space: nowrap;
+}
+.inline-citation:hover { background: #e4e0fa; color: var(--accent-strong); }
+
+/* Evidence cards: what it is, its title, the line it holds, then key and date. */
+.source-card { display: grid; gap: 3px; align-content: start; text-align: left; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.source-card:hover { border-color: var(--accent); }
+.source-card .source-kind { font: 500 11px/1.3 var(--f-ui); letter-spacing: 0; text-transform: none; color: var(--muted); }
+.source-card .source-title { font: 600 13px/1.35 var(--f-ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-card .source-excerpt { font: 400 12.5px/1.45 var(--f-ui); color: var(--ink-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.source-card .source-meta { font: 400 11px/1.3 var(--f-mono); color: var(--faint); }
+.source-card .source-kind, .source-card .source-excerpt { text-transform: none; letter-spacing: 0; }
+.source-card .source-excerpt { font-family: var(--f-ui); }
+
+/* Sources: a quiet list under the answer, one line each. */
+.sources-list { display: block; margin-top: 10px; border-top: 1px solid var(--line-2); padding-top: 8px; }
+.sources-head { font: 500 12px/1.4 var(--f-ui); color: var(--muted); margin: 0 0 4px; }
+.source-row { display: flex; align-items: baseline; gap: 10px; width: 100%; padding: 5px 6px; margin: 0 -6px; border: 0; border-radius: 8px; background: none; text-align: left; cursor: pointer; font: inherit; color: inherit; }
+.source-row:hover { background: var(--hover); }
+.source-row .source-kind { flex: none; width: 118px; font: 400 12px/1.4 var(--f-ui); color: var(--muted); text-transform: none; letter-spacing: 0; }
+.source-row .source-title { flex: 1; min-width: 0; font: 500 13px/1.4 var(--f-ui); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.source-row .source-meta { flex: none; font: 400 11px/1.4 var(--f-mono); color: var(--faint); }
+.sources-more { border: 0; background: none; padding: 4px 0 0; font: 500 12px/1.4 var(--f-ui); color: var(--accent); cursor: pointer; }
+.sources-more:hover { text-decoration: underline; }
