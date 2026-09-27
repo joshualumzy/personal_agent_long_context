@@ -183,6 +183,7 @@ export interface CompanyQuestion {
 export interface CompanyAnswer {
   answer: string;
   sources: Evidence[];
+  retrievedSources?: Evidence[];
   runId: string;
   toolCalls: Array<{ name: string; arguments: unknown }>;
   /** Live panels to show under the answer, in the order the model asked. */

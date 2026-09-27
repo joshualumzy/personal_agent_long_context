@@ -110,9 +110,31 @@ function evidence(row: EvidenceRow): Evidence {
   };
 }
 
-/** Reciprocal-rank fusion gives exact keyword matches and semantic matches equal input weight. */
-function fuseEvidence(keyword: Evidence[], semantic: Evidence[], limit: number): Evidence[] {
+/**
+ * Extracts potential explicit artifact identifiers (e.g. Jira keys, Confluence docs, PRs, Slack timestamps)
+ * from a search query to guarantee exact lookup precedence.
+ */
+function extractPotentialSourceIds(query: string): string[] {
+  const matches = query.match(
+    /\b(?:[A-Za-z0-9]+-[A-Za-z0-9_.-]+|[a-z0-9]+_[A-Za-z0-9_.:-]+)\b/gi,
+  );
+  if (!matches) return [];
+  const set = new Set<string>();
+  for (const match of matches) {
+    set.add(match);
+    set.add(match.toUpperCase());
+    set.add(match.toLowerCase());
+  }
+  return [...set];
+}
+
+/** Reciprocal-rank fusion gives exact keyword matches and semantic matches equal input weight, prioritizing exact artifact IDs. */
+function fuseEvidence(keyword: Evidence[], semantic: Evidence[], limit: number, exact: Evidence[] = []): Evidence[] {
   const ranked = new Map<string, { item: Evidence; score: number }>();
+  exact.forEach((item, index) => {
+    const score = 2.0 - index * 0.01;
+    ranked.set(item.sourceId, { item: { ...item, score }, score });
+  });
   for (const list of [keyword, semantic]) {
     list.forEach((item, index) => {
       const current = ranked.get(item.sourceId);
@@ -250,19 +272,26 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
 
   async search(query: string, limit: number): Promise<Evidence[]> {
     const normalizedLimit = Math.min(Math.max(limit, 1), 12);
-    const keyword = this.keywordSearch(query, normalizedLimit);
-    if (!this.embeddings) return keyword;
+    const potentialIds = extractPotentialSourceIds(query);
+    const exactPromise = potentialIds.length > 0 ? this.sources(potentialIds) : Promise.resolve([]);
+    const keywordPromise = this.keywordSearch(query, normalizedLimit);
+    if (!this.embeddings) {
+      const [keywordResult, exactResult] = await Promise.all([keywordPromise, exactPromise]);
+      return fuseEvidence(keywordResult, [], normalizedLimit, exactResult);
+    }
 
     try {
-      const [keywordResult, vectors] = await Promise.all([
-        keyword,
+      const [keywordResult, exactResult, vectors] = await Promise.all([
+        keywordPromise,
+        exactPromise,
         this.embeddings.embed([query], "query"),
       ]);
       const semanticResult = await this.semanticSearch(vectors[0]!, normalizedLimit);
-      return fuseEvidence(keywordResult, semanticResult, normalizedLimit);
+      return fuseEvidence(keywordResult, semanticResult, normalizedLimit, exactResult);
     } catch {
       // Keyword retrieval remains available when a hosted embedding provider is unavailable.
-      return keyword;
+      const [keywordResult, exactResult] = await Promise.all([keywordPromise, exactPromise]);
+      return fuseEvidence(keywordResult, [], normalizedLimit, exactResult);
     }
   }
 
@@ -271,13 +300,20 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
       `WITH requested AS (SELECT websearch_to_tsquery('english', $1) AS query),
        ranked AS (
          SELECT c.source_id, c.content,
-                ts_rank_cd(c.search_vector, requested.query) AS score,
+                ts_rank_cd(
+                  c.search_vector || to_tsvector('english', coalesce(d.title, '') || ' ' || coalesce(d.source_type, '') || ' ' || coalesce(d.source_id, '') || ' ' || coalesce(d.actors::text, '')),
+                  requested.query
+                ) AS score,
                 row_number() OVER (
                   PARTITION BY c.source_id
-                  ORDER BY ts_rank_cd(c.search_vector, requested.query) DESC
+                  ORDER BY ts_rank_cd(
+                    c.search_vector || to_tsvector('english', coalesce(d.title, '') || ' ' || coalesce(d.source_type, '') || ' ' || coalesce(d.source_id, '') || ' ' || coalesce(d.actors::text, '')),
+                    requested.query
+                  ) DESC
                 ) AS source_rank
-         FROM document_chunks c, requested
-         WHERE c.search_vector @@ requested.query
+         FROM document_chunks c
+         JOIN source_documents d USING (source_id), requested
+         WHERE (c.search_vector || to_tsvector('english', coalesce(d.title, '') || ' ' || coalesce(d.source_type, '') || ' ' || coalesce(d.source_id, '') || ' ' || coalesce(d.actors::text, ''))) @@ requested.query
        )
        SELECT d.source_id, d.source_type, d.title,
               ranked.content AS excerpt, d.occurred_at, d.department, ranked.score
