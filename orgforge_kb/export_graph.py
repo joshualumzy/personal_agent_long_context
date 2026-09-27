@@ -23,9 +23,11 @@ Output is a single JSON object::
      "edges": [{"source", "target", "type", ...props}],
      "meta":  {...how this slice was chosen...}}
 
-Node ids are the natural keys already used in the database: a jira/PR/
-confluence source_id, a domain's registry key, an incident's jira id, or a
-resolved person's canonical name. The shape feeds a force-directed front end
+Node ids are ``node_type:ref_key`` — the same identity /api/v1/graph uses —
+and each node also carries its bare ``ref_key``: a jira/PR/confluence
+source_id, a domain's registry key, an incident's jira id, or a resolved
+person's canonical name. The bare key alone is not unique: an incident's event
+node and its jira item are both "ENG-112". The shape feeds a force-directed front end
 (vis.js, D3, Cytoscape) directly, and is a reasonable interchange format for
 loading the same slice into a graph database.
 
@@ -62,13 +64,17 @@ def seed_slice(cursor, seed: str, depth: int) -> list[int]:
     node_type is 'event', a confluence page's is 'document' — so this looks it
     up by ref_key alone. Cycle-guarded by carrying the visited path, which
     matters once escalated_via can point back toward where a chain started.
+
+    A typed seed (``event:ENG-112``) starts from that one node; a bare key
+    starts from every node sharing it.
     """
+    node_type, ref_key = parse_node_id(seed)
     cursor.execute(
         """
         WITH RECURSIVE chain AS (
             SELECT node_id, 0 AS depth, ARRAY[node_id] AS path
             FROM graph_nodes
-            WHERE ref_key = %s
+            WHERE ref_key = %s AND (%s::text IS NULL OR node_type = %s)
           UNION ALL
             SELECT e.dst_node_id, c.depth + 1, c.path || e.dst_node_id
             FROM chain c
@@ -78,7 +84,7 @@ def seed_slice(cursor, seed: str, depth: int) -> list[int]:
         )
         SELECT DISTINCT node_id FROM chain
         """,
-        (seed, depth),
+        (ref_key, node_type, node_type, depth),
     )
     return [row[0] for row in cursor.fetchall()]
 
@@ -138,6 +144,23 @@ def attached_people(cursor, node_ids: list[int]) -> list[int]:
     return [row[0] for row in cursor.fetchall()]
 
 
+def node_id_for(node_type: str, ref_key: str) -> str:
+    """A node's identity: type and natural key together, as graphNodeId in
+    src/company-domain.ts builds it."""
+    return f"{node_type}:{ref_key}"
+
+
+NODE_TYPES = ("person", "organization", "item", "event", "document")
+
+
+def parse_node_id(value: str) -> tuple[Optional[str], str]:
+    """``type:ref_key`` -> (type, ref_key); a bare key -> (None, key)."""
+    prefix, colon, rest = value.partition(":")
+    if colon and prefix in NODE_TYPES:
+        return prefix, rest
+    return None, value
+
+
 def fetch_nodes(cursor, node_ids: list[int]) -> list[dict[str, Any]]:
     if not node_ids:
         return []
@@ -150,7 +173,8 @@ def fetch_nodes(cursor, node_ids: list[int]) -> list[dict[str, Any]]:
     )
     nodes = []
     for _, node_type, ref_key, label, props in cursor.fetchall():
-        node = {"id": ref_key, "type": node_type, "label": label}
+        node = {"id": node_id_for(node_type, ref_key), "ref_key": ref_key,
+                "type": node_type, "label": label}
         node.update(props or {})
         nodes.append(node)
     return nodes
@@ -166,7 +190,8 @@ def fetch_edges(cursor, node_ids: list[int]) -> list[dict[str, Any]]:
         return []
     cursor.execute(
         """
-        SELECT s.ref_key, t.ref_key, e.edge_type, e.weight, e.props
+        SELECT s.node_type, s.ref_key, t.node_type, t.ref_key,
+               e.edge_type, e.weight, e.props
         FROM graph_edges e
         JOIN graph_nodes s ON s.node_id = e.src_node_id
         JOIN graph_nodes t ON t.node_id = e.dst_node_id
@@ -175,8 +200,11 @@ def fetch_edges(cursor, node_ids: list[int]) -> list[dict[str, Any]]:
         (node_ids, node_ids),
     )
     edges = []
-    for source, target, edge_type, weight, props in cursor.fetchall():
-        edge = {"source": source, "target": target, "type": edge_type}
+    for (source_type, source_key, target_type, target_key,
+         edge_type, weight, props) in cursor.fetchall():
+        edge = {"source": node_id_for(source_type, source_key),
+                "target": node_id_for(target_type, target_key),
+                "type": edge_type}
         if weight is not None:
             edge["weight"] = weight
         edge.update(props or {})

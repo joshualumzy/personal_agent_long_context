@@ -18,11 +18,47 @@ export interface Evidence {
   score?: number;
 }
 
-/** One node of a graph slice. `id` is the natural key: a source id, a domain
- * key, or a resolved person name. */
+export const GRAPH_NODE_TYPES = ["person", "organization", "item", "event", "document"] as const;
+export type GraphNodeType = (typeof GRAPH_NODE_TYPES)[number];
+
+/**
+ * A graph node's identity on the wire: its type and its natural key together.
+ *
+ * The natural key alone is not unique. graph_nodes is keyed on
+ * (node_type, ref_key), and the corpus gives the same key to different
+ * things on purpose: an incident's event node and the jira ticket it was
+ * tracked in are both "ENG-112", and a Zendesk ticket's lifecycle event and
+ * the ticket itself are both "ZD-101". Using ref_key as the id attached edges
+ * to the wrong one of each pair and let the view's merge drop the other.
+ */
+export function graphNodeId(type: GraphNodeType, refKey: string): string {
+  return `${type}:${refKey}`;
+}
+
+/**
+ * The inverse of graphNodeId, tolerant of a bare natural key ("ENG-112"), which
+ * is what a search hit or a hand-typed seed gives. A bare key has no type, and
+ * matches every node sharing that key. Only a known type counts as a prefix,
+ * so a key that happens to contain a colon is not misread.
+ */
+export function parseGraphNodeId(id: string): { type?: GraphNodeType; refKey: string } {
+  const colon = id.indexOf(":");
+  if (colon > 0) {
+    const prefix = id.slice(0, colon);
+    if ((GRAPH_NODE_TYPES as readonly string[]).includes(prefix)) {
+      return { type: prefix as GraphNodeType, refKey: id.slice(colon + 1) };
+    }
+  }
+  return { refKey: id };
+}
+
+/** One node of a graph slice. `id` is `type:refKey` (see graphNodeId); `refKey`
+ * is the natural key alone: a source id, a domain key, or a resolved person
+ * name. */
 export interface GraphNode {
   id: string;
-  type: "person" | "organization" | "item" | "event" | "document";
+  refKey: string;
+  type: GraphNodeType;
   subtype?: string;
   label: string;
   sourceType?: string;
@@ -40,6 +76,7 @@ export interface GraphNode {
   props?: Record<string, unknown>;
 }
 
+/** source and target are GraphNode ids (`type:refKey`). */
 export interface GraphEdge {
   source: string;
   target: string;
@@ -55,6 +92,8 @@ export interface GraphSlice {
 
 /** How to choose a slice: a causal chain from one document, or a filter. */
 export interface GraphSliceRequest {
+  /** A node id (`type:refKey`), or a bare natural key matching every node
+   * that shares it. */
   seed?: string;
   depth?: number;
   category?: string;

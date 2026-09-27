@@ -7,11 +7,16 @@ import type {
   GraphNode,
   GraphSlice,
   GraphSliceRequest,
+  GraphNodeType,
 } from "../company-domain.js";
+import { GRAPH_NODE_TYPES, graphNodeId, parseGraphNodeId } from "../company-domain.js";
 import type { EmbeddingProvider } from "../embeddings.js";
 import { pgVector } from "../embeddings.js";
 
 type GraphNodeRow = {
+  /** BIGINT, which pg returns as a string. Used only inside the adapter: the
+   * wire identity is graphNodeId(node_type, ref_key). */
+  node_id: string;
   ref_key: string;
   node_type: string;
   node_subtype: string | null;
@@ -19,19 +24,23 @@ type GraphNodeRow = {
   props: Record<string, unknown> | null;
 };
 
-const GRAPH_NODE_TYPES = ["person", "organization", "item", "event", "document"] as const;
-
-function isGraphNodeType(value: string): value is GraphNode["type"] {
+function isGraphNodeType(value: string): value is GraphNodeType {
   return (GRAPH_NODE_TYPES as readonly string[]).includes(value);
+}
+
+function wireNodeType(nodeType: string): GraphNodeType {
+  return isGraphNodeType(nodeType) ? nodeType : "item";
 }
 
 /** graph_nodes.props is denormalized precisely so this needs no extra query. */
 function graphNode(row: GraphNodeRow): GraphNode {
   const props = row.props ?? {};
   const day = props.simulation_day;
+  const type = wireNodeType(row.node_type);
   return {
-    id: row.ref_key,
-    type: isGraphNodeType(row.node_type) ? row.node_type : "item",
+    id: graphNodeId(type, row.ref_key),
+    refKey: row.ref_key,
+    type,
     label: row.label,
     ...(row.node_subtype ? { subtype: row.node_subtype } : {}),
     ...(typeof props.source_type === "string" ? { sourceType: props.source_type } : {}),
@@ -287,35 +296,44 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
   async graphSlice(request: GraphSliceRequest): Promise<GraphSlice> {
     const limit = Math.min(Math.max(request.limit ?? 80, 1), 150);
 
-    const documents = request.seed
+    const chosen = request.seed
       ? await this.causalChainNodes(request.seed, request.depth ?? 3, limit)
       : request.edgeTypes && request.edgeTypes.length > 0
         ? await this.nodesByEdgeTypes(request.edgeTypes, limit)
         : await this.filteredNodes(request, limit);
 
-    if (documents.length === 0) return { nodes: [], edges: [], truncated: false };
+    if (chosen.length === 0) return { nodes: [], edges: [], truncated: false };
 
-    const keys = documents.map((node) => node.id);
     const actors = request.includeActors
-      ? await this.actorsOf(keys, limit)
+      ? await this.actorsOf(chosen.map((row) => row.node_id), limit)
       : [];
 
-    const nodes = [...documents, ...actors];
-    const edges = await this.edgesWithin(nodes.map((node) => node.id), request.edgeTypes);
-    return { nodes, edges, truncated: documents.length >= limit };
+    // Deduplicated by node_id, the table's own key: an actor can already be
+    // in the chosen set, and a bare-key seed can reach the same node twice.
+    const rows = new Map<string, GraphNodeRow>();
+    for (const row of [...chosen, ...actors]) rows.set(row.node_id, row);
+
+    const edges = await this.edgesWithin([...rows.keys()], request.edgeTypes);
+    return {
+      nodes: [...rows.values()].map(graphNode),
+      edges,
+      truncated: chosen.length >= limit,
+    };
   }
 
   /** Nodes reachable from a seed along 'produced'/'escalated_via', depth- and
-   * cycle-bounded. The seed is looked up by ref_key alone — an incident's seed
-   * is an 'event' node, a confluence page's is a 'document' — so this does not
-   * assume what kind of node the caller is starting from. */
+   * cycle-bounded. The seed is a node id (`type:refKey`), which names exactly
+   * one node, or a bare natural key, which starts from every node sharing it —
+   * an incident's event and its jira item are both "ENG-112", and a search
+   * hit only knows the key. */
   private async causalChainNodes(seed: string, depth: number, limit: number) {
     const bounded = Math.min(Math.max(depth, 1), 6);
+    const { type, refKey } = parseGraphNodeId(seed);
     const result = await this.pool.query<GraphNodeRow>(
       `WITH RECURSIVE chain AS (
            SELECT node_id, 0 AS depth, ARRAY[node_id] AS path
            FROM graph_nodes
-           WHERE ref_key = $1
+           WHERE ref_key = $1 AND ($4::text IS NULL OR node_type = $4)
          UNION ALL
            SELECT e.dst_node_id, c.depth + 1, c.path || e.dst_node_id
            FROM chain c
@@ -323,13 +341,14 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
                               AND e.edge_type IN ('produced', 'escalated_via')
            WHERE c.depth < $2 AND NOT e.dst_node_id = ANY(c.path)
        )
-       SELECT DISTINCT n.ref_key, n.node_type, n.node_subtype, n.label, n.props
+       SELECT DISTINCT n.node_id::text AS node_id, n.ref_key, n.node_type,
+              n.node_subtype, n.label, n.props
        FROM chain c JOIN graph_nodes n ON n.node_id = c.node_id
-       ORDER BY n.ref_key
+       ORDER BY n.ref_key, n.node_type
        LIMIT $3`,
-      [seed, bounded, limit],
+      [refKey, bounded, limit, type ?? null],
     );
-    return result.rows.map(graphNode);
+    return result.rows;
   }
 
   private async filteredNodes(request: GraphSliceRequest, limit: number) {
@@ -375,14 +394,14 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
       // Ordered by when it happened rather than by props->>'simulation_day' —
       // nothing in graph_nodes carries that key, so the old ORDER BY was
       // ref_key alphabetical in disguise.
-      `SELECT ref_key, node_type, node_subtype, label, props
+      `SELECT node_id::text AS node_id, ref_key, node_type, node_subtype, label, props
        FROM graph_nodes
        WHERE ${conditions.join(" AND ")}
-       ORDER BY (props->>'occurred_at') NULLS LAST, ref_key
+       ORDER BY (props->>'occurred_at') NULLS LAST, ref_key, node_type
        LIMIT $${parameters.length}`,
       parameters,
     );
-    return result.rows.map(graphNode);
+    return result.rows;
   }
 
   /**
@@ -406,27 +425,28 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
            ORDER BY src_node_id, dst_node_id
            LIMIT $2
        )
-       SELECT DISTINCT n.ref_key, n.node_type, n.node_subtype, n.label, n.props
+       SELECT DISTINCT n.node_id::text AS node_id, n.ref_key, n.node_type,
+              n.node_subtype, n.label, n.props
        FROM chosen c
        JOIN graph_nodes n ON n.node_id IN (c.src_node_id, c.dst_node_id)
-       ORDER BY n.ref_key`,
+       ORDER BY n.ref_key, n.node_type`,
       [edgeTypes, limit],
     );
-    return result.rows.map(graphNode);
+    return result.rows;
   }
 
-  private async actorsOf(nodeKeys: string[], limit: number) {
+  private async actorsOf(nodeIds: string[], limit: number) {
     const result = await this.pool.query<GraphNodeRow>(
-      `SELECT DISTINCT a.ref_key, a.node_type, a.node_subtype, a.label, a.props
-       FROM graph_nodes d
-       JOIN graph_edges e ON e.src_node_id = d.node_id AND e.edge_type = 'involves'
+      `SELECT DISTINCT a.node_id::text AS node_id, a.ref_key, a.node_type,
+              a.node_subtype, a.label, a.props
+       FROM graph_edges e
        JOIN graph_nodes a ON a.node_id = e.dst_node_id AND a.node_type = 'person'
-       WHERE d.ref_key = ANY($1::text[])
+       WHERE e.src_node_id = ANY($1::bigint[]) AND e.edge_type = 'involves'
        ORDER BY a.ref_key
        LIMIT $2`,
-      [nodeKeys, limit],
+      [nodeIds, limit],
     );
-    return result.rows.map(graphNode);
+    return result.rows;
   }
 
   /** Only edges with both ends inside the slice, so the view never dangles
@@ -434,25 +454,35 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
    * person layer's nodes are still only reachable by 'involves', but two of
    * them could also share an unrelated edge type, which the tab should not
    * show. */
-  private async edgesWithin(keys: string[], edgeTypes?: string[]): Promise<GraphEdge[]> {
-    if (keys.length === 0) return [];
-    const parameters: unknown[] = [keys];
+  private async edgesWithin(nodeIds: string[], edgeTypes?: string[]): Promise<GraphEdge[]> {
+    if (nodeIds.length === 0) return [];
+    const parameters: unknown[] = [nodeIds];
     let typeFilter = "";
     if (edgeTypes && edgeTypes.length > 0) {
       parameters.push(edgeTypes);
       typeFilter = ` AND e.edge_type = ANY($${parameters.length}::text[])`;
     }
-    const result = await this.pool.query<{ source: string; target: string; edge_type: string }>(
-      `SELECT s.ref_key AS source, t.ref_key AS target, e.edge_type
+    // Matched on node_id, never on ref_key: a key shared by two nodes would
+    // otherwise pull in an edge belonging to whichever one is not in the slice.
+    const result = await this.pool.query<{
+      source_type: string;
+      source_key: string;
+      target_type: string;
+      target_key: string;
+      edge_type: string;
+    }>(
+      `SELECT s.node_type AS source_type, s.ref_key AS source_key,
+              t.node_type AS target_type, t.ref_key AS target_key, e.edge_type
        FROM graph_edges e
        JOIN graph_nodes s ON s.node_id = e.src_node_id
        JOIN graph_nodes t ON t.node_id = e.dst_node_id
-       WHERE s.ref_key = ANY($1::text[]) AND t.ref_key = ANY($1::text[])${typeFilter}`,
+       WHERE e.src_node_id = ANY($1::bigint[])
+         AND e.dst_node_id = ANY($1::bigint[])${typeFilter}`,
       parameters,
     );
     return result.rows.map((row) => ({
-      source: row.source,
-      target: row.target,
+      source: graphNodeId(wireNodeType(row.source_type), row.source_key),
+      target: graphNodeId(wireNodeType(row.target_type), row.target_key),
       type: row.edge_type,
     }));
   }

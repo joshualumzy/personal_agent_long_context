@@ -13,19 +13,20 @@ import type {
   GraphSlice,
   GraphSliceRequest,
 } from "../src/company-domain.js";
+import { graphNodeId, parseGraphNodeId } from "../src/company-domain.js";
 
 /** One artifact, one event that produced it, one person, and a second artifact. */
 const slice: GraphSlice = {
   nodes: [
-    { id: "CONF-ENG-022", type: "document", label: "Design: vendor audit", category: "artifact", sourceType: "confluence", department: "Engineering_Backend" },
-    { id: "EVT-2-sprint_planned-9", type: "event", label: "Sprint Planned", category: "sim_event", sourceType: "sprint_planned" },
-    { id: "HR-101", type: "item", label: "Conduct vendor audit", category: "artifact", sourceType: "jira", isIncident: true },
-    { id: "Jax", type: "person", label: "Jax" },
+    { id: "document:CONF-ENG-022", refKey: "CONF-ENG-022", type: "document", label: "Design: vendor audit", category: "artifact", sourceType: "confluence", department: "Engineering_Backend" },
+    { id: "event:EVT-2-sprint_planned-9", refKey: "EVT-2-sprint_planned-9", type: "event", label: "Sprint Planned", category: "sim_event", sourceType: "sprint_planned" },
+    { id: "item:HR-101", refKey: "HR-101", type: "item", label: "Conduct vendor audit", category: "artifact", sourceType: "jira", isIncident: true },
+    { id: "person:Jax", refKey: "Jax", type: "person", label: "Jax" },
   ],
   edges: [
-    { source: "EVT-2-sprint_planned-9", target: "CONF-ENG-022", type: "produced" },
-    { source: "EVT-2-sprint_planned-9", target: "HR-101", type: "produced" },
-    { source: "CONF-ENG-022", target: "Jax", type: "involves" },
+    { source: "event:EVT-2-sprint_planned-9", target: "document:CONF-ENG-022", type: "produced" },
+    { source: "event:EVT-2-sprint_planned-9", target: "item:HR-101", type: "produced" },
+    { source: "document:CONF-ENG-022", target: "person:Jax", type: "involves" },
   ],
   truncated: false,
 };
@@ -157,10 +158,10 @@ describe("the company graph", () => {
     // merge and a replacement would look identical.
     const expansion: GraphSlice = {
       nodes: [
-        { id: "CONF-ENG-022", type: "document", label: "Design: vendor audit" },
-        { id: "NEW-1", type: "item", label: "Newly reached ticket" },
+        { id: "document:CONF-ENG-022", refKey: "CONF-ENG-022", type: "document", label: "Design: vendor audit" },
+        { id: "item:NEW-1", refKey: "NEW-1", type: "item", label: "Newly reached ticket" },
       ],
-      edges: [{ source: "CONF-ENG-022", target: "NEW-1", type: "produced" }],
+      edges: [{ source: "document:CONF-ENG-022", target: "item:NEW-1", type: "produced" }],
       truncated: false,
     };
 
@@ -188,14 +189,14 @@ describe("the company graph", () => {
     // Expanding keeps everything already on screen and adds what it reached.
     const before = [...document.querySelectorAll(".node")]
       .map((node) => node.getAttribute("data-id"));
-    document.querySelector('.node[data-id="CONF-ENG-022"]')!
+    document.querySelector('.node[data-id="document:CONF-ENG-022"]')!
       .dispatchEvent(new window.Event("click"));
     await new Promise((resolve) => setTimeout(resolve, 40));
 
     const after = [...document.querySelectorAll(".node")]
       .map((node) => node.getAttribute("data-id"));
     assert.equal(after.length, 5, "the expansion should add a node, not replace the slice");
-    assert.ok(after.includes("NEW-1"), "the newly reached node should be drawn");
+    assert.ok(after.includes("item:NEW-1"), "the newly reached node should be drawn");
     for (const id of before) {
       assert.ok(after.includes(id), `${id} should survive an expansion`);
     }
@@ -204,6 +205,70 @@ describe("the company graph", () => {
     document.querySelector("#restore")!.dispatchEvent(new window.Event("click"));
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(document.querySelectorAll(".node").length, 4, "restored to the first draw");
+
+    window.close();
+  });
+
+  test("a node id carries its type, because the natural key alone is shared", () => {
+    assert.equal(graphNodeId("event", "ENG-112"), "event:ENG-112");
+    assert.deepEqual(parseGraphNodeId("event:ENG-112"), { type: "event", refKey: "ENG-112" });
+    // A bare key is what a search hit or a typed seed gives: no type, and it
+    // matches every node sharing the key.
+    assert.deepEqual(parseGraphNodeId("ENG-112"), { refKey: "ENG-112" });
+    // Only a known type is a prefix, so a key containing a colon survives.
+    assert.deepEqual(parseGraphNodeId("Standup: Backend"), { refKey: "Standup: Backend" });
+    assert.deepEqual(parseGraphNodeId("person:Ana: Ops"), { type: "person", refKey: "Ana: Ops" });
+  });
+
+  test("an incident and the jira ticket sharing its key are two nodes, each with its own edges", async () => {
+    // The corpus keys an incident's event node and its jira item identically
+    // ("ENG-112"). Keyed by that alone, the view kept one and attached both
+    // nodes' edges to it.
+    const shared: GraphSlice = {
+      nodes: [
+        { id: "event:ENG-112", refKey: "ENG-112", type: "event", subtype: "incident", label: "TitanDB latency incident" },
+        { id: "item:ENG-112", refKey: "ENG-112", type: "item", subtype: "jira", label: "Investigate TitanDB latency" },
+        { id: "document:CONF-ENG-040", refKey: "CONF-ENG-040", type: "document", label: "Postmortem: TitanDB latency" },
+        { id: "event:EVT-7-ticket_progress-3", refKey: "EVT-7-ticket_progress-3", type: "event", label: "Ticket progress" },
+      ],
+      edges: [
+        { source: "event:ENG-112", target: "document:CONF-ENG-040", type: "produced" },
+        { source: "event:EVT-7-ticket_progress-3", target: "item:ENG-112", type: "produced" },
+      ],
+      truncated: false,
+    };
+
+    const { base } = await start(knowledgeWithGraph([]));
+    const [html, script] = await Promise.all([
+      fetch(`${base}/graph`).then((response) => response.text()),
+      fetch(`${base}/graph/app.js`).then((response) => response.text()),
+    ]);
+    const dom = new JSDOM(html, { url: `${base}/graph`, runScripts: "outside-only" });
+    const { window } = dom;
+    Object.defineProperty(window, "fetch", {
+      value: async () => new Response(JSON.stringify(shared), { status: 200 }),
+      configurable: true,
+    });
+    window.eval(script);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+
+    const document = window.document;
+    const ids = [...document.querySelectorAll(".node")].map((node) => node.getAttribute("data-id"));
+    assert.equal(ids.length, 4);
+    assert.ok(ids.includes("event:ENG-112") && ids.includes("item:ENG-112"));
+
+    // Each keeps its own relationship, named by label in the table.
+    const rows = [...document.querySelectorAll("#edge-rows tr")].map((row) => row.textContent!);
+    assert.ok(rows.some((row) => /TitanDB latency incident.*Postmortem/.test(row)));
+    assert.ok(rows.some((row) => /Ticket progress.*Investigate TitanDB latency/.test(row)));
+
+    // The details show the natural key a person would cite, not the prefixed id.
+    document.querySelector('.node[data-id="item:ENG-112"]')!
+      .dispatchEvent(new window.Event("click"));
+    const details = document.querySelector("#details")!.textContent!;
+    assert.match(details, /ENG-112/);
+    assert.doesNotMatch(details, /item:ENG-112/);
+    await new Promise((resolve) => setTimeout(resolve, 30));
 
     window.close();
   });

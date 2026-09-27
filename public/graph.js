@@ -111,8 +111,23 @@ function seedNumber(text) {
   return (value >>> 0) / 4294967295;
 }
 
+/**
+ * What to call a node when it has no label. A recorded node's id is
+ * `type:refKey` (the natural key is shared across types — an incident and its
+ * jira ticket are both "ENG-112" — so the type has to be part of the
+ * identity); a person reads the natural key, not the prefixed id. Emergent
+ * nodes have no refKey and fall back to their own id.
+ */
+function naturalKey(node) {
+  return node.refKey ?? node.id;
+}
+
+function nameOf(node) {
+  return node.label || naturalKey(node);
+}
+
 function shortLabel(node) {
-  const label = node.label || node.id;
+  const label = nameOf(node);
   return label.length > 22 ? `${label.slice(0, 21)}…` : label;
 }
 
@@ -413,7 +428,7 @@ function drawPicture() {
       transform: `translate(${point.x.toFixed(1)} ${point.y.toFixed(1)})`,
       tabindex: "0",
       role: "button",
-      "aria-label": `${node.label || node.id}. ${describeKind(node)}.`,
+      "aria-label": `${nameOf(node)}. ${describeKind(node)}.`,
       "data-id": node.id,
     });
     group.append(
@@ -456,10 +471,10 @@ function drawTable() {
     const to = byId.get(edge.target);
     return h(
       "tr", {},
-      h("td", {}, from?.label || edge.source),
+      h("td", {}, from ? nameOf(from) : edge.source),
       h("td", { class: "kind" }, from ? describeKind(from) : "—"),
       h("td", { class: "kind" }, edge.type.replace(/_/g, " ")),
-      h("td", {}, to?.label || edge.target),
+      h("td", {}, to ? nameOf(to) : edge.target),
     );
   });
   $("#edge-rows").replaceChildren(...rows);
@@ -489,7 +504,7 @@ function select(id) {
 
   const facts = [["Kind", describeKind(node)]];
   // A cognee node id is a uuid, which tells a reader nothing; a source id does.
-  if (state.source === "recorded") facts.push(["Identifier", node.id]);
+  if (state.source === "recorded") facts.push(["Identifier", naturalKey(node)]);
   if (node.sourceType) facts.push(["Type", node.sourceType]);
   if (node.department) facts.push(["Department", node.department]);
   if (typeof node.simulationDay === "number") facts.push(["Day", String(node.simulationDay)]);
@@ -501,7 +516,7 @@ function select(id) {
 
   const panel = $("#details");
   panel.replaceChildren(
-    h("p", { class: "name" }, node.label || node.id),
+    h("p", { class: "name" }, nameOf(node)),
     list,
     neighbours.length
       ? h("ul", { class: "neighbours" },
@@ -514,7 +529,7 @@ function select(id) {
               h("span", { class: "kind" },
                 `${direction === "to" ? "→ " : "← "}${type.replace(/_/g, " ")} `),
               h("button", { type: "button", onclick: () => focusNode(other.id) },
-                other.label || other.id),
+                nameOf(other)),
             )),
         )
       : h("p", { class: "hint-line" }, "Nothing else in this view connects to it."),
@@ -636,7 +651,7 @@ function openDetails(id) {
   }, "Evidence");
 
   panel.replaceChildren(
-    h("p", { class: "name" }, node.label || node.id),
+    h("p", { class: "name" }, nameOf(node)),
     h("div", { class: "detail-tabs" }, attributesButton, evidenceButton),
     attributesTab,
     evidenceTab,
@@ -655,7 +670,7 @@ function renderAttributes(container, node) {
     ([key, value]) => !skip.has(key) && value !== null && value !== undefined,
   );
 
-  const facts = [["Kind", describeKind(node)], ["Identifier", node.id]];
+  const facts = [["Kind", describeKind(node)], ["Identifier", naturalKey(node)]];
   if (node.sourceType) facts.push(["Type", node.sourceType]);
   if (node.department) facts.push(["Department", node.department]);
 
@@ -685,7 +700,7 @@ async function renderEvidence(container, node) {
   container.replaceChildren(h("p", { class: "hint-line" }, "Searching…"));
   try {
     const response = await fetch(
-      `/api/v1/graph/evidence?${new URLSearchParams({ label: node.label || node.id, limit: "5" })}`,
+      `/api/v1/graph/evidence?${new URLSearchParams({ label: nameOf(node), limit: "5" })}`,
     );
     if (!response.ok) throw new Error(`Evidence search failed (${response.status}).`);
     const body = await response.json();
@@ -955,7 +970,9 @@ async function draw() {
       // The seed the question resolved to is what the picture is about, so it
       // is the centre. The sentinel used when no question was asked is not a
       // real node, so that case falls through to the best-connected node.
-      if (state.mainOriginalSeed !== MAIN_NO_SEED_KEY) state.centreId = state.mainOriginalSeed;
+      if (state.mainOriginalSeed !== MAIN_NO_SEED_KEY) {
+        state.centreId = centreFor(state.slice, state.mainOriginalSeed);
+      }
     }
     if (state.source === "recorded" && state.layer !== "main") {
       state.cache[state.layer] = state.slice;
@@ -975,6 +992,19 @@ async function draw() {
   } finally {
     button.disabled = false;
   }
+}
+
+/**
+ * The node a seed names. A question resolves to a bare natural key (the top
+ * search hit's source id), and a hand-typed seed may be one too, while the
+ * slice's ids are `type:refKey` — so an exact id match wins, then the first
+ * node carrying that key. Null lets the layout choose, as with no seed.
+ */
+function centreFor(slice, seed) {
+  const nodes = slice?.nodes ?? [];
+  const exact = nodes.find((node) => node.id === seed);
+  if (exact) return exact.id;
+  return nodes.find((node) => node.refKey === seed)?.id ?? null;
 }
 
 /** Redraw whichever tab is open from its own cached first slice, discarding
