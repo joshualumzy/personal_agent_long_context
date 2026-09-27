@@ -1,3 +1,4 @@
+import { JSDOM } from "jsdom";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { DeterministicMemoryProvider } from "../src/adapters/deterministic-memory.js";
@@ -268,6 +269,22 @@ describe("Browser surface", () => {
 
     const missing = await app.inject({ method: "GET", url: "/fonts/..%2Fapp.js" });
     assert.equal(missing.statusCode, 404);
+    await app.close();
+  });
+
+  test("serves the logo, the icon in the tab, and the all-clear hand from this origin", async () => {
+    const { app } = testApp();
+    const document = new JSDOM((await app.inject({ method: "GET", url: "/" })).body).window.document;
+    const images = [
+      document.querySelector("link[rel=icon]")!.getAttribute("href")!,
+      document.querySelector("#plate .brand img")!.getAttribute("src")!,
+      document.querySelector("#home-win")!.getAttribute("src")!,
+    ];
+    for (const url of images) {
+      const image = await app.inject({ method: "GET", url });
+      assert.equal(image.statusCode, 200, url);
+      assert.equal(image.headers["content-type"], "image/png", url);
+    }
     await app.close();
   });
 

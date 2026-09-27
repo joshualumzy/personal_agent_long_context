@@ -113,6 +113,16 @@ describe("SME Assistant shell", () => {
     assert.ok(context.querySelector("#pinned-panel"));
     assert.ok(context.querySelector("#graph-panel"));
 
+    // The brand: the walking hand and the name, top left of the plate.
+    const brand = plate.querySelector(".brand")!;
+    assert.match(brand.querySelector("img")!.getAttribute("src")!, /^\/assets\/kaki-logo/);
+    assert.equal(brand.querySelector("img")!.getAttribute("alt"), "");
+    assert.equal(brand.textContent!.trim(), "Kaki");
+    // One mark: no mascot animation beside the headline, and the sign-in shows the same hand, larger.
+    assert.equal(document.querySelector("#sobo-canvas"), null);
+    assert.equal(document.querySelector('script[src="/vendor/rive.js"]'), null);
+    assert.match(document.querySelector("#login-dialog .auth-brand-row img")!.getAttribute("src")!, /^\/assets\/kaki-logo-128/);
+
     assert.equal(document.querySelector(".topbar"), null, "no top bar");
     assert.equal(document.querySelector("#today-toggle"), null, "the plan is always on the plate, not behind a button");
     assert.equal(document.querySelector("#model-selector-btn"), null, "no model picker");
@@ -488,6 +498,7 @@ describe("SME Assistant home: what needs you", () => {
     await until(() => page.document.querySelectorAll("#home-needs .task").length === 3, "the drafts that need you");
 
     assert.equal(page.document.querySelector("#home-title")!.textContent, "Jax, 3 things need you.");
+    assert.equal((page.document.querySelector("#home-win") as HTMLElement).hidden, true, "no V while things wait");
     const rows = [...page.document.querySelectorAll("#home-needs .task")];
     assert.equal(rows[0]!.querySelector(".task-title")!.textContent, "Send follow-up to Owen");
     assert.equal(rows[0]!.querySelector(".task-from")!.textContent, NOC);
@@ -551,6 +562,8 @@ describe("SME Assistant home: what needs you", () => {
     after(() => page.close());
     await until(() => page.document.querySelector("#home-done .task"), "the finished work");
     assert.equal(page.document.querySelector("#home-title")!.textContent, "Jax, nothing needs you right now.");
+    // All clear: the hand shows a V beside the headline.
+    assert.equal((page.document.querySelector("#home-win") as HTMLElement).hidden, false);
   });
 });
 
@@ -886,7 +899,14 @@ describe("SME Assistant on a chosen day", () => {
     assert.equal((doc.querySelector("#as-of-input") as HTMLInputElement).value, "2026-01-07");
     assert.equal(doc.querySelector("#as-of-caption")!.textContent, "Today");
     assert.equal(page.window.location.search, "");
+    // The composer says what can be asked, and on which day.
+    const composer = doc.querySelector("#message-input") as HTMLTextAreaElement;
+    assert.equal(composer.placeholder, "Ask about a ticket, a person or a meeting");
     assert.deepEqual(plannerAsks(page), ["/api/v1/planner/todo?asOf=2026-01-07", "/api/v1/planner/day?asOf=2026-01-07"]);
+
+    // The plan for the day reads first, the tickets under it.
+    const sections = [...doc.querySelectorAll("#today-panel .today-section h3")].map((heading) => heading.textContent);
+    assert.deepEqual(sections, ["Plan", "My tickets"]);
 
     // Grouped: what Jax works on, then what Jax raised and nobody picked up.
     const groups = [...doc.querySelectorAll("#todo-list h4")].map((heading) => heading.textContent);
@@ -907,6 +927,7 @@ describe("SME Assistant on a chosen day", () => {
 
     assert.equal(page.window.location.search, "?asOf=2026-01-05");
     assert.equal(doc.querySelector("#as-of-caption")!.textContent, "As of");
+    assert.equal((doc.querySelector("#message-input") as HTMLTextAreaElement).placeholder, "Ask as of Mon 5 Jan");
     assert.match(doc.querySelector("#today-date")!.textContent!, /As of/);
     assert.match(doc.querySelector("#todo-list")!.textContent!, /tagging on 2026-01-05/);
     assert.ok(!/2026-01-07/.test(doc.querySelector("#todo-list")!.textContent!), "nothing of the old day is left");
@@ -919,6 +940,7 @@ describe("SME Assistant on a chosen day", () => {
     assert.equal((doc.querySelector("#as-of-prev") as HTMLButtonElement).disabled, true, "the record starts here");
     (doc.querySelector("#as-of-now") as HTMLButtonElement).click();
     await until(() => /2026-01-07/.test(doc.querySelector("#plan-list")!.textContent!), "today again");
+    assert.equal((doc.querySelector("#message-input") as HTMLTextAreaElement).placeholder, "Ask about a ticket, a person or a meeting");
     assert.equal(page.window.location.search, "");
     assert.equal((doc.querySelector("#company-graph-link") as HTMLElement).hidden, false);
   });

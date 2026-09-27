@@ -300,3 +300,4 @@ body.embedded[data-mode="answer"] #canvas { height: calc(100vh - 128px); }
 .guide p { margin: 0 0 10px; }
 .guide .legend { display: grid; gap: 6px; margin: 0; font-size: .78rem; }
 .guide .legend li.legend-note { margin-left: 0; font-style: normal; color: var(--muted); }
+.controls[hidden] { display: none; }

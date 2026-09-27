@@ -1546,6 +1546,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     "/assets/merlion.riv",
     serve("assets/merlion.riv", "application/octet-stream"),
   );
+  // The logo (the walking hand) and its all-clear pose, downscaled from the team's artwork.
+  for (const name of ["kaki-logo-64.png", "kaki-logo-128.png", "kaki-win-128.png"]) {
+    app.get(`/assets/${name}`, serve(`assets/${name}`, "image/png"));
+  }
   app.get("/theme.css", serve("theme.css", "text/css; charset=utf-8"));
   // Shoelace, the UI components, served from its package: only its scripts,
   // styles and icons, only inside its folder.

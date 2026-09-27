@@ -526,9 +526,6 @@ function startNewChat() {
   activeConversationId = null;
   chatMessages.innerHTML = "";
   if (emptyState) emptyState.style.display = "block";
-  if (soboRiveInstance && typeof soboRiveInstance.play === "function") {
-    soboRiveInstance.play();
-  }
   const emptyTitle = document.querySelector("#empty-state-title");
   if (emptyTitle && currentUser?.displayName) {
     emptyTitle.textContent = `How can I help you today, ${currentUser.displayName}?`;
@@ -2318,6 +2315,9 @@ async function loadHome() {
       ? `${name}, nothing needs you right now.`
       : `${name}, ${needs.length} ${needs.length === 1 ? "thing needs" : "things need"} you.`;
   }
+  // All clear: the hand shows a V beside the headline.
+  const win = document.querySelector("#home-win");
+  if (win) win.hidden = needs.length > 0;
   const summary = document.querySelector("#home-summary");
   if (summary) summary.innerHTML = homeSummary(needs);
   askForHomeLine(asked, needs, waiting);
@@ -2349,52 +2349,6 @@ function takeOverFromMeeting() {
   chatForm.requestSubmit();
 }
 
-let soboRiveInstance = null;
-function initSoboMascot() {
-  const canvas = document.querySelector("#sobo-canvas");
-  if (!canvas) return;
-
-  if (typeof rive !== "undefined" && typeof rive.Rive === "function") {
-    try {
-      if (rive.RuntimeLoader && typeof rive.RuntimeLoader.setWasmUrl === "function") {
-        rive.RuntimeLoader.setWasmUrl("/vendor/rive.wasm");
-      }
-      soboRiveInstance = new rive.Rive({
-        src: "/assets/merlion.riv",
-        canvas: canvas,
-        autoplay: true,
-        layout: new rive.Layout({
-          fit: rive.Fit.Contain,
-          alignment: rive.Alignment.Center,
-        }),
-        onLoad: () => {
-          window.soboRive = soboRiveInstance;
-          if (soboRiveInstance) {
-            soboRiveInstance.resizeDrawingSurfaceToCanvas();
-          }
-        },
-        onError: (err) => {
-          console.warn("Rive mascot failed to load, falling back to icon", err);
-          canvas.style.display = "none";
-          const wrapper = document.querySelector("#empty-avatar-wrapper");
-          if (wrapper) wrapper.innerHTML = '<svg class="empty-icon" viewBox="0 0 40 40" width="72" height="72" aria-hidden="true"><rect x="2" y="2" width="36" height="36" rx="13" fill="#4b3fd1"/><rect x="8" y="10" width="24" height="18" rx="8" fill="#fbfaff"/><circle cx="15" cy="19" r="2.4" fill="#1c1a33"/><circle cx="25" cy="19" r="2.4" fill="#1c1a33"/><path d="M16.5 24 q3.5 2.6 7 0" stroke="#1c1a33" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>';
-        },
-      });
-
-      canvas.addEventListener("click", () => {
-        if (!soboRiveInstance) return;
-        const bumpAnimation = soboRiveInstance.animationNames.find(
-          (name) => name.toLowerCase() === "bump",
-        );
-        if (bumpAnimation) soboRiveInstance.play(bumpAnimation);
-      });
-    } catch (err) {
-      console.warn("Could not instantiate Rive animation", err);
-    }
-  }
-}
-
 // Startup
 initAuth();
 initModels();
-initSoboMascot();

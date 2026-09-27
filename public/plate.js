@@ -145,6 +145,8 @@ function formatDay(day) {
   return date.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
+const ASK_TODAY = "Ask about a ticket, a person or a meeting";
+
 /** Shows `day` (or the present) in the picker, the header and the panel, and reloads the panel. */
 function showDay(day) {
   viewDay = day;
@@ -152,10 +154,14 @@ function showDay(day) {
   const shown = day ?? workingDays[workingDays.length - 1] ?? "";
   if (asOfInput) asOfInput.value = shown;
   if (asOfCaption) asOfCaption.textContent = day ? "As of" : "Today";
+  const named = shown
+    ? new Date(`${shown}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" })
+    : "";
   const label = document.querySelector("#as-of-label");
-  if (label && shown) {
-    label.textContent = new Date(`${shown}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
-  }
+  if (label && named) label.textContent = named;
+  // A question asked on a past day is answered as of it, so the composer says so.
+  const composer = document.querySelector("#message-input");
+  if (composer) composer.placeholder = day && named ? `Ask as of ${named}` : ASK_TODAY;
   if (asOfGroup) asOfGroup.classList.toggle("past", Boolean(day));
   if (asOfNow) asOfNow.hidden = !day;
   const index = workingDays.indexOf(shown);

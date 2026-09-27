@@ -244,6 +244,24 @@ describe("the company graph", () => {
     window.close();
   });
 
+  test("beside a chat the filters fold behind one button; on its own page they stay out", async () => {
+    const embedded = await open("/graph/answer?q=TitanDB&sources=CONF-ENG-002&embed=1", (url) => (url.pathname === "/api/v1/graph/query" ? asked : titandbNeighbours));
+    const toggle = embedded.document.querySelector<HTMLButtonElement>("#filters-toggle")!;
+    const controls = embedded.document.querySelector<HTMLElement>(".controls")!;
+    assert.equal(toggle.hidden, false);
+    assert.equal(controls.hidden, true, "the picture first");
+    assert.equal(toggle.getAttribute("aria-expanded"), "false");
+    toggle.dispatchEvent(new embedded.window.Event("click"));
+    assert.equal(controls.hidden, false);
+    assert.equal(toggle.getAttribute("aria-expanded"), "true");
+    embedded.window.close();
+
+    const alone = await open("/graph/answer?q=TitanDB", (url) => (url.pathname === "/api/v1/graph/query" ? asked : titandbNeighbours));
+    assert.equal(alone.document.querySelector<HTMLButtonElement>("#filters-toggle")!.hidden, true);
+    assert.equal(alone.document.querySelector<HTMLElement>(".controls")!.hidden, false);
+    alone.window.close();
+  });
+
   test("an answer's graph is seeded from the evidence the answer cited", async () => {
     const { window, document, requests } = await open(
       "/graph/answer?q=TitanDB&sources=CONF-ENG-002,ENG-112&embed=1",

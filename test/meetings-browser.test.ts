@@ -286,6 +286,9 @@ describe("Meetings page", () => {
     const tray = page.document.querySelector("#tray");
     assert.equal(text(page.document.querySelector("#tray-title")), "1 thing needs you");
     assert.match(text(tray), /Send follow-up to Owen/);
+    // Kaki speaks in the tray under its own mark.
+    assert.match(page.document.querySelector("#tray-toggle img")!.getAttribute("src")!, /^\/assets\/kaki-logo/);
+    assert.equal(page.document.querySelector("#tray-toggle svg.sobo"), null);
     assert.doesNotMatch(text(tray), /ENG-148 was a different bug|Second SLA breach/);
     assert.doesNotMatch(text(tray), /20% service credit/, "the tray holds only what you can act on");
     assert.equal(page.document.querySelector("#handled-count"), null, "nothing is handled without you, so there is no such count");

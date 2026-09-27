@@ -1176,6 +1176,18 @@ $("#fit").addEventListener("click", fit);
   const question = (parameters.get("q") ?? "").trim();
   // Inside the chat's dialog, which already shows the question.
   if (parameters.get("embed") === "1") document.body.classList.add("embedded");
+  // Beside a chat the column is narrow: the picture first, the filters one click away.
+  const filtersToggle = document.querySelector("#filters-toggle");
+  const controls = document.querySelector(".controls");
+  if (filtersToggle && controls && parameters.get("embed") === "1") {
+    filtersToggle.hidden = false;
+    controls.hidden = true;
+    filtersToggle.addEventListener("click", () => {
+      controls.hidden = !controls.hidden;
+      filtersToggle.setAttribute("aria-expanded", String(!controls.hidden));
+      filtersToggle.classList.toggle("on", !controls.hidden);
+    });
+  }
   if (MODE === "answer") {
     state.origin = question;
     state.query = question;
