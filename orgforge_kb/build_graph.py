@@ -319,7 +319,14 @@ def build_work_item_nodes(cursor) -> int:
         """
         INSERT INTO graph_nodes (node_type, node_subtype, ref_key, label, props)
         SELECT
-            'item', d.source_type, d.source_id,
+            -- Three rows (PR-101, PR-111, PR-117) are filed as source_type
+            -- 'jira' under a PR id, with a gap_areas stub for a body; no pr
+            -- row exists for them, and ticket threads cite them as the PR
+            -- that closed the ticket. They are PRs, so they are built as one.
+            'item',
+            CASE WHEN d.source_type = 'jira' AND d.source_id LIKE 'PR-%'
+                 THEN 'pr' ELSE d.source_type END,
+            d.source_id,
             coalesce(nullif(d.title, ''), d.source_id),
             jsonb_build_object(
                 'source_type', d.source_type,
@@ -908,6 +915,74 @@ def build_incident_recurrence_edges(cursor) -> int:
     return cursor.rowcount
 
 
+def build_thread_edges(cursor) -> dict[str, int]:
+    """Edges read off facts.causal_chain, which is an artifact's thread rather
+    than a chain of events: a ticket, its comments, the PR that closed it, the
+    page that wrote it up, repeated and extended on every later row that
+    carries it. Comments and slack messages are not graph nodes, so only the
+    thread's root and the graph nodes later in it are connected:
+
+      tracked_in      event(incident) -> item(jira), same key: the ticket the
+                      incident was tracked in
+      fixed_by        event(incident) -> item(pr) in the incident's thread
+      implemented_by  item(jira) -> item(pr) in the ticket's thread
+      documented_by   item(jira) -> document in the ticket's thread
+
+    Verified on the corpus: each of the 57 PRs appears in exactly one ticket's
+    thread.
+    """
+    counts: dict[str, int] = {}
+
+    cursor.execute(
+        """
+        INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+        SELECT en.node_id, tn.node_id, 'tracked_in'
+        FROM graph_nodes en
+        JOIN graph_nodes tn ON tn.node_type = 'item' AND tn.node_subtype = 'jira'
+                            AND tn.ref_key = en.ref_key
+        WHERE en.node_type = 'event' AND en.node_subtype = 'incident'
+        ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+        """
+    )
+    counts["tracked_in"] = cursor.rowcount
+
+    # Every (thread root, later member) pair, where the root is a jira ticket
+    # node. Positions start at 1; the root is position 1.
+    later_members = """
+        SELECT DISTINCT d.facts->'causal_chain'->>0 AS root, member.id
+        FROM source_documents d
+        CROSS JOIN LATERAL jsonb_array_elements_text(d.facts->'causal_chain')
+             WITH ORDINALITY AS member(id, position)
+        WHERE jsonb_typeof(d.facts->'causal_chain') = 'array'
+          AND member.position > 1
+    """
+    for edge_type, source_filter, target_filter in (
+        ("fixed_by",
+         "src.node_type = 'event' AND src.node_subtype = 'incident'",
+         "dst.node_type = 'item' AND dst.node_subtype = 'pr'"),
+        ("implemented_by",
+         "src.node_type = 'item' AND src.node_subtype = 'jira'",
+         "dst.node_type = 'item' AND dst.node_subtype = 'pr'"),
+        ("documented_by",
+         "src.node_type = 'item' AND src.node_subtype = 'jira'",
+         "dst.node_type = 'document'"),
+    ):
+        cursor.execute(
+            f"""
+            WITH pairs AS ({later_members})
+            INSERT INTO graph_edges (src_node_id, dst_node_id, edge_type)
+            SELECT DISTINCT src.node_id, dst.node_id, %s
+            FROM pairs
+            JOIN graph_nodes src ON src.ref_key = pairs.root AND {source_filter}
+            JOIN graph_nodes dst ON dst.ref_key = pairs.id AND {target_filter}
+            ON CONFLICT (src_node_id, dst_node_id, edge_type) DO NOTHING
+            """,
+            (edge_type,),
+        )
+        counts[edge_type] = cursor.rowcount
+    return counts
+
+
 def build_owns_domain_edges(cursor) -> int:
     """person -> item(domain), from the registry's primary/former owner."""
     cursor.execute(
@@ -1107,6 +1182,8 @@ def main() -> int:
             print(f"zd_ticket caused_by:     {zd_caused_by}", file=sys.stderr)
             print(f"zd_ticket documented_by: {zd_documented_by}", file=sys.stderr)
             print(f"incident recurrence caused_by: {build_incident_recurrence_edges(cursor)}", file=sys.stderr)
+            for label, count in build_thread_edges(cursor).items():
+                print(f"{label} edges: {count}", file=sys.stderr)
             print(f"owns_domain edges:   {build_owns_domain_edges(cursor)}", file=sys.stderr)
             print(f"updates_domain edges: {build_updates_domain_edges(cursor)}", file=sys.stderr)
             from_registry, from_root_cause, from_title = build_about_domain_edges(cursor)

@@ -35,7 +35,12 @@ const MAIN_LAYER_CAP = 20;
 
 const LAYER_EDGE_TYPES = {
   person: ["involves"],
-  causal: ["caused_by", "escalated_via"],
+  // The incident spine: which incident recurred from which (and which
+  // customer ticket escalated into one), the ticket each was tracked in, and
+  // the PR that fixed it. The postmortem is a 'produced' edge, which the whole
+  // corpus has 1,608 of, so it waits for the overview API rather than being
+  // asked for here.
+  causal: ["caused_by", "tracked_in", "fixed_by"],
   domain: ["knows_about", "owns_domain"],
   // Departments, who is in each and who leads it, and which knowledge domains
   // each one is responsible for.
