@@ -41,6 +41,7 @@ function graphNode(row: GraphNodeRow): GraphNode {
       : {}),
     ...(typeof day === "number" ? { simulationDay: day } : {}),
     ...(props.is_incident === true ? { isIncident: true } : {}),
+    ...(row.props ? { props: row.props } : {}),
   };
 }
 
@@ -288,7 +289,9 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
 
     const documents = request.seed
       ? await this.causalChainNodes(request.seed, request.depth ?? 3, limit)
-      : await this.filteredNodes(request, limit);
+      : request.edgeTypes && request.edgeTypes.length > 0
+        ? await this.nodesByEdgeTypes(request.edgeTypes, limit)
+        : await this.filteredNodes(request, limit);
 
     if (documents.length === 0) return { nodes: [], edges: [], truncated: false };
 
@@ -298,7 +301,7 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
       : [];
 
     const nodes = [...documents, ...actors];
-    const edges = await this.edgesWithin(nodes.map((node) => node.id));
+    const edges = await this.edgesWithin(nodes.map((node) => node.id), request.edgeTypes);
     return { nodes, edges, truncated: documents.length >= limit };
   }
 
@@ -363,6 +366,26 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     return result.rows.map(graphNode);
   }
 
+  /**
+   * Every node touched by an edge of one of these types, for a layer tab
+   * that is about a relationship kind rather than a seed or a category —
+   * the person layer (['involves']) and the causal layer
+   * (['caused_by','escalated_via']) both select this way: there is no
+   * single node to start from, the edge type itself is the filter.
+   */
+  private async nodesByEdgeTypes(edgeTypes: string[], limit: number) {
+    const result = await this.pool.query<GraphNodeRow>(
+      `SELECT DISTINCT n.ref_key, n.node_type, n.node_subtype, n.label, n.props
+       FROM graph_edges e
+       JOIN graph_nodes n ON n.node_id IN (e.src_node_id, e.dst_node_id)
+       WHERE e.edge_type = ANY($1::text[])
+       ORDER BY n.ref_key
+       LIMIT $2`,
+      [edgeTypes, limit],
+    );
+    return result.rows.map(graphNode);
+  }
+
   private async actorsOf(nodeKeys: string[], limit: number) {
     const result = await this.pool.query<GraphNodeRow>(
       `SELECT DISTINCT a.ref_key, a.node_type, a.node_subtype, a.label, a.props
@@ -377,16 +400,26 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
     return result.rows.map(graphNode);
   }
 
-  /** Only edges with both ends inside the slice, so the view never dangles one. */
-  private async edgesWithin(keys: string[]): Promise<GraphEdge[]> {
+  /** Only edges with both ends inside the slice, so the view never dangles
+   * one. edgeTypes narrows it further when a layer tab asked for one — the
+   * person layer's nodes are still only reachable by 'involves', but two of
+   * them could also share an unrelated edge type, which the tab should not
+   * show. */
+  private async edgesWithin(keys: string[], edgeTypes?: string[]): Promise<GraphEdge[]> {
     if (keys.length === 0) return [];
+    const parameters: unknown[] = [keys];
+    let typeFilter = "";
+    if (edgeTypes && edgeTypes.length > 0) {
+      parameters.push(edgeTypes);
+      typeFilter = ` AND e.edge_type = ANY($${parameters.length}::text[])`;
+    }
     const result = await this.pool.query<{ source: string; target: string; edge_type: string }>(
       `SELECT s.ref_key AS source, t.ref_key AS target, e.edge_type
        FROM graph_edges e
        JOIN graph_nodes s ON s.node_id = e.src_node_id
        JOIN graph_nodes t ON t.node_id = e.dst_node_id
-       WHERE s.ref_key = ANY($1::text[]) AND t.ref_key = ANY($1::text[])`,
-      [keys],
+       WHERE s.ref_key = ANY($1::text[]) AND t.ref_key = ANY($1::text[])${typeFilter}`,
+      parameters,
     );
     return result.rows.map((row) => ({
       source: row.source,

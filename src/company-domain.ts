@@ -30,6 +30,14 @@ export interface GraphNode {
   department?: string;
   simulationDay?: number;
   isIncident?: boolean;
+  /**
+   * The node's own denormalized facts, passed through as-is for the graph
+   * view's Attributes tab. Never a document body — that stays out of a
+   * slice on purpose (see graphSlice's own doc comment) — but an incident's
+   * root_cause, a domain's ownership, a Zendesk ticket's linked incident are
+   * all here because build_graph.py already put them in graph_nodes.props.
+   */
+  props?: Record<string, unknown>;
 }
 
 export interface GraphEdge {
@@ -55,6 +63,13 @@ export interface GraphSliceRequest {
   incidentsOnly?: boolean;
   includeActors?: boolean;
   limit?: number;
+  /**
+   * Keep only edges of these types (and, transitively, only nodes an
+   * edge-of-this-type touches). Drives the person/causal layer tabs — e.g.
+   * ['involves'] for who is connected to what, ['caused_by','escalated_via']
+   * for the causal chains — without needing a seed or a category filter.
+   */
+  edgeTypes?: string[];
 }
 
 export interface CompanyKnowledge {

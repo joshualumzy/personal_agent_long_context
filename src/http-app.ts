@@ -470,6 +470,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       incidentsOnly?: string;
       includeActors?: string;
       limit?: string;
+      edgeTypes?: string;
     };
   }>("/api/v1/graph", async (request, reply) => {
     const knowledge = options.companyKnowledge;
@@ -482,6 +483,13 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       const parsed = Number(value);
       return Number.isFinite(parsed) ? parsed : undefined;
     };
+    // Comma-separated rather than repeated ?edgeTypes=a&edgeTypes=b: Fastify's
+    // default query parser gives the latter the same string type as a single
+    // value, which would need its own array-vs-string branch for no benefit —
+    // a layer tab only ever asks for a small fixed list.
+    const edgeTypes = query.edgeTypes
+      ? query.edgeTypes.split(",").map((value) => value.trim()).filter(Boolean)
+      : undefined;
 
     const slice = await knowledge.graphSlice({
       ...(query.seed ? { seed: query.seed } : {}),
@@ -492,6 +500,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       incidentsOnly: query.incidentsOnly === "true",
       includeActors: query.includeActors === "true",
       ...(number(query.limit) !== undefined ? { limit: number(query.limit)! } : {}),
+      ...(edgeTypes && edgeTypes.length > 0 ? { edgeTypes } : {}),
     });
 
     if (slice.nodes.length === 0) {
@@ -499,6 +508,55 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     }
     return reply.send(slice);
   });
+
+  /**
+   * Resolve a free-text question to the graph node most likely about it, so
+   * the main graph tab can center on something without the caller knowing a
+   * source id in advance. Reuses the same hybrid search retrieval already
+   * used for answering questions — no separate keyword-only path — so this
+   * finds the same top hit a person asking the same thing would get as
+   * evidence.
+   */
+  app.get<{ Querystring: { q?: string } }>("/api/v1/graph/seed", async (request, reply) => {
+    const knowledge = options.companyKnowledge;
+    if (!knowledge) {
+      return reply.code(503).send({ message: "Company knowledge is not configured." });
+    }
+    const query = request.query.q?.trim();
+    if (!query) {
+      return reply.code(400).send({ message: "Provide a q parameter." });
+    }
+    const [top] = await knowledge.search(query, 1);
+    if (!top) {
+      return reply.code(404).send({ message: "Nothing matched that question." });
+    }
+    return reply.send({ sourceId: top.sourceId, label: top.title });
+  });
+
+  /**
+   * Evidence for one graph node, found the same way: hybrid search over the
+   * node's own label. This is not exact provenance for a specific edge — the
+   * graph does not keep that — it is the same retrieval a question would get,
+   * scoped to what this node is called. Good enough for "why is this here"
+   * without pretending to be a citation.
+   */
+  app.get<{ Querystring: { label?: string; limit?: string } }>(
+    "/api/v1/graph/evidence",
+    async (request, reply) => {
+      const knowledge = options.companyKnowledge;
+      if (!knowledge) {
+        return reply.code(503).send({ message: "Company knowledge is not configured." });
+      }
+      const label = request.query.label?.trim();
+      if (!label) {
+        return reply.code(400).send({ message: "Provide a label parameter." });
+      }
+      const parsedLimit = Number(request.query.limit);
+      const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 12) : 5;
+      const evidence = await knowledge.search(label, limit);
+      return reply.send({ evidence });
+    },
+  );
 
   /**
    * The emergent graph, as last exported by orgforge_kb/cognee_memory.py.
