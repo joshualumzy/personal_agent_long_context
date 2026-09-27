@@ -361,7 +361,9 @@ function updateModelSelectorUI(modelId) {
   }
   if (modelDropdownMenu) {
     modelDropdownMenu.querySelectorAll(".model-option").forEach((opt) => {
-      opt.classList.toggle("active", opt.getAttribute("data-model") === modelId);
+      const selected = opt.getAttribute("data-model") === modelId;
+      opt.classList.toggle("active", selected);
+      opt.setAttribute("aria-checked", String(selected));
     });
   }
 }
@@ -404,11 +406,13 @@ async function initModels() {
         if (opt) {
           if (!m.available) {
             opt.classList.add("disabled");
+            opt.setAttribute("disabled", "");
             opt.style.opacity = "0.45";
             opt.style.pointerEvents = "none";
             opt.title = m.unavailableReason || "Not configured on server";
           } else {
             opt.classList.remove("disabled");
+            opt.removeAttribute("disabled");
             opt.style.opacity = "";
             opt.style.pointerEvents = "";
             opt.title = "";
@@ -426,6 +430,8 @@ if (modelSelectorBtn && modelDropdownMenu) {
     if (isHidden) {
       modelDropdownMenu.removeAttribute("hidden");
       modelSelectorBtn.setAttribute("aria-expanded", "true");
+      const selected = modelDropdownMenu.querySelector('.model-option[aria-checked="true"]');
+      if (selected instanceof HTMLElement) selected.focus();
     } else {
       modelDropdownMenu.setAttribute("hidden", "");
       modelSelectorBtn.setAttribute("aria-expanded", "false");
@@ -445,6 +451,14 @@ if (modelSelectorBtn && modelDropdownMenu) {
     if (!modelSelectorBtn.contains(e.target) && !modelDropdownMenu.contains(e.target)) {
       modelDropdownMenu.setAttribute("hidden", "");
       modelSelectorBtn.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  modelDropdownMenu.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      modelDropdownMenu.setAttribute("hidden", "");
+      modelSelectorBtn.setAttribute("aria-expanded", "false");
+      modelSelectorBtn.focus();
     }
   });
 }
@@ -1921,11 +1935,9 @@ function initSoboMascot() {
         rive.RuntimeLoader.setWasmUrl("/vendor/rive.wasm");
       }
       soboRiveInstance = new rive.Rive({
-        src: "/assets/sobo.riv",
+        src: "/assets/merlion.riv",
         canvas: canvas,
         autoplay: true,
-        artboard: "SOBO-Motion-V02",
-        animations: ["Idle", "Blink"],
         layout: new rive.Layout({
           fit: rive.Fit.Contain,
           alignment: rive.Alignment.Center,
@@ -1944,28 +1956,12 @@ function initSoboMascot() {
         },
       });
 
-      // Interactive state switching on click
-      const interactiveStates = [
-        { anims: ["Hello", "Blink"], duration: 2200 },
-        { anims: ["Talk", "Sparkles", "Blink"], duration: 2500 },
-        { anims: ["Yes", "Blink"], duration: 2000 },
-      ];
-      let stateIndex = 0;
-      let stateTimeout = null;
-
       canvas.addEventListener("click", () => {
         if (!soboRiveInstance) return;
-        if (stateTimeout) clearTimeout(stateTimeout);
-
-        const current = interactiveStates[stateIndex % interactiveStates.length];
-        stateIndex++;
-
-        soboRiveInstance.play(current.anims);
-        stateTimeout = setTimeout(() => {
-          if (soboRiveInstance) {
-            soboRiveInstance.play(["Idle", "Blink"]);
-          }
-        }, current.duration);
+        const bumpAnimation = soboRiveInstance.animationNames.find(
+          (name) => name.toLowerCase() === "bump",
+        );
+        if (bumpAnimation) soboRiveInstance.play(bumpAnimation);
       });
     } catch (err) {
       console.warn("Could not instantiate Rive animation", err);

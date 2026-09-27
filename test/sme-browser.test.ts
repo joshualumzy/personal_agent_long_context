@@ -159,6 +159,36 @@ describe("SME Assistant conversational rendering", () => {
     assert.match(contextTags.textContent ?? "", /Working memory updated/);
     assert.match(contextTags.textContent ?? "", /Working context referenced/);
   });
+
+  test("the graph entry sits beside Working Context and leads somewhere", async () => {
+    const app = buildApp({ memory: new DeterministicMemoryProvider() });
+    try {
+      const page = await app.inject({ method: "GET", url: "/" });
+      const dom = new JSDOM(page.body);
+      const document = dom.window.document;
+
+      const link = document.querySelector('a[href="/graph"]');
+      assert.ok(link, "the chat header should offer a way into the graph");
+      assert.match(link!.textContent!, /Graph/);
+
+      // In the same header row as the Working Context badge, and before it, so
+      // the two read as one set of controls.
+      const badge = document.querySelector(".employee-badge")!;
+      assert.equal(link!.parentElement, badge.parentElement);
+      assert.ok(
+        Boolean(
+          link!.compareDocumentPosition(badge) &
+            dom.window.Node.DOCUMENT_POSITION_FOLLOWING,
+        ),
+        "the graph link should come before Working Context",
+      );
+
+      assert.equal((await app.inject({ method: "GET", url: "/graph" })).statusCode, 200);
+      dom.window.close();
+    } finally {
+      await app.close();
+    }
+  });
 });
 
 describe("SME Assistant taking over from a meeting", () => {

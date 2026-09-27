@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Company Graph</title>
+  <link rel="stylesheet" href="/graph/styles.css">
+  <script src="/graph/app.js" defer></script>
+</head>
+<body>
+  <header class="top">
+    <div class="title-block">
+      <h1>How the company connects</h1>
+      <p id="status-line" class="status-line" aria-live="polite">Loading…</p>
+    </div>
+    <div class="top-actions">
+      <a class="quiet" href="/graph/emergent">Read from the writing</a>
+      <button type="button" class="quiet on" id="tab-picture" aria-pressed="true">Picture</button>
+      <button type="button" class="quiet" id="tab-table" aria-pressed="false">Table</button>
+    </div>
+  </header>
+
+  <p id="error" class="banner error" role="alert" hidden></p>
+
+  <section class="controls" aria-label="What to draw">
+    <form id="ask" class="ask" role="search">
+      <label for="query" class="visually-hidden">Ask about the company</label>
+      <input type="search" id="query" autocomplete="off"
+             placeholder="Ask about a system, a person, a customer, or what happened — e.g. why did the TiDB migration slip?">
+      <button type="submit" class="primary" id="ask-button">Ask</button>
+      <span class="examples" id="examples">
+        Try:
+        <button type="button" class="example">TitanDB</button>
+        <button type="button" class="example">Redis cache incident</button>
+        <button type="button" class="example">Metro United FC</button>
+        <button type="button" class="example">Jax</button>
+      </span>
+    </form>
+
+    <nav class="view-tabs" id="view-tabs" aria-label="Graph">
+      <button type="button" class="view-tab" data-view="query" id="tab-query" aria-pressed="false" disabled>Your question</button>
+      <span class="view-divider" aria-hidden="true"></span>
+      <button type="button" class="view-tab" data-view="org" aria-pressed="false">Departments</button>
+      <button type="button" class="view-tab" data-view="expertise" aria-pressed="false">Who knows what</button>
+      <button type="button" class="view-tab" data-view="incidents" aria-pressed="false">Incidents</button>
+      <button type="button" class="view-tab" data-view="documents" aria-pressed="false">Documents</button>
+      <button type="button" class="view-tab" data-view="customers" aria-pressed="false">Customers &amp; vendors</button>
+      <button type="button" class="view-tab" data-view="timeline" aria-pressed="false">Timeline</button>
+    </nav>
+
+    <fieldset class="categories" id="categories">
+      <legend>Show</legend>
+      <!-- Filled from CATEGORIES in app.js, so the list lives in one place. -->
+    </fieldset>
+  </section>
+
+  <main class="board">
+    <section id="picture" class="picture" aria-labelledby="picture-heading">
+      <div class="picture-bar">
+        <h2 id="picture-heading">Diagram</h2>
+        <div class="picture-actions">
+          <button type="button" class="quiet" id="fit">Fit</button>
+          <button type="button" class="quiet" id="restore" disabled>Back to start</button>
+        </div>
+      </div>
+      <!-- Focus moves between nodes with Tab; the table carries the same
+           relationships for anyone not reading the diagram. -->
+      <svg id="canvas" viewBox="-420 -320 840 640" role="application"
+           aria-describedby="canvas-help">
+        <title>People, work, events and documents, joined by how they relate</title>
+      </svg>
+      <p id="canvas-help" class="hint-line">
+        Click an item to open it up: its neighbours are added around it, a few of each kind,
+        and a “+N more” item stands for the rest — click that for the next few.
+        Drag to move around, scroll to zoom. Tab moves between items; Enter opens the focused one.
+      </p>
+      <ul class="legend" id="legend">
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 7,0 0,7 -7,0" class="n-person"/></svg>Person</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="-4,-7 4,-7 7,0 4,7 -4,7 -7,0" class="n-organization"/></svg>Department, customer or vendor</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item"/></svg>Work item or knowledge domain</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><rect x="-6" y="-6" width="12" height="12" class="n-event"/></svg>Event</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 7,6 -7,6" class="n-document"/></svg>Document</li>
+        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-cluster"/></svg>More of one kind</li>
+        <li class="legend-note"><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item incident"/></svg>A red outline means it is part of an incident</li>
+      </ul>
+    </section>
+
+    <section id="table-view" class="table-view" aria-labelledby="table-heading" hidden>
+      <h2 id="table-heading">Every relationship in this view</h2>
+      <p class="hint-line" id="table-summary"></p>
+      <div class="table-scroll">
+        <table>
+          <caption class="visually-hidden">Each row is one relationship, from one item to another.</caption>
+          <thead>
+            <tr><th scope="col">From</th><th scope="col">Kind</th><th scope="col">Relationship</th><th scope="col">To</th></tr>
+          </thead>
+          <tbody id="edge-rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <aside id="details" class="details" aria-live="polite">
+      <p class="empty">Choose an item to see what it is.</p>
+    </aside>
+  </main>
+</body>
+</html>
