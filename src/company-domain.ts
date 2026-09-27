@@ -1,5 +1,6 @@
 import type { ChatBlock } from "./agent-extension.js";
 import type { AsOf } from "./as-of.js";
+import type { DomainHealth } from "./domain-health.js";
 
 export interface EmployeePersona {
   employeeId: string;
@@ -188,6 +189,18 @@ export interface SearchWindow {
   before?: string | null;
 }
 
+/** One person on the roster (employee_roster), and whether they were
+ * employed on the day asked about. Never Company Evidence; no reason for
+ * leaving is kept. */
+export interface RosterEntry {
+  person: string;
+  joinedOn: string | null;
+  leftOn: string | null;
+  role: string | null;
+  department: string | null;
+  employed: boolean;
+}
+
 export interface CompanyKnowledge {
   employee(employeeId: string): Promise<EmployeeContext | null>;
   listEmployees?(): Promise<EmployeePersona[]>;
@@ -226,6 +239,10 @@ export interface CompanyKnowledge {
   todo?(person: string, day: AsOf): Promise<TodoItem[]>;
   /** A person's plan for a day, by display name, in plan order. */
   dayPlan?(person: string, day: AsOf): Promise<DayPlanEntry[]>;
+  /** Everyone on the roster, marked employed or not on day D. */
+  roster?(day: AsOf): Promise<RosterEntry[]>;
+  /** Every knowledge domain's health on day D (src/domain-health.ts). */
+  domainHealth?(day: AsOf): Promise<DomainHealth[]>;
   close?(): Promise<void>;
 }
 

@@ -19,11 +19,13 @@ async function openSmePage(options: PageOptions = {}) {
   await app.listen({ host: "127.0.0.1", port: 0 });
   const { port } = app.server.address() as AddressInfo;
   const base = `http://127.0.0.1:${port}`;
-  const [html, markedScript, domPurifyScript, script] = await Promise.all([
+  const [html, markedScript, domPurifyScript, plateScript, script, clearScript] = await Promise.all([
     fetch(`${base}/`).then((response) => response.text()),
     fetch(`${base}/vendor/marked.js`).then((response) => response.text()),
     fetch(`${base}/vendor/dompurify.js`).then((response) => response.text()),
+    fetch(`${base}/plate.js`).then((response) => response.text()),
     fetch(`${base}/app.js`).then((response) => response.text()),
+    fetch(`${base}/clear.js`).then((response) => response.text()),
   ]);
   const dom = new JSDOM(html, { url: `${base}${options.path ?? "/"}`, runScripts: "outside-only" });
   const { window } = dom;
@@ -71,7 +73,9 @@ async function openSmePage(options: PageOptions = {}) {
   options.setup?.(window);
   window.eval(markedScript);
   window.eval(domPurifyScript);
+  window.eval(plateScript);
   window.eval(script);
+  window.eval(clearScript);
 
   return {
     app,
@@ -86,105 +90,58 @@ async function openSmePage(options: PageOptions = {}) {
 }
 
 describe("SME Assistant shell", () => {
-  test("sits in the shared shell, with the assistant as the current page", async () => {
+  test("three columns, one question each: what is on my plate, today's page, what it touches", async () => {
     // The shell is plain markup, so the page's script does not need to run.
     const app = buildApp({ memory: new DeterministicMemoryProvider() });
     after(() => app.close());
     const html = (await app.inject({ method: "GET", url: "/" })).body;
-    const page = { document: new JSDOM(html).window.document };
+    const document = new JSDOM(html).window.document;
 
-    const links = [...page.document.querySelectorAll("#sidebar .app-nav a")];
-    assert.deepEqual(
-      links.map((link) => link.getAttribute("href")),
-      ["/meetings", "/"],
-    );
-    assert.equal(page.document.querySelector('.app-nav a[aria-current="page"]')?.getAttribute("href"), "/");
-    const sheets = [...page.document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.getAttribute("href"));
+    const plate = document.querySelector("aside#plate")!;
+    const page = document.querySelector("#page")!;
+    const context = document.querySelector("aside#context")!;
+    assert.ok(plate && page && context);
+    // On the plate: the day, what needs you, what waits on others, tickets and plan, and who is signed in.
+    for (const id of ["as-of", "home-needs", "home-waiting", "today-panel", "todo-list", "plan-list", "sidebar-user-container", "logout-btn"]) {
+      assert.ok(plate.querySelector(`#${id}`), `#${id} is on the plate`);
+    }
+    // The page: the headline, today's timeline, and the conversation with its composer.
+    for (const id of ["home-title", "timeline", "chat-messages", "chat-form", "conversations-list", "new-chat-btn"]) {
+      assert.ok(page.querySelector(`#${id}`), `#${id} is on the page`);
+    }
+    // What it touches: pinned candidates and an answer's graph.
+    assert.ok(context.querySelector("#pinned-panel"));
+    assert.ok(context.querySelector("#graph-panel"));
+
+    // The brand: the walking hand and the name, top left of the plate.
+    const brand = plate.querySelector(".brand")!;
+    assert.match(brand.querySelector("img")!.getAttribute("src")!, /^\/assets\/kaki-logo/);
+    assert.equal(brand.querySelector("img")!.getAttribute("alt"), "");
+    assert.equal(brand.textContent!.trim(), "Kaki");
+    // One mark: no mascot animation beside the headline, and the sign-in shows the same hand, larger.
+    assert.equal(document.querySelector("#sobo-canvas"), null);
+    assert.equal(document.querySelector('script[src="/vendor/rive.js"]'), null);
+    assert.match(document.querySelector("#login-dialog .auth-brand-row img")!.getAttribute("src")!, /^\/assets\/kaki-logo-128/);
+
+    assert.equal(document.querySelector(".topbar"), null, "no top bar");
+    assert.equal(document.querySelector("#today-toggle"), null, "the plan is always on the plate, not behind a button");
+    assert.equal(document.querySelector("#model-selector-btn"), null, "no model picker");
+    assert.equal(document.querySelector("#inspect-memory-btn"), null, "no Working Context button");
+    assert.doesNotMatch(html, /Apex Athletics/);
+    const sheets = [...document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.getAttribute("href"));
     assert.equal(sheets[0], "/theme.css", "the shared theme loads before the page's own styles");
   });
 });
 
 describe("SME Assistant conversational rendering", () => {
-  test("keeps an unvalidated token off-screen until the authoritative answer event", async () => {
-    const encoder = new TextEncoder();
-    let tokenChunkSent: (() => void) | undefined;
-    const tokenChunk = new Promise<void>((resolve) => {
-      tokenChunkSent = resolve;
-    });
-    let sendFinal: (() => void) | undefined;
-    const sse = new Response(
-      new ReadableStream({
-        start(controller) {
-          controller.enqueue(encoder.encode('event: status\ndata: {"phrase":"Drafting from evidence…"}\n\nevent: token\ndata: {"delta":"Unvalidated draft that must not appear"}\n\n'));
-          tokenChunkSent!();
-          sendFinal = () => {
-            controller.enqueue(
-              encoder.encode(
-                'event: answer\ndata: {"text":"Validated answer [source:CONF-1]","sources":[{"sourceId":"CONF-1","sourceType":"confluence","title":"Evidence","excerpt":"Verified"}]}\n\nevent: done\ndata: {"answer":"Validated answer [source:CONF-1]","sources":[{"sourceId":"CONF-1","sourceType":"confluence","title":"Evidence","excerpt":"Verified"}],"runId":"run","toolCalls":[],"personalMemory":{"status":"empty","answer":"","sources":[]}}\n\n',
-              ),
-            );
-            controller.close();
-          };
-        },
-      }),
-      { status: 200, headers: { "content-type": "text/event-stream" } },
-    );
-    const page = await openSmePage({
-      respond: (url) => (url.startsWith("/api/v1/agent/chat") ? sse : undefined),
-      setup: (window) => {
-        Object.defineProperty(window, "TextDecoder", { value: TextDecoder });
-      },
-    });
-    after(() => page.close());
-
-    const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
-    const assistantRowsBefore = page.document.querySelectorAll(".message-row.assistant").length;
-    input.value = "What is verified?";
-    page.document.querySelector("#chat-form")!
-      .dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
-
-    await tokenChunk;
-    await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(
-      page.document.querySelectorAll(".message-row.assistant").length,
-      assistantRowsBefore,
-      "the unvalidated token was rendered",
-    );
-
-    sendFinal!();
-    const deadline = Date.now() + 2_000;
-    while (page.document.querySelectorAll(".message-row.assistant").length === assistantRowsBefore) {
-      if (Date.now() > deadline) throw new Error("Timed out waiting for the validated answer.");
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-    const rows = [...page.document.querySelectorAll(".message-row.assistant")];
-    const text = rows.at(-1)?.querySelector(".message-text")?.textContent ?? "";
-    assert.match(text, /Validated answer/);
-    assert.doesNotMatch(text, /Unvalidated draft/);
-  });
-
-  test("renders model Markdown, sanitizes unsafe markup, and displays working context", async () => {
+  test("renders model Markdown, sanitizes unsafe markup, and shows no model, timing or memory tags", async () => {
     const page = await openSmePage();
     after(() => page.close());
     const statusIndicator = page.document.querySelector("#status-indicator");
     assert.equal(statusIndicator?.hasAttribute("hidden"), true);
 
-    const sidebar = page.document.querySelector("#sidebar");
-    assert.ok(sidebar);
     assert.ok(page.document.querySelector("#new-chat-btn"));
     assert.ok(page.document.querySelector("#conversations-list"));
-    const toggleBtn = page.document.querySelector("#toggle-sidebar-btn") as HTMLButtonElement;
-    assert.ok(toggleBtn);
-    const collapseBtn = page.document.querySelector("#collapse-sidebar-btn") as HTMLButtonElement;
-    assert.ok(collapseBtn);
-
-    // Verify minimizing sidebar via collapse button
-    collapseBtn.click();
-    assert.equal(sidebar?.classList.contains("collapsed"), true);
-
-    // Verify reopening sidebar via toggle button
-    toggleBtn.click();
-    assert.equal(sidebar?.classList.contains("collapsed"), false);
 
     const form = page.document.querySelector("#chat-form") as HTMLFormElement;
     const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
@@ -213,11 +170,9 @@ describe("SME Assistant conversational rendering", () => {
     assert.ok(citationBtn);
     assert.equal(citationBtn.getAttribute("data-source-id"), "CONF-ENG-239");
 
-    // Verify working context indicators
-    const contextTags = assistantRow.querySelector(".context-tags");
-    assert.ok(contextTags);
-    assert.match(contextTags.textContent ?? "", /Working memory updated/);
-    assert.match(contextTags.textContent ?? "", /Working context referenced/);
+    // The model, the timing and the working-context notes are not shown.
+    assert.equal(assistantRow.querySelector(".context-tags"), null);
+    assert.doesNotMatch(assistantRow.textContent ?? "", /Working (memory|context)|SoCLaaS|first token/);
   });
 
   test("an answer with evidence shows how that evidence connects, and opens it larger", async () => {
@@ -266,10 +221,11 @@ describe("SME Assistant conversational rendering", () => {
     assert.equal(preview.querySelectorAll("svg g").length, 3);
     assert.match(preview.textContent!, /2 things it points to/);
 
-    // Clicking opens the answer's graph page in a dialog, same question, same sources.
+    // Clicking opens the answer's graph beside the page, in the context column: same question, same sources.
     (preview as HTMLButtonElement).click();
-    const dialog = page.document.querySelector("#answer-graph-dialog")!;
-    assert.ok(dialog.hasAttribute("open"));
+    const dialog = page.document.querySelector("#graph-panel")!;
+    assert.equal((dialog as HTMLElement).hidden, false);
+    assert.equal((page.document.querySelector("#context") as HTMLElement).hidden, false);
     const frame = new URL(dialog.querySelector("iframe")!.getAttribute("src")!, "http://x");
     assert.equal(frame.pathname, "/graph/answer");
     assert.equal(frame.searchParams.get("q"), "What is the latest project?");
@@ -296,38 +252,9 @@ describe("SME Assistant conversational rendering", () => {
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.equal(page.document.querySelector(".answer-graph"), null);
-    assert.ok(page.document.querySelector(".source-card"), "the evidence itself is still there");
+    assert.ok(page.document.querySelector(".source-row"), "the evidence itself is still there");
   });
 
-  test("the graph entry sits beside Working Context and leads somewhere", async () => {
-    const app = buildApp({ memory: new DeterministicMemoryProvider() });
-    try {
-      const page = await app.inject({ method: "GET", url: "/" });
-      const dom = new JSDOM(page.body);
-      const document = dom.window.document;
-
-      const link = document.querySelector('a[href="/graph"]');
-      assert.ok(link, "the chat header should offer a way into the graph");
-      assert.match(link!.textContent!, /Graph/);
-
-      // In the same header row as the Working Context badge, and before it, so
-      // the two read as one set of controls.
-      const badge = document.querySelector(".employee-badge")!;
-      assert.equal(link!.parentElement, badge.parentElement);
-      assert.ok(
-        Boolean(
-          link!.compareDocumentPosition(badge) &
-            dom.window.Node.DOCUMENT_POSITION_FOLLOWING,
-        ),
-        "the graph link should come before Working Context",
-      );
-
-      assert.equal((await app.inject({ method: "GET", url: "/graph" })).statusCode, 200);
-      dom.window.close();
-    } finally {
-      await app.close();
-    }
-  });
 });
 
 describe("SME Assistant taking over from a meeting", () => {
@@ -399,9 +326,11 @@ describe("SME Assistant keeping candidates in view", () => {
     };
 
     await send("Find me a backend engineer", 1);
+    assert.equal(page.document.querySelector(".chat-block a"), null, "no separate full page: the panel is the place, and it can be pinned");
     const pin = page.document.querySelector(".chat-block .pin-panel") as HTMLButtonElement;
     assert.ok(pin, "a candidate panel can be pinned");
     pin.click();
+    assert.equal(page.document.querySelector(".chat-block .pin-panel:not([hidden])"), null, "a pinned role offers no second pin");
 
     const pinned = page.document.querySelector("#pinned-panel")!;
     assert.equal(pinned.hasAttribute("hidden"), false);
@@ -414,6 +343,503 @@ describe("SME Assistant keeping candidates in view", () => {
 
     (pinned.querySelector(".unpin-panel") as HTMLButtonElement).click();
     assert.equal(pinned.hasAttribute("hidden"), true);
+    assert.ok(page.document.querySelector(".chat-block .pin-panel:not([hidden])"), "once unpinned, it can be pinned again");
+  });
+});
+
+
+// What the assistant page already does for a signed-in employee. The page's
+// layout is about to change; these describe behaviour that has to survive it.
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+const JAX = { employeeId: "jax", displayName: "Jax", role: "Backend Engineer", department: "Engineering_Backend" };
+
+async function until(check: () => unknown, what: string, ms = 2_000) {
+  const deadline = Date.now() + ms;
+  while (!check()) {
+    if (Date.now() > deadline) throw new Error(`Timed out waiting for ${what}.`);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+}
+
+function signedIn(extra: PageOptions["respond"] = () => undefined): PageOptions["respond"] {
+  return (url, init) => {
+    const own = extra(url, init);
+    if (own) return own;
+    if (url === "/api/v1/auth/me") return json({ authenticated: true, employee: JAX });
+    if (url === "/api/v1/conversations" && (!init?.method || init.method === "GET")) {
+      return json([{ conversationId: "c1", title: "Was ZD-101 the same bug?", updatedAt: new Date().toISOString() }]);
+    }
+    if (url === "/api/v1/conversations/c1") {
+      return json({ messages: [
+        { role: "user", content: "Was ZD-101 the same bug?" },
+        { role: "assistant", content: "Related, not the same bug.", metadata: {} },
+      ] });
+    }
+    return undefined;
+  };
+}
+
+describe("SME Assistant keeps what it already does", () => {
+  test("lists the employee's saved conversations and opens one", async () => {
+    const page = await openSmePage({ respond: signedIn() });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "the saved conversations");
+
+    const item = page.document.querySelector(".conversation-item") as HTMLButtonElement;
+    assert.match(item.textContent!, /Was ZD-101 the same bug\?/);
+    item.click();
+    await until(() => page.document.querySelector(".message-row.assistant"), "the conversation to load");
+    assert.match(page.document.querySelector("#chat-messages")!.textContent!, /Related, not the same bug\./);
+  });
+
+  test("a new chat clears the conversation on screen", async () => {
+    const page = await openSmePage({ respond: signedIn() });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "the saved conversations");
+    (page.document.querySelector(".conversation-item") as HTMLButtonElement).click();
+    await until(() => page.document.querySelector(".message-row.assistant"), "the conversation to load");
+
+    (page.document.querySelector("#new-chat-btn") as HTMLButtonElement).click();
+    assert.equal(page.document.querySelector("#chat-messages")!.children.length, 0);
+  });
+
+  test("clearing all conversations asks first, then deletes them", async () => {
+    const page = await openSmePage({
+      respond: signedIn((url, init) => (url === "/api/v1/conversations" && init?.method === "DELETE" ? json({ ok: true }) : undefined)),
+      setup: (window) => { (window as unknown as { confirm: () => boolean }).confirm = () => true; },
+    });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "the saved conversations");
+
+    const clear = page.document.querySelector("#clear-all-conversations-btn") as HTMLButtonElement;
+    assert.equal(clear.hidden, false);
+    clear.click();
+    // The first request loaded the list; the next one is the delete.
+    await until(() => page.requests.filter((request) => request.url === "/api/v1/conversations").length >= 2, "the delete");
+  });
+
+  test("clicking the signed-in employee opens the directory to switch persona", async () => {
+    const page = await openSmePage({ respond: signedIn((url) => (url === "/api/v1/auth/personas" ? json([JAX, { employeeId: "deepa", displayName: "Deepa", role: "Infra Lead", department: "Engineering_Backend" }]) : undefined)) });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "sign-in to finish");
+    assert.equal(page.document.querySelector("#login-dialog")!.hasAttribute("open"), false);
+
+    (page.document.querySelector("#sidebar-user-container") as HTMLElement).click();
+    await until(() => page.document.querySelector("#login-dialog")!.hasAttribute("open"), "the directory");
+    await until(() => /Deepa/.test(page.document.querySelector("#persona-grid")!.textContent!), "the personas");
+  });
+
+  test("logging out ends the session and asks to sign in again", async () => {
+    const page = await openSmePage({ respond: signedIn((url) => (url === "/api/v1/auth/logout" ? json({ ok: true }) : undefined)) });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "sign-in to finish");
+
+    (page.document.querySelector("#logout-btn") as HTMLButtonElement).click();
+    await until(() => page.requests.some((request) => request.url === "/api/v1/auth/logout"), "the logout request");
+    await until(() => page.document.querySelector("#login-dialog")!.hasAttribute("open"), "the sign-in dialog");
+  });
+
+  test("a cited source opens in a dialog with its full text", async () => {
+    const page = await openSmePage({
+      respond: signedIn((url) => (url === "/api/v1/company/sources/CONF-ENG-239"
+        ? json({ sourceId: "CONF-ENG-239", sourceType: "confluence", title: "Remote config design", body: "The whole page.", department: "Engineering" })
+        : undefined)),
+    });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "sign-in to finish");
+    const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
+    input.value = "What is the latest project?";
+    page.document.querySelector("#chat-form")!.dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+    await until(() => page.document.querySelector('.message-row.assistant [data-source-id="CONF-ENG-239"]'), "the cited source");
+
+    (page.document.querySelector('.message-row.assistant [data-source-id="CONF-ENG-239"]') as HTMLElement).click();
+    await until(() => page.document.querySelector("#source-title")!.textContent === "Remote config design", "the source dialog");
+  });
+});
+
+// The home screen leads with what the employee has to do, gathered from their meetings.
+const NOC = "NOC SLA escalation & weekly sync";
+function action(id: string, kind: string, tier: string, status: string, title: string, extra: Record<string, unknown> = {}) {
+  return {
+    id, meetingId: "m1", kind, tier, status, title, version: 1, evidence: [], dedupeKey: id, payloadHash: "h",
+    createdAt: "2026-09-27T02:00:00.000Z", trigger: { segmentIndex: 3, speaker: "Jax", quote: `quote for ${id}` },
+    payload: {}, ...extra,
+  };
+}
+function meetingsRespond(actions: unknown[]): PageOptions["respond"] {
+  return signedIn((url) => {
+    if (url === "/api/v1/meetings") {
+      return json([
+        { meetingId: "m1", title: NOC, status: "ended", startedAt: "2026-09-27T02:00:00.000Z", actionCount: actions.length },
+        { meetingId: "product-tour", title: "Welcome: a 3-minute tour of Meetings", status: "ended", startedAt: "2026-09-20T02:00:00.000Z", actionCount: 9 },
+      ]);
+    }
+    if (url === "/api/v1/meetings/m1") return json({ meetingId: "m1", title: NOC, status: "ended", actions });
+    if (url === "/api/v1/meetings/product-tour") {
+      return json({ meetingId: "product-tour", title: "Welcome: a 3-minute tour of Meetings", status: "ended", actions: [action("tour-email", "email_draft", "approval", "proposed", "Email the launch partners")] });
+    }
+    return undefined;
+  });
+}
+
+describe("SME Assistant home: what needs you", () => {
+  test("says how many drafts wait for you and lists each on one short line: what, from which meeting", async () => {
+    const page = await openSmePage({ respond: meetingsRespond([
+      action("a1", "email_draft", "approval", "proposed", "Email: Send follow-up to Owen"),
+      action("a2", "ticket_draft", "approval", "proposed", "Add consumer-lag alerting"),
+      action("a3", "calendar_draft", "approval", "proposed", "Checkpoint before the championship", { missing: ["Which day: Tue 29 Sept or Tue 6 Oct"] }),
+      action("a4", "escalation", "escalate", "escalated", "Escalation: Approval required: 20% discount for NOTC", { payload: { subject: "20% discount", reason: "Pricing", requiredApprover: "Finance lead" } }),
+      action("a5", "answer_question", "auto", "executed", "Was ENG-148 the same bug?"),
+      action("a6", "email_draft", "approval", "rejected", "A draft you turned down"),
+    ]) });
+    after(() => page.close());
+    await until(() => page.document.querySelectorAll("#home-needs .task").length === 3, "the drafts that need you");
+
+    assert.equal(page.document.querySelector("#home-title")!.textContent, "Jax, 3 things need you.");
+    assert.equal((page.document.querySelector("#home-win") as HTMLElement).hidden, true, "no V while things wait");
+    const rows = [...page.document.querySelectorAll("#home-needs .task")];
+    assert.equal(rows[0]!.querySelector(".task-title")!.textContent, "Send follow-up to Owen");
+    assert.equal(rows[0]!.querySelector(".task-from")!.textContent, NOC);
+    // All from one meeting, which the headline already names: not repeated on every row.
+    assert.equal((rows[0]!.querySelector(".task-from") as HTMLElement).hidden, true);
+    assert.equal(rows[0]!.getAttribute("href"), "/meetings/m1");
+    // Short: no quote, no speaker, no second line. The meeting has them.
+    assert.doesNotMatch(rows[0]!.textContent!, /quote for a1|Jax/);
+    assert.equal(rows[0]!.querySelector(".sub"), null);
+    // A draft that still needs an answer says so in a small tag, with the detail on hover.
+    const tag = rows[2]!.querySelector(".task-tag")!;
+    assert.equal(tag.textContent, "Needs input");
+    assert.equal(tag.getAttribute("title"), "Which day: Tue 29 Sept or Tue 6 Oct");
+    // The sample tour is not work: its drafts are not counted.
+    assert.doesNotMatch(page.document.querySelector("#home-needs")!.textContent!, /launch partners/);
+
+    const waiting = page.document.querySelector("#home-waiting")!;
+    assert.equal(waiting.querySelector(".task-title")!.textContent, "20% discount for NOTC");
+    assert.equal(waiting.querySelector(".task-tag")!.textContent, "Finance lead");
+    // The headline's second line names the meetings only; the call waiting on others is listed below.
+    assert.doesNotMatch(page.document.querySelector("#home-summary")!.textContent!, /Finance/);
+    assert.match(page.document.querySelector("#home-done")!.textContent!, /Was ENG-148 the same bug\?/);
+    assert.doesNotMatch(page.document.querySelector("#home")!.textContent!, /A draft you turned down/);
+  });
+
+  test("today's page lists today's meetings and chats in time order, with a way to every meeting", async () => {
+    const at = (hours: number, minutes: number) => { const d = new Date(); d.setHours(hours, minutes, 0, 0); return d.toISOString(); };
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString();
+    const page = await openSmePage({ respond: signedIn((url) => {
+      if (url === "/api/v1/meetings") {
+        return json([
+          { meetingId: "m1", title: NOC, status: "ended", startedAt: at(10, 0), actionCount: 0 },
+          { meetingId: "old", title: "Last week's sync", status: "ended", startedAt: yesterday, actionCount: 0 },
+          { meetingId: "product-tour", title: "Welcome: a 3-minute tour of Meetings", status: "ended", startedAt: yesterday, actionCount: 9 },
+        ]);
+      }
+      if (url === "/api/v1/conversations" ) return json([{ conversationId: "c1", title: "Was ZD-101 the same bug?", updatedAt: at(12, 10) }]);
+      return undefined;
+    }) });
+    after(() => page.close());
+    await until(() => page.document.querySelectorAll("#timeline .entry").length === 2, "today's entries");
+
+    const entries = [...page.document.querySelectorAll("#timeline .entry")];
+    assert.match(entries[0]!.textContent!, /10:00/);
+    assert.match(entries[0]!.textContent!, /NOC SLA escalation/);
+    assert.equal(entries[0]!.querySelector("a")!.getAttribute("href"), "/meetings/m1");
+    assert.match(entries[1]!.textContent!, /12:10/);
+    assert.match(entries[1]!.textContent!, /Was ZD-101 the same bug\?/);
+    assert.doesNotMatch(page.document.querySelector("#timeline")!.textContent!, /Last week's sync/, "only today");
+
+    // Opening today's chat shows it on the page.
+    (entries[1]!.querySelector("button") as HTMLButtonElement).click();
+    await until(() => page.document.querySelector("#chat-messages .message-row.assistant"), "the chat to open on the page");
+
+    assert.equal(page.document.querySelector("#plate a.all-meetings")!.getAttribute("href"), "/meetings");
+    assert.equal(page.document.querySelector("#chat-form a.record")!.getAttribute("href"), "/meetings");
+  });
+
+  test("with nothing to approve, says so plainly", async () => {
+    const page = await openSmePage({ respond: meetingsRespond([action("a5", "answer_question", "auto", "executed", "Was ENG-148 the same bug?")]) });
+    after(() => page.close());
+    await until(() => page.document.querySelector("#home-done .task"), "the finished work");
+    assert.equal(page.document.querySelector("#home-title")!.textContent, "Jax, nothing needs you right now.");
+    // All clear: the hand shows a V beside the headline.
+    assert.equal((page.document.querySelector("#home-win") as HTMLElement).hidden, false);
+  });
+});
+
+// "Clear all": approving what needs you, one draft at a time, without leaving the home page.
+/** Mutable meeting-actions backend for the review flow: approve/reject really change status,
+ * so a second read (the plate's refresh once the queue is done) sees the new state. */
+function reviewRespond(
+  actions: Array<ReturnType<typeof action>>,
+  results: Record<string, { summary: string; simulated: boolean; handoffUrl?: string; handoffCopy?: string }> = {},
+): PageOptions["respond"] {
+  const byId = new Map(actions.map((entry) => [entry.id as string, entry as Record<string, unknown>]));
+  return signedIn((url, init) => {
+    if (url === "/api/v1/meetings") {
+      return json([{ meetingId: "m1", title: NOC, status: "ended", startedAt: "2026-09-27T02:00:00.000Z", actionCount: actions.length }]);
+    }
+    if (url === "/api/v1/meetings/m1") return json({ meetingId: "m1", title: NOC, status: "ended", actions: [...byId.values()] });
+    let match = /^\/api\/v1\/meetings\/m1\/actions\/([^/]+)\/approve$/.exec(url);
+    if (match && init?.method === "POST") {
+      const id = match[1]!;
+      const current = byId.get(id);
+      if (!current) return json({ code: "not_found", message: "No such action." }, 404);
+      const body = JSON.parse(init.body ?? "{}");
+      if (body.payloadHash !== current.payloadHash) return json({ code: "payload_changed", message: "The payload has changed." }, 409);
+      const updated = { ...current, status: "executed", result: results[id] ?? { summary: "Done", simulated: false } };
+      byId.set(id, updated);
+      return json(updated);
+    }
+    match = /^\/api\/v1\/meetings\/m1\/actions\/([^/]+)\/reject$/.exec(url);
+    if (match && init?.method === "POST") {
+      const id = match[1]!;
+      const current = byId.get(id);
+      if (!current) return json({ code: "not_found", message: "No such action." }, 404);
+      const updated = { ...current, status: "rejected" };
+      byId.set(id, updated);
+      return json(updated);
+    }
+    return undefined;
+  });
+}
+
+describe("SME Assistant clearing the plate, one draft at a time", () => {
+  test("Clear all opens a focused review: the full draft, where it came from, approve calls the tray's endpoint and offers an Open link instead of a pop-up", async () => {
+    const a1 = action("a1", "email_draft", "approval", "proposed", "Email: Send follow-up to Owen", {
+      payload: { to: "owen@notc.example", subject: "Root cause and the fix", body: "Hi Owen,\n\nAs promised, here is the root cause [source:ENG-210]." },
+      trigger: { segmentIndex: 4, speaker: "Jax", quote: "I'll send a follow-up email today with the root cause." },
+      evidence: [
+        { sourceId: "ENG-210", sourceType: "jira", title: "Commit race, open", excerpt: "" },
+        { sourceId: "slack_digital-hq_2026-02-02T11:36:00", sourceType: "slack", title: "#digital-hq", excerpt: "" },
+      ],
+    });
+    const a2 = action("a2", "ticket_draft", "approval", "proposed", "Add consumer-lag alerting", {
+      payload: { title: "Add consumer-lag alerting", description: "Alert before we breach the SLA.", assignee: "Ben", due: "2026-10-03" },
+      trigger: { segmentIndex: 6, speaker: "Deepa", quote: "I'll add consumer-lag alerting on that path." },
+    });
+    const opened: string[] = [];
+    const page = await openSmePage({
+      respond: reviewRespond([a1, a2], { a1: { summary: "Ready in Gmail", simulated: false, handoffUrl: "https://mail.google.com/mail/?view=cm&to=owen@notc.example" } }),
+      setup: (window) => { (window as unknown as { open: (url: string) => void }).open = (url: string) => { opened.push(url); }; },
+    });
+    after(() => page.close());
+
+    const clearBtn = () => page.document.querySelector("#clear-needs-btn") as HTMLButtonElement;
+    await until(() => clearBtn() && !clearBtn().hidden, "the Clear all button");
+
+    clearBtn().click();
+    await until(() => !(page.document.querySelector("#clear-review") as HTMLElement)?.hidden, "the review to open");
+
+    assert.equal(page.document.querySelector("#clear-progress")!.textContent, "1 of 2");
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /owen@notc\.example/);
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /Root cause and the fix/);
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /As promised, here is the root cause/);
+    // The reviewer sees what a sentence rests on as a citation chip, never a raw marker.
+    assert.doesNotMatch(page.document.querySelector("#clear-fields")!.textContent!, /\[source:/);
+    assert.equal(page.document.querySelector("#clear-fields .inline-citation")!.textContent, "ENG-210");
+
+    // What it touches: the quote and speaker it came from, and what it was built from.
+    const context = page.document.querySelector("#clear-context")!;
+    assert.match(context.textContent!, /I'll send a follow-up email today with the root cause\./);
+    assert.match(context.textContent!, /NOC SLA escalation/);
+    assert.match(context.textContent!, /Jax/);
+    assert.match(context.textContent!, /ENG-210/);
+    // A stored message shows what it is, never its storage id.
+    assert.match(context.textContent!, /Slack message/);
+    assert.doesNotMatch(context.textContent!, /slack_digital-hq_2026/);
+    assert.equal((page.document.querySelector("#context") as HTMLElement).hidden, false);
+    assert.equal((page.document.querySelector(".chat-main") as HTMLElement).hidden, true);
+
+    // Approve: the same endpoint the tray uses. No pop-up: an Open link to the handoff, like the tray shows.
+    (page.document.querySelector("#clear-approve") as HTMLButtonElement).click();
+    await until(() => (page.document.querySelector("#clear-open") as HTMLElement)?.hidden === false, "the Open link to appear");
+    assert.equal(opened.length, 0, "approving never calls window.open; a pop-up would be blocked");
+    const openLink = page.document.querySelector("#clear-open") as HTMLAnchorElement;
+    assert.equal(openLink.getAttribute("href"), "https://mail.google.com/mail/?view=cm&to=owen@notc.example");
+    assert.equal(openLink.getAttribute("target"), "_blank", "external: a new tab");
+    assert.equal(openLink.getAttribute("rel"), "noopener");
+    // Still on the first draft: the employee opens the link themselves, then moves on.
+    assert.equal(page.document.querySelector("#clear-progress")!.textContent, "1 of 2");
+    assert.equal((page.document.querySelector("#clear-approve") as HTMLElement).hidden, true);
+
+    (page.document.querySelector("#clear-next") as HTMLButtonElement).click();
+    await until(() => page.document.querySelector("#clear-progress")!.textContent === "2 of 2", "Next moves to the next draft");
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /Alert before we breach the SLA\./);
+
+    // Reject the ticket: same endpoint the tray uses.
+    (page.document.querySelector("#clear-reject") as HTMLButtonElement).click();
+    await until(() => (page.document.querySelector("#clear-review") as HTMLElement).hidden, "the review to close once the queue is done");
+    assert.equal((page.document.querySelector(".chat-main") as HTMLElement).hidden, false);
+
+    assert.equal(page.requests.some((r) => r.url === "/api/v1/meetings/m1/actions/a1/approve"), true);
+    assert.equal(page.requests.some((r) => r.url === "/api/v1/meetings/m1/actions/a2/reject"), true);
+    // Nothing is sent without the user's own approve click.
+    assert.equal(page.requests.some((r) => r.url === "/api/v1/meetings/m1/actions/a2/approve"), false);
+    // The queue is done: the plate is refreshed.
+    assert.ok(page.requests.filter((r) => r.url === "/api/v1/meetings/m1").length >= 2, "the plate is refreshed once the queue is done");
+  });
+
+  test("a doc or sheet draft's handoff points to the meeting, where the tray does the copy, not a reimplementation here", async () => {
+    const a1 = action("a1", "doc_draft", "approval", "proposed", "Draft the postmortem doc", {
+      payload: { title: "ENG-210 postmortem", body: "# Postmortem\n\nRoot cause: a commit race." },
+    });
+    const page = await openSmePage({
+      respond: reviewRespond([a1], {
+        a1: { summary: "Ready to paste into a new Google Docs document: ENG-210 postmortem", simulated: false, handoffUrl: "https://docs.new", handoffCopy: "# Postmortem\n\nRoot cause: a commit race." },
+      }),
+    });
+    after(() => page.close());
+    const clearBtn = () => page.document.querySelector("#clear-needs-btn") as HTMLButtonElement;
+    await until(() => clearBtn() && !clearBtn().hidden, "the Clear all button");
+    clearBtn().click();
+    await until(() => !(page.document.querySelector("#clear-review") as HTMLElement)?.hidden, "the review to open");
+
+    (page.document.querySelector("#clear-approve") as HTMLButtonElement).click();
+    await until(() => (page.document.querySelector("#clear-open") as HTMLElement)?.hidden === false, "the Open link to appear");
+    const openLink = page.document.querySelector("#clear-open") as HTMLAnchorElement;
+    assert.equal(openLink.getAttribute("href"), "/meetings/m1", "not docs.new: the meeting page, where the tray copies the draft");
+    assert.equal(openLink.hasAttribute("target"), false, "same tab: it is this app's own meeting page");
+  });
+
+  test("S skips without sending anything; Enter approves what is on screen, then Enter again moves on; a hiring request shows the requirement", async () => {
+    const a1 = action("a1", "ticket_draft", "approval", "proposed", "File the postmortem ticket", {
+      payload: { title: "File the postmortem ticket", description: "Write up ENG-210.", assignee: "Jax", due: "2026-10-01" },
+    });
+    const a2 = action("a2", "hiring_request", "approval", "proposed", "Hiring request: Need a backend engineer", {
+      payload: { requirement: "A backend engineer to help scale ingestion." },
+    });
+    const page = await openSmePage({
+      respond: reviewRespond([a1, a2], { a2: { summary: "Continues in the assistant", simulated: false, handoffUrl: "/" } }),
+    });
+    after(() => page.close());
+    const clearBtn = () => page.document.querySelector("#clear-needs-btn") as HTMLButtonElement;
+    await until(() => clearBtn() && !clearBtn().hidden, "the Clear all button");
+    clearBtn().click();
+    await until(() => !(page.document.querySelector("#clear-review") as HTMLElement)?.hidden, "the review to open");
+
+    page.document.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "s", bubbles: true }));
+    await until(() => page.document.querySelector("#clear-progress")!.textContent === "2 of 2", "S to skip to the next draft");
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /A backend engineer to help scale ingestion\./);
+    assert.equal(page.requests.some((r) => r.url.includes("/actions/a1/")), false, "skip sends nothing");
+
+    page.document.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await until(() => page.requests.some((r) => r.url === "/api/v1/meetings/m1/actions/a2/approve"), "Enter approves the draft on screen");
+    await until(() => (page.document.querySelector("#clear-open") as HTMLElement)?.hidden === false, "the Open link for continuing in the assistant");
+    assert.equal((page.document.querySelector("#clear-review") as HTMLElement).hidden, false, "still open: the employee moves on themselves");
+
+    page.document.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await until(() => (page.document.querySelector("#clear-review") as HTMLElement).hidden, "Enter again moves on and the queue finishes");
+    // Let the plate's refresh (fired by finishClear, not awaited by it) settle before the page closes.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+
+  test("a calendar draft missing a day shows the day options and cannot be approved from the review", async () => {
+    const a1 = action("a1", "calendar_draft", "approval", "proposed", "Checkpoint before the championship", {
+      payload: { title: "Checkpoint before the championship", attendees: ["deepa@company.example"], durationMinutes: 30, startOptions: ["2026-09-29", "2026-10-06"] },
+      missing: ["Which day: Tue 29 Sept or Tue 6 Oct"],
+    });
+    const page = await openSmePage({ respond: reviewRespond([a1]) });
+    after(() => page.close());
+    const clearBtn = () => page.document.querySelector("#clear-needs-btn") as HTMLButtonElement;
+    await until(() => clearBtn() && !clearBtn().hidden, "the Clear all button");
+    clearBtn().click();
+    await until(() => !(page.document.querySelector("#clear-review") as HTMLElement)?.hidden, "the review to open");
+    assert.match(page.document.querySelector("#clear-fields")!.textContent!, /Which day: Tue 29 Sept or Tue 6 Oct/);
+
+    // Something is missing: Approve is disabled and sends nothing, however it is triggered.
+    const approveBtn = page.document.querySelector("#clear-approve") as HTMLButtonElement;
+    assert.equal(approveBtn.disabled, true, "Approve is disabled while something is missing");
+    approveBtn.click();
+    page.document.dispatchEvent(new page.window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(page.requests.some((r) => r.url.includes("/approve")), false, "no approve request is sent");
+
+    // It links to the meeting, where the tray lets the employee fill it in.
+    const meetingLink = page.document.querySelector('#clear-fields a[href="/meetings/m1"]') as HTMLAnchorElement;
+    assert.ok(meetingLink, "a link to the meeting page");
+
+    // Skip and Reject still work.
+    (page.document.querySelector("#clear-skip") as HTMLButtonElement).click();
+    await until(() => (page.document.querySelector("#clear-review") as HTMLElement).hidden, "Skip still works and the queue finishes");
+    // Let the plate's refresh (fired by finishClear, not awaited by it) settle before the page closes.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  });
+});
+
+describe("SME Assistant evidence list", () => {
+  test("lists each source on one line, in plain words, three at first, the rest a click away", async () => {
+    const answer = {
+      answer: "Not the same bug [source:ENG-148].",
+      runId: "cards",
+      toolCalls: [],
+      sources: [
+        { sourceId: "slack_incidents_2026-01-23T10:00:00", sourceType: "slack", title: "#general:", excerpt: "Deepa: offsets are resetting", occurredAt: "2026-01-23T10:00:00.000Z" },
+        { sourceId: "CONF-ENG-150", sourceType: "confluence", title: "Postmortem: P1 incident ENG-148", excerpt: "The offset reset policy was misconfigured.", occurredAt: "2026-01-28T09:00:00.000Z" },
+        { sourceId: "ZD-101", sourceType: "zd_ticket", title: "ZD-101", excerpt: "telemetry ingestion", occurredAt: "2026-02-20T11:51:00.000Z" },
+        { sourceId: "ENG-210", sourceType: "jira", title: "ENG-210", excerpt: "race", occurredAt: "2026-02-24T16:22:00.000Z" },
+        { sourceId: "email_2026-02-25T09:00:00", sourceType: "email", title: "Re: SLA", excerpt: "credit", occurredAt: "2026-02-25T09:00:00.000Z" },
+      ],
+    };
+    const page = await openSmePage({ respond: signedIn((url) => (url.startsWith("/api/v1/agent/chat") ? json(answer) : undefined)) });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "sign-in to finish");
+    const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
+    input.value = "Is ENG-210 the same bug as ENG-148?";
+    page.document.querySelector("#chat-form")!.dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+    await until(() => page.document.querySelectorAll(".source-row").length === 5, "the sources");
+
+    const list = page.document.querySelector(".sources-list")!;
+    assert.match(list.querySelector(".sources-head")!.textContent!, /5 sources/);
+    const rows = [...list.querySelectorAll(".source-row")] as HTMLElement[];
+    assert.deepEqual(rows.map((row) => row.hidden), [false, false, false, true, true], "three at first");
+    assert.equal(rows[0]!.querySelector(".source-kind")!.textContent, "Slack message");
+    assert.equal(rows[0]!.querySelector(".source-title")!.textContent, "#general");
+    assert.equal(rows[0]!.querySelector(".source-meta")!.textContent, "23 Jan 2026");
+    assert.equal(rows[1]!.querySelector(".source-meta")!.textContent, "CONF-ENG-150 · 28 Jan 2026");
+    assert.doesNotMatch(list.textContent!, /slack_incidents_2026|email_2026/, "never a storage id");
+    assert.equal(list.querySelector(".source-excerpt"), null, "the excerpt waits for the source to be opened");
+
+    const more = list.querySelector(".sources-more") as HTMLButtonElement;
+    assert.match(more.textContent!, /Show 2 more/);
+    more.click();
+    assert.deepEqual(rows.map((row) => row.hidden), [false, false, false, false, false]);
+  });
+});
+
+describe("SME Assistant home: the line under the headline", () => {
+  const twoMeetings = (summary: (body: string) => Response | undefined) => signedIn((url, init) => {
+    if (url === "/api/v1/home/summary") return summary(init?.body ?? "");
+    if (url === "/api/v1/meetings") {
+      return json([
+        { meetingId: "m1", title: NOC, status: "ended", startedAt: "2026-09-27T02:00:00.000Z", actionCount: 1 },
+        { meetingId: "m2", title: "Kafka backend sync", status: "ended", startedAt: "2026-09-26T02:00:00.000Z", actionCount: 1 },
+      ]);
+    }
+    if (url === "/api/v1/meetings/m1") return json({ meetingId: "m1", title: NOC, status: "ended", actions: [action("a1", "email_draft", "approval", "proposed", "Send follow-up to Owen")] });
+    if (url === "/api/v1/meetings/m2") return json({ meetingId: "m2", title: "Kafka backend sync", status: "ended", actions: [{ ...action("b1", "doc_draft", "approval", "proposed", "Update the runbook"), meetingId: "m2" }] });
+    return undefined;
+  });
+
+  test("reads the way a colleague would say it, when the model has written it", async () => {
+    let asked = "";
+    const page = await openSmePage({ respond: twoMeetings((body) => ((asked = body), json({ sentence: "Owen's follow-up is from the NOC call; the runbook change came out of the Kafka sync." }))) });
+    after(() => page.close());
+    await until(() => /Owen's follow-up/.test(page.document.querySelector("#home-summary")!.textContent!), "the model's line");
+    const sent = JSON.parse(asked) as { name: string; items: Array<{ title: string; meeting: string; part: string }> };
+    assert.equal(sent.name, "Jax");
+    assert.deepEqual(sent.items.map((item) => [item.part, item.title, item.meeting]), [
+      ["needs", "Send follow-up to Owen", NOC],
+      ["needs", "Update the runbook", "Kafka backend sync"],
+    ]);
+  });
+
+  test("keeps its own plain line when the model has nothing", async () => {
+    const page = await openSmePage({ respond: twoMeetings(() => json({ sentence: null })) });
+    after(() => page.close());
+    await until(() => page.requests.some((request) => request.url === "/api/v1/home/summary"), "the request for a line");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(page.document.querySelector("#home-summary")!.textContent, "Both are drafts from 2 meetings.");
   });
 });
 
@@ -473,7 +899,14 @@ describe("SME Assistant on a chosen day", () => {
     assert.equal((doc.querySelector("#as-of-input") as HTMLInputElement).value, "2026-01-07");
     assert.equal(doc.querySelector("#as-of-caption")!.textContent, "Today");
     assert.equal(page.window.location.search, "");
+    // The composer says what can be asked, and on which day.
+    const composer = doc.querySelector("#message-input") as HTMLTextAreaElement;
+    assert.equal(composer.placeholder, "Ask about a ticket, a person or a meeting");
     assert.deepEqual(plannerAsks(page), ["/api/v1/planner/todo?asOf=2026-01-07", "/api/v1/planner/day?asOf=2026-01-07"]);
+
+    // The plan for the day reads first, the tickets under it.
+    const sections = [...doc.querySelectorAll("#today-panel .today-section h3")].map((heading) => heading.textContent);
+    assert.deepEqual(sections, ["Plan", "My tickets"]);
 
     // Grouped: what Jax works on, then what Jax raised and nobody picked up.
     const groups = [...doc.querySelectorAll("#todo-list h4")].map((heading) => heading.textContent);
@@ -494,6 +927,7 @@ describe("SME Assistant on a chosen day", () => {
 
     assert.equal(page.window.location.search, "?asOf=2026-01-05");
     assert.equal(doc.querySelector("#as-of-caption")!.textContent, "As of");
+    assert.equal((doc.querySelector("#message-input") as HTMLTextAreaElement).placeholder, "Ask as of Mon 5 Jan");
     assert.match(doc.querySelector("#today-date")!.textContent!, /As of/);
     assert.match(doc.querySelector("#todo-list")!.textContent!, /tagging on 2026-01-05/);
     assert.ok(!/2026-01-07/.test(doc.querySelector("#todo-list")!.textContent!), "nothing of the old day is left");
@@ -506,6 +940,7 @@ describe("SME Assistant on a chosen day", () => {
     assert.equal((doc.querySelector("#as-of-prev") as HTMLButtonElement).disabled, true, "the record starts here");
     (doc.querySelector("#as-of-now") as HTMLButtonElement).click();
     await until(() => /2026-01-07/.test(doc.querySelector("#plan-list")!.textContent!), "today again");
+    assert.equal((doc.querySelector("#message-input") as HTMLTextAreaElement).placeholder, "Ask about a ticket, a person or a meeting");
     assert.equal(page.window.location.search, "");
     assert.equal((doc.querySelector("#company-graph-link") as HTMLElement).hidden, false);
   });
@@ -562,6 +997,23 @@ describe("SME Assistant on a chosen day", () => {
     await until(() => page.document.querySelector(".as-of-tag"), "the answer's day");
   });
 
+  test("on the plate the tickets you raised start folded, and the list says which day of the record it shows", async () => {
+    const page = await plannerPage();
+    after(() => page.close());
+    const doc = page.document;
+    await until(() => doc.querySelector(".todo-item"), "the to-do list");
+
+    // What others were meant to pick up is not the day's work: folded, one click away.
+    const raised = [...doc.querySelectorAll("#todo-list li")].filter((row) => /VPC review/.test(row.textContent!));
+    assert.equal(raised.length, 1);
+    assert.equal((raised[0] as HTMLElement).hidden, true);
+    assert.match(doc.querySelector("#todo-list .today-more")!.textContent!, /Show 1/);
+    // The planner's record ends before today: its day is named, even when it is the present.
+    assert.match(doc.querySelector("#today-date")!.textContent!, /As of .*2026/);
+    // The picker reads as a day, not as a form field.
+    assert.match(doc.querySelector("#as-of-label")!.textContent!, /7 Jan/);
+  });
+
   test("without a planner there is no date control and no panel", async () => {
     const page = await openSmePage({
       respond: (url) => {
@@ -575,8 +1027,125 @@ describe("SME Assistant on a chosen day", () => {
     await until(() => page.requests.some((request) => request.url.startsWith("/api/v1/planner/days")), "the planner check");
     await new Promise((resolve) => setTimeout(resolve, 30));
     assert.equal((page.document.querySelector("#as-of") as HTMLElement).hidden, true);
-    assert.equal((page.document.querySelector("#today-toggle") as HTMLElement).hidden, true);
     assert.equal((page.document.querySelector("#today-panel") as HTMLElement).hidden, true);
   });
 });
 
+describe("SME Assistant plate, as shown on camera", () => {
+  test("what waits on the same person is one row, however many meetings raised it, and a title never repeats its kind", async () => {
+    const at = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+    const esc = (id: string, meetingId: string, title: string, approver: string) => ({
+      ...action(id, "escalation", "escalate", "escalated", title, { payload: { subject: title, reason: "Pricing", requiredApprover: approver } }),
+      meetingId,
+    });
+    const page = await openSmePage({ respond: signedIn((url) => {
+      if (url === "/api/v1/meetings") {
+        return json([
+          { meetingId: "m1", title: NOC, status: "ended", startedAt: at(300), actionCount: 1 },
+          { meetingId: "m2", title: "0209", status: "ended", startedAt: at(200), actionCount: 2 },
+          { meetingId: "m3", title: "0212", status: "ended", startedAt: at(100), actionCount: 2 },
+        ]);
+      }
+      if (url === "/api/v1/meetings/m1") return json({ meetingId: "m1", title: NOC, status: "ended", actions: [esc("e1", "m1", "Escalation: Approval required: 20% discount for NOTC", "Finance lead")] });
+      if (url === "/api/v1/meetings/m2") return json({ meetingId: "m2", title: "0209", status: "ended", actions: [esc("e2", "m2", "Escalation: Discount approval required for NOTC", "Finance lead"), esc("e3", "m2", "Escalation: Contract change", "Legal")] });
+      if (url === "/api/v1/meetings/m3") return json({ meetingId: "m3", title: "0212", status: "ended", actions: [esc("e4", "m3", "Escalation: Escalation: Discount Confirmation", "Finance lead")] });
+      return undefined;
+    }) });
+    after(() => page.close());
+    await until(() => page.document.querySelectorAll("#home-waiting .task").length > 0, "what waits on others");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+
+    const rows = [...page.document.querySelectorAll("#home-waiting .task")];
+    assert.equal(rows.length, 2, "Finance lead once, Legal once");
+    const finance = rows.find((row) => /Finance lead/.test(row.textContent!))!;
+    // The most recent ask names the row; the count says how many there are and from how many meetings.
+    assert.equal(finance.querySelector(".task-title")!.textContent, "Discount Confirmation");
+    // Compact on the narrow plate: a count, with the full wording on hover.
+    assert.equal(finance.querySelector(".task-count")!.textContent, "×3");
+    assert.equal(finance.querySelector(".task-count")!.getAttribute("title"), "3 asks from 3 meetings");
+    assert.equal(page.document.querySelector("#home-waiting .count")!.textContent, "2");
+    for (const title of page.document.querySelectorAll("#home-waiting .task-title")) {
+      assert.doesNotMatch(title.textContent!, /^(Escalation|Approval required):/i);
+    }
+  });
+});
+
+describe("SME Assistant knowledge gaps on the plate", () => {
+  const DAYS = ["2026-02-16", "2026-02-17", "2026-02-18"];
+  const proposal = (id: string, extra: Record<string, unknown> = {}) => ({
+    id,
+    domain: id.split("@")[0],
+    name: id.split("@")[0],
+    openedOn: id.split("@")[1],
+    status: "open",
+    reasons: [{ rule: "orphaned", text: "Morgan, who owned it, left on 2026-02-17, and nobody has taken it on for 2 working days." }],
+    evidence: ["CONF-ENG-300", "ENG-173"],
+    suggestedTitle: "Backend engineer to own it",
+    ...extra,
+  });
+
+  test("proposals share the selected day, make a role draft, and retain a dismissed proposal", async () => {
+    const state = { opened: false, dismissed: false };
+    const page = await openSmePage({
+      respond: (url, init) => {
+        if (url.startsWith("/api/v1/auth/me")) return json({ authenticated: true, employee: JAX });
+        if (url.startsWith("/api/v1/conversations")) return json([]);
+        if (url.startsWith("/api/v1/planner/days")) return json({ days: DAYS, first: DAYS[0], last: DAYS.at(-1) });
+        if (url.startsWith("/api/v1/planner/")) return json({ items: [], entries: [] });
+        const day = new URLSearchParams(url.split("?")[1] ?? "").get("asOf");
+        if (url.startsWith("/api/v1/gaps/proposals?")) {
+          const k8s = proposal("kubernetes-deploy@2026-02-18", state.opened ? { status: "role_opened", roleId: "r1" } : {});
+          const terraform = proposal("terraform-infra@2026-01-30", {
+            status: state.dismissed ? "dismissed" : "open",
+            reasons: [{ rule: "thin", text: `Only 3 people worked on terraform-infra, as of ${day}.` }],
+          });
+          return json({ asOf: day, canOpenRoles: true, proposals: day === "2026-02-16" ? [terraform] : [k8s, terraform] });
+        }
+        if (url.startsWith("/api/v1/gaps/health?")) {
+          return json({ asOf: day, domains: [
+            { name: "kubernetes-deploy", owner: "Morgan", ownerActive: false, ownerLoad: 1, activeContributors30d: ["Sanjay"], incidents30d: ["ENG-173"] },
+          ] });
+        }
+        if (url.endsWith("/open-role") && init?.method === "POST") {
+          state.opened = true;
+          return json({ roleId: "r1", title: "Backend engineer, kubernetes-deploy" }, 201);
+        }
+        if (url.endsWith("/dismiss") && init?.method === "POST") {
+          state.dismissed = true;
+          return new Response(null, { status: 204 });
+        }
+        return undefined;
+      },
+    });
+    after(() => page.close());
+    const doc = page.document;
+    await until(() => doc.querySelectorAll(".proposal-card").length === 2, "the gap proposals");
+
+    const plate = doc.querySelector("#plate")!;
+    assert.equal((doc.querySelector("#gaps-panel") as HTMLElement).hidden, false);
+    assert.ok(plate.contains(doc.querySelector("#gaps-panel")));
+    assert.equal(doc.querySelector("#gaps-count")!.textContent, "2");
+    assert.match(doc.querySelector(".proposal-card")!.textContent!, /terraform-infra/);
+    assert.equal(doc.querySelectorAll(".evidence-chip").length, 4);
+    assert.match(doc.querySelector("#health-rows tr")!.textContent!, /Morgan \(left\)/);
+
+    (doc.querySelector('[data-proposal-id="kubernetes-deploy@2026-02-18"] .proposal-open') as HTMLButtonElement).click();
+    await until(() => doc.querySelector(".proposal-link"), "the drafted role link");
+    assert.equal(doc.querySelector(".proposal-link")!.getAttribute("href"), "/recruiting?role=r1");
+    assert.equal(doc.querySelector("#gaps-count")!.textContent, "1");
+
+    (doc.querySelector('[data-proposal-id="terraform-infra@2026-01-30"] .proposal-dismiss') as HTMLButtonElement).click();
+    await until(() => doc.querySelector(".proposal-dismissed"), "the dismissed proposal fold");
+    assert.equal(doc.querySelector(".proposal-dismissed summary")!.textContent, "Dismissed · 1");
+
+    const input = doc.querySelector("#as-of-input") as HTMLInputElement;
+    input.value = "2026-02-16";
+    input.dispatchEvent(new page.window.Event("change", { bubbles: true }));
+    await until(
+      () => doc.querySelectorAll(".proposal-card").length === 1
+        && /terraform-infra/.test(doc.querySelector(".proposal-card")?.textContent ?? ""),
+      "the proposals for the earlier day",
+    );
+    assert.ok(page.requests.some((request) => request.url === "/api/v1/gaps/health?asOf=2026-02-16"));
+  });
+});

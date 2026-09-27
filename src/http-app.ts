@@ -1,3 +1,4 @@
+import { readHomeItems, type HomeSummarizer } from "./home-summary.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -41,6 +42,8 @@ import {
 } from "./model-registry.js";
 import { MemoryUpdateQueue } from "./memory-queue.js";
 import { resolveAsOf, type AsOf } from "./as-of.js";
+import { GapHiring, GapHiringError, MemoryGapLedger } from "./gap-hiring.js";
+import { roleStarterFor } from "./recruiting/roles.js";
 
 const DEFAULT_PERSONAS = [
   { employeeId: "jax", displayName: "Jax", role: "Backend Engineer", department: "Engineering_Backend", avatar: "👨‍💻" },
@@ -71,6 +74,13 @@ export interface BuildAppOptions extends ApplicationOptions {
    * are answered exactly as before and the graph stays at its last export.
    */
   emergentMemory?: EmergentMemory;
+  /** Writes the line under the home's headline. Omitted, the page keeps its own. */
+  homeSummarizer?: HomeSummarizer;
+  /**
+   * Hiring proposals from knowledge gaps. Omitted, one is made from the
+   * company knowledge and recruiting board, with an in-memory ledger.
+   */
+  gapHiring?: GapHiring;
   /** Meeting actions (S2). Omitted, its routes are not registered. */
   meetings?: {
     service: MeetingActions;
@@ -142,6 +152,74 @@ function stringOf(value: unknown): string {
 /** A comma-separated query parameter as a list, blanks dropped. */
 function splitList(value: string): string[] {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+/** A timestamp's calendar day where the server runs, not UTC: "today" for
+ * the "Where today touched" view is the day someone here would call today. */
+function localDay(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * The company evidence one employee's day has cited so far: the evidence on
+ * the actions of the meetings they started today, and the sources of the
+ * assistant messages in the conversations they touched today. Only their own
+ * meetings and conversations are read — a meeting or a conversation belonging
+ * to someone else is skipped without looking at what is in it beyond who
+ * owns it and when it happened.
+ *
+ * Order is meetings before conversations, each in the order the service and
+ * the store return them; duplicates keep their first position.
+ */
+async function todaysSourceIds(
+  employeeId: string,
+  meetings: MeetingActions | undefined,
+  conversationStore: ConversationStore | undefined,
+): Promise<string[]> {
+  const today = localDay(new Date());
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  const add = (sourceId: string | undefined) => {
+    if (sourceId && !seen.has(sourceId)) {
+      seen.add(sourceId);
+      ids.push(sourceId);
+    }
+  };
+
+  if (meetings) {
+    const summaries = await meetings.list();
+    const startedToday = summaries.filter((summary) => localDay(new Date(summary.startedAt)) === today);
+    for (const summary of startedToday) {
+      const state = await meetings.get(summary.meetingId);
+      if (!state || state.employeeId.toLowerCase() !== employeeId.toLowerCase()) continue;
+      for (const action of state.actions) {
+        for (const evidence of action.evidence) add(evidence.sourceId);
+      }
+    }
+  }
+
+  if (conversationStore) {
+    const conversations = await conversationStore.list(employeeId);
+    const updatedToday = conversations.filter((summary) => localDay(new Date(summary.updatedAt)) === today);
+    for (const summary of updatedToday) {
+      const detail = await conversationStore.get(summary.conversationId, employeeId);
+      if (!detail) continue;
+      for (const message of detail.messages) {
+        if (message.role !== "assistant") continue;
+        const sources = message.metadata?.sources;
+        if (!Array.isArray(sources)) continue;
+        for (const source of sources) {
+          const sourceId = (source as { sourceId?: unknown } | null)?.sourceId;
+          if (typeof sourceId === "string") add(sourceId);
+        }
+      }
+    }
+  }
+
+  return ids;
 }
 
 export function buildApp(options: BuildAppOptions): FastifyInstance {
@@ -901,6 +979,90 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       }
       return reply.send({ ...base, entries: await knowledge.dayPlan(person, resolved.day) });
     };
+  /**
+   * Every knowledge domain's health on a day: owner and whether still here,
+   * the owner's load, who worked in it lately, recent incidents. Visible to
+   * every signed-in employee in the MVP (docs/mvp.md).
+   */
+  app.get<{ Querystring: { asOf?: string } }>("/api/v1/gaps/health", async (request, reply) => {
+    const employee = await requireEmployee(request, reply);
+    if (!employee) return;
+    const knowledge = options.companyKnowledge;
+    if (!knowledge?.domainHealth) {
+      return reply.code(503).send({ message: "Domain health is not configured." });
+    }
+    const resolved = await resolveRequestedDay(request.query.asOf?.trim() || undefined);
+    if (!resolved.ok) return reply.code(resolved.status).send({ error: "invalid_as_of", message: resolved.error });
+    return reply.send({ asOf: resolved.day, domains: await knowledge.domainHealth(resolved.day) });
+  });
+
+  const gapHiring =
+    options.gapHiring ??
+    (options.companyKnowledge
+      ? new GapHiring(
+          options.companyKnowledge,
+          new MemoryGapLedger(),
+          options.recruiting ? roleStarterFor(options.recruiting.board) : undefined,
+        )
+      : undefined);
+
+  const gapFailure = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof GapHiringError) {
+      const status = error.code === "not_found" ? 404 : error.code === "conflict" ? 409 : 503;
+      return reply.code(status).send({ error: error.code, message: error.message });
+    }
+    throw error;
+  };
+
+  /** The hiring proposals open on a day, with what people did about each. Visible to every signed-in employee. */
+  app.get<{ Querystring: { asOf?: string } }>("/api/v1/gaps/proposals", async (request, reply) => {
+    const employee = await requireEmployee(request, reply);
+    if (!employee) return;
+    if (!gapHiring?.available) return reply.code(503).send({ message: "Hiring proposals are not configured." });
+    const resolved = await resolveRequestedDay(request.query.asOf?.trim() || undefined);
+    if (!resolved.ok) return reply.code(resolved.status).send({ error: "invalid_as_of", message: resolved.error });
+    return reply.send({
+      asOf: resolved.day,
+      canOpenRoles: gapHiring.canOpenRoles,
+      proposals: await gapHiring.list(resolved.day),
+    });
+  });
+
+  /** Opens a draft role from a proposal. Nothing is confirmed, searched or sent. */
+  app.post<{ Params: { id: string }; Body: { asOf?: string } | undefined }>(
+    "/api/v1/gaps/proposals/:id/open-role",
+    async (request, reply) => {
+      const employee = await requireEmployee(request, reply);
+      if (!employee) return;
+      if (!gapHiring?.available) return reply.code(503).send({ message: "Hiring proposals are not configured." });
+      const resolved = await resolveRequestedDay(stringOf(request.body?.asOf) || undefined);
+      if (!resolved.ok) return reply.code(resolved.status).send({ error: "invalid_as_of", message: resolved.error });
+      try {
+        const role = await gapHiring.openRole(request.params.id, resolved.day, employee.employeeId);
+        return reply.code(201).send(role);
+      } catch (error) {
+        return gapFailure(reply, error);
+      }
+    },
+  );
+
+  app.post<{ Params: { id: string }; Body: { asOf?: string; reason?: string } | undefined }>(
+    "/api/v1/gaps/proposals/:id/dismiss",
+    async (request, reply) => {
+      const employee = await requireEmployee(request, reply);
+      if (!employee) return;
+      if (!gapHiring?.available) return reply.code(503).send({ message: "Hiring proposals are not configured." });
+      const resolved = await resolveRequestedDay(stringOf(request.body?.asOf) || undefined);
+      if (!resolved.ok) return reply.code(resolved.status).send({ error: "invalid_as_of", message: resolved.error });
+      try {
+        await gapHiring.dismiss(request.params.id, resolved.day, employee.employeeId, stringOf(request.body?.reason));
+        return reply.code(204).send();
+      } catch (error) {
+        return gapFailure(reply, error);
+      }
+    },
+  );
+
   app.get("/api/v1/planner/todo", plannerRoute("todo"));
   app.get("/api/v1/planner/day", plannerRoute("day"));
 
@@ -1111,6 +1273,34 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     },
   );
 
+  /**
+   * "Where today touched": the part of the company graph the signed-in
+   * employee's day touched, drawn around the evidence cited in the meetings
+   * they started today and the conversations they had today (todaysSourceIds).
+   * There is no person parameter: another employee's day cannot be asked for.
+   *
+   * Built with the same graphQuery a question's graph uses, the question
+   * being the word "Today" and the evidence being what today cited; `touched`
+   * names the nodes that evidence reached, so the page can highlight exactly
+   * those and nothing an expansion adds later. Nothing cited today is an
+   * empty slice, not an error.
+   */
+  app.get("/api/v1/graph/today", async (request, reply) => {
+    const employee = await requireEmployee(request, reply);
+    if (!employee) return;
+    const knowledge = options.companyKnowledge;
+    if (!knowledge?.graphQuery) {
+      return reply.code(503).send({ message: "The graph is not configured." });
+    }
+    const sourceIds = await todaysSourceIds(employee.employeeId, options.meetings?.service, options.conversationStore);
+    if (sourceIds.length === 0) {
+      return reply.send({ nodes: [], edges: [], truncated: false, touched: [] });
+    }
+    const slice = await knowledge.graphQuery({ query: "Today", evidence: sourceIds });
+    const touched = slice.nodes.filter((node) => node.id !== slice.centre).map((node) => node.id);
+    return reply.send({ ...slice, touched });
+  });
+
   /** One of the fixed company-overview subgraphs, by name. */
   app.get<{ Params: { name: string } }>("/api/v1/graph/view/:name", async (request, reply) => {
     const knowledge = options.companyKnowledge;
@@ -1274,6 +1464,13 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     return reply.send({ enabled: true, ...options.emergentMemory.status() });
   });
 
+  app.post("/api/v1/home/summary", async (request, reply) => {
+    const read = readHomeItems(request.body);
+    if ("error" in read) return reply.code(400).send({ message: read.error });
+    const sentence = options.homeSummarizer ? await options.homeSummarizer.summarize(read.name, read.items) : null;
+    return { sentence };
+  });
+
   app.get("/api/v1/policy", async () => ({
     policyVersion: CONSENT_POLICY_VERSION,
     attestations: CONSENT_ATTESTATIONS,
@@ -1412,6 +1609,10 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     "/assets/merlion.riv",
     serve("assets/merlion.riv", "application/octet-stream"),
   );
+  // The logo (the walking hand) and its all-clear pose, downscaled from the team's artwork.
+  for (const name of ["kaki-logo-64.png", "kaki-logo-128.png", "kaki-win-128.png"]) {
+    app.get(`/assets/${name}`, serve(`assets/${name}`, "image/png"));
+  }
   app.get("/theme.css", serve("theme.css", "text/css; charset=utf-8"));
   // Shoelace, the UI components, served from its package: only its scripts,
   // styles and icons, only inside its folder.
@@ -1429,8 +1630,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   });
   app.get("/shell.js", serve("shell.js", "text/javascript; charset=utf-8"));
   app.get("/shoelace-setup.js", serve("shoelace-setup.js", "text/javascript; charset=utf-8"));
+  // The plate: shared by the assistant and the meetings page.
+  app.get("/plate.js", serve("plate.js", "text/javascript; charset=utf-8"));
   app.get("/app.js", serve("app.js", "text/javascript; charset=utf-8"));
   app.get("/styles.css", serve("styles.css", "text/css; charset=utf-8"));
+  app.get("/clear.js", serve("clear.js", "text/javascript; charset=utf-8"));
+  app.get("/clear.css", serve("clear.css", "text/css; charset=utf-8"));
   app.get("/sme.js", serve("app.js", "text/javascript; charset=utf-8"));
   app.get("/sme.css", serve("styles.css", "text/css; charset=utf-8"));
 

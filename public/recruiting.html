@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" href="/assets/kaki-logo-64.png" />
   <title>Hiring Orbit</title>
   <link rel="preload" href="/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/theme.css">
@@ -13,11 +14,12 @@
 <body>
   <div class="shell">
   <aside class="side shell-side">
-    <div class="shell-top"><div class="workspace"><span class="logo" aria-hidden="true">A</span>Apex Athletics</div></div>
+    <div class="shell-top"><div class="workspace"><span class="logo" aria-hidden="true">K</span>Kaki</div></div>
     <nav aria-label="Apps">
       <ul class="app-nav">
         <li><a href="/meetings"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Meetings</a></li>
         <li><a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>SME Assistant</a></li>
+        <li><a href="/graph"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="18" r="2"/><circle cx="19" cy="18" r="2"/><path d="m10.8 6.7-4.6 9.1M13.2 6.7l4.6 9.1M7 18h10"/></svg>Company Graph</a></li>
       </ul>
     </nav>
 
@@ -36,6 +38,7 @@
         <button type="button" class="quiet" id="new-role">New role</button>
       </nav>
       <h1 id="role-title">Who do you need?</h1>
+      <p id="role-origin" class="role-origin" hidden></p>
       <p id="status-line" class="status-line"></p>
     </div>
     <div class="top-actions" id="top-actions" hidden>

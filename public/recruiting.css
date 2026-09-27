@@ -9,7 +9,7 @@
   --text: var(--ink);
   --gold: var(--accent);
   --aqua: #6d62dc;
-  --slate: #b9b5d0;
+  --slate: #d4d4d8;
   --ochre: #b27c00;
   --danger: var(--error-text);
   --on-accent: #ffffff;
@@ -307,7 +307,7 @@ h1 { font-weight: 700; letter-spacing: -0.02em; }
 .banner { width: auto; margin: 10px 20px 0; }
 .board { width: auto; margin: 0; padding: 12px 20px 0; }
 .rail h2 { text-transform: none; letter-spacing: 0; font-size: 12.5px; font-weight: 500; color: var(--muted); }
-.node.t75 .dot, .s75 { fill: #a79ff0; background: #a79ff0; }
+.node.t75 .dot, .s75 { fill: #a1a1aa; background: #a1a1aa; }
 .proposal { border-left-color: var(--hl-edge); background: var(--hl-row); box-shadow: none; }
 .proposal h3 { color: var(--warn); }
 .composer { border-radius: var(--radius-float); box-shadow: var(--shadow-float); }
@@ -324,3 +324,22 @@ body.embed .main { margin: 0; height: 100vh; border: 0; border-radius: 0; }
   .main { margin: 0 8px 8px; }
 }
 .main:has(#board[hidden]) { overflow-y: auto; }
+
+/* Violet only where it means something: the people who meet everything, and
+   the one you picked. Criteria are labels, not buttons: a must is a soft
+   violet chip, a nice-to-have a dashed one. */
+.chip { background: var(--neutral-soft); border-color: transparent; color: var(--ink); }
+.chip.nice { background: transparent; border-color: var(--line); border-style: dashed; color: var(--ink-2); }
+.ring.r100 { fill: rgb(75 63 209 / .04); stroke: rgb(75 63 209 / .22); }
+.node .select-ring { stroke: var(--ink); }
+
+/* The orbit in one violet family: the closer the match, the deeper the violet. */
+.node.t100 .dot, .s100 { fill: var(--accent); background: var(--accent); }
+.node.t75 .dot, .s75 { fill: #8f85e6; background: #8f85e6; }
+.node.t50 .dot, .s50 { fill: #c9c3f3; background: #c9c3f3; }
+.ring { stroke: #dbd7f7; }
+
+/* A role opened from a hiring proposal says where it came from. */
+.role-origin { margin: 4px 0 0; max-width: 72ch; font-size: 13px; line-height: 1.45; color: var(--muted, #666); }
+.role-origin strong { color: var(--ink, inherit); font-weight: 600; }
+.role-origin .origin-evidence { font-family: var(--f-mono, monospace); font-size: 12px; }

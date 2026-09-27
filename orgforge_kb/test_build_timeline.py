@@ -11,7 +11,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from build_timeline import Change, Ticket, plan_changes, plan_entries, work_item_states  # noqa: E402
+from build_timeline import Change, Ticket, plan_changes, plan_entries, roster_rows, work_item_states  # noqa: E402
 
 
 def plan(event_id: str, day: str, *people: tuple[str, list[dict]]) -> tuple[str, str, dict]:
@@ -139,6 +139,44 @@ class TicketStateTests(unittest.TestCase):
         for earlier, later in zip(rows, rows[1:]):
             self.assertEqual(earlier["valid_to"], later["valid_from"])
         self.assertEqual([row["valid_to"] is None for row in rows], [False] * (len(rows) - 1) + [True])
+
+
+class RosterTests(unittest.TestCase):
+    entries = [
+        {"person": "Jax", "day": "2026-01-01", "seq": 1, "department": "Engineering_Backend"},
+        {"person": "Morgan", "day": "2026-01-01", "seq": 1, "department": "Engineering_Backend"},
+        {"person": "Janice", "day": "2026-01-12", "seq": 1, "department": "Engineering_Backend"},
+        {"person": "Jax", "day": "2026-02-01", "seq": 1, "department": "Engineering_Platform"},
+    ]
+
+    def rows(self):
+        return {row["person"]: row for row in roster_rows(
+            self.entries,
+            hires=[{"person": "Janice", "day": "2026-01-09", "role": "Backend Engineer", "department": "Engineering_Backend", "event": "H1"}],
+            departures=[
+                {"person": "Morgan", "day": "2026-02-17", "role": None, "department": "Engineering_Backend", "event": "D1"},
+                {"person": "Bill", "day": "2024-06-01", "role": "CTO", "department": None, "event": "D0"},
+            ],
+        )}
+
+    def test_join_and_leave_days_come_from_the_events(self) -> None:
+        rows = self.rows()
+        self.assertEqual((rows["Janice"]["joined_on"], rows["Janice"]["left_on"]), ("2026-01-09", None))
+        self.assertEqual((rows["Morgan"]["joined_on"], rows["Morgan"]["left_on"]), (None, "2026-02-17"))
+        self.assertEqual(rows["Morgan"]["derived_from"], ["D1"])
+
+    def test_staff_with_no_event_were_there_all_along(self) -> None:
+        jax = self.rows()["Jax"]
+        self.assertEqual((jax["joined_on"], jax["left_on"]), (None, None))
+        self.assertEqual(jax["department"], "Engineering_Platform", "the latest plan's department")
+
+    def test_someone_who_left_before_the_record_is_on_it(self) -> None:
+        bill = self.rows()["Bill"]
+        self.assertEqual((bill["left_on"], bill["role"]), ("2024-06-01", "CTO"))
+
+    def test_no_reason_for_leaving_is_kept(self) -> None:
+        for row in self.rows().values():
+            self.assertEqual(set(row), {"person", "joined_on", "left_on", "role", "department", "derived_from"})
 
 
 if __name__ == "__main__":

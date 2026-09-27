@@ -179,6 +179,17 @@ export interface Role {
   requirement: string;
   confirmed: boolean;
   createdAt: string;
+  /** Set when the role was opened from a hiring proposal (src/gap-hiring.ts). */
+  origin?: {
+    kind: "knowledge_gap";
+    proposalId: string;
+    domain: string;
+    /** The domain as people call it ("TitanDB"); domain is its key. */
+    name?: string;
+    reasons: string[];
+    evidence: string[];
+    asOf: string;
+  };
 }
 
 export interface HiringEvent {

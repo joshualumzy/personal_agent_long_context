@@ -1,3 +1,5 @@
+import { HomeSummarizer } from "./home-summary.js";
+import { OpenAiCompatibleModel } from "./recruiting/llm.js";
 import { loadEnvFile } from "node:process";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -8,6 +10,8 @@ import { buildApp } from "./http-app.js";
 import { lettaOptionsFromEnvironment } from "./letta-config.js";
 import { recruitingFromEnvironment } from "./recruiting/config.js";
 import { recruitingExtension } from "./recruiting/chat-tools.js";
+import { roleStarterFor } from "./recruiting/roles.js";
+import { GapHiring, JsonGapLedger } from "./gap-hiring.js";
 import { loadSkills } from "./skills.js";
 import { PostgresCompanyKnowledge } from "./adapters/postgres-company-knowledge.js";
 import { PostgresConversationStore } from "./adapters/postgres-conversations.js";
@@ -69,10 +73,19 @@ const agentSkills = recruiting
     }
   : {};
 
+// Hiring proposals from knowledge gaps: shared by the routes and the agent's
+// tools, so a role opened in either is seen by both.
+const gapHiring = new GapHiring(
+  companyKnowledge,
+  new JsonGapLedger(process.env.GAP_PROPOSALS_PATH ?? "data/gap-proposals.json"),
+  recruiting ? roleStarterFor(recruiting.board) : undefined,
+);
+
 const companyAgent = new SoCLaaSCompanyAgent(companyKnowledge, {
   apiKey: soCLaaSApiKey,
   baseUrl: process.env.SOCLAAS_BASE_URL,
   model: process.env.SOCLAAS_COMPANY_MODEL,
+  gapHiring,
   ...agentSkills,
 });
 
@@ -95,6 +108,7 @@ const sonnetAgent =
         apiKey: gatewayApiKey,
         baseUrl: `${gatewayUrl}/v1`,
         model: gatewayModel,
+        gapHiring,
         ...agentSkills,
       })
     : null;
@@ -160,14 +174,29 @@ const meetings = meetingsFromEnvironment(process.env, {
     : {}),
   log: (context, error) => logMeetingFailure(context, error),
 });
+// The line under the home's headline: a short job, so the model runs without its thinking phase.
+const homeSummarizer =
+  process.env.SOCLAAS_BASE_URL && process.env.SOCLAAS_API_KEY
+    ? new HomeSummarizer(
+        new OpenAiCompatibleModel({
+          baseUrl: process.env.SOCLAAS_BASE_URL,
+          apiKey: process.env.SOCLAAS_API_KEY,
+          model: process.env.HOME_SUMMARY_MODEL ?? process.env.SOCLAAS_COMPANY_MODEL ?? "qwen3.8:27b",
+          timeoutMs: 20_000,
+        }),
+      )
+    : undefined;
+
 const app = buildApp({
   sessionConfig,
+  ...(homeSummarizer ? { homeSummarizer } : {}),
   memory,
   companyAgent,
   companyAgents,
   modelRegistry,
   companyKnowledge,
   conversationStore,
+  gapHiring,
   logger: true,
   ...(recruiting ? { recruiting: { board: recruiting.board, gmail: recruiting.gmail } } : {}),
   ...(emergentMemory ? { emergentMemory } : {}),

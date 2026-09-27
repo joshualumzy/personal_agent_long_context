@@ -302,7 +302,7 @@ select {
   border: 1px solid var(--line); border-radius: 12px; background: var(--panel); overflow: hidden;
   transition: border-color .15s;
 }
-.draft:focus-within { border-color: #c9c3f3; }
+.draft:focus-within { border-color: #d6d5de; }
 .draft input, .draft textarea {
   width: 100%; border: 0; border-radius: 0; background: transparent; color: var(--ink);
   font: inherit; font-size: 13.5px; outline: none; box-shadow: none;
@@ -321,7 +321,7 @@ select {
   border: 1px solid var(--line); border-radius: var(--radius-pill); background: var(--panel);
   padding: 1px 4px 1px 10px; font-size: 12px; cursor: text;
 }
-.draft-chip:focus-within { border-color: #c9c3f3; }
+.draft-chip:focus-within { border-color: #d6d5de; }
 .draft-chip > span { color: var(--muted); }
 .draft-chip input { width: auto; padding: 3px 4px; font-size: 12.5px; }
 .draft-chip input::placeholder { color: var(--faint); }
@@ -447,3 +447,26 @@ select {
 /* The recording menu: what to record, with where you would use it. */
 #mic-menu { min-width: 280px; }
 .menu-hint { font-size: 11.5px; color: var(--faint); margin-left: 12px; }
+
+/* ------------------------------------------------------------------
+   Hierarchy: one violet action per screen. A folded draft offers a quiet
+   Approve; the draft you opened carries the filled one. Answers read as
+   notes, not as highlighted cards. */
+.tray .card:not(.selected) .approve-btn {
+  background: var(--panel); color: var(--ink); border-color: var(--line);
+}
+.tray .card:not(.selected) .approve-btn:hover { background: var(--hover); }
+.side-form .primary { background: var(--panel); color: var(--ink); border-color: var(--line); }
+.side-form .primary:hover { background: var(--hover); }
+.doc .card[data-tier] { background: var(--neutral-soft); }
+.assistant-pending { background: var(--neutral-soft); }
+
+/* ------------------------------------------------------------ Kaki: one entry
+   The plate (styles.css) sits on the left, same as the assistant page; no
+   top bar and no separate sidebar. With no meeting open, the list and
+   "New live meeting" sit in the page itself. */
+#picker { width: min(560px, calc(100% - 32px)); margin: 8px auto 40px; }
+body.in-meeting #picker { display: none; }
+#picker .side-label { font: 500 13px/1.4 var(--f-ui); color: var(--muted); margin: 18px 0 6px; }
+#picker .meeting-list button { font-size: 14px; padding: 9px 10px; }
+body:not(.in-meeting) .no-meeting { margin: 56px auto 0; }

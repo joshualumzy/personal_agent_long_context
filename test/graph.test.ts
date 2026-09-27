@@ -5,11 +5,14 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { JSDOM } from "jsdom";
+import { createSessionToken } from "../src/auth.js";
 import { DeterministicMemoryProvider } from "../src/adapters/deterministic-memory.js";
 import { buildApp } from "../src/http-app.js";
 import { EmergentMemory } from "../src/emergent-memory.js";
-import type { CompanyKnowledge, GraphNode, GraphSlice } from "../src/company-domain.js";
+import type { CompanyKnowledge, GraphNode, GraphQueryRequest, GraphSlice } from "../src/company-domain.js";
 import { graphNodeId, parseGraphNodeId } from "../src/company-domain.js";
+import type { ConversationMessage, ConversationStore, ConversationSummary } from "../src/conversation-domain.js";
+import type { MeetingActions, MeetingState } from "../src/meetings/domain.js";
 
 function node(type: GraphNode["type"], refKey: string, extra: Partial<GraphNode> = {}): GraphNode {
   return { id: `${type}:${refKey}`, refKey, type, label: refKey, ...extra };
@@ -185,6 +188,46 @@ describe("the company graph", () => {
     window.close();
   });
 
+  test("Where today touched sits first among the views, and is what ?view=today opens on", async () => {
+    const today: GraphSlice & { touched: string[] } = {
+      nodes: [
+        node("query", "Today"),
+        node("event", "NOC-1", { subtype: "meeting", label: "NOC call" }),
+        node("item", "ENG-210", { subtype: "jira", label: "Fix the ingestion race", isIncident: true }),
+      ],
+      edges: [
+        { source: "query:Today", target: "event:NOC-1", type: "matches" },
+        { source: "query:Today", target: "item:ENG-210", type: "matches" },
+      ],
+      truncated: false,
+      centre: "query:Today",
+      touched: ["event:NOC-1", "item:ENG-210"],
+    };
+    const { window, document, requests } = await open("/graph?view=today", (url) =>
+      url.pathname === "/api/v1/graph/today" ? today : org);
+
+    assert.equal(requests[0]!.pathname, "/api/v1/graph/today");
+    const tabs = [...document.querySelectorAll(".view-tab")].map((button) => button.getAttribute("data-view"));
+    assert.equal(tabs[0], "today");
+    assert.equal(document.querySelector('.view-tab[data-view="today"]')!.getAttribute("aria-pressed"), "true");
+
+    // What today touched carries the butter highlight; the centre pill does not.
+    assert.ok(document.querySelector('.node[data-id="event:NOC-1"] .shape')!.classList.contains("touched"));
+    assert.ok(document.querySelector('.node[data-id="item:ENG-210"] .shape')!.classList.contains("touched"));
+    assert.ok(!document.querySelector('.node[data-id="query:Today"] .shape')!.classList.contains("touched"));
+    window.close();
+  });
+
+  test("nothing today touched, the page says so instead of drawing a silent empty picture", async () => {
+    const { window, document } = await open("/graph?view=today", (url) =>
+      url.pathname === "/api/v1/graph/today" ? { nodes: [], edges: [], truncated: false, touched: [] } : org);
+
+    assert.equal(document.querySelectorAll(".node").length, 0);
+    assert.match(document.querySelector("#status-line")!.textContent!, /nothing/i);
+    assert.match(document.querySelector("#details")!.textContent!, /nothing/i);
+    window.close();
+  });
+
   test("the company graph is overviews only; questions have their own page", async () => {
     const { window, document } = await open("/graph", () => org);
     assert.equal(document.querySelector("#ask"), null, "no question box on the company graph");
@@ -199,6 +242,24 @@ describe("the company graph", () => {
     assert.match(answer.headers.get("content-security-policy")!, /frame-ancestors 'self'/);
     assert.equal(answer.headers.get("x-frame-options"), "SAMEORIGIN");
     window.close();
+  });
+
+  test("beside a chat the filters fold behind one button; on its own page they stay out", async () => {
+    const embedded = await open("/graph/answer?q=TitanDB&sources=CONF-ENG-002&embed=1", (url) => (url.pathname === "/api/v1/graph/query" ? asked : titandbNeighbours));
+    const toggle = embedded.document.querySelector<HTMLButtonElement>("#filters-toggle")!;
+    const controls = embedded.document.querySelector<HTMLElement>(".controls")!;
+    assert.equal(toggle.hidden, false);
+    assert.equal(controls.hidden, true, "the picture first");
+    assert.equal(toggle.getAttribute("aria-expanded"), "false");
+    toggle.dispatchEvent(new embedded.window.Event("click"));
+    assert.equal(controls.hidden, false);
+    assert.equal(toggle.getAttribute("aria-expanded"), "true");
+    embedded.window.close();
+
+    const alone = await open("/graph/answer?q=TitanDB", (url) => (url.pathname === "/api/v1/graph/query" ? asked : titandbNeighbours));
+    assert.equal(alone.document.querySelector<HTMLButtonElement>("#filters-toggle")!.hidden, true);
+    assert.equal(alone.document.querySelector<HTMLElement>(".controls")!.hidden, false);
+    alone.window.close();
   });
 
   test("an answer's graph is seeded from the evidence the answer cited", async () => {
@@ -285,6 +346,33 @@ describe("the company graph", () => {
     await settle(20);
     assert.deepEqual(ids(document).sort(), asked.nodes.map((entry) => entry.id).sort());
     window.close();
+  });
+
+  test("the question sits in the middle as a pill with its words inside, and every item says what it is", async () => {
+    const { document } = await open("/graph/answer?q=TitanDB", (url) => (url.pathname === "/api/v1/graph/query" ? asked : org));
+
+    const question = document.querySelector('.node[data-id="query:TitanDB"]')!;
+    assert.ok(question.querySelector("rect.n-query"), "the question is a pill, not a dot");
+    assert.match(question.querySelector("text.pill-label")!.textContent!, /TitanDB/);
+    assert.equal(question.querySelector("text.sub"), null, "the pill needs no second line");
+
+    const domain = document.querySelector('.node[data-id="item:titandb"]')!;
+    assert.match(domain.querySelector("text.caption")!.textContent!, /TitanDB/);
+    assert.match(domain.querySelector("text.sub")!.textContent!, /knowledge domain/i);
+  });
+
+  test("an answer's graph gives the picture the room: how to read it sits in the side rail, briefly", async () => {
+    const { document } = await open("/graph/answer?q=TitanDB&embed=1", (url) => (url.pathname === "/api/v1/graph/query" ? asked : org));
+
+    const rail = document.querySelector("aside.rail")!;
+    assert.ok(rail.querySelector("#details"), "details lead the rail");
+    assert.ok(rail.querySelector("#canvas-help"), "how to read it is in the rail");
+    assert.ok(rail.querySelector("#legend"), "and so are the shapes");
+    assert.equal(document.querySelector("#picture #canvas-help"), null, "not under the picture");
+    assert.equal(document.querySelector("#picture h2"), null, "the picture needs no heading");
+    assert.ok(document.querySelector("#picture .picture-actions #fit"), "Fit stays with the picture");
+    assert.ok(document.querySelector("#canvas-help")!.textContent!.trim().length < 140, "one or two short lines");
+    assert.doesNotMatch(document.querySelector("#details")!.textContent!, /Click anything/, "the rail does not say it twice");
   });
 
   test("the question's evidence is what its details show", async () => {
@@ -492,5 +580,254 @@ describe("the company graph", () => {
     assert.equal(body.queued, 0);
 
     release();
+  });
+});
+
+// -----------------------------------------------------------------------
+// GET /api/v1/graph/today: "Where today touched", the company graph slice
+// built from the evidence the signed-in employee's own meetings and
+// conversations cited today.
+// -----------------------------------------------------------------------
+
+/** A day's-ago-and-hour ISO timestamp built from local calendar components,
+ * so it reads as "today" (or "yesterday") the same way the route's own
+ * localDay() does, whatever the machine's time zone. */
+function localISO(daysAgo: number, hour = 10): string {
+  const date = new Date();
+  date.setDate(date.getDate() - daysAgo);
+  date.setHours(hour, 0, 0, 0);
+  return date.toISOString();
+}
+
+function meetingState(
+  meetingId: string,
+  employeeId: string,
+  startedAt: string,
+  evidenceSourceIds: string[],
+): MeetingState {
+  return {
+    meetingId,
+    title: `${employeeId}'s meeting`,
+    employeeId,
+    status: "ended",
+    startedAt,
+    segments: [],
+    decisions: [],
+    actions: evidenceSourceIds.length === 0 ? [] : [{
+      id: `${meetingId}-a1`,
+      meetingId,
+      kind: "answer_question",
+      tier: "auto",
+      status: "executed",
+      title: "Answered a question",
+      trigger: { segmentIndex: 0, speaker: employeeId, quote: "what changed?" },
+      payload: { question: "what changed?", answer: "…", citedSourceIds: evidenceSourceIds },
+      payloadHash: "hash",
+      version: 1,
+      evidence: evidenceSourceIds.map((sourceId) => ({ sourceId, sourceType: "jira", title: sourceId, excerpt: "…" })),
+      dedupeKey: `${meetingId}-a1`,
+      createdAt: startedAt,
+    }],
+    trace: [],
+  };
+}
+
+/** A minimal MeetingActions backing only list() and get(), which is all the
+ * today route reads. */
+function fakeMeetings(states: MeetingState[]): MeetingActions {
+  const byId = new Map(states.map((state) => [state.meetingId, state]));
+  return {
+    async start() { throw new Error("not used in this test"); },
+    async append() { throw new Error("not used in this test"); },
+    async end() { throw new Error("not used in this test"); },
+    async get(meetingId) { return byId.get(meetingId) ?? null; },
+    async list() {
+      return [...byId.values()].map((state) => ({
+        meetingId: state.meetingId,
+        title: state.title,
+        status: state.status,
+        startedAt: state.startedAt,
+        actionCount: state.actions.length,
+      }));
+    },
+    async approve() { throw new Error("not used in this test"); },
+    async reject() { throw new Error("not used in this test"); },
+    async edit() { throw new Error("not used in this test"); },
+    subscribe() { return () => {}; },
+    async idle() {},
+  };
+}
+
+function assistantMessage(conversationId: string, sourceIds: string[], createdAt: string): ConversationMessage {
+  return {
+    messageId: `${conversationId}-assistant`,
+    conversationId,
+    role: "assistant",
+    content: "Here is what I found.",
+    metadata: { sources: sourceIds.map((sourceId) => ({ sourceId, sourceType: "confluence", title: sourceId, excerpt: "…" })) },
+    createdAt,
+  };
+}
+
+/** A minimal ConversationStore backing only list() and get(). */
+function fakeConversations(entries: Array<{ summary: ConversationSummary; messages: ConversationMessage[] }>): ConversationStore {
+  return {
+    async list(userId) { return entries.filter((entry) => entry.summary.userId === userId).map((entry) => entry.summary); },
+    async get(conversationId, userId) {
+      const entry = entries.find((candidate) =>
+        candidate.summary.conversationId === conversationId && candidate.summary.userId === userId);
+      return entry ? { conversation: entry.summary, messages: entry.messages } : null;
+    },
+    async create() { throw new Error("not used in this test"); },
+    async appendMessage() { throw new Error("not used in this test"); },
+    async updateTitle() { throw new Error("not used in this test"); },
+    async delete() { throw new Error("not used in this test"); },
+  };
+}
+
+/** A knowledge base whose graphQuery echoes back one node per known evidence
+ * source id, so a test can see exactly what evidence it was asked with. */
+function fakeGraphKnowledge() {
+  const queries: GraphQueryRequest[] = [];
+  const bySource: Record<string, GraphNode> = {
+    "ENG-210": node("item", "ENG-210", { subtype: "jira", label: "Fix the ingestion race" }),
+    "CONF-99": node("document", "CONF-99", { label: "Runbook: NOC calls" }),
+    "PRIYA-1": node("item", "PRIYA-1", { label: "Priya's own ticket" }),
+    "PRIYA-2": node("document", "PRIYA-2", { label: "Priya's doc" }),
+  };
+  const knowledge: CompanyKnowledge = {
+    async employee(employeeId) {
+      const names: Record<string, string> = { jax: "Jax", priya: "Priya" };
+      const name = names[employeeId];
+      return name ? { employeeId, displayName: name, currentAssignments: [] } : null;
+    },
+    async search() { return []; },
+    async related() { return []; },
+    async sources() { return []; },
+    async graphQuery(request) {
+      queries.push(request);
+      const centre = { id: `query:${request.query}`, refKey: request.query, type: "query" as const, label: request.query };
+      const seeds = (request.evidence ?? []).map((id) => bySource[id]).filter((n): n is GraphNode => Boolean(n));
+      if (seeds.length === 0) return { nodes: [centre], edges: [], truncated: false, centre: centre.id, evidence: [] };
+      return {
+        nodes: [centre, ...seeds],
+        edges: seeds.map((seed) => ({ source: centre.id, target: seed.id, type: "matches" })),
+        truncated: false,
+        centre: centre.id,
+        evidence: (request.evidence ?? []).map((sourceId) => ({ sourceId, sourceType: "x", title: sourceId, excerpt: "" })),
+      };
+    },
+  };
+  return { knowledge, queries };
+}
+
+describe("where today touched", () => {
+  const apps: Array<{ close(): Promise<void> }> = [];
+  after(async () => { for (const app of apps) await app.close(); });
+
+  function start(setup: {
+    companyKnowledge?: CompanyKnowledge;
+    meetings?: MeetingActions;
+    conversationStore?: ConversationStore;
+  }) {
+    const app = buildApp({
+      memory: new DeterministicMemoryProvider(),
+      ...(setup.companyKnowledge ? { companyKnowledge: setup.companyKnowledge } : {}),
+      ...(setup.meetings ? { meetings: { service: setup.meetings } } : {}),
+      ...(setup.conversationStore ? { conversationStore: setup.conversationStore } : {}),
+    });
+    apps.push(app);
+    return app;
+  }
+
+  test("gathers only the signed-in employee's own evidence, from today's meetings and conversations", async () => {
+    const { knowledge, queries } = fakeGraphKnowledge();
+    const meetings = fakeMeetings([
+      meetingState("m-jax-today", "jax", localISO(0), ["ENG-210"]),
+      meetingState("m-jax-yesterday", "jax", localISO(1), ["OLD-1"]),
+      meetingState("m-priya-today", "priya", localISO(0), ["PRIYA-1"]),
+    ]);
+    const conversations = fakeConversations([
+      {
+        summary: { conversationId: "c-jax-today", userId: "jax", title: "t", createdAt: localISO(0), updatedAt: localISO(0) },
+        messages: [assistantMessage("c-jax-today", ["CONF-99"], localISO(0))],
+      },
+      {
+        summary: { conversationId: "c-jax-yesterday", userId: "jax", title: "t", createdAt: localISO(1), updatedAt: localISO(1) },
+        messages: [assistantMessage("c-jax-yesterday", ["OLD-2"], localISO(1))],
+      },
+      {
+        summary: { conversationId: "c-priya-today", userId: "priya", title: "t", createdAt: localISO(0), updatedAt: localISO(0) },
+        messages: [assistantMessage("c-priya-today", ["PRIYA-2"], localISO(0))],
+      },
+    ]);
+    const app = start({ companyKnowledge: knowledge, meetings, conversationStore: conversations });
+
+    const jax = await app.inject({ url: "/api/v1/graph/today?userId=jax" });
+    assert.equal(jax.statusCode, 200);
+    const jaxBody = jax.json();
+    assert.equal(jaxBody.centre, "query:Today");
+    assert.deepEqual(jaxBody.touched.sort(), ["document:CONF-99", "item:ENG-210"]);
+    assert.deepEqual(jaxBody.nodes.map((entry: GraphNode) => entry.id).sort(), ["document:CONF-99", "item:ENG-210", "query:Today"]);
+    const jaxQuery = queries.at(-1)!;
+    assert.equal(jaxQuery.query, "Today");
+    assert.deepEqual([...(jaxQuery.evidence ?? [])].sort(), ["CONF-99", "ENG-210"]);
+
+    // Priya's own request sees only her own evidence, never Jax's.
+    const priya = await app.inject({ url: "/api/v1/graph/today?userId=priya" });
+    assert.deepEqual(priya.json().touched.sort(), ["document:PRIYA-2", "item:PRIYA-1"]);
+    const priyaQuery = queries.at(-1)!;
+    assert.deepEqual([...(priyaQuery.evidence ?? [])].sort(), ["PRIYA-1", "PRIYA-2"]);
+  });
+
+  test("nothing touched today is an empty slice, and the graph is not even asked", async () => {
+    const { knowledge, queries } = fakeGraphKnowledge();
+    const meetings = fakeMeetings([meetingState("m-jax-yesterday", "jax", localISO(1), ["OLD-1"])]);
+    const conversations = fakeConversations([]);
+    const app = start({ companyKnowledge: knowledge, meetings, conversationStore: conversations });
+
+    const response = await app.inject({ url: "/api/v1/graph/today?userId=jax" });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), { nodes: [], edges: [], truncated: false, touched: [] });
+    assert.equal(queries.length, 0);
+  });
+
+  test("without meetings or a conversation store configured, there is simply nothing to show", async () => {
+    const { knowledge } = fakeGraphKnowledge();
+    const app = start({ companyKnowledge: knowledge });
+    const response = await app.inject({ url: "/api/v1/graph/today?userId=jax" });
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json(), { nodes: [], edges: [], truncated: false, touched: [] });
+  });
+
+  test("without the graph configured, the route is a 503", async () => {
+    const app = start({
+      companyKnowledge: {
+        async employee() { return { employeeId: "jax", displayName: "Jax", currentAssignments: [] }; },
+        async search() { return []; },
+        async related() { return []; },
+        async sources() { return []; },
+      },
+    });
+    const response = await app.inject({ url: "/api/v1/graph/today?userId=jax" });
+    assert.equal(response.statusCode, 503);
+  });
+
+  test("there is no person parameter: another employee's day cannot be asked for, and signing out leaves no day at all", async () => {
+    const SECRET = "graph-today-test-secret-that-is-at-least-32-characters";
+    const { knowledge } = fakeGraphKnowledge();
+    const meetings = fakeMeetings([meetingState("m-jax-today", "jax", localISO(0), ["ENG-210"])]);
+    const app = buildApp({
+      memory: new DeterministicMemoryProvider(),
+      sessionConfig: { secret: SECRET },
+      companyKnowledge: knowledge,
+      meetings: { service: meetings },
+    });
+    apps.push(app);
+    const headers = { authorization: `Bearer ${createSessionToken("jax", SECRET)}` };
+
+    const asked = await app.inject({ url: "/api/v1/graph/today?userId=priya", headers });
+    assert.equal(asked.statusCode, 400);
+    assert.equal((await app.inject({ url: "/api/v1/graph/today" })).statusCode, 401);
   });
 });

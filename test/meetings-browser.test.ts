@@ -112,8 +112,8 @@ async function openMeetingsPage(path = "/meetings") {
 async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: string) {
   const { port } = app.server.address() as AddressInfo;
   const base = `http://127.0.0.1:${port}`;
-  const [html, markedScript, domPurifyScript, shellScript, script] = await Promise.all(
-    [pagePath, "/vendor/marked.js", "/vendor/dompurify.js", "/shell.js", "/meetings/app.js"].map((path) =>
+  const [html, markedScript, domPurifyScript, plateScript, shellScript, script] = await Promise.all(
+    [pagePath, "/vendor/marked.js", "/vendor/dompurify.js", "/plate.js", "/shell.js", "/meetings/app.js"].map((path) =>
       fetch(`${base}${path}`).then((response) => response.text()),
     ),
   );
@@ -156,6 +156,9 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
       if (path === "/api/v1/auth/me") {
         return json({ authenticated: true, employee: { employeeId: "priya", displayName: "Priya", role: "Product Designer" } });
       }
+      // The plate's own reads: what needs Priya (none, in this scenario) and her planner.
+      if (path === "/api/v1/meetings/m1") return json({ meetingId: "m1", title: meeting.title, status: "live", actions: [] });
+      if (path === "/api/v1/planner/days") return json({ days: [] });
       return json({});
     },
   });
@@ -182,6 +185,7 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
 
   window.eval(markedScript);
   window.eval(domPurifyScript);
+  window.eval(plateScript);
   window.eval(shellScript);
   window.eval(script);
   // jsdom fires DOMContentLoaded itself while the document is still loading;
@@ -197,10 +201,20 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
     }
   };
 
-  // The page loads its lists on start; closing it before they land would
-  // leave their renders running against a closed window.
+  // What the page and its plate both fetch on start: the meeting list, the
+  // replays and integrations offered by the page itself, who is signed in,
+  // and the plate's own "needs you" and planner reads.
+  const FIRST_LOADS = [
+    "/api/v1/meetings",
+    "/api/v1/meetings/replays",
+    "/api/v1/meetings/integrations",
+    "/api/v1/auth/me",
+    "/api/v1/meetings/m1",
+    "/api/v1/planner/days",
+  ];
+  // Closing the page before they land would leave their renders running against a closed window.
   await until(
-    () => loaded.size === 4 && document.querySelector("#meeting-list button"),
+    () => FIRST_LOADS.every((path) => loaded.has(path)) && document.querySelector("#meeting-list button"),
     "the page's first loads",
   );
   await new Promise((resolve) => setTimeout(resolve, 20));
@@ -230,26 +244,38 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
 const text = (element: Element | null) => (element?.textContent ?? "").replace(/\s+/g, " ").trim();
 
 describe("Meetings page", () => {
-  test("sits in the shared shell, with Meetings as the current page", async () => {
+  test("one entry: the plate with Kaki that leads home, and no sidebar", async () => {
     const page = await openMeetingsPage();
     after(() => page.close());
 
-    const links = [...page.document.querySelectorAll(".app-nav a")];
-    assert.deepEqual(
-      links.map((link) => link.getAttribute("href")),
-      ["/meetings", "/"],
-    );
-    assert.equal(page.document.querySelector('.app-nav a[aria-current="page"]')?.getAttribute("href"), "/meetings");
+    const brand = page.document.querySelector("#plate .brand")!;
+    assert.equal(brand.getAttribute("href"), "/");
+    assert.match(brand.textContent!, /Kaki/);
+    assert.equal(page.document.querySelector(".app-nav"), null, "no app links: one entry");
+    assert.equal(page.document.querySelector("aside.shell-side"), null, "no sidebar");
     assert.ok(page.document.querySelector('link[href="/theme.css"]'));
+    assert.doesNotMatch(page.document.body.innerHTML, /Apex Athletics/);
   });
 
-  test("shows whoever is signed in at the foot of the sidebar, with their initial", async () => {
+  test("with no meeting open, offers the meetings and a new one in the page itself", async () => {
     const page = await openMeetingsPage();
     after(() => page.close());
 
-    await page.until(() => text(page.document.querySelector(".shell-user .shell-name")) === "Priya", "the signed-in person");
-    assert.equal(text(page.document.querySelector(".shell-user .shell-role")), "Product Designer");
-    assert.equal(text(page.document.querySelector(".shell-user .shell-avatar")), "P");
+    const picker = page.document.querySelector("#picker")!;
+    assert.ok(picker.closest(".shell-main"), "the list sits in the page, not in a sidebar");
+    assert.ok(picker.querySelector("#meeting-list"));
+    assert.ok(picker.querySelector("#new-meeting-form"));
+    // Replaying an OrgForge meeting is for testing: kept, but out of sight.
+    assert.equal(page.document.querySelector("#replay-box")!.hasAttribute("hidden"), true);
+    assert.ok(page.document.querySelector("#replay-box #replay-select"));
+  });
+
+  test("shows whoever is signed in on the plate, with their initial", async () => {
+    const page = await openMeetingsPage();
+    after(() => page.close());
+
+    await page.until(() => text(page.document.querySelector("#plate .shell-user .shell-name")) === "Priya", "the signed-in person");
+    assert.equal(text(page.document.querySelector("#plate .shell-user .shell-avatar")), "P");
   });
 
   test("puts what needs you in the tray, what it found in the notes, and the words in the side panel", async () => {
@@ -260,6 +286,9 @@ describe("Meetings page", () => {
     const tray = page.document.querySelector("#tray");
     assert.equal(text(page.document.querySelector("#tray-title")), "1 thing needs you");
     assert.match(text(tray), /Send follow-up to Owen/);
+    // Kaki speaks in the tray under its own mark.
+    assert.match(page.document.querySelector("#tray-toggle img")!.getAttribute("src")!, /^\/assets\/kaki-logo/);
+    assert.equal(page.document.querySelector("#tray-toggle svg.sobo"), null);
     assert.doesNotMatch(text(tray), /ENG-148 was a different bug|Second SLA breach/);
     assert.doesNotMatch(text(tray), /20% service credit/, "the tray holds only what you can act on");
     assert.equal(page.document.querySelector("#handled-count"), null, "nothing is handled without you, so there is no such count");

@@ -855,7 +855,7 @@ describe("recruiting as a chat skill", () => {
 
     assert.deepEqual(
       [...document.querySelectorAll(".app-nav a")].map((link) => link.getAttribute("href")),
-      ["/meetings", "/"],
+      ["/meetings", "/", "/graph"],
     );
     // Hiring now happens in the assistant's chat; this page stays reachable but is not in the sidebar.
     assert.equal(document.querySelector('.app-nav a[aria-current="page"]'), null);

@@ -4,64 +4,83 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="Watch a meeting live and approve, edit, or reject the actions the agent proposes.">
-  <title>Meeting Actions</title>
+  <link rel="icon" type="image/png" href="/assets/kaki-logo-64.png" />
+  <title>Kaki · Meetings</title>
   <link rel="preload" href="/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/vendor/shoelace/themes/light.css">
   <link rel="stylesheet" href="/theme.css">
+  <link rel="stylesheet" href="/styles.css?v=10">
   <link rel="stylesheet" href="/meetings/styles.css">
   <script src="/vendor/marked.js" defer></script>
   <script src="/vendor/dompurify.js" defer></script>
   <script type="module" src="/shoelace-setup.js"></script>
   <script type="module" src="/vendor/shoelace/shoelace-autoloader.js" data-shoelace="/vendor/shoelace"></script>
+  <script src="/plate.js?v=1" defer></script>
   <script src="/shell.js" defer></script>
   <script src="/meetings/app.js" defer></script>
 </head>
 <body>
   <svg class="sprite" aria-hidden="true">
-    <symbol id="sobo-mark" viewBox="0 0 40 40"><rect x="2" y="2" width="36" height="36" rx="13" fill="#4b3fd1"/><rect x="8" y="10" width="24" height="18" rx="8" fill="#fbfaff"/><circle cx="15" cy="19" r="2.4" fill="#1c1a33"/><circle cx="25" cy="19" r="2.4" fill="#1c1a33"/><path d="M16.5 24 q3.5 2.6 7 0" stroke="#1c1a33" stroke-width="1.8" fill="none" stroke-linecap="round"/><circle cx="31" cy="9" r="3" fill="#ffd86b"/></symbol>
   </svg>
 
-  <div class="shell">
-    <aside class="side shell-side">
-      <div class="shell-top"><div class="workspace"><span class="logo" aria-hidden="true">A</span>Apex Athletics</div></div>
-      <nav aria-label="Apps">
-        <ul class="app-nav">
-          <li><a href="/meetings" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>Meetings</a></li>
-          <li><a href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H9l-5 4z"/></svg>SME Assistant</a></li>
-        </ul>
-      </nav>
+  <div class="app-layout kaki">
 
-      <section id="picker" class="picker" aria-label="Meetings">
-        <h2 class="side-label">Meetings</h2>
-        <ul id="meeting-list" class="meeting-list">
-          <li class="empty-note">No meetings yet.</li>
-        </ul>
-
-        <h2 class="side-label">New live meeting</h2>
-        <form id="new-meeting-form" class="side-form">
-          <label for="new-meeting-title" class="visually-hidden">Meeting title</label>
-          <input type="text" id="new-meeting-title" placeholder="Meeting title" required maxlength="200">
-          <button type="submit" class="primary">Start</button>
-        </form>
-
-        <h2 class="side-label">Replay an OrgForge meeting</h2>
-        <div class="side-form">
-          <sl-select id="replay-select" size="small" placeholder="Choose a meeting" hoist aria-label="Choose an OrgForge meeting to replay"></sl-select>
-          <button type="button" id="replay-btn" class="quiet" disabled>Replay</button>
+    <aside id="plate" class="plate" aria-label="On your plate">
+      <div class="plate-head">
+        <a class="brand" href="/" id="home-link" title="Today"><img src="/assets/kaki-logo-64.png" srcset="/assets/kaki-logo-64.png 1x, /assets/kaki-logo-128.png 2x" alt="" width="26" height="28"><span class="brand-name">Kaki</span></a>
+        <div class="as-of" id="as-of" role="group" aria-label="Look at the company as of a day" hidden>
+          <button type="button" class="as-of-step" id="as-of-prev" aria-label="Previous working day" title="Previous working day">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <label class="as-of-field" title="See the company as it stood at the end of a working day">
+            <span class="as-of-caption" id="as-of-caption">Today</span><span class="as-of-label" id="as-of-label"></span>
+            <input type="date" id="as-of-input" aria-describedby="as-of-caption" />
+          </label>
+          <button type="button" class="as-of-step" id="as-of-next" aria-label="Next working day" title="Next working day">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+          </button>
+          <button type="button" class="as-of-now" id="as-of-now" title="Back to the present" hidden>Now</button>
         </div>
-      </section>
-
-      <div class="shell-user">
-        <span class="shell-avatar" aria-hidden="true"></span>
-        <span class="shell-who"><span class="shell-name">&nbsp;</span><span class="shell-role"></span></span>
-        <button type="button" class="shell-out" title="Log out" aria-label="Log out" hidden><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+      </div>
+      <div class="home-group" id="home-needs" hidden><h3>Needs you <em class="count"></em></h3><div class="tasks"></div></div>
+      <div class="home-group" id="home-waiting" hidden><h3>Waiting on others <em class="count"></em></h3><div class="tasks"></div></div>
+      <!-- The signed-in employee's own to-do list and plan, for the chosen day -->
+    <section id="today-panel" class="today-panel plate-today" aria-labelledby="today-title" hidden>
+      <div class="today-head">
+        <div>
+          <h2 id="today-title">Today</h2>
+          <p id="today-date" class="today-date"></p>
+        </div>
+      </div>
+      <div class="today-body" aria-live="polite">
+        <section class="today-section" aria-labelledby="plan-heading">
+          <h3 id="plan-heading">Plan</h3>
+          <ol id="plan-list" class="today-plan"></ol>
+        </section>
+        <section class="today-section" aria-labelledby="todo-heading">
+          <h3 id="todo-heading">My tickets</h3>
+          <div id="todo-list" class="today-list"></div>
+        </section>
+        <p class="today-note">From the plan record. Shown here to plan with; answers cite only the tickets themselves.</p>
+      </div>
+    </section>
+      <div class="plate-foot">
+        <nav class="plate-links" aria-label="More">
+          <a class="all-meetings" href="/meetings">All meetings</a>
+          <a href="/graph" id="company-graph-link">Company map</a>
+        </nav>
+        <div class="shell-user" id="sidebar-user-container" title="Switch employee persona" role="button" tabindex="0">
+          <span class="shell-avatar" id="sidebar-user-avatar" aria-hidden="true">J</span>
+          <span class="shell-who"><span class="shell-name" id="sidebar-user-name">Jax</span><span class="shell-role" id="sidebar-user-role">Backend Engineer</span></span>
+          <button type="button" id="logout-btn" class="shell-out logout-btn" title="Log out" aria-label="Log out"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
+        </div>
       </div>
     </aside>
 
-    <div class="main shell-main">
+    <div id="page" class="chat-panel shell-main meetings-page">
       <header class="bar">
         <p class="crumb">Meetings <span aria-hidden="true">/</span> <b id="meeting-title-heading">Pick a meeting</b></p>
-        <p id="status-line" class="status-line">Pick a meeting, replay one, or start a new one.</p>
+        <p id="status-line" class="status-line">Pick a meeting, or start a new one.</p>
         <span class="bar-space"></span>
         <button type="button" id="minutes-copy" class="icon-btn" aria-label="Copy the minutes" title="Copy the minutes" hidden>
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>
@@ -86,8 +105,30 @@
       <p id="error" class="banner error" role="alert" hidden></p>
       <div id="google-banner" class="banner connect" hidden></div>
 
-      <p id="no-meeting" class="no-meeting">Pick a meeting on the left, replay one, or start a new one. Notes build up here as people talk; anything that needs your OK waits at the bottom.</p>
+      <p id="no-meeting" class="no-meeting">Pick a meeting below, or start a new one. Notes build up here as people talk; anything that needs your OK waits at the bottom.</p>
 
+      <section id="picker" class="picker" aria-label="Meetings">
+        <h2 class="side-label">Meetings</h2>
+        <ul id="meeting-list" class="meeting-list">
+          <li class="empty-note">No meetings yet.</li>
+        </ul>
+
+        <h2 class="side-label">New live meeting</h2>
+        <form id="new-meeting-form" class="side-form">
+          <label for="new-meeting-title" class="visually-hidden">Meeting title</label>
+          <input type="text" id="new-meeting-title" placeholder="Meeting title" required maxlength="200">
+          <button type="submit" class="primary">Start</button>
+        </form>
+
+        <!-- Replaying an OrgForge meeting is for testing: kept working, out of sight. -->
+        <div id="replay-box" hidden>
+          <h2 class="side-label">Replay an OrgForge meeting</h2>
+          <div class="side-form">
+            <sl-select id="replay-select" size="small" placeholder="Choose a meeting" hoist aria-label="Choose an OrgForge meeting to replay"></sl-select>
+            <button type="button" id="replay-btn" class="quiet" disabled>Replay</button>
+          </div>
+        </div>
+      </section>
       <main id="board" class="board" hidden>
         <div class="doc-area">
           <div class="doc-scroll">
@@ -126,7 +167,7 @@
           <section id="tray" class="tray" aria-label="Things that need you">
             <div class="tray-head">
               <button type="button" id="tray-toggle" class="tray-toggle" aria-expanded="true" aria-controls="tray" title="Fold the tray">
-                <svg class="sobo" aria-hidden="true"><use href="#sobo-mark"/></svg>
+                <img class="sobo" src="/assets/kaki-logo-64.png" srcset="/assets/kaki-logo-64.png 1x, /assets/kaki-logo-128.png 2x" alt="" width="22" height="24">
                 <b id="tray-title">Nothing needs you right now</b>
                 <svg class="tray-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m8 14 4-4 4 4"/></svg>
               </button>

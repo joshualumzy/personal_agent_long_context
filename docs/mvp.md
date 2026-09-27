@@ -78,6 +78,15 @@ Those raw sources may be read only by the offline graph builder or a separate ev
 
 The date-view planner (to-do list and day plan as of a chosen simulated day) may display rows from an approved offline projection, `day_plan_entry` and `work_item_state`, built by `orgforge_kb/build_timeline.py` from daily department plans and ticket progress simulation events. The same rules as the graph projection apply: only the projected rows are deployed, never the raw `sim_event` rows, and a projected row is never Company Evidence. It may be shown to the employee and handed to the agent as planning context, but a company factual claim still cites only retrieved Company Evidence; a projected row links to citable artifacts through its `derived_from` keys where they exist, and is otherwise labelled as coming from the plan record. The planner shows only the signed-in employee's own rows.
 
+### Knowledge gaps and hiring proposals
+
+The system may propose a hire when a knowledge domain is at risk: its owner has left, one person holds too many domains, almost nobody has worked in it lately, or incidents keep landing in it.
+
+- Recruiting, and the proposals, are visible to every signed-in employee in the MVP. There is no manager role yet.
+- A proposal only proposes. Opening a role from it starts a draft; confirming criteria, searching for candidates and any outreach stay with a person, as in the rest of recruiting.
+- Proposals are computed from employee-visible artifacts, the deployed graph, and two more approved offline projections: `employee_roster` (who joined and left on which day, without the reason) and `domain_owner_history` (each domain's designated owner, dated from the registry and the recorded hand-overs). Both follow the planner projection's rules: they may be shown, and they are never Company Evidence.
+- `knowledge_gap_detected` events and the registry's gap fields (`gap_classification`, `documentation_coverage`, `is_genesis_gap`) are simulator output that benchmark questions are built on. They are read only by the offline backtest (`eval/orgforge/gap_truth.py`), never at runtime, and never by the agent.
+
 ## MVP Acceptance Criteria
 
 - One documented command starts PostgreSQL (`npm run db:up`) and one applies migrations (`npm run db:migrate`).

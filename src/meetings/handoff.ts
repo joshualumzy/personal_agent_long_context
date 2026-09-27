@@ -8,11 +8,20 @@ import type { CalendarPayload, DocPayload, EmailPayload, MessagePayload, SheetPa
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+/**
+ * A draft cites its evidence as [source:ID] so the employee can check it
+ * before approving. The recipient is not the reviewer: whatever leaves for
+ * another tool goes without the markers.
+ */
+export function withoutCitations(text: string): string {
+  return text.replace(/[ \t]*\[source:[^\]]*\]/gi, "");
+}
+
 /** Spaces become %20, not "+": Outlook on the web shows "+" literally. */
 function withQuery(base: string, params: Record<string, string | undefined>): string {
   const query = Object.entries(params)
     .filter((entry): entry is [string, string] => Boolean(entry[1]))
-    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+    .map(([key, value]) => `${key}=${encodeURIComponent(withoutCitations(value))}`)
     .join("&");
   return `${base}?${query}`;
 }
@@ -131,9 +140,9 @@ export const NEW_SHEET_URL = {
 
 /** Tab-separated rows: both Google Sheets and Excel spread a pasted TSV across cells. */
 export function sheetClipboardText(payload: SheetPayload): string {
-  return payload.rows.map((row) => row.map((cell) => cell.replace(/[\t\r\n]+/g, " ")).join("\t")).join("\n");
+  return payload.rows.map((row) => row.map((cell) => withoutCitations(cell).replace(/[\t\r\n]+/g, " ")).join("\t")).join("\n");
 }
 
 export function docClipboardText(payload: DocPayload): string {
-  return `# ${payload.title}\n\n${payload.body}`;
+  return withoutCitations(`# ${payload.title}\n\n${payload.body}`);
 }

@@ -391,6 +391,7 @@ function render(next) {
   $("#board").hidden = !role?.confirmed;
   $("#top-actions").hidden = !role;
   $("#role-title").textContent = role ? role.title : "Who do you need?";
+  renderOrigin(role);
 
   if (state.lastError && state.lastError !== dismissedError && !$("#error").textContent) {
     showError(state.lastError, true);
@@ -691,6 +692,23 @@ function renderProposals() {
         ),
       );
     }),
+  );
+}
+
+/** A role opened from a hiring proposal says so, with the proposal's reasons and evidence. */
+function renderOrigin(role) {
+  const note = $("#role-origin");
+  if (!note) return;
+  const origin = role?.origin;
+  note.hidden = !origin || origin.kind !== "knowledge_gap";
+  if (note.hidden) {
+    note.replaceChildren();
+    return;
+  }
+  note.replaceChildren(
+    h("strong", {}, `Opened from a knowledge gap: ${origin.name ?? origin.domain}. `),
+    (origin.reasons ?? []).join(" "),
+    origin.evidence?.length ? h("span", { class: "origin-evidence" }, ` Evidence: ${origin.evidence.slice(0, 6).join(", ")}.`) : null,
   );
 }
 

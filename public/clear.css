@@ -1,0 +1,298 @@
+/* "Clear all": approving what needs you, one draft at a time. Built entirely
+   from JS (see public/clear.js) so index.html only carries the button that
+   opens it; these rules style what that script mounts into #page and
+   #context. Uses the same tokens as theme.css and styles.css. */
+
+.clear-review {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.clear-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.clear-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
+  background: var(--butter);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.clear-title {
+  font-size: 16px;
+  font-weight: 600;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.clear-progress {
+  font-size: 12.5px;
+  color: var(--muted);
+  flex: none;
+}
+
+.clear-close {
+  width: 30px;
+  height: 30px;
+}
+
+.clear-fields {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.clear-row {
+  display: flex;
+  gap: 12px;
+  font-size: 13.5px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line-2);
+}
+
+.clear-row:last-of-type {
+  border-bottom: 0;
+}
+
+.clear-label {
+  width: 90px;
+  flex: none;
+  color: var(--muted);
+}
+
+.clear-value {
+  color: var(--ink);
+}
+
+.clear-body {
+  white-space: pre-wrap;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  padding-top: 4px;
+}
+
+.clear-table {
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.clear-table td {
+  border: 1px solid var(--line);
+  padding: 4px 8px;
+}
+
+.clear-missing,
+.clear-notes {
+  background: var(--hl-row);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.clear-notes {
+  background: var(--panel-2);
+}
+
+.clear-missing-head {
+  margin: 0 0 4px;
+  font-weight: 600;
+  color: var(--warn);
+}
+
+.clear-notes .clear-missing-head {
+  color: var(--muted);
+}
+
+.clear-missing ul,
+.clear-notes ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.clear-missing-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.clear-result {
+  margin: 0 22px 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--mint);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.clear-result-summary {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.clear-open {
+  align-self: flex-start;
+  font: 600 13px/1.4 var(--f-ui);
+  color: var(--accent);
+}
+
+.clear-open:hover {
+  color: var(--accent-strong);
+}
+
+.clear-status {
+  margin: 0;
+  padding: 0 22px;
+  min-height: 1.4em;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.clear-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--line-2);
+  background: var(--panel-2);
+}
+
+.clear-spacer {
+  flex: 1;
+}
+
+.clear-keys {
+  display: inline-flex;
+  gap: 4px;
+}
+
+.clear-keys kbd {
+  font: 500 11px/1 var(--f-mono);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+.clear-btn {
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--ink-2);
+  border-radius: 10px;
+  padding: 7px 14px;
+  font: 500 13px/1.4 var(--f-ui);
+  cursor: pointer;
+}
+
+.clear-btn:hover {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+.clear-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.clear-btn.warn:hover {
+  color: var(--error-text);
+  border-color: var(--error-text);
+}
+
+.clear-btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.clear-btn.primary:hover {
+  background: var(--accent-strong);
+  border-color: var(--accent-strong);
+  color: #fff;
+}
+
+/* What it touches, on the right */
+.clear-context {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  overflow-y: auto;
+}
+
+.clear-cap {
+  font: 600 11px/1.4 var(--f-ui);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.clear-quote {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--hl-row);
+  box-shadow: inset 3px 0 0 var(--hl-edge);
+}
+
+.clear-quote-meta {
+  font-size: 11.5px;
+  color: var(--warn);
+}
+
+.clear-quote-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+.clear-evidence {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12.5px;
+}
+
+.clear-evidence-row {
+  display: flex;
+  gap: 8px;
+  color: var(--ink-2);
+}
+
+.clear-evidence-id {
+  width: 104px;
+  flex: none;
+  font: 400 12px/1.4 var(--f-ui);
+  color: var(--muted);
+}
+
+.clear-evidence-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

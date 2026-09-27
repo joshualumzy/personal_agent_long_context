@@ -304,7 +304,7 @@ export class RecruitingService {
   // ------------------------------------------------------------------ role
 
   /** Turns the founder's requirement into proposed criteria awaiting confirmation. */
-  async start(requirement: string): Promise<SayResult> {
+  async start(requirement: string, origin?: import("./domain.js").Role["origin"]): Promise<SayResult> {
     const trimmed = requirement.trim().slice(0, MAX_REQUIREMENT);
     if (trimmed.length < 10) {
       throw new RecruitingError("invalid_request", "Describe the role in a sentence or more.");
@@ -314,7 +314,7 @@ export class RecruitingService {
     return this.mutate((state) => {
       const at = this.now(state).toISOString();
       Object.assign(state, emptyState(), { clockOffsetDays: state.clockOffsetDays });
-      state.role = { title: brief.title, requirement: trimmed, confirmed: false, createdAt: at };
+      state.role = { title: brief.title, requirement: trimmed, confirmed: false, createdAt: at, ...(origin ? { origin } : {}) };
       state.criteria = kept.map((criterion) => ({
         id: randomUUID().slice(0, 8),
         text: criterion.text,

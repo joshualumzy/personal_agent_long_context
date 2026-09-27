@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" type="image/png" href="/assets/kaki-logo-64.png" />
   <title>Answer Graph</title>
   <link rel="stylesheet" href="/theme.css">
   <link rel="stylesheet" href="/graph/styles.css">
@@ -17,6 +18,7 @@
     </div>
     <div class="top-actions">
       <a class="quiet standalone-only" href="/graph" target="_top">Company graph</a>
+      <button type="button" class="quiet" id="filters-toggle" aria-expanded="false" aria-controls="categories" hidden>Filter</button>
       <button type="button" class="quiet on" id="tab-picture" aria-pressed="true">Picture</button>
       <button type="button" class="quiet" id="tab-table" aria-pressed="false">Table</button>
     </div>
@@ -34,13 +36,10 @@
   </section>
 
   <main class="board">
-    <section id="picture" class="picture" aria-labelledby="picture-heading">
-      <div class="picture-bar">
-        <h2 id="picture-heading">Diagram</h2>
-        <div class="picture-actions">
-          <button type="button" class="quiet" id="fit">Fit</button>
-          <button type="button" class="quiet" id="restore" disabled>Back to start</button>
-        </div>
+    <section id="picture" class="picture" aria-label="Diagram">
+      <div class="picture-actions">
+        <button type="button" class="quiet" id="fit">Fit</button>
+        <button type="button" class="quiet" id="restore" disabled>Back to start</button>
       </div>
       <!-- Focus moves between nodes with Tab; the table carries the same
            relationships for anyone not reading the diagram. -->
@@ -48,20 +47,6 @@
            aria-describedby="canvas-help">
         <title>The question, and what its evidence belongs to</title>
       </svg>
-      <p id="canvas-help" class="hint-line">
-        Click an item to open it up: its neighbours are added around it, a few of each kind,
-        and a “+N more” item stands for the rest — click that for the next few.
-        Drag to move around, scroll to zoom. Tab moves between items; Enter opens the focused one.
-      </p>
-      <ul class="legend" id="legend">
-        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 7,0 0,7 -7,0" class="n-person"/></svg>Person</li>
-        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="-4,-7 4,-7 7,0 4,7 -4,7 -7,0" class="n-organization"/></svg>Department, customer or vendor</li>
-        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item"/></svg>Work item or knowledge domain</li>
-        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><rect x="-6" y="-6" width="12" height="12" class="n-event"/></svg>Event</li>
-        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 7,6 -7,6" class="n-document"/></svg>Document</li>
-        <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-cluster"/></svg>More of one kind</li>
-        <li class="legend-note"><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item incident"/></svg>A red outline means it is part of an incident</li>
-      </ul>
     </section>
 
     <section id="table-view" class="table-view" aria-labelledby="table-heading" hidden>
@@ -78,8 +63,22 @@
       </div>
     </section>
 
-    <aside id="details" class="details" aria-live="polite">
-      <p class="empty">Choose an item to see what it is.</p>
+    <aside class="rail">
+      <div id="details" class="details" aria-live="polite">
+        <p class="empty">Pick an item to see what it is.</p>
+      </div>
+      <section class="guide" aria-label="How to read the picture">
+        <p id="canvas-help">Click an item to open up what it connects to. Drag to move, scroll to zoom.<span class="visually-hidden"> Tab moves between items; Enter opens the focused one.</span></p>
+        <ul class="legend" id="legend">
+          <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 7,0 0,7 -7,0" class="n-person"/></svg>Person</li>
+          <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="-4,-7 4,-7 7,0 4,7 -4,7 -7,0" class="n-organization"/></svg>Department or company</li>
+          <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item"/></svg>Work item or domain</li>
+          <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><rect x="-6" y="-6" width="12" height="12" class="n-event"/></svg>Event</li>
+          <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><polygon points="0,-7 7,6 -7,6" class="n-document"/></svg>Document</li>
+          <li><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-cluster"/></svg>More of one kind</li>
+          <li class="legend-note"><svg class="key" viewBox="-9 -9 18 18" aria-hidden="true"><circle r="7" class="n-item incident"/></svg>Red outline: part of an incident</li>
+        </ul>
+      </section>
     </aside>
   </main>
 </body>

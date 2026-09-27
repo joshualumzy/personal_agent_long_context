@@ -1,3 +1,4 @@
+import { JSDOM } from "jsdom";
 import assert from "node:assert/strict";
 import { describe, test } from "node:test";
 import { DeterministicMemoryProvider } from "../src/adapters/deterministic-memory.js";
@@ -228,7 +229,7 @@ describe("Browser surface", () => {
     const response = await app.inject({ method: "GET", url: "/" });
 
     assert.equal(response.statusCode, 200);
-    assert.match(response.body, /SME Assistant/);
+    assert.match(response.body, /<title>Kaki<\/title>/);
     assert.match(response.body, /id="chat-form"/);
     assert.match(response.body, /id="message-input"/);
     await app.close();
@@ -257,7 +258,8 @@ describe("Browser surface", () => {
     assert.equal(theme.statusCode, 200);
     assert.match(theme.headers["content-type"] as string, /^text\/css/);
     const fontUrls = [...theme.body.matchAll(/url\(([^)]+)\)/g)].map((match) => match[1] as string);
-    assert.ok(fontUrls.length >= 3);
+    // Figtree for everything, Geist Mono for keys and dates.
+    assert.ok(fontUrls.length >= 2);
     for (const url of fontUrls) {
       assert.match(url, /^\/fonts\//, "fonts must come from this origin; the CSP blocks font CDNs");
       const font = await app.inject({ method: "GET", url });
@@ -267,6 +269,22 @@ describe("Browser surface", () => {
 
     const missing = await app.inject({ method: "GET", url: "/fonts/..%2Fapp.js" });
     assert.equal(missing.statusCode, 404);
+    await app.close();
+  });
+
+  test("serves the logo, the icon in the tab, and the all-clear hand from this origin", async () => {
+    const { app } = testApp();
+    const document = new JSDOM((await app.inject({ method: "GET", url: "/" })).body).window.document;
+    const images = [
+      document.querySelector("link[rel=icon]")!.getAttribute("href")!,
+      document.querySelector("#plate .brand img")!.getAttribute("src")!,
+      document.querySelector("#home-win")!.getAttribute("src")!,
+    ];
+    for (const url of images) {
+      const image = await app.inject({ method: "GET", url });
+      assert.equal(image.statusCode, 200, url);
+      assert.equal(image.headers["content-type"], "image/png", url);
+    }
     await app.close();
   });
 

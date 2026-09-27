@@ -7,10 +7,29 @@ import { buildApp } from "../src/http-app.js";
 import type { MeetingActions } from "../src/meetings/domain.js";
 import { MemoryRoleRepository, RoleBoard } from "../src/recruiting/roles.js";
 
-// Switching between the three apps must not move the sidebar: the same
-// pieces sit at the same pixels on every page. jsdom has no layout, so this
-// measures in a real browser.
-const PAGES = ["/", "/meetings", "/recruiting"];
+// Moving between pages must not move the frame: the same pieces sit at the
+// same pixels. jsdom has no layout, so this measures in a real browser.
+// Kaki's one entry (the assistant and meetings) shows the same plate on the
+// left, and no sidebar; the pages not yet brought into it (recruiting, the
+// emergent graph) keep the older sidebar, the same on each. /graph opens
+// inside the chat's dialog.
+const PLATE_PAGES = ["/", "/meetings"];
+const PAGES = ["/recruiting", "/graph/emergent"];
+
+const MEASURE_TOP = `(() => {
+  const rect = (element) => {
+    if (!element) return null;
+    const { left, top, width, height } = element.getBoundingClientRect();
+    return [left, top, width, height].map(Math.round);
+  };
+  return {
+    plate: rect(document.querySelector("#plate")),
+    brand: rect(document.querySelector("#plate .brand")),
+    avatar: rect(document.querySelector("#plate .shell-user .shell-avatar")),
+    brandFont: document.querySelector("#plate .brand") ? getComputedStyle(document.querySelector("#plate .brand")).fontFamily : null,
+    sidebar: rect(document.querySelector(".shell-side")),
+  };
+})()`;
 
 const MEASURE = `(() => {
   const rect = (element) => {
@@ -65,6 +84,32 @@ describe("Shared shell layout", () => {
     await app.close();
   });
 
+  async function measureTop(path: string) {
+    const page = await browser.newPage({ viewport: { width: 1400, height: 820 } });
+    await page.goto(`${base}${path}`);
+    await page.evaluate(() => document.fonts.ready);
+    const boxes = await page.evaluate<Record<string, unknown>>(MEASURE_TOP);
+    await page.close();
+    return boxes;
+  }
+
+  test("the assistant page has the plate on the left, with the Kaki mark and the employee", async () => {
+    const home = await measureTop("/");
+    assert.ok(home.plate, "the plate");
+    assert.ok(home.brand, "the Kaki mark");
+    assert.ok(home.avatar, "the signed-in employee");
+    assert.equal(home.sidebar, null, "and not the old sidebar");
+  });
+
+  test("puts the plate, the Kaki mark and the employee at the same pixels on the assistant and meetings", async () => {
+    const [first, ...rest] = await Promise.all(PLATE_PAGES.map(measureTop));
+    assert.ok(first!.plate, "the assistant page has the plate");
+    assert.equal(first!.sidebar, null, "and no sidebar");
+    rest.forEach((other, index) => {
+      assert.deepEqual(other, first, `${PLATE_PAGES[index + 1]} differs from /`);
+    });
+  });
+
   async function measure(path: string) {
     const page = await browser.newPage({ viewport: { width: 1400, height: 820 } });
     await page.goto(`${base}${path}`);
@@ -75,23 +120,35 @@ describe("Shared shell layout", () => {
     return boxes;
   }
 
-  test("puts the sidebar, the workspace name and the app links at the same pixels on every page", async () => {
+  test("the pages that keep the sidebar put it at the same pixels", async () => {
     const [first, ...rest] = await Promise.all(PAGES.map(measure));
-    assert.ok(first!.sidebar, "the assistant page has the shared sidebar");
-    assert.equal(first!.links.length, 2);
+    assert.ok(first!.sidebar, "the recruiting page has the shared sidebar");
+    assert.equal(first!.links.length, 3);
     assert.ok(first!.user, "the signed-in person sits at the foot of the sidebar");
     rest.forEach((other, index) => {
-      assert.deepEqual(other, first, `${PAGES[index + 1]} differs from /`);
+      assert.deepEqual(other, first, `${PAGES[index + 1]} differs from ${PAGES[0]}`);
     });
   });
 
   test("draws icons as line icons, never as emoji or check-mark characters", async () => {
-    const assets = ["/", "/app.js", "/meetings", "/meetings/app.js", "/recruiting", "/recruiting/app.js"];
+    const assets = [
+      "/", "/app.js", "/plate.js", "/meetings", "/meetings/app.js", "/recruiting", "/recruiting/app.js",
+      "/graph", "/graph/app.js", "/graph/emergent", "/graph/emergent.js",
+    ];
     const iconLike = /[\p{Extended_Pictographic}\u2713\u2715\u2717]/u;
     for (const url of assets) {
       const body = (await app.inject({ method: "GET", url })).body;
       const hit = body.split("\n").find((line) => iconLike.test(line));
       assert.equal(hit, undefined, `${url} draws an icon with a character: ${hit?.trim()}`);
     }
+  });
+
+  test("the company graph pages use the shared theme; the emergent one sits in the shell", async () => {
+    for (const url of ["/graph", "/graph/emergent"]) {
+      const html = (await app.inject({ method: "GET", url })).body;
+      assert.match(html, /<link rel="stylesheet" href="\/theme.css">/, url);
+    }
+    const emergent = (await app.inject({ method: "GET", url: "/graph/emergent" })).body;
+    assert.match(emergent, /<a href="\/graph" aria-current="page">/);
   });
 });

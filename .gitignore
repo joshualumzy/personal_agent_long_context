@@ -44,3 +44,17 @@ docker-compose.override.yml
 
 # cognee embedded stores (Kuzu graph, LanceDB vectors, SQLite metadata)
 orgforge_kb/.cognee/
+
+# Rive project
+Rive/
+
+.agents/
+.chart-data-LHJoi9/
+.chart-data-c9Xg2a/
+.chart-data-iKhbxK/
+.codex-finalizer/
+.codex-work/
+eval/orgforge/questions.md
+output/
+skills-lock.json
+tmp/claude-work/

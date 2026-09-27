@@ -1,0 +1,1138 @@
+{
+ "note": "OFFLINE answer key from OrgForge simulator events. Never deployed, never read at runtime.",
+ "domains": [
+  {
+   "key": "auth-service",
+   "name": "auth-service",
+   "dept": "Engineering_Mobile",
+   "system_tags": [
+    "auth",
+    "auth-service",
+    "service"
+   ]
+  },
+  {
+   "key": "aws_cost_structure",
+   "name": "AWS cost structure",
+   "dept": "Engineering_Backend",
+   "system_tags": [
+    "aws",
+    "aws cost structure",
+    "cost",
+    "structure"
+   ]
+  },
+  {
+   "key": "kubernetes-deploy",
+   "name": "kubernetes-deploy",
+   "dept": "Engineering_Backend",
+   "system_tags": [
+    "deploy",
+    "kubernetes",
+    "kubernetes-deploy"
+   ]
+  },
+  {
+   "key": "legacy_auth_service",
+   "name": "legacy auth service",
+   "dept": "Engineering_Backend",
+   "system_tags": [
+    "auth",
+    "legacy",
+    "legacy auth service",
+    "service"
+   ]
+  },
+  {
+   "key": "mobile_analytics",
+   "name": "mobile analytics",
+   "dept": "Engineering_Mobile",
+   "system_tags": [
+    "analytics",
+    "mobile",
+    "mobile analytics"
+   ]
+  },
+  {
+   "key": "oauth2-flow",
+   "name": "oauth2-flow",
+   "dept": "Engineering_Mobile",
+   "system_tags": [
+    "auth",
+    "flow",
+    "oauth2",
+    "oauth2-flow"
+   ]
+  },
+  {
+   "key": "project_titan",
+   "name": "Project Titan",
+   "dept": "Engineering_Backend",
+   "system_tags": [
+    "project",
+    "project titan",
+    "titan"
+   ]
+  },
+  {
+   "key": "redis-cache",
+   "name": "redis-cache",
+   "dept": "Engineering_Mobile",
+   "system_tags": [
+    "cache",
+    "redis",
+    "redis-cache"
+   ]
+  },
+  {
+   "key": "terraform-infra",
+   "name": "terraform-infra",
+   "dept": "Engineering_Backend",
+   "system_tags": [
+    "infra",
+    "terraform",
+    "terraform-infra"
+   ]
+  },
+  {
+   "key": "titandb",
+   "name": "TitanDB",
+   "dept": "Engineering_Backend",
+   "system_tags": [
+    "titan",
+    "titandb"
+   ]
+  }
+ ],
+ "departures": [
+  {
+   "person": "Bill",
+   "day": "2024-06-01",
+   "dept": null,
+   "role": "CTO",
+   "before_record": true,
+   "domains": [
+    "aws_cost_structure",
+    "legacy_auth_service",
+    "project_titan",
+    "titandb"
+   ],
+   "event": "EVT--579-employee_departed-1"
+  },
+  {
+   "person": "Sharon",
+   "day": "2025-03-01",
+   "dept": null,
+   "role": "iOS Engineer",
+   "before_record": true,
+   "domains": [
+    "aws_cost_structure",
+    "legacy_auth_service",
+    "mobile_analytics",
+    "project_titan"
+   ],
+   "event": "EVT--306-employee_departed-3"
+  },
+  {
+   "person": "Jordan",
+   "day": "2026-01-16",
+   "dept": "Engineering_Mobile",
+   "role": null,
+   "before_record": false,
+   "domains": [
+    "auth-service",
+    "oauth2-flow",
+    "redis-cache"
+   ],
+   "event": "EVT-12-employee_departed-1345"
+  },
+  {
+   "person": "Morgan",
+   "day": "2026-02-17",
+   "dept": "Engineering_Backend",
+   "role": null,
+   "before_record": false,
+   "domains": [
+    "kubernetes-deploy",
+    "terraform-infra"
+   ],
+   "event": "EVT-34-employee_departed-1543"
+  }
+ ],
+ "hires": [
+  {
+   "person": "Janice",
+   "day": "2026-01-09",
+   "dept": "Engineering_Backend",
+   "role": "Backend Engineer",
+   "expertise": [
+    "Python",
+    "FastAPI",
+    "PostgreSQL",
+    "TitanDB"
+   ],
+   "domains": [
+    "titandb"
+   ],
+   "event": "EVT-7-employee_hired-1030"
+  },
+  {
+   "person": "Reese",
+   "day": "2026-02-05",
+   "dept": "Engineering_Backend",
+   "role": "DevOps Engineer",
+   "expertise": [
+    "Kubernetes",
+    "Terraform",
+    "AWS",
+    "Infrastructure"
+   ],
+   "domains": [
+    "aws_cost_structure",
+    "kubernetes-deploy",
+    "terraform-infra"
+   ],
+   "event": "EVT-26-employee_hired-1450"
+  },
+  {
+   "person": "Ethan Patel",
+   "day": "2026-02-05",
+   "dept": "Engineering_Mobile",
+   "role": "Senior Backend Engineer",
+   "expertise": [
+    "Go",
+    "Kubernetes",
+    "RESTful API design"
+   ],
+   "domains": [
+    "kubernetes-deploy"
+   ],
+   "event": "EVT-26-employee_hired-1451"
+  }
+ ],
+ "handovers": [
+  {
+   "domain": "legacy_auth_service",
+   "day": "2026-01-02",
+   "new_owner": "Sanjay",
+   "pathway": "incident_resolution",
+   "event": "EVT-2-domain_ownership_claimed-190"
+  },
+  {
+   "domain": "mobile_analytics",
+   "day": "2026-01-02",
+   "new_owner": "Sanjay",
+   "pathway": "incident_resolution",
+   "event": "EVT-2-domain_ownership_claimed-191"
+  },
+  {
+   "domain": "project_titan",
+   "day": "2026-01-02",
+   "new_owner": "Sam",
+   "pathway": "incident_resolution",
+   "event": "EVT-2-domain_ownership_claimed-215"
+  },
+  {
+   "domain": "auth-service",
+   "day": "2026-01-16",
+   "new_owner": "Janice",
+   "pathway": "incident_resolution",
+   "event": "EVT-12-domain_ownership_claimed-1381"
+  },
+  {
+   "domain": "oauth2-flow",
+   "day": "2026-01-16",
+   "new_owner": "Janice",
+   "pathway": "incident_resolution",
+   "event": "EVT-12-domain_ownership_claimed-1382"
+  },
+  {
+   "domain": "redis-cache",
+   "day": "2026-01-21",
+   "new_owner": "Yusuf",
+   "pathway": "incident_resolution",
+   "event": "EVT-14-domain_ownership_claimed-1455"
+  },
+  {
+   "domain": "kubernetes-deploy",
+   "day": "2026-02-27",
+   "new_owner": "Sanjay",
+   "pathway": "incident_resolution",
+   "event": "EVT-42-domain_ownership_claimed-1375"
+  }
+ ],
+ "weekly": [
+  {
+   "domain": "auth-service",
+   "week": "2026-01-05",
+   "async_unresolved": 1
+  },
+  {
+   "domain": "auth-service",
+   "week": "2026-01-12",
+   "embedding_similarity": 1
+  },
+  {
+   "domain": "auth-service",
+   "week": "2026-01-19",
+   "embedding_similarity": 37
+  },
+  {
+   "domain": "auth-service",
+   "week": "2026-01-26",
+   "async_unresolved": 3,
+   "embedding_similarity": 27
+  },
+  {
+   "domain": "auth-service",
+   "week": "2026-02-02",
+   "async_unresolved": 1,
+   "embedding_similarity": 39
+  },
+  {
+   "domain": "auth-service",
+   "week": "2026-02-09",
+   "async_uncertain": 1,
+   "async_unresolved": 1,
+   "author_self_audit": 1,
+   "embedding_similarity": 35
+  },
+  {
+   "domain": "auth-service",
+   "week": "2026-02-16",
+   "author_self_audit": 2,
+   "embedding_similarity": 42
+  },
+  {
+   "domain": "auth-service",
+   "week": "2026-02-23",
+   "author_self_audit": 1,
+   "embedding_similarity": 38
+  },
+  {
+   "domain": "auth-service",
+   "week": "2026-03-02",
+   "embedding_similarity": 41
+  },
+  {
+   "domain": "auth-service",
+   "week": "2026-03-09",
+   "embedding_similarity": 33
+  },
+  {
+   "domain": "auth-service",
+   "week": "2026-03-16",
+   "author_self_audit": 1,
+   "embedding_similarity": 46
+  },
+  {
+   "domain": "auth-service",
+   "week": "2026-03-23",
+   "embedding_similarity": 33
+  },
+  {
+   "domain": "auth-service",
+   "week": "2026-03-30",
+   "embedding_similarity": 7
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2024-05-27",
+   "genesis_seed": 1
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2025-02-24",
+   "genesis_seed": 1
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2025-12-29",
+   "author_self_audit": 4,
+   "embedding_similarity": 7
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2026-01-05",
+   "author_self_audit": 7,
+   "embedding_similarity": 65
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2026-01-12",
+   "async_unresolved": 1,
+   "author_self_audit": 8,
+   "embedding_similarity": 70
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2026-01-19",
+   "author_self_audit": 7,
+   "embedding_similarity": 81
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2026-01-26",
+   "async_unresolved": 1,
+   "author_self_audit": 10,
+   "embedding_similarity": 71
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2026-02-02",
+   "async_unresolved": 1,
+   "author_self_audit": 9,
+   "embedding_similarity": 74,
+   "reviewer_audit": 2
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2026-02-09",
+   "async_unresolved": 1,
+   "author_self_audit": 12,
+   "embedding_similarity": 69
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2026-02-16",
+   "async_uncertain": 1,
+   "async_unresolved": 1,
+   "author_self_audit": 8,
+   "embedding_similarity": 92,
+   "reviewer_audit": 1
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2026-02-23",
+   "async_unresolved": 1,
+   "author_self_audit": 6,
+   "embedding_similarity": 68
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2026-03-02",
+   "author_self_audit": 9,
+   "embedding_similarity": 80,
+   "reviewer_audit": 3
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2026-03-09",
+   "async_unresolved": 2,
+   "author_self_audit": 10,
+   "embedding_similarity": 62
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2026-03-16",
+   "async_unresolved": 4,
+   "author_self_audit": 9,
+   "embedding_similarity": 77
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2026-03-23",
+   "author_self_audit": 4,
+   "embedding_similarity": 48
+  },
+  {
+   "domain": "aws_cost_structure",
+   "week": "2026-03-30",
+   "author_self_audit": 2,
+   "embedding_similarity": 16
+  },
+  {
+   "domain": "kubernetes-deploy",
+   "week": "2026-01-05",
+   "author_self_audit": 2,
+   "reviewer_audit": 2
+  },
+  {
+   "domain": "kubernetes-deploy",
+   "week": "2026-01-12",
+   "author_self_audit": 1
+  },
+  {
+   "domain": "kubernetes-deploy",
+   "week": "2026-01-19",
+   "author_self_audit": 5,
+   "reviewer_audit": 1
+  },
+  {
+   "domain": "kubernetes-deploy",
+   "week": "2026-02-09",
+   "async_unresolved": 1,
+   "author_self_audit": 4
+  },
+  {
+   "domain": "kubernetes-deploy",
+   "week": "2026-02-16",
+   "author_self_audit": 4,
+   "embedding_similarity": 13
+  },
+  {
+   "domain": "kubernetes-deploy",
+   "week": "2026-02-23",
+   "author_self_audit": 4,
+   "embedding_similarity": 43
+  },
+  {
+   "domain": "kubernetes-deploy",
+   "week": "2026-03-02",
+   "author_self_audit": 4,
+   "embedding_similarity": 44
+  },
+  {
+   "domain": "kubernetes-deploy",
+   "week": "2026-03-09",
+   "author_self_audit": 3,
+   "embedding_similarity": 38
+  },
+  {
+   "domain": "kubernetes-deploy",
+   "week": "2026-03-16",
+   "author_self_audit": 5,
+   "embedding_similarity": 28
+  },
+  {
+   "domain": "kubernetes-deploy",
+   "week": "2026-03-23",
+   "author_self_audit": 4,
+   "embedding_similarity": 29
+  },
+  {
+   "domain": "kubernetes-deploy",
+   "week": "2026-03-30",
+   "embedding_similarity": 8
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2024-05-27",
+   "genesis_seed": 1
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2025-02-24",
+   "genesis_seed": 1
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2025-12-29",
+   "embedding_similarity": 7
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2026-01-05",
+   "embedding_similarity": 65
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2026-01-12",
+   "embedding_similarity": 70
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2026-01-19",
+   "embedding_similarity": 81
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2026-01-26",
+   "async_uncertain": 1,
+   "author_self_audit": 1,
+   "embedding_similarity": 71
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2026-02-02",
+   "embedding_similarity": 74
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2026-02-09",
+   "author_self_audit": 1,
+   "embedding_similarity": 69
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2026-02-16",
+   "embedding_similarity": 92
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2026-02-23",
+   "embedding_similarity": 68
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2026-03-02",
+   "author_self_audit": 2,
+   "embedding_similarity": 80
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2026-03-09",
+   "embedding_similarity": 62
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2026-03-16",
+   "author_self_audit": 1,
+   "embedding_similarity": 77
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2026-03-23",
+   "author_self_audit": 2,
+   "embedding_similarity": 48
+  },
+  {
+   "domain": "legacy_auth_service",
+   "week": "2026-03-30",
+   "embedding_similarity": 16
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2025-02-24",
+   "genesis_seed": 1
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2025-12-29",
+   "embedding_similarity": 4
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2026-01-05",
+   "async_uncertain": 1,
+   "author_self_audit": 1,
+   "embedding_similarity": 30,
+   "reviewer_audit": 2
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2026-01-12",
+   "author_self_audit": 3,
+   "embedding_similarity": 33
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2026-01-19",
+   "async_uncertain": 1,
+   "author_self_audit": 2,
+   "embedding_similarity": 45
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2026-01-26",
+   "async_uncertain": 1,
+   "embedding_similarity": 36
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2026-02-02",
+   "embedding_similarity": 42
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2026-02-09",
+   "author_self_audit": 1,
+   "embedding_similarity": 40
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2026-02-16",
+   "author_self_audit": 2,
+   "embedding_similarity": 53
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2026-02-23",
+   "author_self_audit": 1,
+   "embedding_similarity": 30
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2026-03-02",
+   "async_unresolved": 1,
+   "author_self_audit": 1,
+   "embedding_similarity": 43
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2026-03-09",
+   "author_self_audit": 1,
+   "embedding_similarity": 29
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2026-03-16",
+   "author_self_audit": 1,
+   "embedding_similarity": 37
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2026-03-23",
+   "async_unresolved": 1,
+   "author_self_audit": 1,
+   "embedding_similarity": 24
+  },
+  {
+   "domain": "mobile_analytics",
+   "week": "2026-03-30",
+   "async_unresolved": 1,
+   "embedding_similarity": 8
+  },
+  {
+   "domain": "oauth2-flow",
+   "week": "2026-01-12",
+   "embedding_similarity": 1
+  },
+  {
+   "domain": "oauth2-flow",
+   "week": "2026-01-19",
+   "embedding_similarity": 37
+  },
+  {
+   "domain": "oauth2-flow",
+   "week": "2026-01-26",
+   "embedding_similarity": 27
+  },
+  {
+   "domain": "oauth2-flow",
+   "week": "2026-02-02",
+   "embedding_similarity": 39
+  },
+  {
+   "domain": "oauth2-flow",
+   "week": "2026-02-09",
+   "embedding_similarity": 35
+  },
+  {
+   "domain": "oauth2-flow",
+   "week": "2026-02-16",
+   "author_self_audit": 1,
+   "embedding_similarity": 42
+  },
+  {
+   "domain": "oauth2-flow",
+   "week": "2026-02-23",
+   "embedding_similarity": 38
+  },
+  {
+   "domain": "oauth2-flow",
+   "week": "2026-03-02",
+   "embedding_similarity": 41
+  },
+  {
+   "domain": "oauth2-flow",
+   "week": "2026-03-09",
+   "embedding_similarity": 33
+  },
+  {
+   "domain": "oauth2-flow",
+   "week": "2026-03-16",
+   "embedding_similarity": 46
+  },
+  {
+   "domain": "oauth2-flow",
+   "week": "2026-03-23",
+   "embedding_similarity": 33
+  },
+  {
+   "domain": "oauth2-flow",
+   "week": "2026-03-30",
+   "embedding_similarity": 7
+  },
+  {
+   "domain": "project_titan",
+   "week": "2024-05-27",
+   "genesis_seed": 1
+  },
+  {
+   "domain": "project_titan",
+   "week": "2025-02-24",
+   "genesis_seed": 1
+  },
+  {
+   "domain": "project_titan",
+   "week": "2025-12-29",
+   "embedding_similarity": 7
+  },
+  {
+   "domain": "project_titan",
+   "week": "2026-01-05",
+   "embedding_similarity": 65
+  },
+  {
+   "domain": "project_titan",
+   "week": "2026-01-12",
+   "embedding_similarity": 70
+  },
+  {
+   "domain": "project_titan",
+   "week": "2026-01-19",
+   "embedding_similarity": 81
+  },
+  {
+   "domain": "project_titan",
+   "week": "2026-01-26",
+   "embedding_similarity": 71
+  },
+  {
+   "domain": "project_titan",
+   "week": "2026-02-02",
+   "embedding_similarity": 74
+  },
+  {
+   "domain": "project_titan",
+   "week": "2026-02-09",
+   "embedding_similarity": 69
+  },
+  {
+   "domain": "project_titan",
+   "week": "2026-02-16",
+   "embedding_similarity": 92
+  },
+  {
+   "domain": "project_titan",
+   "week": "2026-02-23",
+   "embedding_similarity": 68
+  },
+  {
+   "domain": "project_titan",
+   "week": "2026-03-02",
+   "embedding_similarity": 80
+  },
+  {
+   "domain": "project_titan",
+   "week": "2026-03-09",
+   "author_self_audit": 1,
+   "embedding_similarity": 62
+  },
+  {
+   "domain": "project_titan",
+   "week": "2026-03-16",
+   "embedding_similarity": 77
+  },
+  {
+   "domain": "project_titan",
+   "week": "2026-03-23",
+   "embedding_similarity": 48
+  },
+  {
+   "domain": "project_titan",
+   "week": "2026-03-30",
+   "embedding_similarity": 16
+  },
+  {
+   "domain": "redis-cache",
+   "week": "2026-01-05",
+   "async_unresolved": 2,
+   "author_self_audit": 2
+  },
+  {
+   "domain": "redis-cache",
+   "week": "2026-01-12",
+   "async_uncertain": 2,
+   "async_unresolved": 1,
+   "author_self_audit": 3,
+   "embedding_similarity": 1
+  },
+  {
+   "domain": "redis-cache",
+   "week": "2026-01-19",
+   "async_unresolved": 3,
+   "author_self_audit": 6,
+   "embedding_similarity": 37
+  },
+  {
+   "domain": "redis-cache",
+   "week": "2026-01-26",
+   "async_uncertain": 1,
+   "async_unresolved": 2,
+   "author_self_audit": 2,
+   "embedding_similarity": 27
+  },
+  {
+   "domain": "redis-cache",
+   "week": "2026-02-02",
+   "async_uncertain": 2,
+   "async_unresolved": 1,
+   "author_self_audit": 2,
+   "embedding_similarity": 39
+  },
+  {
+   "domain": "redis-cache",
+   "week": "2026-02-09",
+   "author_self_audit": 7,
+   "embedding_similarity": 35
+  },
+  {
+   "domain": "redis-cache",
+   "week": "2026-02-16",
+   "async_unresolved": 6,
+   "author_self_audit": 6,
+   "embedding_similarity": 42
+  },
+  {
+   "domain": "redis-cache",
+   "week": "2026-02-23",
+   "async_uncertain": 1,
+   "async_unresolved": 3,
+   "author_self_audit": 4,
+   "embedding_similarity": 38
+  },
+  {
+   "domain": "redis-cache",
+   "week": "2026-03-02",
+   "async_escalated": 1,
+   "async_uncertain": 1,
+   "async_unresolved": 1,
+   "author_self_audit": 2,
+   "embedding_similarity": 41
+  },
+  {
+   "domain": "redis-cache",
+   "week": "2026-03-09",
+   "async_escalated": 1,
+   "async_uncertain": 1,
+   "async_unresolved": 1,
+   "author_self_audit": 11,
+   "embedding_similarity": 33,
+   "reviewer_audit": 1
+  },
+  {
+   "domain": "redis-cache",
+   "week": "2026-03-16",
+   "async_unresolved": 5,
+   "author_self_audit": 5,
+   "embedding_similarity": 46
+  },
+  {
+   "domain": "redis-cache",
+   "week": "2026-03-23",
+   "async_uncertain": 2,
+   "async_unresolved": 5,
+   "author_self_audit": 3,
+   "embedding_similarity": 33
+  },
+  {
+   "domain": "redis-cache",
+   "week": "2026-03-30",
+   "async_uncertain": 2,
+   "embedding_similarity": 7
+  },
+  {
+   "domain": "terraform-infra",
+   "week": "2025-12-29",
+   "author_self_audit": 1
+  },
+  {
+   "domain": "terraform-infra",
+   "week": "2026-01-05",
+   "async_uncertain": 1,
+   "async_unresolved": 2,
+   "author_self_audit": 7,
+   "reviewer_audit": 1
+  },
+  {
+   "domain": "terraform-infra",
+   "week": "2026-01-12",
+   "async_uncertain": 1,
+   "async_unresolved": 1,
+   "author_self_audit": 6
+  },
+  {
+   "domain": "terraform-infra",
+   "week": "2026-01-19",
+   "async_uncertain": 1,
+   "async_unresolved": 2,
+   "author_self_audit": 10,
+   "reviewer_audit": 1
+  },
+  {
+   "domain": "terraform-infra",
+   "week": "2026-01-26",
+   "async_uncertain": 1,
+   "async_unresolved": 1,
+   "author_self_audit": 6
+  },
+  {
+   "domain": "terraform-infra",
+   "week": "2026-02-02",
+   "async_escalated": 1,
+   "async_uncertain": 1,
+   "async_unresolved": 1,
+   "author_self_audit": 9,
+   "reviewer_audit": 1
+  },
+  {
+   "domain": "terraform-infra",
+   "week": "2026-02-09",
+   "async_unresolved": 2,
+   "author_self_audit": 13
+  },
+  {
+   "domain": "terraform-infra",
+   "week": "2026-02-16",
+   "async_uncertain": 3,
+   "async_unresolved": 1,
+   "author_self_audit": 10,
+   "embedding_similarity": 13,
+   "reviewer_audit": 2
+  },
+  {
+   "domain": "terraform-infra",
+   "week": "2026-02-23",
+   "async_unresolved": 2,
+   "author_self_audit": 13,
+   "embedding_similarity": 43
+  },
+  {
+   "domain": "terraform-infra",
+   "week": "2026-03-02",
+   "async_unresolved": 1,
+   "author_self_audit": 8,
+   "embedding_similarity": 44
+  },
+  {
+   "domain": "terraform-infra",
+   "week": "2026-03-09",
+   "async_unresolved": 3,
+   "author_self_audit": 12,
+   "embedding_similarity": 38
+  },
+  {
+   "domain": "terraform-infra",
+   "week": "2026-03-16",
+   "async_uncertain": 3,
+   "author_self_audit": 11,
+   "embedding_similarity": 28,
+   "reviewer_audit": 1
+  },
+  {
+   "domain": "terraform-infra",
+   "week": "2026-03-23",
+   "async_uncertain": 1,
+   "author_self_audit": 5,
+   "embedding_similarity": 29
+  },
+  {
+   "domain": "terraform-infra",
+   "week": "2026-03-30",
+   "author_self_audit": 2,
+   "embedding_similarity": 8
+  },
+  {
+   "domain": "titandb",
+   "week": "2024-05-27",
+   "genesis_seed": 1
+  },
+  {
+   "domain": "titandb",
+   "week": "2025-12-29",
+   "author_self_audit": 2,
+   "embedding_similarity": 3
+  },
+  {
+   "domain": "titandb",
+   "week": "2026-01-05",
+   "async_uncertain": 1,
+   "async_unresolved": 1,
+   "author_self_audit": 5,
+   "embedding_similarity": 35
+  },
+  {
+   "domain": "titandb",
+   "week": "2026-01-12",
+   "async_unresolved": 1,
+   "author_self_audit": 4,
+   "embedding_similarity": 37
+  },
+  {
+   "domain": "titandb",
+   "week": "2026-01-19",
+   "async_unresolved": 1,
+   "author_self_audit": 6,
+   "embedding_similarity": 36
+  },
+  {
+   "domain": "titandb",
+   "week": "2026-01-26",
+   "async_unresolved": 1,
+   "author_self_audit": 4,
+   "embedding_similarity": 35
+  },
+  {
+   "domain": "titandb",
+   "week": "2026-02-02",
+   "async_unresolved": 3,
+   "author_self_audit": 2,
+   "embedding_similarity": 32,
+   "reviewer_audit": 1
+  },
+  {
+   "domain": "titandb",
+   "week": "2026-02-09",
+   "async_uncertain": 1,
+   "author_self_audit": 11,
+   "embedding_similarity": 29
+  },
+  {
+   "domain": "titandb",
+   "week": "2026-02-16",
+   "async_unresolved": 2,
+   "author_self_audit": 6,
+   "embedding_similarity": 39
+  },
+  {
+   "domain": "titandb",
+   "week": "2026-02-23",
+   "async_uncertain": 1,
+   "async_unresolved": 1,
+   "author_self_audit": 5,
+   "embedding_similarity": 38
+  },
+  {
+   "domain": "titandb",
+   "week": "2026-03-02",
+   "async_unresolved": 1,
+   "author_self_audit": 5,
+   "embedding_similarity": 37
+  },
+  {
+   "domain": "titandb",
+   "week": "2026-03-09",
+   "async_unresolved": 2,
+   "author_self_audit": 6,
+   "embedding_similarity": 33
+  },
+  {
+   "domain": "titandb",
+   "week": "2026-03-16",
+   "async_uncertain": 1,
+   "async_unresolved": 2,
+   "author_self_audit": 7,
+   "embedding_similarity": 40
+  },
+  {
+   "domain": "titandb",
+   "week": "2026-03-23",
+   "async_unresolved": 1,
+   "author_self_audit": 4,
+   "embedding_similarity": 24
+  },
+  {
+   "domain": "titandb",
+   "week": "2026-03-30",
+   "async_uncertain": 1,
+   "embedding_similarity": 8
+  }
+ ],
+ "async_questions": {
+  "total": 618,
+  "unmapped": 505,
+  "unmapped_share": 0.817
+ }
+}
