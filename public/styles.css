@@ -2518,3 +2518,6 @@ body.has-context .kaki .message-row.user.long .message-bubble { font-size: 15px;
 .plate #home-conversations .conv-date { font-size: 11.5px; color: var(--faint); white-space: nowrap; }
 .plate .conversations-empty { padding: 4px 6px; font-size: 12.5px; color: var(--faint); }
 .plate .more-btn { margin: 4px 6px 0; }
+/* The page's group labels sit on one line, the count right after them: "Waiting on others 1". */
+.kaki { --rail: 124px; }
+.kaki #page .home-group > h3 { flex-direction: row; align-items: baseline; gap: 6px; white-space: nowrap; }
