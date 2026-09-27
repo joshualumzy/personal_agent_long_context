@@ -1212,8 +1212,8 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     serve("vendor/rive.wasm", "application/wasm"),
   );
   app.get(
-    "/assets/sobo.riv",
-    serve("assets/sobo.riv", "application/octet-stream"),
+    "/assets/merlion.riv",
+    serve("assets/merlion.riv", "application/octet-stream"),
   );
   app.get("/app.js", serve("app.js", "text/javascript; charset=utf-8"));
   app.get("/styles.css", serve("styles.css", "text/css; charset=utf-8"));

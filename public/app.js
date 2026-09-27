@@ -1811,11 +1811,9 @@ function initSoboMascot() {
         rive.RuntimeLoader.setWasmUrl("/vendor/rive.wasm");
       }
       soboRiveInstance = new rive.Rive({
-        src: "/assets/sobo.riv",
+        src: "/assets/merlion.riv",
         canvas: canvas,
         autoplay: true,
-        artboard: "SOBO-Motion-V02",
-        animations: ["Idle", "Blink"],
         layout: new rive.Layout({
           fit: rive.Fit.Contain,
           alignment: rive.Alignment.Center,
@@ -1834,28 +1832,12 @@ function initSoboMascot() {
         },
       });
 
-      // Interactive state switching on click
-      const interactiveStates = [
-        { anims: ["Hello", "Blink"], duration: 2200 },
-        { anims: ["Talk", "Sparkles", "Blink"], duration: 2500 },
-        { anims: ["Yes", "Blink"], duration: 2000 },
-      ];
-      let stateIndex = 0;
-      let stateTimeout = null;
-
       canvas.addEventListener("click", () => {
         if (!soboRiveInstance) return;
-        if (stateTimeout) clearTimeout(stateTimeout);
-
-        const current = interactiveStates[stateIndex % interactiveStates.length];
-        stateIndex++;
-
-        soboRiveInstance.play(current.anims);
-        stateTimeout = setTimeout(() => {
-          if (soboRiveInstance) {
-            soboRiveInstance.play(["Idle", "Blink"]);
-          }
-        }, current.duration);
+        const bumpAnimation = soboRiveInstance.animationNames.find(
+          (name) => name.toLowerCase() === "bump",
+        );
+        if (bumpAnimation) soboRiveInstance.play(bumpAnimation);
       });
     } catch (err) {
       console.warn("Could not instantiate Rive animation", err);
