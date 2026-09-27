@@ -1,0 +1,39 @@
+# Zoom Meeting Transcript
+**Date:** 2026-01-15
+**Topic:** Review new UX flow
+**Attendees:** Elena, Sarah, Tasha, Yusuf, Dave, Deepa
+
+---
+
+**[13:18:17] Elena:** Sorry if this is obvious but I wanted to kick off our quick design sync to **review the new UX flow** for the latest wearable dashboard and make sure we’re all aligned on next steps! ✨🚀
+
+**[13:21:17] Sarah:** @Elena @Dave can we get a concrete decision on the navigation hierarchy by the end of today? **We need the final flow approved so the dev sprint can stay on track**. sent from mobile
+
+**[13:23:17] Deepa:** Sure, let me break it down:
+1. Confirm the primary navigation tabs (Home, Stats, Settings).
+2. Validate the placement of the real‑time metrics widget.
+3. Align the onboarding modal sequence with the data‑fetch API.
+If we lock these, we can move forward.
+
+**[13:24:17] Tasha:** Got it, Deepa. For step 2, do we want the metrics widget on the top‑right corner as shown in the mock, or centered?
+
+**[13:26:17] Yusuf:** I think the top‑right makes sense for quick glances, and it matches the existing telemetry feed layout.
+
+**[13:29:17] Dave:** I’ve checked the responsive breakpoints; the top‑right placement holds up on both phone and tablet screens.
+
+**[13:33:17] Elena:** Sorry if this sounds silly but does anyone see any friction with the onboarding modal triggering before the user’s first data sync? 🤔
+
+**[13:35:17] Sarah:** **We need the onboarding flow finalized by EOD so the devs can start building the modal logic**. @Deepa can you lock the sequence?
+
+**[13:36:17] Deepa:** 1. Draft the final modal script by 3 PM.
+2. Review with UX by 4 PM.
+3. Hand off to devs at 5 PM.
+That should give us a clean handoff.
+
+**[13:38:17] Tasha:** I’ll update the Figma file with the top‑right widget and the revised modal steps once Deepa shares the script.
+
+**[13:42:17] Yusuf:** I’ll coordinate with the backend team to ensure the telemetry endpoint is ready for the onboarding check.
+
+**[13:46:17] Dave:** I’ll add the API contract changes to the sprint documentation and tag the relevant tickets.
+
+**[13:50:17] Elena:** Thanks everyone! Decision: we’ll use the top‑right widget, lock the navigation tabs as Home/Stats/Settings, and finalize the onboarding modal by today. **Action items:** Deepa – modal script and handoff; Tasha – update Figma; Yusuf – sync with telemetry backend; Dave – document API changes. Let’s reconvene tomorrow for a quick demo. ✨

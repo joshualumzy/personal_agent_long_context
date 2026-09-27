@@ -48,6 +48,8 @@ button, .quiet { font: inherit; cursor: pointer; }
 }
 .primary:hover { filter: brightness(1.06); }
 .primary:disabled { opacity: .5; cursor: progress; }
+a.primary { display: inline-block; text-decoration: none; cursor: pointer; }
+a.primary[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
 .quiet {
   border: 1px solid var(--line); border-radius: var(--radius-control); padding: 5px 10px;
   background: transparent; color: var(--text); text-decoration: none; font-size: .88rem;

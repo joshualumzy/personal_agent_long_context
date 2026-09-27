@@ -3,8 +3,10 @@ import { describe, test } from "node:test";
 import { DeterministicMemoryProvider } from "../src/adapters/deterministic-memory.js";
 import type { ApplicationFailure } from "../src/application.js";
 import { CONSENT_POLICY_VERSION } from "../src/domain.js";
+import { createSessionToken } from "../src/auth.js";
 import { buildApp } from "../src/http-app.js";
 
+const TEST_SECRET = "test-auth-session-secret-key-32chars-min";
 const fixedReceipt = new Date("2026-09-19T04:05:06.000Z");
 
 function validSubmission(overrides: Record<string, unknown> = {}) {
@@ -25,6 +27,7 @@ function testApp(memory = new DeterministicMemoryProvider()) {
     memory,
     failures,
     app: buildApp({
+      sessionConfig: { secret: TEST_SECRET },
       memory,
       clock: () => fixedReceipt,
       correlationId: () => "corr-test-001",
@@ -112,6 +115,7 @@ describe("Transcript submission application interface", () => {
     const ownMemory = await app.inject({
       method: "GET",
       url: "/api/v1/users/demo-user/memory",
+      headers: { cookie: `sme_session=${createSessionToken("demo-user", TEST_SECRET)}` },
     });
     assert.equal(ownMemory.statusCode, 200);
     assert.equal(ownMemory.json().items.length, 2);
@@ -121,6 +125,7 @@ describe("Transcript submission application interface", () => {
     const otherMemory = await app.inject({
       method: "GET",
       url: "/api/v1/users/other-user/memory",
+      headers: { cookie: `sme_session=${createSessionToken("other-user", TEST_SECRET)}` },
     });
     assert.deepEqual(otherMemory.json(), { userId: "other-user", items: [] });
     await app.close();

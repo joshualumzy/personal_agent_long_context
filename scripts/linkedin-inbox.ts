@@ -30,8 +30,15 @@ async function loadSeen(): Promise<Set<string>> {
   }
 }
 
+/** A preview's time label ("10:32 AM", "Tue") changes as the day passes; the message does not. */
+const TIME_LABEL =
+  /^(\d{1,2}:\d{2}(\s*[ap]m)?|now|yesterday|today|mon|tue|wed|thu|fri|sat|sun|monday|tuesday|wednesday|thursday|friday|saturday|sunday|[a-z]{3} \d{1,2}(, \d{4})?|\d{1,2}\/\d{1,2}(\/\d{2,4})?|\d+[mhdw])$/i;
+
 function fingerprint(text: string): string {
-  return createHash("sha256").update(text).digest("hex");
+  // Time labels in the header (name and time lines) are dropped; the message itself is kept.
+  const lines = text.split("\n").map((line) => line.trim()).filter(Boolean);
+  const message = lines.filter((line, index) => index === lines.length - 1 || index > 1 || !TIME_LABEL.test(line)).join("\n");
+  return createHash("sha256").update(message).digest("hex");
 }
 
 await mkdir(PROFILE_DIR, { recursive: true });
@@ -81,7 +88,7 @@ try {
         body: JSON.stringify({ threads: fresh }),
       });
       const body = (await response.json()) as {
-        result?: { ignored?: number; results?: { message: string }[] };
+        result?: { ignored?: number; results?: { message: string }[]; failed?: string[] };
         message?: string;
       };
       if (!response.ok) throw new Error(body.message ?? `HTTP ${response.status}`);
@@ -89,6 +96,8 @@ try {
         `Read ${fresh.length} conversations; ${body.result?.ignored ?? 0} did not mention anyone you contacted and were ignored.`,
       );
       for (const result of body.result?.results ?? []) console.log(`- ${result.message}`);
+      // A conversation the app could not read is tried again next time.
+      for (const text of body.result?.failed ?? []) seen.delete(fingerprint(text));
       await writeFile(SEEN_PATH, JSON.stringify([...seen]));
     }
   }

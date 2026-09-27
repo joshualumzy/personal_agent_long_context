@@ -16,6 +16,79 @@ let state = null;
 let selectedId = null;
 let detailSignature = "";
 let draftCriteria = null;
+/** Unsaved draft edits by candidate and draft, kept across drawer rebuilds. */
+const typedDrafts = new Map();
+/** People whose message is being saved and sent right now. */
+const sendingFor = new Set();
+/** Text typed into a drawer's other boxes (a pass reason, a pasted reply), kept across rebuilds until used. */
+const typedFields = new Map();
+/** People with a drawer action (outreach, keep, pass, reply, hired) on its way; its buttons stay disabled. */
+const actingFor = new Set();
+
+function keptInput(key, element) {
+  if (typedFields.has(key)) element.value = typedFields.get(key);
+  element.addEventListener("input", () => typedFields.set(key, element.value));
+  return element;
+}
+
+/**
+ * Whether the founder has typed something not yet saved or used: a draft edit, a pass reason, a
+ * pasted reply, or unsaved criteria. The chat page asks before folding this panel away.
+ */
+window.hasUnsavedText = () => {
+  if (!state?.role) return false;
+  // Criteria edits matter only while there is still a review to confirm.
+  if (draftDirty && !state.role.confirmed) return true;
+  const byId = new Map(state.candidates.map((candidate) => [candidate.id, candidate]));
+  const differs = (typed, draft, candidate) =>
+    (typed.subject !== undefined && typed.subject !== draft.subject) ||
+    (typed.body !== undefined && typed.body !== draft.body) ||
+    (typed.email !== undefined && typed.email.trim() !== "" && typed.email !== (candidate.contact?.email ?? ""));
+  for (const [key, typed] of typedDrafts) {
+    const [role, id, ...rest] = key.split(":");
+    if (role !== roleId) continue;
+    const candidate = byId.get(id);
+    // The draft this was typed into is gone (sent, replaced, closed): nothing left to lose.
+    if (!candidate?.draft || candidate.draft.createdAt !== rest.join(":")) {
+      typedDrafts.delete(key);
+      continue;
+    }
+    if (differs(typed ?? {}, candidate.draft, candidate)) return true;
+  }
+  for (const [key, value] of typedFields) {
+    const [role, id, box] = key.split(":");
+    if (role !== roleId || typeof value !== "string" || value.trim() === "") continue;
+    const candidate = byId.get(id);
+    // Only a box that can still be shown: the reason while they are open, the reply while in a conversation.
+    const shown =
+      candidate &&
+      (box === "reason"
+        ? candidate.stage !== "closed"
+        : ["contacted", "replied", "scheduling"].includes(candidate.stage));
+    if (!shown) {
+      typedFields.delete(key);
+      continue;
+    }
+    return true;
+  }
+  return false;
+};
+
+/** Runs one drawer action per person at a time, then redraws that person's drawer. */
+async function act(candidateId, work) {
+  const key = `${roleId}:${candidateId}`;
+  if (actingFor.has(key)) return undefined;
+  actingFor.add(key);
+  try {
+    return await work();
+  } finally {
+    actingFor.delete(key);
+    if (state && selectedId === candidateId) {
+      detailSignature = "";
+      renderDetail();
+    }
+  }
+}
 let lastRoundCount = 0;
 let pollTimer = null;
 const nodes = new Map();
@@ -27,6 +100,14 @@ const embedded = params.get("embed") === "1" && window.top !== window;
 let pendingCandidate = embedded ? params.get("candidate") : null;
 let roleId = params.get("role");
 let roles = [];
+/** Bumped on every role switch: an answer that arrives for an earlier view is dropped. */
+let view = 0;
+/** The founder has edited the draft criteria, so polling must not overwrite them. */
+let draftDirty = false;
+/** A background error the founder dismissed; it is not shown again. */
+let dismissedError = null;
+/** Set while the composer's request is in flight. */
+let saying = false;
 
 /** Every role-scoped call goes under the open role. */
 function api(path) {
@@ -43,14 +124,32 @@ function rememberRole() {
 /** Opens another role, or the intake when id is null. */
 function switchRole(id) {
   roleId = id;
+  view += 1;
   selectedId = null;
+  closeDrawer();
+  disarmDelete();
   draftCriteria = null;
+  draftDirty = false;
+  dismissedError = null;
   lastRoundCount = 0;
   for (const node of nodes.values()) node.remove();
   nodes.clear();
   rememberRole();
   showError("");
   refresh();
+}
+
+function closeDrawer() {
+  const drawer = $("#drawer");
+  drawer.hidden = true;
+  drawer.replaceChildren();
+  detailSignature = "";
+}
+
+function disarmDelete() {
+  const button = $("#reset");
+  button.dataset.armed = "";
+  button.textContent = "Delete this role";
 }
 
 function h(tag, attributes = {}, ...children) {
@@ -95,16 +194,33 @@ function initials(name) {
 
 // ------------------------------------------------------------------ network
 
-function showError(message) {
+function showError(message, fromServer = false) {
   const banner = $("#error");
-  banner.textContent = message;
+  banner.replaceChildren();
   banner.hidden = !message;
+  if (!message) return;
+  banner.append(message);
+  if (fromServer) {
+    // A background error stays until dismissed; dismissing tells the server too.
+    banner.append(
+      h("button", {
+        type: "button",
+        class: "link dismiss",
+        onclick: async () => {
+          dismissedError = message;
+          showError("");
+          if (roleId) await fetch(api("/dismiss-error"), { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).catch(() => {});
+        },
+      }, "Dismiss"),
+    );
+  }
 }
 
 /** Opens a new role from words or an uploaded file. */
 async function createRole(body, button) {
   if (button) button.disabled = true;
   showError("");
+  const asked = view;
   try {
     const response = await fetch("/api/recruiting/roles", {
       method: "POST",
@@ -116,8 +232,16 @@ async function createRole(body, button) {
       showError(data.message ?? "Something went wrong.");
       return undefined;
     }
+    // The founder opened another role (or a fresh intake) meanwhile: the new role is listed,
+    // not forced on screen, and a fresh intake they are filling in stays open.
+    if (asked !== view) {
+      refresh();
+      return undefined;
+    }
     startingNew = false;
     roleId = data.roleId;
+    // Anything still in flight was asked about the intake, not this role.
+    view += 1;
     rememberRole();
     render(data.state);
     refresh();
@@ -130,9 +254,14 @@ async function createRole(body, button) {
   }
 }
 
-async function call(path, body, button) {
+/**
+ * Posts an action and paints the answer. Undefined on failure, or when the founder moved to
+ * another role meanwhile; `onStale(ok)` then says whether the action itself worked.
+ */
+async function call(path, body, button, options = {}) {
   if (button) button.disabled = true;
   showError("");
+  const asked = view;
   try {
     const response = await fetch(path, {
       method: "POST",
@@ -140,11 +269,19 @@ async function call(path, body, button) {
       body: JSON.stringify(body ?? {}),
     });
     const data = await response.json();
+    // The founder moved to another role meanwhile: this answer is not about what is on screen.
+    if (asked !== view) {
+      options.onStale?.(response.ok);
+      return undefined;
+    }
     if (!response.ok) {
       showError(data.message ?? "Something went wrong.");
       return undefined;
     }
-    if (data.state) render(data.state);
+    if (data.state) {
+      actionsRendered += 1;
+      render(data.state);
+    }
     return data.result;
   } catch {
     showError("The server did not answer. Is it running?");
@@ -154,10 +291,16 @@ async function call(path, body, button) {
   }
 }
 
+// Counts action answers painted; a refresh asked for before one of them is older than the screen.
+let actionsRendered = 0;
+
 async function refresh() {
   try {
+    const listedFor = view;
+    const paintedBefore = actionsRendered;
     const listed = await fetch("/api/recruiting/roles");
     if (listed.ok) roles = (await listed.json()).roles;
+    if (listedFor !== view) return;
     // Without a role in the link, open the newest one. Panels saved before roles existed name none.
     if (!roleId && roles.length && !startingNew) {
       roleId = roles[0].id;
@@ -168,18 +311,37 @@ async function refresh() {
       render(null);
       return;
     }
+    const asked = view;
     const response = await fetch(api("/state"));
-    if (response.status === 404 && !embedded) {
-      switchRole(null);
+    if (asked !== view) return;
+    if (response.status === 404) {
+      if (embedded) showGone();
+      else switchRole(null);
       return;
     }
-    if (response.ok) render(await response.json());
+    if (response.ok) {
+      const next = await response.json();
+      if (asked === view && paintedBefore === actionsRendered) render(next);
+    }
   } catch {
     // The next poll tries again.
   }
 }
 
 let startingNew = false;
+
+/** In the chat, a panel whose role was deleted says so instead of showing a stale board. */
+function showGone() {
+  state = null;
+  closeDrawer();
+  $("#intake").hidden = true;
+  $("#review").hidden = true;
+  $("#board").hidden = true;
+  $("#top-actions").hidden = true;
+  $("#role-title").textContent = "This role is no longer here";
+  $("#status-line").textContent = "Open the full page to see your roles.";
+  showError("This role does not exist any more. It was deleted, or the link is wrong.");
+}
 
 function renderRoles() {
   const select = $("#role-select");
@@ -209,6 +371,11 @@ function schedulePoll() {
 
 function render(next) {
   state = next;
+  if (!state || !state.role?.confirmed) {
+    // The drawer belongs to the board; it must not outlive it.
+    selectedId = null;
+    closeDrawer();
+  }
   if (!state) {
     $("#intake").hidden = false;
     $("#review").hidden = true;
@@ -225,9 +392,20 @@ function render(next) {
   $("#top-actions").hidden = !role;
   $("#role-title").textContent = role ? role.title : "Who do you need?";
 
-  if (state.lastError && !$("#error").textContent) showError(state.lastError);
+  if (state.lastError && state.lastError !== dismissedError && !$("#error").textContent) {
+    showError(state.lastError, true);
+  }
 
-  if (role && !role.confirmed) renderReview();
+  if (role && !role.confirmed) {
+    // Keep what the founder is typing: polling refreshes the draft only while it is untouched.
+    const editing = draftDirty || $("#review").contains(document.activeElement);
+    if (!editing) {
+      draftCriteria = null;
+      renderReview();
+    } else if (!draftCriteria) {
+      renderReview();
+    }
+  }
   if (role?.confirmed) {
     if (pendingCandidate) {
       const named = state.candidates.find((candidate) => candidate.id === pendingCandidate);
@@ -266,6 +444,14 @@ function renderStatus() {
   line.append(parts.join(", ") + (state.busy ? ". Thinking…" : "."));
 }
 
+/** Gmail's compose page, prefilled. Spaces stay %20: some mail apps show "+" literally. */
+function gmailCompose(to, subject, body) {
+  const query = [["view", "cm"], ["fs", "1"], ["to", to], ["su", subject], ["body", body]]
+    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+    .join("&");
+  return `https://mail.google.com/mail/?${query}`;
+}
+
 function renderTop() {
   const day = state.clockOffsetDays;
   $("#clock").textContent = day ? `${day} days later` : "Today";
@@ -297,6 +483,7 @@ function renderReview() {
             title: "Must or nice to have",
             onclick: () => {
               criterion.kind = criterion.kind === "must" ? "nice" : "must";
+              draftDirty = true;
               renderReview();
             },
           },
@@ -308,6 +495,7 @@ function renderReview() {
           "aria-label": `Criterion ${index + 1}`,
           oninput: (event) => {
             criterion.text = event.target.value;
+            draftDirty = true;
           },
         }),
         h(
@@ -318,6 +506,7 @@ function renderReview() {
             "aria-label": "Remove",
             onclick: () => {
               draftCriteria.splice(index, 1);
+              draftDirty = true;
               renderReview();
             },
           },
@@ -468,12 +657,24 @@ function renderOrbit() {
 
 // --------------------------------------------------------------- proposals
 
+// Proposals with a decision on its way; a refresh meanwhile must not offer them again.
+const deciding = new Set();
+
 function renderProposals() {
   $("#proposals").replaceChildren(
     ...state.proposals.map((proposal) => {
       const isCriterion = proposal.type === "criterion";
-      const decide = (accept) => (event) =>
-        call(api(`/proposals/${proposal.id}`), { accept }, event.currentTarget);
+      const busy = deciding.has(proposal.id) ? true : undefined;
+      const decide = (accept) => async (event) => {
+        if (deciding.has(proposal.id)) return;
+        deciding.add(proposal.id);
+        try {
+          await call(api(`/proposals/${proposal.id}`), { accept }, event.currentTarget);
+        } finally {
+          deciding.delete(proposal.id);
+          if (state) renderProposals();
+        }
+      };
       return h(
         "article",
         { class: "proposal" },
@@ -485,8 +686,8 @@ function renderProposals() {
         h(
           "div",
           { class: "actions" },
-          h("button", { type: "button", class: "primary", onclick: decide(true) }, isCriterion ? "Add criterion" : "Widen the search"),
-          h("button", { type: "button", class: "quiet", onclick: decide(false) }, "Not now"),
+          h("button", { type: "button", class: "primary", disabled: busy, onclick: decide(true) }, isCriterion ? "Add criterion" : "Widen the search"),
+          h("button", { type: "button", class: "quiet", disabled: busy, onclick: decide(false) }, "Not now"),
         ),
       );
     }),
@@ -512,6 +713,11 @@ function renderCriteria() {
 let activeTab = "fit";
 
 function select(id) {
+  if (!state?.role?.confirmed) {
+    selectedId = null;
+    closeDrawer();
+    return;
+  }
   const next = selectedId === id ? null : id;
   if (next !== selectedId) activeTab = "fit";
   selectedId = next;
@@ -529,9 +735,14 @@ function signature(candidate) {
     candidate.kept,
     candidate.contact,
     candidate.draft?.createdAt,
+    // A draft saved elsewhere (another tab or panel) must show here before it can be sent from here.
+    candidate.draft?.subject,
+    candidate.draft?.body,
     candidate.draft?.warnings,
     candidate.messages.length,
     candidate.verdicts,
+    // "Why they fit" names each criterion and its kind.
+    state.criteria.map((criterion) => [criterion.id, criterion.text, criterion.kind]),
   ]);
 }
 
@@ -562,9 +773,21 @@ function renderDetail() {
   const { profile } = candidate;
   const matched = candidate.tier === 100 || candidate.tier === 75 || candidate.tier === 50;
   const hasOutreach = Boolean(candidate.draft) || candidate.messages.length > 0;
-  const reasonInput = h("input", { type: "text", placeholder: "Why? Optional, stays private" });
-  const decision = (value) => (event) =>
-    call(api(`/candidates/${candidate.id}/feedback`), { decision: value, reason: reasonInput.value }, event.currentTarget);
+  const busy = actingFor.has(`${roleId}:${candidate.id}`) ? true : undefined;
+  const reasonKey = `${roleId}:${candidate.id}:reason`;
+  const reasonInput = keptInput(reasonKey, h("input", { type: "text", placeholder: "Why? Optional, stays private" }));
+  const decision = (value) => (event) => {
+    const button = event.currentTarget;
+    return act(candidate.id, async () => {
+      // Done for a role no longer on screen still counts as done: the reason was used.
+      // Forget the reason only if nothing was typed after it went out.
+      const sent = reasonInput.value;
+      const used = () => (typedFields.get(reasonKey) ?? "") === sent && typedFields.delete(reasonKey);
+      const onStale = (ok) => ok && used();
+      const done = await call(api(`/candidates/${candidate.id}/feedback`), { decision: value, reason: sent }, button, { onStale });
+      if (done !== undefined) used();
+    });
+  };
 
   const tab = (key, label, dot = false) =>
     h(
@@ -585,6 +808,12 @@ function renderDetail() {
     );
 
   const body = { fit: fitPanel, career: careerPanel, outreach: outreachPanel }[activeTab](candidate);
+
+  // A rebuild while the founder types keeps their place: the same box gets focus and caret back.
+  const focused = drawer.contains(document.activeElement) ? document.activeElement : null;
+  const focusKey = focused && ["INPUT", "TEXTAREA"].includes(focused.tagName)
+    ? { tag: focused.tagName, label: focused.getAttribute("aria-label"), placeholder: focused.getAttribute("placeholder"), start: focused.selectionStart, end: focused.selectionEnd }
+    : null;
 
   drawer.replaceChildren(
     h(
@@ -611,8 +840,8 @@ function renderDetail() {
             "div",
             { class: "decide" },
             reasonInput,
-            h("button", { type: "button", class: "quiet", onclick: decision("keep") }, "Keep"),
-            h("button", { type: "button", class: "quiet warn", onclick: decision("pass") }, "Pass"),
+            h("button", { type: "button", class: "quiet", disabled: busy, onclick: decision("keep") }, "Keep"),
+            h("button", { type: "button", class: "quiet warn", disabled: busy, onclick: decision("pass") }, "Pass"),
           ),
       h(
         "nav",
@@ -624,6 +853,23 @@ function renderDetail() {
     ),
     h("div", { class: "drawer-body", role: "tabpanel" }, body),
   );
+  if (focusKey) {
+    const again = [...drawer.querySelectorAll(focusKey.tag.toLowerCase())].find(
+      (element) => element.getAttribute("aria-label") === focusKey.label && element.getAttribute("placeholder") === focusKey.placeholder,
+    );
+    if (again) {
+      again.focus();
+      try {
+        if (focusKey.start === null || focusKey.start === undefined) throw new Error("no caret");
+        again.setSelectionRange(focusKey.start, focusKey.end);
+      } catch {
+        // Email inputs have no caret position: put it at the end, where typing continues.
+        const value = again.value;
+        again.value = "";
+        again.value = value;
+      }
+    }
+  }
 }
 
 function fitPanel(candidate) {
@@ -708,6 +954,7 @@ function careerPanel(candidate) {
 
 function outreachPanel(candidate) {
   const parts = [];
+  const acting = actingFor.has(`${roleId}:${candidate.id}`) ? true : undefined;
   if (candidate.stage === "closed") {
     parts.push(h("p", { class: "empty-note" }, `Closed: ${candidate.closedReason}.`));
   }
@@ -731,20 +978,109 @@ function outreachPanel(candidate) {
 
   if (candidate.draft) {
     const draft = candidate.draft;
-    const email = h("input", { type: "email", value: candidate.contact?.email ?? "", placeholder: "Email address", "aria-label": "To" });
-    const subject = h("input", { type: "text", value: draft.subject, "aria-label": "Subject", placeholder: "Subject (emails only)" });
-    const body = h("textarea", { "aria-label": "Message" }, draft.body);
-    const save = () =>
-      call(api(`/candidates/${candidate.id}/draft`), {
-        subject: subject.value,
-        body: body.value,
-        ...(email.value && email.value !== candidate.contact?.email ? { email: email.value } : {}),
+    // What the founder typed survives a rebuild of the drawer until it is saved.
+    // Keyed by role too: the same person can be a candidate for two roles.
+    const typedKey = `${roleId}:${candidate.id}:${draft.createdAt}`;
+    const sendKey = `${roleId}:${candidate.id}`;
+    const sendRole = roleId;
+    const typed = typedDrafts.get(typedKey) ?? {};
+    const email = h("input", { type: "email", value: typed.email ?? candidate.contact?.email ?? "", placeholder: "Email address", "aria-label": "To" });
+    const subject = h("input", { type: "text", value: typed.subject ?? draft.subject, "aria-label": "Subject", placeholder: "Subject (emails only)" });
+    const body = h("textarea", { "aria-label": "Message" }, typed.body ?? draft.body);
+    for (const [field, input] of [["email", email], ["subject", subject], ["body", body]]) {
+      input.addEventListener("input", () => {
+        typedDrafts.set(typedKey, { ...typedDrafts.get(typedKey), [field]: input.value });
       });
+    }
+    // call() answers undefined on failure (and shows why); a send only follows a save that worked.
+    const save = async () => {
+      const sent = { subject: subject.value, body: body.value, email: email.value };
+      const saved =
+        (await call(api(`/candidates/${candidate.id}/draft`), {
+          subject: sent.subject,
+          body: sent.body,
+          ...(sent.email && sent.email !== candidate.contact?.email ? { email: sent.email } : {}),
+        })) !== undefined;
+      // Forget the typed text only if nothing was typed after it went out.
+      const now = typedDrafts.get(typedKey);
+      const unchanged = !now || ["subject", "body", "email"].every((field) => now[field] === undefined || now[field] === sent[field]);
+      if (saved && unchanged) typedDrafts.delete(typedKey);
+      return saved;
+    };
+    // Both send buttons stay locked from the save until the send answers: one press, one send.
+    // The lock is per person, not per drawer build, so a rebuild meanwhile keeps it.
+    const sendAfterSave = (manual) => async (event) => {
+      const button = event.currentTarget;
+      if (sendingFor.has(sendKey)) return;
+      sendingFor.add(sendKey);
+      button.disabled = true;
+      try {
+        if (!(await save())) return;
+        await call(api(`/candidates/${candidate.id}/send`), manual ? { manual: true } : {}, button);
+      } finally {
+        sendingFor.delete(sendKey);
+        button.disabled = false;
+        // Unlock this person's drawer; another person's open drawer keeps what is typed in it.
+        if (state && selectedId === candidate.id && roleId === sendRole) {
+          detailSignature = "";
+          renderDetail();
+        }
+      }
+    };
+    const locked = sendingFor.has(sendKey) ? true : undefined;
     const source = {
       hunter: "Found by Hunter",
       prospeo: "Found by Prospeo",
       founder: "Entered by you",
     }[candidate.contact?.provider];
+    // Opens the message ready to send in the founder's own Gmail; their Send there is what sends
+    // it, and this records it. The link is filled in at click time, so it carries the last edits.
+    const blocked = () => sendingFor.has(sendKey) || draft.warnings.length > 0 || !email.value.trim();
+    const gmailButton = h(
+      "a",
+      {
+        class: "button primary",
+        href: "#",
+        target: "_blank",
+        rel: "noopener",
+        "aria-disabled": blocked() ? "true" : undefined,
+        title: draft.warnings.length ? draft.warnings[0] : email.value.trim() ? "Opens in your Gmail, ready to send" : "Add an email address first",
+        onclick: (event) => {
+          const link = event.currentTarget;
+          if (blocked()) {
+            event.preventDefault();
+            if (!email.value.trim()) email.focus();
+            return;
+          }
+          // An email needs a subject; a draft written as a LinkedIn message has none.
+          if (!subject.value.trim()) {
+            event.preventDefault();
+            showError("Add a subject line before sending this as an email.");
+            subject.focus();
+            return;
+          }
+          link.href = gmailCompose(email.value.trim(), subject.value, body.value);
+          sendingFor.add(sendKey);
+          link.setAttribute("aria-disabled", "true");
+          void (async () => {
+            try {
+              if (await save()) await call(api(`/candidates/${candidate.id}/send`), {});
+            } finally {
+              sendingFor.delete(sendKey);
+              if (state && selectedId === candidate.id && roleId === sendRole) {
+                detailSignature = "";
+                renderDetail();
+              }
+            }
+          })();
+        },
+      },
+      "Open in Gmail to send",
+    );
+    // Typing an address makes it possible right away.
+    email.addEventListener("input", () => {
+      gmailButton.setAttribute("aria-disabled", blocked() ? "true" : "false");
+    });
     const status = candidate.contact
       ? h(
           "p",
@@ -767,10 +1103,8 @@ function outreachPanel(candidate) {
         h(
           "div",
           { class: "row sticky-actions" },
-          state.integrations?.gmail
-            ? h("button", { type: "button", class: "primary", disabled: !candidate.contact && !email.value ? true : undefined, title: candidate.contact ? undefined : "Add an email address first", onclick: async (event) => { await save(); await call(api(`/candidates/${candidate.id}/send`), {}, event.currentTarget); } }, "Send from Gmail")
-            : null,
-          h("button", { type: "button", class: "quiet", onclick: async (event) => { await save(); await call(api(`/candidates/${candidate.id}/send`), { manual: true }, event.currentTarget); } }, "I sent it myself"),
+          gmailButton,
+          h("button", { type: "button", class: "quiet", disabled: locked, onclick: sendAfterSave(true) }, "I sent it myself"),
           h("button", { type: "button", class: "quiet", onclick: save }, "Save edits"),
         ),
       ),
@@ -778,17 +1112,20 @@ function outreachPanel(candidate) {
   } else if (["discovered", "scored"].includes(candidate.stage)) {
     parts.push(
       h("p", { class: "empty-note" }, "Nothing sent yet. I will look up an email with Hunter and Prospeo and write a first message for you to check. I never guess an address."),
-      h("button", { type: "button", class: "primary", onclick: async (event) => {
+      h("button", { type: "button", class: "primary", disabled: acting, onclick: (event) => {
         const button = event.currentTarget;
         button.textContent = "Finding email and drafting…";
-        await call(api(`/candidates/${candidate.id}/outreach`), {}, button);
-        button.textContent = "Find email and draft";
-      } }, "Find email and draft"),
+        return act(candidate.id, async () => {
+          await call(api(`/candidates/${candidate.id}/outreach`), {}, button);
+          button.textContent = "Find email and draft";
+        });
+      } }, acting ? "Finding email and drafting…" : "Find email and draft"),
     );
   }
 
   if (["contacted", "replied", "scheduling"].includes(candidate.stage)) {
-    const reply = h("textarea", { rows: 3, placeholder: "Paste or dictate their reply" });
+    const replyKey = `${roleId}:${candidate.id}:reply`;
+    const reply = keptInput(replyKey, h("textarea", { rows: 3, placeholder: "Paste or dictate their reply" }));
     parts.push(
       h(
         "div",
@@ -798,11 +1135,22 @@ function outreachPanel(candidate) {
         h(
           "div",
           { class: "row" },
-          h("button", { type: "button", class: "quiet", onclick: async (event) => {
-            const result = await call(api(`/candidates/${candidate.id}/reply`), { text: reply.value }, event.currentTarget);
-            if (result) $("#agent-reply").textContent = result.message;
+          h("button", { type: "button", class: "quiet", disabled: acting, onclick: (event) => {
+            const button = event.currentTarget;
+            return act(candidate.id, async () => {
+              // Forget the reply only if nothing was added to the box after it went out.
+              const sent = reply.value;
+              const used = () => (typedFields.get(replyKey) ?? "") === sent && typedFields.delete(replyKey);
+              const onStale = (ok) => ok && used();
+              const result = await call(api(`/candidates/${candidate.id}/reply`), { text: sent }, button, { onStale });
+              if (result !== undefined) used();
+              if (result) $("#agent-reply").textContent = result.message;
+            });
           } }, "Add reply"),
-          h("button", { type: "button", class: "quiet", onclick: (event) => call(api(`/candidates/${candidate.id}/close`), { reason: "hired" }, event.currentTarget) }, "Mark as hired"),
+          h("button", { type: "button", class: "quiet", disabled: acting, onclick: (event) => {
+            const button = event.currentTarget;
+            return act(candidate.id, () => call(api(`/candidates/${candidate.id}/close`), { reason: "hired" }, button));
+          } }, "Mark as hired"),
         ),
       ),
     );
@@ -864,9 +1212,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const revised = await call(api("/criteria/draft"), { criteria: draftCriteria }, button);
     if (revised === undefined) return;
     button.textContent = "Searching…";
-    await call(api("/confirm"), {}, button);
+    const confirmed = await call(api("/confirm"), {}, button);
     button.textContent = "Confirm and search";
+    // A failed confirm leaves the draft as it was, so it can be edited and confirmed again.
+    if (confirmed === undefined) return;
     draftCriteria = null;
+    draftDirty = false;
     showRefused([]);
     schedulePoll();
   });
@@ -877,7 +1228,7 @@ document.addEventListener("DOMContentLoaded", () => {
     say.style.height = "auto";
     // A hidden textarea measures 0; leave it to CSS until it is on screen.
     if (say.scrollHeight > 0) say.style.height = `${Math.min(say.scrollHeight, 180)}px`;
-    sendButton.disabled = !say.value.trim();
+    sendButton.disabled = saying || !say.value.trim();
   };
   say.addEventListener("input", fit);
   fit();
@@ -885,15 +1236,36 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#say-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     const text = say.value.trim();
-    if (!text) return;
+    // One instruction at a time: Enter or a re-enabled button must not send it twice.
+    if (!text || saying) return;
+    saying = true;
+    fit();
     $("#agent-reply").textContent = "…";
     // Pasted LinkedIn profile links add those people; anything else goes to the agent.
-    const links = text.match(/https:\/\/([a-z]{2,3}\.)?(www\.)?linkedin\.com\/in\/[^\s,]+/gi);
-    const result = links
-      ? await call(api("/candidates/import"), { urls: links }, sendButton)
-      : await call(api("/say"), { text }, sendButton);
+    // Sentence punctuation after a link ("…/in/alice-tan.", "(…/in/bob-lim)") is not part of it.
+    // A slug holds letters (any script), digits, %, _ and -: punctuation right after a link
+    // ("…/in/alice-tan，她很合适") is not part of it. "linkedin.com/in/x" without https:// counts
+    // too (it is how LinkedIn's contact info shows it) and is sent as a full https link.
+    // Marks (\p{M}) too: Thai and Devanagari names need them; NFC keeps "josé" whole.
+    const links = [...text.normalize("NFC").matchAll(/(?<![\w.\/])(?:https?:\/\/)?((?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com\/in\/[\p{L}\p{M}\p{N}%_-]+\/?)/giu)]
+      .map((match) => `https://${match[1]}`);
+    let result;
+    try {
+      // Done for a role no longer on screen: the instruction must not linger in this one's box.
+      const onStale = (ok) => {
+        if (ok && say.value.trim() === text) say.value = "";
+      };
+      result = links.length
+        ? await call(api("/candidates/import"), { urls: links }, undefined, { onStale })
+        // The open drawer tells the agent who "this one" is.
+        : await call(api("/say"), { text, ...(selectedId ? { candidateId: selectedId } : {}) }, undefined, { onStale });
+    } finally {
+      saying = false;
+      fit();
+    }
     if (result) {
-      say.value = "";
+      // Only the instruction that was sent is cleared; anything typed meanwhile stays.
+      if (say.value.trim() === text) say.value = "";
       fit();
       $("#agent-reply").textContent = [
         result.message,
@@ -906,7 +1278,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   say.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
+    // Safari reports an input method's confirming Enter with keyCode 229 and isComposing false.
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing && event.keyCode !== 229) {
       event.preventDefault();
       $("#say-form").requestSubmit();
     }
@@ -943,9 +1316,20 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     event.currentTarget.dataset.armed = "";
     event.currentTarget.textContent = "Delete this role";
-    const response = await fetch(api(""), { method: "DELETE" });
-    if (!response.ok) {
-      showError("Could not delete the role.");
+    const asked = view;
+    try {
+      const response = await fetch(api(""), { method: "DELETE" });
+      if (!response.ok) {
+        showError("Could not delete the role.");
+        return;
+      }
+    } catch {
+      showError("The server did not answer, so the role was not deleted.");
+      return;
+    }
+    // The founder picked another role while it was deleted: stay there.
+    if (asked !== view) {
+      refresh();
       return;
     }
     switchRole(null);

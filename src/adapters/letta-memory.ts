@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
 import { LettaAgentClient, type SDKMessage } from "@letta-ai/letta-agent-sdk";
 import type {
   AcceptedQuestion,
@@ -7,6 +9,7 @@ import type {
   MemoryInspection,
   MemoryItem,
   MemoryProvider,
+  PersonalMemoryContext,
   SourceReference,
   WorkingContextResult,
 } from "../domain.js";
@@ -236,6 +239,43 @@ function transcriptSourcesFromReadResult(
   ].map((match) => ({ label, sourceId: match[1]! }));
 }
 
+export function extractWorkingContextFromHumanMd(raw: string): WorkingContextResult | null {
+  const lines = raw.split("\n");
+  const extracted: string[] = [];
+  const sourcesMap = new Map<string, SourceReference>();
+  let inCurrent = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("### Current")) {
+      inCurrent = true;
+      continue;
+    }
+    if (inCurrent && (trimmed.startsWith("###") || trimmed.startsWith("## "))) {
+      inCurrent = false;
+      continue;
+    }
+    if (inCurrent && trimmed.startsWith("-")) {
+      const text = trimmed.slice(1).trim();
+      if (text.toLowerCase() === "(none)") continue;
+      extracted.push(text);
+      for (const m of text.matchAll(/\[([A-Za-z0-9._:-]+)(?:,\s*[^\]]+)?\]/g)) {
+        const id = m[1];
+        if (id && !sourcesMap.has(id)) {
+          sourcesMap.set(id, { sourceId: id, label: "system/human.md" });
+        }
+      }
+    }
+  }
+
+  if (extracted.length === 0) return null;
+  return {
+    contextConsidered: extracted.join("\n"),
+    memoryUpdated: false,
+    sources: [...sourcesMap.values()],
+  };
+}
+
 export function answerPrompt(question: AcceptedQuestion): string {
   return [
     "Answer the question below using only the Personal Context currently retained in your Memory.",
@@ -282,6 +322,7 @@ export function workingContextPrompt(input: {
 export class LettaMemoryProvider implements MemoryProvider {
   private readonly client: LettaAgentClient;
   private readonly agentPromises = new Map<string, Promise<string>>();
+  private readonly memoryDirectories = new Map<string, string>();
 
   constructor(private readonly options: LettaMemoryOptions) {
     this.client = new LettaAgentClient({
@@ -359,6 +400,7 @@ export class LettaMemoryProvider implements MemoryProvider {
       if (!memoryDirectory) {
         throw new Error("Letta did not expose the agent Memory directory.");
       }
+      this.memoryDirectories.set(transcript.userId, memoryDirectory);
 
       await session.send(ingestPrompt(transcript), {
         otid: transcript.correlationId,
@@ -633,6 +675,7 @@ export class LettaMemoryProvider implements MemoryProvider {
       if (!memoryDirectory) {
         throw new Error("Letta did not expose the agent Memory directory.");
       }
+      this.memoryDirectories.set(input.userId, memoryDirectory);
 
       await session.send(workingContextPrompt(input));
 
@@ -698,6 +741,62 @@ export class LettaMemoryProvider implements MemoryProvider {
       memoryUpdated,
       sources: [...sources.values()],
     };
+  }
+
+  async getWorkingContextFast(userId: string): Promise<WorkingContextResult | null> {
+    try {
+      let memoryDir = this.memoryDirectories.get(userId);
+      if (!memoryDir) {
+        const agentId = await this.findAgent(userId);
+        if (!agentId) return null;
+        const session = this.client.resumeSession(agentId, {
+          permissionMode: "strict",
+          toolset: { base: "none" },
+        });
+        try {
+          const status = await session.getDeviceStatus();
+          if (status.memoryDirectory) {
+            memoryDir = status.memoryDirectory;
+            this.memoryDirectories.set(userId, memoryDir);
+          }
+        } finally {
+          session.close();
+        }
+      }
+      if (!memoryDir) return null;
+
+      const humanPath = path.join(memoryDir, "system", "human.md");
+      const content = await fs.readFile(humanPath, "utf8");
+      return extractWorkingContextFromHumanMd(content);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async getContext(userId: string): Promise<PersonalMemoryContext> {
+    try {
+      const fast = await this.getWorkingContextFast(userId);
+      if (fast) {
+        if (fast.contextConsidered && fast.contextConsidered.trim()) {
+          return {
+            status: "available",
+            workingContext: fast.contextConsidered,
+            sources: fast.sources,
+          };
+        }
+        return { status: "empty", workingContext: "", sources: [] };
+      }
+      const agentId = await this.findAgent(userId);
+      if (!agentId) {
+        return { status: "empty", workingContext: "", sources: [] };
+      }
+      return { status: "empty", workingContext: "", sources: [] };
+    } catch (err) {
+      return {
+        status: "unavailable",
+        reason: err instanceof Error ? err.message : "Memory service unavailable",
+      };
+    }
   }
 
   async close(): Promise<void> {

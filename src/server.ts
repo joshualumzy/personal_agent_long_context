@@ -14,6 +14,13 @@ import { PostgresConversationStore } from "./adapters/postgres-conversations.js"
 import { SoCLaaSCompanyAgent } from "./soclaas-company-agent.js";
 import { embeddingProviderFromEnvironment } from "./embeddings.js";
 import { EmergentMemory } from "./emergent-memory.js";
+import { meetingsFromEnvironment } from "./meetings/config.js";
+import { googleAvailability } from "./meetings/availability.js";
+import { gmailContactDirectory } from "./meetings/contacts.js";
+import { localWhisper } from "./meetings/speech.js";
+import { QuickMeetingAnswerer } from "./meetings/quick-answer.js";
+
+import { validateAuthConfig } from "./auth.js";
 
 try {
   loadEnvFile();
@@ -22,6 +29,12 @@ try {
     throw error;
   }
 }
+
+const sessionConfig = validateAuthConfig({
+  SESSION_SECRET: process.env.SESSION_SECRET || process.env.AUTH_SECRET,
+  SESSION_COOKIE_NAME: process.env.SESSION_COOKIE_NAME,
+  SESSION_MAX_AGE_SECONDS: process.env.SESSION_MAX_AGE_SECONDS,
+});
 
 function memoryProviderFromEnvironment(): MemoryProvider {
   if (process.env.MEMORY_ADAPTER === "deterministic") {
@@ -63,7 +76,17 @@ const companyAgent = new SoCLaaSCompanyAgent(companyKnowledge, {
   ...agentSkills,
 });
 
-const gatewayUrl = (process.env.LLM_GATEWAY_URL || process.env.LM_GATEWAY_URL)?.replace(/\/$/, "");const gatewayApiKey = process.env.LLM_GATEWAY_API_KEY || process.env.LM_GATEWAY_API_KEY;
+// Answers during a meeting: the question itself is the search, then one
+// streamed call writes a short answer. The room is waiting, so this skips the
+// chat agent's planning step and its skills.
+const meetingAnswerer = new QuickMeetingAnswerer(companyKnowledge, {
+  apiKey: soCLaaSApiKey,
+  baseUrl: process.env.SOCLAAS_BASE_URL ?? "https://soclaas-api.comp.nus.edu.sg/v1",
+  name: process.env.SOCLAAS_COMPANY_MODEL ?? "qwen3.8:27b",
+});
+
+const gatewayUrl = (process.env.LLM_GATEWAY_URL || process.env.LM_GATEWAY_URL)?.replace(/\/$/, "");
+const gatewayApiKey = process.env.LLM_GATEWAY_API_KEY || process.env.LM_GATEWAY_API_KEY;
 const gatewayModel = process.env.LLM_MODEL ?? "global.anthropic.claude-sonnet-4-5-20250929-v1:0";
 
 const sonnetAgent =
@@ -75,6 +98,8 @@ const sonnetAgent =
         ...agentSkills,
       })
     : null;
+
+import { createDefaultModelRegistry } from "./model-registry.js";
 
 const companyAgents: Record<string, SoCLaaSCompanyAgent> = {
   soclaas: companyAgent,
@@ -101,16 +126,89 @@ const emergentMemory =
       })
     : undefined;
 
+const modelRegistry = createDefaultModelRegistry({
+  companyAgent,
+  companyAgents,
+  env: process.env,
+});
+
+let logMeetingFailure: (context: string, error: unknown) => void = () => {};
+const meetings = meetingsFromEnvironment(process.env, {
+  pool: companyKnowledge.pool,
+  knowledge: companyKnowledge,
+  answerer: meetingAnswerer,
+  // After the quick answer, the full company agent searches further for the same card.
+  deepAnswerer: new SoCLaaSCompanyAgent(companyKnowledge, {
+    apiKey: soCLaaSApiKey,
+    baseUrl: process.env.SOCLAAS_BASE_URL,
+    model: process.env.SOCLAAS_COMPANY_MODEL,
+  }),
+  contacts: recruiting?.gmail ? gmailContactDirectory(recruiting.gmail) : null,
+  availability: recruiting?.gmail ? googleAvailability(recruiting.gmail) : null,
+  ...(recruiting?.gmail
+    ? {
+        googleStatus: async () => {
+          const gmail = recruiting.gmail!;
+          const connected = await gmail.connected();
+          return {
+            connected,
+            mailbox: connected && (await gmail.hasMailbox()),
+            calendar: connected && (await gmail.canReadCalendar()),
+          };
+        },
+      }
+    : {}),
+  // A hiring need heard in a meeting opens a new role, as the chat does.
+  hiring: recruiting
+    ? {
+        async start(requirement: string) {
+          const { id, service } = recruiting.board.create();
+          try {
+            return await service.start(requirement);
+          } catch (error) {
+            recruiting.board.forget(id);
+            throw error;
+          }
+        },
+      }
+    : null,
+  log: (context, error) => logMeetingFailure(context, error),
+});
 const app = buildApp({
+  sessionConfig,
   memory,
   companyAgent,
   companyAgents,
+  modelRegistry,
   companyKnowledge,
   conversationStore,
   logger: true,
   ...(recruiting ? { recruiting: { board: recruiting.board, gmail: recruiting.gmail } } : {}),
   ...(emergentMemory ? { emergentMemory } : {}),
+  ...(meetings
+    ? {
+        meetings: {
+          ...meetings,
+          transcribe: localWhisper(),
+          // With a Doubao key the page streams audio for live recognition;
+          // without one it records clips for the local models.
+          ...(process.env.VOLC_ASR_API_KEY
+            ? {
+                liveAsr: {
+                  apiKey: process.env.VOLC_ASR_API_KEY,
+                  resourceId: process.env.VOLC_ASR_RESOURCE_ID ?? "volc.seedasr.sauc.duration",
+                },
+              }
+            : {}),
+        },
+      }
+    : {}),
 });
+logMeetingFailure = (context, error) =>
+  app.log.error(
+    { context, reason: error instanceof Error ? error.message : String(error) },
+    "Meeting actions failure",
+  );
 logRecruitingFailure = (context, error) =>
   app.log.error(
     { context, reason: error instanceof Error ? error.message : String(error) },

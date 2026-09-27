@@ -9,6 +9,7 @@ import type {
   VerdictValue,
 } from "./domain.js";
 import type { JsonModel } from "./llm.js";
+import { RecruitingError } from "./domain.js";
 
 /**
  * Every model task the recruiting agent performs. Each one validates the reply
@@ -24,8 +25,17 @@ function text(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value.trim() : fallback;
 }
 
+/** must or nice, from the ways a model writes them; null when it is neither. */
+function kindOrNull(value: unknown): CriterionKind | null {
+  const said = typeof value === "string" ? value.trim().toLowerCase().replace(/[\s_]+/g, "-") : "";
+  if (["must", "must-have", "required", "requirement", "hard"].includes(said)) return "must";
+  if (["nice", "nice-to-have", "optional", "bonus", "plus", "preferred", "soft"].includes(said)) return "nice";
+  return null;
+}
+
+/** For new criteria a missing kind defaults to must, the core-skill reading. */
 function kind(value: unknown): CriterionKind {
-  return value === "nice" ? "nice" : "must";
+  return kindOrNull(value) ?? "must";
 }
 
 function verdictValue(value: unknown): VerdictValue {
@@ -69,7 +79,7 @@ const QUERY_RULES = [
   "Each query is one plain English sentence of at most 20 words describing a person the way their profile reads: job title, company, and location, plus at most one concrete detail.",
   "A concrete detail is a word that literally appears on profiles: a degree field (\"bachelor's degree in economics\"), a technology, a past employer, a program (\"coding bootcamp\", \"Master of Computing\").",
   "Never use abstract labels such as \"career switcher\", \"non-CS background\", \"strong\", \"passionate\", or \"ideal candidate\". Never say the same thing twice in one query.",
-  "Keep the location in every query when there is one. Do not mention age, sex, race, religion, family status, disability, or nationality.",
+  "Keep the location in every query when there is one.",
 ].join("\n");
 
 function queriesFrom(reply: unknown, previous: readonly string[] = []): string[] {
@@ -85,8 +95,6 @@ function queriesFrom(reply: unknown, previous: readonly string[] = []): string[]
 export interface Brief {
   title: string;
   criteria: { text: string; kind: CriterionKind }[];
-  /** Wishes the model refused to turn into criteria, so the founder is told. */
-  excluded: { text: string; characteristic: string }[];
   queries: string[];
 }
 
@@ -98,13 +106,17 @@ export async function extractBrief(model: JsonModel, requirement: string): Promi
       "Split the founder's hiring requirement into 3 to 6 criteria that can be checked against a public professional profile (work history, education, headline, location).",
       "Mark each criterion must (a dealbreaker) or nice (a plus). When the founder does not say, prefer must for the core skill and nice for the rest.",
       "Write each criterion as a short checkable phrase in the founder's language, for example \"3+ years building production backends\".",
-      "Never write a criterion about age, sex, race, religion, marital or family status, pregnancy, disability, or nationality. If the founder asks for one, list it under excluded with the characteristic it selects on, instead of under criteria.",
       "Also write 3 or 4 people-search queries. They share the core (title, company, location) and each adds a different concrete detail aimed at the must criterion hardest to find. When no criterion needs that, vary the skill or seniority instead.",
       QUERY_RULES,
-      'Reply as {"title": string, "criteria": [{"text": string, "kind": "must"|"nice"}], "excluded": [{"text": string, "characteristic": string}], "queries": [string]}.',
+      "The title is a short job title of 2 to 5 words in the founder's language (for example \"Backend Engineer\" or \"产品经理\"), never the whole requirement.",
+      'Reply as {"title": string, "criteria": [{"text": string, "kind": "must"|"nice"}], "queries": [string]}.',
+      'If the text does not describe anyone to hire (code, a test string, a greeting, a question), reply {"notARole": true} instead of inventing a role.',
     ].join("\n"),
     input: { requirement },
   });
+  if (isRecord(reply) && reply.notARole === true) {
+    throw new RecruitingError("not_a_role", "That does not describe a role to hire for, so nothing was opened. Describe who you want to hire.");
+  }
   if (!isRecord(reply) || !Array.isArray(reply.criteria)) {
     throw new Error("The model did not return criteria.");
   }
@@ -114,14 +126,9 @@ export async function extractBrief(model: JsonModel, requirement: string): Promi
     .filter((entry) => entry.text.length > 0)
     .slice(0, 6);
   if (criteria.length === 0) throw new Error("The model returned no usable criteria.");
-  const excluded = (Array.isArray(reply.excluded) ? reply.excluded : [])
-    .filter(isRecord)
-    .map((entry) => ({ text: text(entry.text), characteristic: text(entry.characteristic, "a protected characteristic") }))
-    .filter((entry) => entry.text.length > 0);
   return {
     title: text(reply.title, "Open role"),
     criteria,
-    excluded,
     queries: queriesFrom(reply),
   };
 }
@@ -194,7 +201,8 @@ export async function judge(
   const entries = isRecord(reply) && Array.isArray(reply.verdicts) ? reply.verdicts : [];
   const byId = new Map<string, Verdict>();
   for (const entry of entries.filter(isRecord)) {
-    const criterionId = text(entry.criterionId);
+    // Ids can be all digits, and a model may send them back as numbers.
+    const criterionId = typeof entry.criterionId === "number" ? String(entry.criterionId) : text(entry.criterionId);
     if (!criteria.some((criterion) => criterion.id === criterionId)) continue;
     byId.set(criterionId, {
       criterionId,
@@ -230,6 +238,7 @@ export async function interpret(
   said: string,
   criteria: readonly Criterion[],
   candidates: readonly { id: string; name: string }[],
+  focusedCandidateId: string | null = null,
 ): Promise<Instruction> {
   const reply = await model.json<unknown>({
     task: "instruction interpretation",
@@ -240,12 +249,14 @@ export async function interpret(
       "intent reply: they relay what a candidate answered (for example \"Alex replied, free Tuesday afternoon\"). candidateId is the matching candidate or null; text is the reply content.",
       "intent question: they ask something about the search or its history.",
       "Otherwise intent unknown.",
+      "focusedCandidateId, when given, is the person whose details the founder has open: \"this one\", \"him\", \"her\" or \"them\" mean that person.",
       'Reply as {"intent": string, "summary": string, "operations": [...], "candidateId": string|null, "decision": string, "reason": string, "text": string, "question": string}; include only the fields the intent needs plus summary.',
     ].join("\n"),
     input: {
       said,
       criteria: criteriaForModel(criteria),
       candidates,
+      focusedCandidateId: candidates.some((candidate) => candidate.id === focusedCandidateId) ? focusedCandidateId : null,
     },
   });
   if (!isRecord(reply)) return { intent: "unknown", summary: "" };
@@ -264,11 +275,14 @@ export async function interpret(
       };
     case "feedback": {
       const candidateId = knownCandidate(reply.candidateId);
-      if (!candidateId) return { intent: "unknown", summary };
+      // Passing closes a candidate, so it is never the default for an unclear decision.
+      if (!candidateId || (reply.decision !== "keep" && reply.decision !== "pass")) {
+        return { intent: "unknown", summary };
+      }
       return {
         intent: "feedback",
         candidateId,
-        decision: reply.decision === "keep" ? "keep" : "pass",
+        decision: reply.decision,
         reason: text(reply.reason),
       };
     }
@@ -299,7 +313,9 @@ export function parseOperations(
     } else if (entry.op === "remove" && known.has(id)) {
       operations.push({ op: "remove", id });
     } else if (entry.op === "set_kind" && known.has(id)) {
-      operations.push({ op: "set_kind", id, kind: kind(entry.kind) });
+      // Changing a kind needs a kind we understood; a guess could flip nice to must.
+      const understood = kindOrNull(entry.kind);
+      if (understood) operations.push({ op: "set_kind", id, kind: understood });
     } else if (entry.op === "edit" && known.has(id) && text(entry.text)) {
       operations.push({ op: "edit", id, text: text(entry.text) });
     }
@@ -320,7 +336,7 @@ export async function inferReason(
     system: [
       `The founder chose to ${decision} this candidate.`,
       "State in at most 10 words the profile trait that most plausibly drove the decision, phrased as a reusable trait (for example \"only consulting experience, no product work\").",
-      "If the founder gave a reason, restate it as such a trait. Never name a protected characteristic such as age, sex, race, religion, family status, disability, or nationality.",
+      "If the founder gave a reason, restate it as such a trait.",
       'Reply as {"reason": string}.',
     ].join("\n"),
     input: {
@@ -353,7 +369,6 @@ export async function findPattern(
       decision === "pass"
         ? "If found, propose a new criterion that would have screened them out, phrased positively as what the founder wants (for example \"has shipped a product, not only consulting\")."
         : "If found, propose a new nice-to-have criterion that captures what they share.",
-      "Never propose a criterion about age, sex, race, religion, family status, disability, or nationality.",
       'Reply as {"found": boolean, "text": string, "kind": "must"|"nice", "rationale": string, "supportingCandidateIds": [string]}. rationale is one sentence for the founder.',
     ].join("\n"),
     input: {
@@ -368,7 +383,7 @@ export async function findPattern(
   if (!isRecord(reply) || reply.found !== true || !text(reply.text)) return null;
   const known = new Set(decisions.map((entry) => entry.candidateId));
   const supportingCandidateIds = Array.isArray(reply.supportingCandidateIds)
-    ? reply.supportingCandidateIds.map((id) => text(id)).filter((id) => known.has(id))
+    ? [...new Set(reply.supportingCandidateIds.map((id) => text(id)).filter((id) => known.has(id)))]
     : [];
   if (supportingCandidateIds.length < threshold) return null;
   return {
@@ -412,7 +427,7 @@ export async function planExpansion(
       rung.guidance,
       "Express criteria changes as operations: remove {op, id}, set_kind {op, id, kind}, edit {op, id, text}. Write one new people-search query.",
       QUERY_RULES,
-      'Reply as {"query": string, "operations": [...], "rationale": string}. rationale is one sentence for the founder saying what changes and why.',
+      'Reply as {"query": string, "operations": [...], "rationale": string}. rationale is one sentence for the founder proposing the change and why, as a suggestion that has not happened yet (for example "Accept remote candidates too, since nobody in Singapore has replied in a week?"), never in the past tense.',
     ].join("\n"),
     input: { role, criteria: criteriaForModel(criteria), previousQuery },
   });

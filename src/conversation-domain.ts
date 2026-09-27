@@ -21,6 +21,19 @@ export interface ConversationDetail {
   messages: ConversationMessage[];
 }
 
+export interface AppendTurnParams {
+  conversationId: string;
+  userId: string;
+  userMessage: string;
+  assistantMessage: string;
+  assistantMetadata?: Record<string, unknown>;
+}
+
+export interface AppendTurnResult {
+  userMessage: ConversationMessage;
+  assistantMessage: ConversationMessage;
+}
+
 export interface ConversationStore {
   list(userId: string): Promise<ConversationSummary[]>;
   get(conversationId: string, userId: string): Promise<ConversationDetail | null>;
@@ -31,7 +44,9 @@ export interface ConversationStore {
     content: string;
     metadata?: Record<string, unknown>;
   }): Promise<ConversationMessage>;
+  appendTurn?(params: AppendTurnParams): Promise<AppendTurnResult>;
   updateTitle(conversationId: string, userId: string, title: string): Promise<boolean>;
   delete(conversationId: string, userId: string): Promise<boolean>;
+  deleteAll?(userId: string): Promise<number>;
   close?(): Promise<void>;
 }

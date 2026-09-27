@@ -1,0 +1,141 @@
+{
+  "_comment": "Phrases for reading when a meeting should happen. The meeting is on Friday 25 Sep 2026, 10:00 Singapore time. Expected values follow resolveWhen's conventions (src/meetings/when.ts); null means nothing should be filled in and the employee is asked. options lists the candidate dates when the words fit more than one day; nothing is filled in then.",
+  "meetingAt": "2026-09-25T02:00:00Z",
+  "cases": [
+    {
+      "said": "next Wednesday at 3pm",
+      "day": null,
+      "time": null,
+      "options": [
+        "2026-09-30",
+        "2026-10-07"
+      ],
+      "note": "English 'next Wednesday' said on Friday: the coming one or the one after; the employee picks."
+    },
+    {
+      "said": "this Wednesday 3pm",
+      "day": "2026-09-30",
+      "time": "15:00"
+    },
+    {
+      "said": "Wednesday at 3pm",
+      "day": "2026-09-30",
+      "time": "15:00"
+    },
+    {
+      "said": "the Wednesday after next at 10am",
+      "day": "2026-10-07",
+      "time": "10:00"
+    },
+    {
+      "said": "Oct 20 at 10am",
+      "day": "2026-10-20",
+      "time": "10:00"
+    },
+    {
+      "said": "on the 20th of October, 2pm",
+      "day": "2026-10-20",
+      "time": "14:00"
+    },
+    {
+      "said": "tomorrow at 9:30",
+      "day": "2026-09-26",
+      "time": "09:30"
+    },
+    {
+      "said": "the day after tomorrow at 4pm",
+      "day": "2026-09-27",
+      "time": "16:00"
+    },
+    {
+      "said": "in three weeks",
+      "day": "2026-10-16",
+      "time": null
+    },
+    {
+      "said": "next Friday afternoon",
+      "day": null,
+      "time": null,
+      "options": [
+        "2026-10-02",
+        "2026-10-09"
+      ],
+      "note": "English 'next Friday' said on a Friday: 2 or 9 Oct; the employee picks."
+    },
+    {
+      "said": "Monday 9am",
+      "day": "2026-09-28",
+      "time": "09:00"
+    },
+    {
+      "said": "5 Oct, 11:30am",
+      "day": "2026-10-05",
+      "time": "11:30"
+    },
+    {
+      "said": "sometime next week",
+      "day": null,
+      "time": null
+    },
+    {
+      "said": "end of the month",
+      "day": null,
+      "time": null
+    },
+    {
+      "said": "half an hour sometime next week",
+      "day": null,
+      "time": null
+    },
+    {
+      "said": "let's catch up later",
+      "day": null,
+      "time": null
+    },
+    {
+      "said": "下周三下午三点",
+      "day": "2026-09-30",
+      "time": "15:00"
+    },
+    {
+      "said": "下下周五上午十点",
+      "day": "2026-10-09",
+      "time": "10:00"
+    },
+    {
+      "said": "明天上午十点",
+      "day": "2026-09-26",
+      "time": "10:00"
+    },
+    {
+      "said": "10月20日下午两点",
+      "day": "2026-10-20",
+      "time": "14:00"
+    },
+    {
+      "said": "周一早上九点半",
+      "day": "2026-09-28",
+      "time": "09:30"
+    },
+    {
+      "said": "后天",
+      "day": "2026-09-27",
+      "time": null
+    },
+    {
+      "said": "三周后",
+      "day": "2026-10-16",
+      "time": null
+    },
+    {
+      "said": "下个月找个时间",
+      "day": null,
+      "time": null
+    },
+    {
+      "said": "下周五下午",
+      "day": "2026-10-02",
+      "time": null
+    }
+  ]
+}

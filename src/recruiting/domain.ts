@@ -84,12 +84,19 @@ export interface Draft {
   createdAt: string;
   /** Present when the draft mentions something the founder said privately. */
   warnings: string[];
+  /** Set while it is being sent; a draft that is sending cannot be sent again or edited. */
+  sending?: boolean;
+  /** The founder changed the subject or body; a new signature does not overwrite it. */
+  editedByFounder?: boolean;
 }
 
 export interface Message {
   direction: "outbound" | "inbound";
   channel: "email" | "linkedin" | "pasted";
+  /** On the simulated clock, which the fast-forward control moves. */
   at: string;
+  /** On the real clock, which outside services such as Gmail use. */
+  realAt?: string;
   text: string;
 }
 
@@ -102,6 +109,8 @@ export interface Candidate {
   stage: Stage;
   closedReason?: ClosedReason;
   closedAt?: string;
+  /** Who closed them: the founder's decision stands; the system's (on silence, or a reply it read) can give way. */
+  closedBy?: "founder" | "system";
   /** Founder pinned this person with a keep verdict. */
   kept: boolean;
   verdicts: Record<string, Verdict>;
@@ -110,7 +119,6 @@ export interface Candidate {
   messages: Message[];
   lastContactedAt?: string;
   followUps: number;
-  gmailThreadId?: string;
 }
 
 export interface FeedbackEntry {
@@ -150,6 +158,8 @@ export interface ExpansionProposal {
   rationale: string;
   query: string;
   operations: CriteriaOperation[];
+  /** Each targeted criterion's text and kind when proposed, by id. */
+  targets?: Record<string, string>;
 }
 
 export type Proposal = CriterionProposal | ExpansionProposal;
@@ -189,6 +199,13 @@ export interface RecruitingState {
   /** Simulated days added to the real clock by the fast-forward control. */
   clockOffsetDays: number;
   events: HiringEvent[];
+  /** Who outreach for this role is from, when the founder said so in the chat. */
+  sender?: { name?: string; company?: string };
+}
+
+/** A candidate's verdict on one criterion. Own keys only: an id like "toString" must not match Object.prototype. */
+export function verdictFor(candidate: Candidate, criterionId: string): Verdict | undefined {
+  return Object.hasOwn(candidate.verdicts, criterionId) ? candidate.verdicts[criterionId] : undefined;
 }
 
 export function emptyState(): RecruitingState {

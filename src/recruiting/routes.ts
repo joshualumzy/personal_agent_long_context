@@ -1,7 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { RecruitingError, type ClosedReason, type CriterionKind } from "./domain.js";
-import type { GmailClient } from "./gmail.js";
+import { NoGmailError, type GmailClient } from "./gmail.js";
 import type { RoleBoard } from "./roles.js";
 import type { RecruitingService } from "./service.js";
 
@@ -30,16 +30,21 @@ export async function textFromFile(filename: string, content: Buffer): Promise<s
 async function rawTextFromFile(filename: string, content: Buffer): Promise<string> {
   const extension = filename.toLowerCase().split(".").at(-1);
   if (extension === "txt" || extension === "md") return content.toString("utf8");
-  if (extension === "pdf") {
-    const { extractText, getDocumentProxy } = await import("unpdf");
-    const document = await getDocumentProxy(new Uint8Array(content));
-    const { text } = await extractText(document, { mergePages: true });
-    return text;
-  }
-  if (extension === "docx") {
-    const mammoth = await import("mammoth");
-    const { value } = await mammoth.default.extractRawText({ buffer: content });
-    return value;
+  if (extension === "pdf" || extension === "docx") {
+    try {
+      if (extension === "pdf") {
+        const { extractText, getDocumentProxy } = await import("unpdf");
+        const document = await getDocumentProxy(new Uint8Array(content));
+        const { text } = await extractText(document, { mergePages: true });
+        return text;
+      }
+      const mammoth = await import("mammoth");
+      const { value } = await mammoth.default.extractRawText({ buffer: content });
+      return value;
+    } catch {
+      // A damaged or mislabelled file is the uploader's problem to fix, not an outage.
+      throw new RecruitingError("unreadable_file", `That .${extension} file could not be read. Try another copy or paste the text.`);
+    }
   }
   throw new RecruitingError("unsupported_file", "Upload a .txt, .md, .pdf, or .docx file.");
 }
@@ -95,7 +100,13 @@ export function registerRecruitingRoutes(
 
   const role = (path: string) => `/api/recruiting/roles/:roleId${path}`;
 
-  app.get("/api/recruiting/roles", async () => ({ roles: await board.list() }));
+  app.get("/api/recruiting/roles", async (_request, reply) => {
+    try {
+      return reply.send({ roles: await board.list() });
+    } catch (error) {
+      return fail(reply, error);
+    }
+  });
 
   /** A new role from typed or dictated words, or from an uploaded job description. */
   app.post(
@@ -105,7 +116,13 @@ export function registerRecruitingRoutes(
       try {
         const requirement = await requirementFrom(request.body);
         const { id, service } = board.create();
-        const result = await service.start(requirement);
+        let result;
+        try {
+          result = await service.start(requirement);
+        } catch (error) {
+          board.forget(id);
+          throw error;
+        }
         return reply.send({ roleId: id, result, state: await service.snapshot() });
       } catch (error) {
         return fail(reply, error);
@@ -130,7 +147,12 @@ export function registerRecruitingRoutes(
     }
   });
 
-  app.post(role("/say"), handle(async (body, _params, service) => service.say(field(body, "text"))));
+  app.post(
+    role("/say"),
+    handle(async (body, _params, service) =>
+      service.say(field(body, "text"), isRecord(body) && typeof body.candidateId === "string" ? body.candidateId : null),
+    ),
+  );
 
   app.post(
     role("/criteria/draft"),
@@ -139,11 +161,16 @@ export function registerRecruitingRoutes(
         throw new RecruitingError("invalid_request", "\"criteria\" is required.");
       }
       await service.reviseDraft(
-        body.criteria.filter(isRecord).map((criterion) => ({
-          ...(typeof criterion.id === "string" ? { id: criterion.id } : {}),
-          text: String(criterion.text ?? ""),
-          kind: (criterion.kind === "nice" ? "nice" : "must") as CriterionKind,
-        })),
+        body.criteria.filter(isRecord).map((criterion) => {
+          if (typeof criterion.text !== "string") {
+            throw new RecruitingError("invalid_request", "Each criterion needs text.");
+          }
+          return {
+            ...(typeof criterion.id === "string" ? { id: criterion.id } : {}),
+            text: criterion.text,
+            kind: (criterion.kind === "nice" ? "nice" : "must") as CriterionKind,
+          };
+        }),
       );
     }),
   );
@@ -217,13 +244,21 @@ export function registerRecruitingRoutes(
   app.post(
     role("/proposals/:id"),
     handle(async (body, params, service) =>
-      service.resolveProposal(params.id!, isRecord(body) && body.accept === true),
+      {
+        // Declining skips a widening step for good, so it takes an explicit no.
+        if (!isRecord(body) || typeof body.accept !== "boolean") {
+          throw new RecruitingError("invalid_request", "\"accept\" must be true or false.");
+        }
+        return service.resolveProposal(params.id!, body.accept);
+      },
     ),
   );
 
   app.post(
     role("/fast-forward"),
-    handle(async (body, _params, service) => service.fastForward(isRecord(body) ? Number(body.days) : Number.NaN, true)),
+    handle(async (body, _params, service) =>
+      service.fastForward(isRecord(body) && typeof body.days === "number" ? body.days : Number.NaN, true),
+    ),
   );
 
   /**
@@ -242,13 +277,38 @@ export function registerRecruitingRoutes(
         .filter(Boolean);
       const matched = new Set<string>();
       const results = [];
+      const failed: string[] = [];
+      const unplaced = new Map<string, { intent: string; message: string }>();
       for (const { service } of await board.all()) {
-        for (const text of await service.relevantConversations(texts)) {
-          matched.add(text);
-          results.push(await service.reply(text, null, "linkedin"));
+        const unclaimed = texts.filter((text) => !matched.has(text));
+        if (unclaimed.length === 0) break;
+        for (const text of await service.relevantConversations(unclaimed)) {
+          // One conversation belongs to one role: the first (newest) that contacted the person.
+          if (matched.has(text)) continue;
+          // One conversation that cannot be read is reported; the others are still recorded, once.
+          try {
+            const result = await service.reply(text, null, "linkedin");
+            // A role that could not place it (a shared first name) leaves it to the next role.
+            if (!result.recorded) {
+              unplaced.set(text, result);
+              continue;
+            }
+            matched.add(text);
+            results.push(result);
+          } catch (error) {
+            matched.add(text);
+            failed.push(text);
+            results.push({ intent: "reply", message: `Could not read one conversation: ${error instanceof Error ? error.message : String(error)}` });
+          }
         }
       }
-      return reply.send({ result: { read: texts.length, ignored: texts.length - matched.size, results } });
+      // Named someone the founder wrote to, yet no role could tell who: say so, never "ignored".
+      for (const [text, result] of unplaced) {
+        if (matched.has(text)) continue;
+        matched.add(text);
+        results.push(result);
+      }
+      return reply.send({ result: { read: texts.length, ignored: texts.length - matched.size, results, ...(failed.length ? { failed } : {}) } });
     } catch (error) {
       return fail(reply, error);
     }
@@ -268,9 +328,12 @@ export function registerRecruitingRoutes(
 
   app.post(role("/dismiss-error"), handle(async (_body, _params, service) => service.clearError()));
 
-  // Gmail OAuth. The state value ties the callback to a consent this server started.
-  const oauthStates = new Set<string>();
-  app.get("/api/recruiting/gmail/connect", async (_request, reply) => {
+  // Google OAuth (Gmail, and calendar free/busy for meeting actions). The
+  // state value ties the callback to a consent this server started and
+  // remembers which page to return to.
+  const oauthStates = new Map<string, string>();
+  const RETURN_PAGES = new Set(["/recruiting", "/meetings"]);
+  app.get<{ Querystring: { return?: string } }>("/api/recruiting/gmail/connect", async (request, reply) => {
     if (!gmail) {
       return reply.code(409).send({
         code: "gmail_not_configured",
@@ -278,19 +341,31 @@ export function registerRecruitingRoutes(
       });
     }
     const state = randomBytes(16).toString("hex");
-    oauthStates.add(state);
-    return reply.redirect(gmail.consentUrl(state));
+    const back = request.query.return;
+    oauthStates.set(state, back && RETURN_PAGES.has(back) ? back : "/recruiting");
+    // Abandoned consents must not pile up forever.
+    while (oauthStates.size > 50) oauthStates.delete(oauthStates.keys().next().value!);
+    return reply.redirect(gmail.consentUrl(state, (await gmail.storedAddress()) ?? undefined));
   });
 
-  app.get<{ Querystring: { code?: string; state?: string } }>(
+  app.get<{ Querystring: { code?: string; state?: string; error?: string } }>(
     "/api/recruiting/gmail/callback",
     async (request, reply) => {
-      const { code, state } = request.query;
-      if (!gmail || !code || !state || !oauthStates.delete(state)) {
+      const { code, state, error } = request.query;
+      const back = state ? oauthStates.get(state) : undefined;
+      if (!gmail || !state || !back) {
         return reply.code(400).send({ code: "invalid_oauth_callback", message: "Start from Connect Gmail." });
       }
-      await gmail.exchangeCode(code);
-      return reply.redirect("/recruiting");
+      oauthStates.delete(state);
+      // The person pressed Cancel on Google's consent screen.
+      if (error || !code) return reply.redirect(`${back}?google=denied`);
+      try {
+        await gmail.exchangeCode(code);
+      } catch (failure) {
+        if (failure instanceof NoGmailError) return reply.redirect(`${back}?google=no-gmail`);
+        return fail(reply, failure);
+      }
+      return reply.redirect(`${back}?google=connected`);
     },
   );
 }

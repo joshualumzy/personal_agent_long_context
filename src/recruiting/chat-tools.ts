@@ -1,4 +1,5 @@
 import type { AgentExtension, ChatBlock, ToolDefinition } from "../agent-extension.js";
+import { parseOperations } from "./agent.js";
 import { RecruitingError, type CriterionKind } from "./domain.js";
 import type { RoleBoard } from "./roles.js";
 import type { RecruitingService } from "./service.js";
@@ -81,6 +82,41 @@ const tools: ToolDefinition[] = [
     },
   ),
   tool(
+    "recruiting_change_criteria",
+    "Change a confirmed role's criteria exactly, by id: add, remove, set_kind (must or nice), or edit the text. Prefer this over recruiting_update for criteria changes.",
+    {
+      properties: {
+        changes: {
+          type: "array",
+          minItems: 1,
+          items: {
+            type: "object",
+            properties: {
+              op: { type: "string", enum: ["add", "remove", "set_kind", "edit"] },
+              id: { type: "string", description: "The criterion id, for remove, set_kind, and edit." },
+              text: { type: "string", description: "For add and edit." },
+              kind: { type: "string", enum: ["must", "nice"], description: "For add and set_kind." },
+            },
+            required: ["op"],
+            additionalProperties: false,
+          },
+        },
+        said: { type: "string", description: "The founder's words, kept as the reason in Memory." },
+      },
+      required: ["changes"],
+    },
+  ),
+  tool(
+    "recruiting_set_signature",
+    "Set who outreach is from for this role (the founder's name, and a phrase about the company such as 'a 12-person fintech startup'), and redraft messages that are waiting to be sent.",
+    {
+      properties: {
+        name: { type: "string" },
+        company: { type: "string", description: "A short phrase about the company, as the founder would say it." },
+      },
+    },
+  ),
+  tool(
     "recruiting_find_more",
     "Add more people to a confirmed role without changing its criteria, by searching with new queries.",
   ),
@@ -117,6 +153,21 @@ const tools: ToolDefinition[] = [
   ),
 ];
 
+/** must or nice, from the ways a model writes them; anything else is refused, not guessed. */
+function kindOf(value: unknown): CriterionKind {
+  const said = typeof value === "string" ? value.trim().toLowerCase().replace(/[\s_]+/g, "-") : "";
+  if (["must", "must-have", "required", "requirement", "hard"].includes(said)) return "must";
+  if (["nice", "nice-to-have", "optional", "bonus", "plus", "preferred", "soft"].includes(said)) return "nice";
+  throw new RecruitingError("invalid_request", `kind must be "must" or "nice", not ${JSON.stringify(value)}.`);
+}
+
+/** A real yes or no. Accepting or declining changes the search, so a guess is not good enough. */
+function yesOrNo(value: unknown): boolean {
+  if (value === true || value === "true") return true;
+  if (value === false || value === "false") return false;
+  throw new RecruitingError("invalid_request", "accept must be true or false.");
+}
+
 function text(args: Record<string, unknown>, key: string): string {
   const value = args[key];
   if (typeof value !== "string" || !value.trim()) {
@@ -127,10 +178,38 @@ function text(args: Record<string, unknown>, key: string): string {
 
 type Snapshot = Awaited<ReturnType<RecruitingService["snapshot"]>>;
 
+function funnelOf(snapshot: Snapshot) {
+  const all = snapshot.candidates;
+  const open = all.filter((candidate) => candidate.stage !== "closed");
+  const settled = all.filter((candidate) => candidate.settled);
+  // The same (possibly provisional) tiers the panel shows, so numbers match the screen.
+  const ring = (tier: number) => open.filter((candidate) => candidate.tier === tier).length;
+  const said = (candidate: (typeof all)[number], direction: string) =>
+    (candidate.messages ?? []).some((message) => message.direction === direction);
+  const contacted = all.filter((candidate) => said(candidate, "outbound"));
+  const replied = contacted.filter((candidate) => said(candidate, "inbound"));
+  return {
+    found: all.length,
+    scored: settled.length,
+    pending: open.filter((candidate) => !candidate.settled).length,
+    in_view: ring(100) + ring(75) + ring(50),
+    centre: ring(100),
+    middle: ring(75),
+    outer: ring(50),
+    out: open.filter((candidate) => candidate.tier === "out").length,
+    contacted: contacted.length,
+    replied: replied.length,
+    reply_rate: contacted.length ? Math.round((replied.length / contacted.length) * 100) / 100 : null,
+    closed: all.length - open.length,
+    drafts_waiting: open.filter((candidate) => candidate.draft && !candidate.draft.sending).length,
+  };
+}
+
 /** What the model needs to decide; the panel shows the rest. */
 export function statusForModel(snapshot: Snapshot) {
   const open = snapshot.candidates.filter((candidate) => candidate.stage !== "closed");
   const rank = (tier: unknown) => (typeof tier === "number" ? -tier : 0);
+  const inView = open.filter((candidate) => candidate.tier !== "out").sort((a, b) => rank(a.tier) - rank(b.tier));
   return {
     role: snapshot.role ? { title: snapshot.role.title, confirmed: snapshot.role.confirmed } : null,
     criteria: snapshot.criteria.map(({ id, text, kind }) => ({ id, text, kind })),
@@ -144,20 +223,41 @@ export function statusForModel(snapshot: Snapshot) {
       pending: open.filter((candidate) => !candidate.settled).length,
       closed: snapshot.candidates.length - open.length,
     },
-    candidates: open
-      .filter((candidate) => candidate.tier !== "out")
-      .sort((a, b) => rank(a.tier) - rank(b.tier))
+    // The numbers a founder asks for. "found" minus "in_view" is everyone the criteria ruled out,
+    // so "found 15" and "0 in view" are never mistaken for each other.
+    funnel: funnelOf(snapshot),
+    candidates: inView
       .slice(0, 15)
       .map((candidate) => ({
         id: candidate.id,
         name: candidate.profile.name,
         headline: candidate.profile.headline,
         tier: candidate.tier,
+        ring: candidate.tier === 100 ? "centre" : candidate.tier === 75 ? "middle" : candidate.tier === 50 ? "outer" : "not placed yet",
         stage: candidate.stage,
         kept: candidate.kept,
         email: candidate.contact ? candidate.contact.status : "none",
         has_draft: Boolean(candidate.draft),
       })),
+    // Everyone else in view, briefly, so any of them can be named in a tool call.
+    ...(inView.length > 15
+      ? { more_in_view: inView.slice(15).map((candidate) => ({ id: candidate.id, name: candidate.profile.name, stage: candidate.stage })) }
+      : {}),
+    // People the criteria ruled out or the founder closed, briefly: the founder may still name
+    // them ("draft to Zoe anyway", "keep Alex after all").
+    ...(() => {
+      const others = snapshot.candidates
+        .filter((candidate) => candidate.stage === "closed" || candidate.tier === "out")
+        // People the founder added, contacted or closed come first; the rest only fill up to 60.
+        .sort((a, b) => Number(b.origin === "referral" || b.stage === "closed" || b.messages.length > 0) - Number(a.origin === "referral" || a.stage === "closed" || a.messages.length > 0))
+        .slice(0, 60)
+        .map((candidate) => ({
+          id: candidate.id,
+          name: candidate.profile.name,
+          why: candidate.stage === "closed" ? `closed (${candidate.closedReason ?? "closed"})` : "ruled out by the criteria",
+        }));
+      return others.length ? { not_in_view: others } : {};
+    })(),
     proposals: snapshot.proposals.map((proposal) => ({
       id: proposal.id,
       what: proposal.type === "criterion" ? `Add "${proposal.text}" (${proposal.kind})` : proposal.stepName,
@@ -183,7 +283,12 @@ export function recruitingExtension(board: RoleBoard): AgentExtension {
         if (error instanceof RecruitingError) {
           return { content: JSON.stringify({ error: error.message }) };
         }
-        throw error;
+        // An outage (model, search) is news for the founder, not a crash of the chat.
+        return {
+          content: JSON.stringify({
+            error: `Something the recruiting tools depend on failed: ${error instanceof Error ? error.message : String(error)}. Tell the founder and suggest trying again shortly.`,
+          }),
+        };
       }
     },
   };
@@ -196,7 +301,8 @@ async function runTool(
 ): Promise<{ content: string; block?: ChatBlock }> {
   if (name === "recruiting_status") {
     const roles = await board.list();
-    const chosen = typeof args.role_id === "string" ? args.role_id : roles.length === 1 ? roles[0]!.id : null;
+    const named = typeof args.role_id === "string" ? args.role_id.trim() : "";
+    const chosen = named || (roles.length === 1 ? roles[0]!.id : null);
     return {
       content: JSON.stringify({
         roles,
@@ -205,8 +311,16 @@ async function runTool(
     };
   }
   if (name === "recruiting_start") {
+    const requirement = text(args, "requirement");
     const { id, service } = board.create();
-    const result = await service.start(text(args, "requirement"));
+    let result;
+    try {
+      result = await service.start(requirement);
+    } catch (error) {
+      // A start that failed leaves no role behind, not even in memory.
+      board.forget(id);
+      throw error;
+    }
     return { content: JSON.stringify({ role_id: id, result, status: statusForModel(await service.snapshot()) }) };
   }
 
@@ -217,16 +331,24 @@ async function runTool(
 
   switch (name) {
     case "recruiting_revise_criteria": {
-      const criteria = Array.isArray(args.criteria) ? args.criteria : [];
-      await service.reviseDraft(
-        criteria
-          .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
-          .map((entry) => ({
-            ...(typeof entry.id === "string" ? { id: entry.id } : {}),
-            text: String(entry.text ?? ""),
-            kind: (entry.kind === "nice" ? "nice" : "must") as CriterionKind,
-          })),
-      );
+      if (!Array.isArray(args.criteria)) {
+        throw new RecruitingError("invalid_request", "criteria must be a list of {text, kind}.");
+      }
+      const criteria = args.criteria.map((entry) => {
+        if (typeof entry !== "object" || entry === null || typeof (entry as Record<string, unknown>).text !== "string") {
+          throw new RecruitingError("invalid_request", "Each criterion must be an object with text and kind.");
+        }
+        const record = entry as Record<string, unknown>;
+        return {
+          ...(typeof record.id === "string" ? { id: record.id } : {}),
+          text: record.text as string,
+          kind: kindOf(record.kind),
+        };
+      });
+      if (!criteria.some((criterion) => criterion.text.trim())) {
+        throw new RecruitingError("invalid_request", "Keep at least one criterion; the draft was not changed.");
+      }
+      await service.reviseDraft(criteria);
       return { content: await status() };
     }
     case "recruiting_confirm":
@@ -234,10 +356,67 @@ async function runTool(
       return { content: await status({ result: "Confirmed. Scoring continues in the background." }) };
     case "recruiting_update":
       return { content: await status({ result: await service.say(text(args, "text")) }) };
-    case "recruiting_find_more":
-      return { content: await status({ result: await service.findMore() }) };
+    case "recruiting_change_criteria": {
+      if (!Array.isArray(args.changes) || args.changes.length === 0) {
+        throw new RecruitingError("invalid_request", "changes must be a non-empty list.");
+      }
+      const criteria = (await service.snapshot()).criteria;
+      for (const change of args.changes) {
+        if (typeof change !== "object" || change === null) throw new RecruitingError("invalid_request", "Each change must be an object.");
+        const entry = change as Record<string, unknown>;
+        // A kind of null means none given; remove and edit take no kind at all.
+        if ((entry.op === "add" || entry.op === "set_kind") && entry.kind != null) kindOf(entry.kind);
+        if (entry.op !== "add" && !criteria.some((criterion) => criterion.id === entry.id)) {
+          throw new RecruitingError("invalid_request", `No criterion with id ${String(entry.id)}; read recruiting_status for the ids.`);
+        }
+      }
+      const operations = parseOperations(
+        args.changes.map((change) => {
+          const entry = change as Record<string, unknown>;
+          if (entry.op !== "add" && entry.op !== "set_kind") return { ...entry, kind: undefined };
+          return entry.kind == null ? { ...entry, kind: undefined } : { ...entry, kind: kindOf(entry.kind) };
+        }),
+        criteria as never,
+      );
+      if (operations.length === 0) throw new RecruitingError("invalid_request", "None of the changes could be applied.");
+      // All or nothing: applying part of a batch and calling it done would mislead the founder.
+      if (operations.length < args.changes.length) {
+        throw new RecruitingError("invalid_request", "Some changes were not understood (an empty text, an unknown op, or a missing kind). Nothing was changed; fix them and send the whole list again.");
+      }
+      const said = typeof args.said === "string" && args.said.trim() ? args.said.trim() : "changed in the chat";
+      return { content: await status({ result: await service.changeCriteria(operations, said) }) };
+    }
+    case "recruiting_set_signature": {
+      const name = typeof args.name === "string" ? args.name.trim() : "";
+      const company = typeof args.company === "string" ? args.company.trim() : "";
+      if (!name && !company) throw new RecruitingError("invalid_request", "Give a name, a company phrase, or both.");
+      const redrafted = await service.setSender({ ...(name ? { name } : {}), ...(company ? { company } : {}) });
+      return { content: await status({ result: `Outreach is now from ${name || "the same person"}${company ? `, ${company}` : ""}. Redrafted ${redrafted} waiting ${redrafted === 1 ? "message" : "messages"}.` }) };
+    }
+    case "recruiting_find_more": {
+      const found = await service.findMore();
+      const message = found.added
+        ? `Added ${found.added} new people; they are being scored now.`
+        : "No new people were found with new search angles. Nothing is still running; suggest relaxing a criterion.";
+      return { content: await status({ result: { ...found, message } }) };
+    }
     case "recruiting_import_profiles": {
-      const urls = Array.isArray(args.urls) ? args.urls.filter((url): url is string => typeof url === "string") : [];
+      // One link or a list; "linkedin.com/in/x", "www…" and "http://…" become https links, as on the page.
+      // A list sent as JSON text ("[\"a\", \"b\"]") is read as the list it is.
+      let raw: unknown = args.urls;
+      if (typeof raw === "string" && raw.trim().startsWith("[")) {
+        try {
+          raw = JSON.parse(raw);
+        } catch {
+          // not JSON after all: split it as text
+        }
+      }
+      const given = typeof raw === "string"
+        ? raw.split(/[\s,，、;；]+/).map((piece) => piece.replace(/^["'\[]+|["'\]]+$/g, ""))
+        : Array.isArray(raw) ? raw : [];
+      const urls = given
+        .filter((url): url is string => typeof url === "string" && url.trim() !== "")
+        .map((url) => url.trim().replace(/^(?:https?:\/\/)?((?:[a-z]{2,3}\.)?(?:www\.)?linkedin\.com\/)/i, "https://$1"));
       return { content: await status({ result: await service.importProfiles(urls) }) };
     }
     case "recruiting_prepare_outreach": {
@@ -253,7 +432,7 @@ async function runTool(
       };
     }
     case "recruiting_resolve_proposal":
-      await service.resolveProposal(text(args, "proposal_id"), args.accept === true);
+      await service.resolveProposal(text(args, "proposal_id"), yesOrNo(args.accept));
       return { content: await status() };
     case "show_recruiting_panel": {
       const view = args.view as PanelView;

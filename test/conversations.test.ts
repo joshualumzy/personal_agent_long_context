@@ -63,6 +63,16 @@ describe("Conversation store", () => {
     assert.equal(deleted, true);
     const afterDelete = await store.get(conv.conversationId, "jax");
     assert.equal(afterDelete, null);
+
+    // 9. Bulk delete all conversations
+    await store.create("jax", "Conv 1");
+    await store.create("jax", "Conv 2");
+    await store.create("alice", "Alice Conv");
+    const countCleared = await store.deleteAll("jax");
+    assert.equal(countCleared, 2);
+    assert.deepEqual(await store.list("jax"), []);
+    const aliceList = await store.list("alice");
+    assert.equal(aliceList.length, 1);
   });
 
   test("HTTP conversation endpoints support listing, creating, retrieving, and auto-logging chat turns", async () => {
@@ -81,14 +91,19 @@ describe("Conversation store", () => {
       },
     };
 
+    const { createSessionToken } = await import("../src/auth.js");
+    const TEST_SECRET = "test-auth-session-secret-key-32chars-min";
+    const authHeaders = { cookie: `sme_session=${createSessionToken("jax", TEST_SECRET)}` };
+
     const app = buildApp({
+      sessionConfig: { secret: TEST_SECRET },
       memory: new DeterministicMemoryProvider(),
       companyAgent: companyAgent as never,
       conversationStore: store,
     });
 
     // 1. Initial conversations list is empty
-    const listRes1 = await app.inject({ method: "GET", url: "/api/v1/conversations?userId=jax" });
+    const listRes1 = await app.inject({ method: "GET", url: "/api/v1/conversations", headers: authHeaders });
     assert.equal(listRes1.statusCode, 200);
     assert.deepEqual(listRes1.json(), []);
 
@@ -96,7 +111,8 @@ describe("Conversation store", () => {
     const chatRes1 = await app.inject({
       method: "POST",
       url: "/api/v1/agent/chat",
-      payload: { userId: "jax", message: "What is Project Titan?" },
+      headers: authHeaders,
+      payload: { message: "What is Project Titan?" },
     });
     assert.equal(chatRes1.statusCode, 200);
     const chatJson1 = chatRes1.json();
@@ -106,7 +122,7 @@ describe("Conversation store", () => {
     const convId = chatJson1.conversationId;
 
     // 3. Conversation now shows in list
-    const listRes2 = await app.inject({ method: "GET", url: "/api/v1/conversations?userId=jax" });
+    const listRes2 = await app.inject({ method: "GET", url: "/api/v1/conversations", headers: authHeaders });
     assert.equal(listRes2.statusCode, 200);
     const listData = listRes2.json();
     assert.equal(listData.length, 1);
@@ -117,13 +133,14 @@ describe("Conversation store", () => {
     const chatRes2 = await app.inject({
       method: "POST",
       url: "/api/v1/agent/chat",
-      payload: { userId: "jax", conversationId: convId, message: "Who is the lead?" },
+      headers: authHeaders,
+      payload: { conversationId: convId, message: "Who is the lead?" },
     });
     assert.equal(chatRes2.statusCode, 200);
     assert.equal(chatRes2.json().conversationId, convId);
 
     // 5. Fetch full conversation detail
-    const detailRes = await app.inject({ method: "GET", url: `/api/v1/conversations/${convId}?userId=jax` });
+    const detailRes = await app.inject({ method: "GET", url: `/api/v1/conversations/${convId}`, headers: authHeaders });
     assert.equal(detailRes.statusCode, 200);
     const detailData = detailRes.json();
     assert.equal(detailData.messages.length, 4);
@@ -135,12 +152,72 @@ describe("Conversation store", () => {
     assert.equal(detailData.messages[3].role, "assistant");
 
     // 6. Delete conversation
-    const deleteRes = await app.inject({ method: "DELETE", url: `/api/v1/conversations/${convId}?userId=jax` });
+    const deleteRes = await app.inject({ method: "DELETE", url: `/api/v1/conversations/${convId}`, headers: authHeaders });
     assert.equal(deleteRes.statusCode, 200);
 
-    const detailResAfter = await app.inject({ method: "GET", url: `/api/v1/conversations/${convId}?userId=jax` });
+    const detailResAfter = await app.inject({ method: "GET", url: `/api/v1/conversations/${convId}`, headers: authHeaders });
     assert.equal(detailResAfter.statusCode, 404);
+
+    // 7. Bulk clear all conversations
+    await store.create("jax", "Another Conv 1");
+    await store.create("jax", "Another Conv 2");
+    const clearRes = await app.inject({ method: "DELETE", url: "/api/v1/conversations", headers: authHeaders });
+    assert.equal(clearRes.statusCode, 200);
+    assert.deepEqual(clearRes.json(), { status: "cleared", count: 2 });
+    const emptyListRes = await app.inject({ method: "GET", url: "/api/v1/conversations", headers: authHeaders });
+    assert.deepEqual(emptyListRes.json(), []);
+
+    await app.close();
+  });
+
+  test("auto-generates a topic title on turn 1 using active agent", async () => {
+    const { buildApp } = await import("../src/http-app.js");
+    const { DeterministicMemoryProvider } = await import("../src/adapters/deterministic-memory.js");
+    const store = new InMemoryConversationStore();
+    let generatedTitleRequested = false;
+
+    const companyAgent = {
+      async answer(input: { employeeId: string; question: string }) {
+        return {
+          answer: `Company answer to: ${input.question}`,
+          sources: [],
+          runId: "run-test-title",
+          toolCalls: [],
+        };
+      },
+      async generateTitle(prompt: string) {
+        generatedTitleRequested = true;
+        return "Generated Topic Title";
+      },
+    };
+
+    const { createSessionToken } = await import("../src/auth.js");
+    const TEST_SECRET = "test-auth-session-secret-key-32chars-min";
+    const authHeaders = { cookie: `sme_session=${createSessionToken("jax", TEST_SECRET)}` };
+
+    const app = buildApp({
+      sessionConfig: { secret: TEST_SECRET },
+      memory: new DeterministicMemoryProvider(),
+      companyAgent: companyAgent as never,
+      conversationStore: store,
+    });
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/agent/chat",
+      headers: authHeaders,
+      payload: { message: "Can you tell me about the architecture?" },
+    });
+
+    assert.equal(res.statusCode, 200);
+    const body = res.json();
+    assert.equal(body.title, "Generated Topic Title");
+    assert.equal(generatedTitleRequested, true);
+
+    const detail = await store.get(body.conversationId, "jax");
+    assert.equal(detail?.conversation.title, "Generated Topic Title");
 
     await app.close();
   });
 });
+

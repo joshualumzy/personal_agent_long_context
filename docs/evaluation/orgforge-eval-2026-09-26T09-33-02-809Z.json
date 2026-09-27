@@ -1,0 +1,33 @@
+{
+  "timestamp": "2026-09-26T09:33:02.809Z",
+  "model": "qwen3.8:27b",
+  "summary": {
+    "totalQuestions": 1,
+    "accuracyPct": 0,
+    "citationRecallPct": 0,
+    "citationIntegrityPct": 100,
+    "avgLatencySec": 52.96
+  },
+  "results": [
+    {
+      "questionId": "counterfactual_neg_EVT-4-knowledge_gap_detected-586_doc_gap_detected",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "If the documentation gap in the design doc that Jax contributed to on Day 4 had not existed, would the incident still have occurred despite the other gaps involving Raj and Kaitlyn?",
+      "actor": "Jax",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "CONF-ENG-041",
+        "ENG-123",
+        "slack_incidents_2026-01-12T12:59:00"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "latencyMs": 52957
+    }
+  ]
+}

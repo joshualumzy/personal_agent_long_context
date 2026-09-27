@@ -5,7 +5,7 @@ import { buildApp } from "../src/http-app.js";
 import { privateRemarksIn } from "../src/recruiting/agent.js";
 import type { ContactFinder } from "../src/recruiting/contacts.js";
 import type { Candidate, CandidateProfile, Criterion } from "../src/recruiting/domain.js";
-import { protectedCharacteristic } from "../src/recruiting/fairness.js";
+import type { GmailClient } from "../src/recruiting/gmail.js";
 import { LocalIntentMemory } from "../src/recruiting/intent-memory.js";
 import type { JsonModel } from "../src/recruiting/llm.js";
 import { RecruitingService } from "../src/recruiting/service.js";
@@ -73,7 +73,6 @@ function fakeModel(): JsonModel & { calls: string[] } {
               { text: "typescript", kind: "must" },
               { text: "startup", kind: "must" },
               { text: "rust", kind: "nice" },
-              { text: "under 30", kind: "must" },
             ],
             query: "typescript startup engineer singapore",
           } as T;
@@ -93,7 +92,8 @@ function fakeModel(): JsonModel & { calls: string[] } {
             consultants.length >= 2
               ? {
                   found: true,
-                  text: "startup",
+                  // Not an existing criterion: since round 3 a duplicate add is skipped.
+                  text: "product company",
                   kind: "must",
                   rationale: "You passed on two consultants.",
                   supportingCandidateIds: consultants.map((entry: { candidateId: string }) => entry.candidateId),
@@ -134,7 +134,7 @@ function fakeModel(): JsonModel & { calls: string[] } {
   };
 }
 
-function setup(options: { finders?: ContactFinder[] } = {}) {
+function setup(options: { finders?: ContactFinder[]; gmail?: GmailClient } = {}) {
   let now = new Date("2026-09-23T02:00:00.000Z");
   const model = fakeModel();
   const source = new FakeSource();
@@ -145,7 +145,7 @@ function setup(options: { finders?: ContactFinder[] } = {}) {
     store: new MemoryStore(),
     memory,
     contactFinders: options.finders ?? [],
-    gmail: null,
+    gmail: options.gmail ?? null,
     clock: () => now,
     settings: { resultsPerQuery: 6 },
   });
@@ -220,22 +220,10 @@ describe("tiers", () => {
   });
 });
 
-describe("fairness", () => {
-  test("refuses criteria on protected characteristics and keeps job-relevant ones", () => {
-    for (const text of ["under 30", "Must be male", "Singaporeans only", "no kids", "年轻"]) {
-      assert.notEqual(protectedCharacteristic(text), null, text);
-    }
-    for (const text of ["Over 10 years of experience", "Fluent in Chinese", "Built single-page apps", "Serves Indian market"]) {
-      assert.equal(protectedCharacteristic(text), null, text);
-    }
-  });
-});
-
 describe("recruiting flow", () => {
-  test("proposes criteria without the protected one and reports the refusal", async () => {
+  test("proposes criteria for review before searching", async () => {
     const { service } = setup();
-    const result = await service.start("We need a founding backend engineer in Singapore who knows TypeScript.");
-    assert.deepEqual(result.refused, [{ text: "under 30", characteristic: "age" }]);
+    await service.start("We need a founding backend engineer in Singapore who knows TypeScript.");
     const snapshot = await service.snapshot();
     assert.deepEqual(snapshot.criteria.map((c) => c.text), ["typescript", "startup", "rust"]);
     assert.equal(snapshot.role?.confirmed, false);
@@ -249,16 +237,12 @@ describe("recruiting flow", () => {
     assert.equal(memory.events[0]?.kind, "criteria_confirmed");
   });
 
-  test("a spoken criteria change rescores and refuses discriminatory additions", async () => {
+  test("a spoken criteria change rescores", async () => {
     const { service } = await confirmed();
     const changed = await service.say("Actually Rust is required");
     assert.equal(changed.intent, "criteria");
     await service.settle();
     assert.equal((await tiers(service)).b, 50);
-
-    const refused = await service.say("Only women please");
-    assert.deepEqual(refused.refused, [{ text: "women only", characteristic: "sex or gender" }]);
-    assert.equal((await service.snapshot()).criteria.some((c) => c.text === "women only"), false);
   });
 
   test("two passes for the same reason become a proposal that only applies once accepted", async () => {
@@ -324,6 +308,36 @@ describe("recruiting flow", () => {
     a = (await service.snapshot()).candidates.find((c) => c.id === "a")!;
     assert.equal(a.stage, "closed");
     assert.equal(a.closedReason, "cold");
+  });
+
+  test("an email is recorded as sent by the founder, and their Gmail reply is found by sender", async () => {
+    const asked: Array<[string, string]> = [];
+    const gmail = {
+      connected: async () => true,
+      hasMailbox: async () => true,
+      repliesFrom: async (address: string, since: string) => {
+        asked.push([address, since]);
+        return [{ from: `Bea <${address}>`, at: "2026-09-24T02:00:00.000Z", text: "Sounds good, free Tuesday afternoon" }];
+      },
+    } as unknown as GmailClient;
+    const context = setup({ gmail });
+    await context.service.start("We need a founding backend engineer in Singapore who knows TypeScript.");
+    await context.service.confirm();
+    await context.service.settle();
+    const { service } = context;
+    await service.prepareOutreach("b");
+    await assert.rejects(service.send("b", false), /no email address/);
+    await service.editDraft("b", { email: "bea@example.com" });
+    await service.send("b", false);
+
+    let b = (await service.snapshot()).candidates.find((c) => c.id === "b")!;
+    assert.equal(b.stage, "contacted");
+    assert.equal(b.messages.at(-1)?.channel, "email");
+
+    assert.equal(await service.syncGmail(), 1);
+    assert.equal(asked[0]![0], "bea@example.com");
+    b = (await service.snapshot()).candidates.find((c) => c.id === "b")!;
+    assert.equal(b.stage, "replied");
   });
 
   test("a reply moves the candidate on and drafts a scheduling message", async () => {

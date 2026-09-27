@@ -25,6 +25,7 @@ secrets.*.json
 # Local PostgreSQL state and generated ingestion files
 .postgres-data/
 tmp/orgforge/
+*.dump
 
 # Local Letta agents, provider configuration, transcripts, and Memory
 .letta/

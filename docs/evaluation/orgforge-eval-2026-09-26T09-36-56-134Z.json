@@ -1,0 +1,71 @@
+{
+  "timestamp": "2026-09-26T09:36:56.134Z",
+  "model": "qwen3.8:27b",
+  "summary": {
+    "totalQuestions": 3,
+    "accuracyPct": 0,
+    "citationRecallPct": 0,
+    "citationIntegrityPct": 100,
+    "avgLatencySec": 42.83
+  },
+  "results": [
+    {
+      "questionId": "counterfactual_neg_EVT-4-knowledge_gap_detected-586_doc_gap_detected",
+      "questionType": "COUNTERFACTUAL",
+      "questionText": "If the documentation gap in the design doc that Jax contributed to on Day 4 had not existed, would the incident still have occurred despite the other gaps involving Raj and Kaitlyn?",
+      "actor": "Jax",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "CONF-ENG-041",
+        "ENG-123",
+        "slack_incidents_2026-01-12T12:59:00"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 46016
+    },
+    {
+      "questionId": "silence_EVT-8-incident_opened-1219_sf_deals_risk_flagged",
+      "questionType": "SILENCE",
+      "questionText": "Was a Salesforce risk flag on the related deals created in response to the incident on Day 8 involving Jax, Kaitlyn?",
+      "expectedAnswer": false,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "slack_incidents_2026-01-12T12:59:00",
+        "ENG-123"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 43107
+    },
+    {
+      "questionId": "silence_EVT-38-knowledge_gap_detected-1453_confluence_created",
+      "questionType": "SILENCE",
+      "questionText": "Was a Confluence documentation page created in response to the knowledge gap detected on Day 38 involving Morgan, specifically regarding kubernetes‑deploy, terraform‑infra?",
+      "expectedAnswer": true,
+      "judgedAnswer": "inconclusive",
+      "answerCorrect": false,
+      "expectedArtifacts": [
+        "CONF-HR-001"
+      ],
+      "citedArtifacts": [],
+      "retrievedArtifacts": [],
+      "citationRecall": 0,
+      "citationIntegrity": true,
+      "agentStatus": "answered",
+      "agentAnswer": "Insufficient Evidence: I could not find retrieved Company Evidence that supports a reliable answer to this question.",
+      "latencyMs": 39366
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+# Zoom Meeting Transcript
+**Date:** 2026-01-01
+**Topic:** aws tagging strategy design
+**Attendees:** Jax, Morgan, Yusuf, Tasha
+
+---
+
+**[12:12:00] Jax:** hey everyone, goal is to lock down an aws tagging strategy that covers cost allocation, environment, and product lines for all future infra...
+
+**[12:16:00] Morgan:** we can start by extending the existing tagging module in terraform. I've added a variable `required_tags = { "CostCenter" = var.cost_center, "Env" = var.env, "Product" = var.product }` and a `precondition` block that fails if any key is missing. running `terraform validate` will catch violations before apply.
+
+**[12:20:00] Yusuf:** just to confirm, are we making those three tags mandatory for every resource, including s3 buckets and iam roles?
+
+**[12:22:00] Tasha:** the naming convention should follow `team:product:env` for the value part, and we can document it in the tagging guide at confluence link https://apex.atlassian.net/wiki/spaces/ENG/pages/1234567890/Tagging+Guide.
+
+**[12:25:00] Jax:** cost‑tagging compliance query from earlier still open, need to map costcenter to finance codes... we should align those codes with the new tag values.
+
+**[12:28:00] Morgan:** the current finance mapping lives in `infra/policy/cost_center_map.json`. we can reference it in the terraform module with `jsondecode(file(...))` and add a `validation` rule that checks the tag against the map. also, `aws resourcegroupstaggingapi get-resources --tag-filters Key=CostCenter,Values=*` can be used to audit existing resources.
+
+**[12:32:00] Yusuf:** i will draft an iam policy that denies creation of resources without the required tags, using `aws:TagKeys` condition, and submit it for review by end of day.
+
+**[12:35:00] Tasha:** once the module and policy are ready, we should roll it out via a phased approach: dev first, then staging, finally prod, updating the runbook with the new steps.
+
+**[12:38:00] Jax:** so action items: morgan will push the updated terraform tagging module to the main repo by tomorrow, yusuf will deliver the iam deny policy draft by eod, tasha will revise the runbook with rollout plan and share the link after review...
+
+**[12:41:00] Jax:** meeting adjourned, decision is to enforce three mandatory tags using the terraform module and iam policy, owners are morgan, yusuf, and tasha as listed.
