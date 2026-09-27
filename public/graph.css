@@ -276,3 +276,22 @@ body:has(> .shell) { margin: 0; height: 100vh; overflow: hidden; background: var
 .node rect.n-query { fill: var(--accent); stroke: none; }
 .node:hover rect.n-query, .node.selected rect.n-query { stroke: var(--accent-strong); stroke-width: 2; }
 .node .pill-label { font: 600 11.5px var(--f-ui); fill: #ffffff; text-anchor: middle; pointer-events: none; }
+
+/* ------------------------------------------------------------ an answer's graph
+   The picture gets the room. One line of controls above it (what is drawn,
+   what to show, picture or table), Fit and Back to start on the picture
+   itself, and the side rail holds the selected item, then how to read the
+   picture and its shapes. */
+body[data-mode="answer"] .top { align-items: center; padding-bottom: 0; }
+body[data-mode="answer"] .controls { background: none; border: 0; padding: 0; margin-top: 8px; }
+body[data-mode="answer"] .picture { position: relative; padding: 0; overflow: hidden; }
+body[data-mode="answer"] .picture-actions { position: absolute; top: 10px; right: 10px; z-index: 1; }
+body[data-mode="answer"] .picture-actions .quiet { font-size: 12px; padding: 4px 10px; background: var(--panel); }
+body[data-mode="answer"] #canvas { height: min(66vh, 680px); }
+body.embedded[data-mode="answer"] #canvas { height: calc(100vh - 128px); }
+.rail { display: grid; gap: 12px; align-content: start; }
+.rail .details { min-height: 0; }
+.guide { padding: 2px 4px; color: var(--muted); font-size: .8rem; line-height: 1.5; }
+.guide p { margin: 0 0 10px; }
+.guide .legend { display: grid; gap: 6px; margin: 0; font-size: .78rem; }
+.guide .legend li.legend-note { margin-left: 0; font-style: normal; color: var(--muted); }

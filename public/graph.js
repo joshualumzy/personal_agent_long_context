@@ -959,7 +959,7 @@ async function load(view) {
     $("#restore").disabled = MODE !== "answer" || onOrigin();
     $("#details").replaceChildren(h("p", { class: "empty" },
       view === "query"
-        ? "The question is in the middle, and around it what its evidence belongs to. Click anything to open it up."
+        ? "Pick an item to see what it is."
         : "Click anything to open it up."));
   } catch (error) {
     if (generation !== state.generation) return;

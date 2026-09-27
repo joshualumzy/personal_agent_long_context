@@ -300,6 +300,20 @@ describe("the company graph", () => {
     assert.match(domain.querySelector("text.sub")!.textContent!, /knowledge domain/i);
   });
 
+  test("an answer's graph gives the picture the room: how to read it sits in the side rail, briefly", async () => {
+    const { document } = await open("/graph/answer?q=TitanDB&embed=1", (url) => (url.pathname === "/api/v1/graph/query" ? asked : org));
+
+    const rail = document.querySelector("aside.rail")!;
+    assert.ok(rail.querySelector("#details"), "details lead the rail");
+    assert.ok(rail.querySelector("#canvas-help"), "how to read it is in the rail");
+    assert.ok(rail.querySelector("#legend"), "and so are the shapes");
+    assert.equal(document.querySelector("#picture #canvas-help"), null, "not under the picture");
+    assert.equal(document.querySelector("#picture h2"), null, "the picture needs no heading");
+    assert.ok(document.querySelector("#picture .picture-actions #fit"), "Fit stays with the picture");
+    assert.ok(document.querySelector("#canvas-help")!.textContent!.trim().length < 140, "one or two short lines");
+    assert.doesNotMatch(document.querySelector("#details")!.textContent!, /Click anything/, "the rail does not say it twice");
+  });
+
   test("the question's evidence is what its details show", async () => {
     const { window, document } = await open("/graph/answer?q=TitanDB", () => asked);
     document.querySelector('.node[data-id="query:TitanDB"]')!.dispatchEvent(new window.Event("focus"));
