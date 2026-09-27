@@ -14,6 +14,9 @@
 let clearQueue = [];
 let clearIndex = 0;
 let clearActive = false;
+/** "review": deciding the draft on screen. "resolved": it was just approved and
+ * waits for the employee to open its handoff and press Next themselves. */
+let clearPhase = "review";
 /** The plate's freshest "needs you" list, kept current so Clear all always starts from it. */
 let clearNeeds = [];
 
@@ -56,17 +59,19 @@ function fieldValue(payload, key) {
   return Array.isArray(value) ? value.join(", ") : String(value);
 }
 
-function renderClearFields(action) {
+function renderClearFields(item) {
+  const { action, meeting } = item;
   const spec = CLEAR_FIELDS[action.kind] ?? [];
   const bodyKey = CLEAR_BODY_FIELD[action.kind];
   const payload = action.payload ?? {};
   const parts = [];
 
   if (Array.isArray(action.missing) && action.missing.length > 0) {
+    const meetingHref = `/meetings/${encodeURIComponent(meeting.meetingId)}`;
     parts.push(
       `<div class="clear-missing"><p class="clear-missing-head">Still needed from you</p><ul>${action.missing
         .map((need) => `<li>${escapeHtml(need)}</li>`)
-        .join("")}</ul></div>`,
+        .join("")}</ul><a class="clear-missing-link" href="${escapeHtml(meetingHref)}">Fill this in on the meeting page</a></div>`,
     );
   }
 
@@ -128,17 +133,42 @@ function setStatus(message) {
   if (status) status.textContent = message ?? "";
 }
 
+/** True once every field the draft needs is filled in; a draft with something
+ * missing cannot be approved here (the server would only catch an email
+ * without a recipient) - it is fixed on the meeting page instead, where the
+ * tray lets the employee fill it in. */
+function isBlocked(action) {
+  return Array.isArray(action.missing) && action.missing.length > 0;
+}
+
 function setBusy(busy) {
-  for (const id of ["#clear-skip", "#clear-reject", "#clear-approve"]) {
+  for (const id of ["#clear-skip", "#clear-reject", "#clear-next"]) {
     const button = document.querySelector(id);
     if (button) button.disabled = busy;
   }
+  const approveBtn = document.querySelector("#clear-approve");
+  if (approveBtn) approveBtn.disabled = busy || isBlocked(currentItem()?.action ?? {});
+}
+
+/** Review, not yet decided: fields plus Skip / Reject / Approve. */
+function showReviewButtons() {
+  const skip = document.querySelector("#clear-skip");
+  const reject = document.querySelector("#clear-reject");
+  const approveBtn = document.querySelector("#clear-approve");
+  const next = document.querySelector("#clear-next");
+  if (skip) skip.hidden = false;
+  if (reject) reject.hidden = false;
+  if (approveBtn) approveBtn.hidden = false;
+  if (next) next.hidden = true;
+  const result = document.querySelector("#clear-result");
+  if (result) result.hidden = true;
 }
 
 function showCurrent() {
   const item = currentItem();
   if (!item) return finishClear();
   const { action } = item;
+  clearPhase = "review";
   const [kindLabel, icon] = (typeof HOME_KINDS !== "undefined" && HOME_KINDS[action.kind]) || ["Action", "check"];
   const iconEl = document.querySelector("#clear-icon");
   if (iconEl) {
@@ -150,11 +180,15 @@ function showCurrent() {
   const progressEl = document.querySelector("#clear-progress");
   if (progressEl) progressEl.textContent = `${clearIndex + 1} of ${clearQueue.length}`;
   const fieldsEl = document.querySelector("#clear-fields");
-  if (fieldsEl) fieldsEl.innerHTML = renderClearFields(action);
+  if (fieldsEl) fieldsEl.innerHTML = renderClearFields(item);
   const approveBtn = document.querySelector("#clear-approve");
-  if (approveBtn) approveBtn.textContent = approveLabel(action);
+  if (approveBtn) {
+    approveBtn.textContent = approveLabel(action);
+    approveBtn.title = isBlocked(action) ? "Fill this in on the meeting page first" : "";
+  }
 
   renderClearContext(item);
+  showReviewButtons();
   setStatus("");
   setBusy(false);
 }
@@ -169,32 +203,78 @@ function advance() {
 }
 
 function skipCurrent() {
-  if (!clearActive) return;
+  if (!clearActive || clearPhase !== "review") return;
   advance();
 }
 
-/** Opens what an approved action hands off to, the way the meeting tray does:
- * an email opens in the employee's own, already signed-in Gmail. */
-function openHandoff(action) {
-  const url = action.result?.handoffUrl;
-  if (!url) return;
-  if (action.kind === "hiring_request") {
-    try {
-      sessionStorage.setItem(
-        "assistant-handoff",
-        JSON.stringify({ message: `We need to hire: ${action.payload?.requirement ?? ""}.`, at: Date.now() }),
-      );
-    } catch (_) {
-      // Continuing in the assistant is a convenience; its absence does not block the handoff.
+/** After an approval, the result and how to finish it: an Open link to the
+ * handoff (the same URL and target/rel rules the meeting tray uses), or, for
+ * a kind the tray can only finish by copying a draft (handoffCopy), a link to
+ * the meeting page instead of reimplementing that copy here. The employee
+ * opens it themselves and then presses Next; nothing here opens a window,
+ * which browsers would block as a pop-up once the approve request has
+ * resolved. */
+function showApproved(item, updated) {
+  clearPhase = "resolved";
+  setStatus("");
+  setBusy(false);
+  const result = updated.result;
+
+  const skip = document.querySelector("#clear-skip");
+  const reject = document.querySelector("#clear-reject");
+  const approveBtn = document.querySelector("#clear-approve");
+  const next = document.querySelector("#clear-next");
+  if (skip) skip.hidden = true;
+  if (reject) reject.hidden = true;
+  if (approveBtn) approveBtn.hidden = true;
+  if (next) next.hidden = false;
+
+  const resultEl = document.querySelector("#clear-result");
+  const summaryEl = document.querySelector("#clear-result-summary");
+  if (summaryEl) summaryEl.textContent = result?.summary ?? "Approved.";
+  const openLink = document.querySelector("#clear-open");
+  if (openLink) {
+    if (result?.handoffUrl) {
+      const meetingHref = `/meetings/${encodeURIComponent(item.meeting.meetingId)}`;
+      const usesCopy = Boolean(result.handoffCopy);
+      const href = usesCopy ? meetingHref : result.handoffUrl;
+      const external = !usesCopy && !href.startsWith("/");
+      openLink.href = href;
+      openLink.textContent =
+        usesCopy ? "Continue in the meeting" : updated.kind === "hiring_request" ? "Continue in the assistant" : "Open";
+      if (external) {
+        openLink.setAttribute("target", "_blank");
+        openLink.setAttribute("rel", "noopener");
+      } else {
+        openLink.removeAttribute("target");
+        openLink.removeAttribute("rel");
+      }
+      openLink.onclick =
+        updated.kind === "hiring_request"
+          ? () => {
+              try {
+                sessionStorage.setItem(
+                  "assistant-handoff",
+                  JSON.stringify({ message: `We need to hire: ${updated.payload?.requirement ?? ""}.`, at: Date.now() }),
+                );
+              } catch (_) {
+                // Continuing in the assistant is a convenience; its absence does not block the handoff.
+              }
+            }
+          : null;
+      openLink.hidden = false;
+    } else {
+      openLink.hidden = true;
     }
   }
-  window.open(url, "_blank", url.startsWith("/") ? undefined : "noopener");
+  if (resultEl) resultEl.hidden = false;
 }
 
 async function approveCurrent() {
-  if (!clearActive) return;
+  if (!clearActive || clearPhase !== "review") return;
   const item = currentItem();
   if (!item) return;
+  if (isBlocked(item.action)) return;
   setBusy(true);
   setStatus("Approving…");
   try {
@@ -209,13 +289,12 @@ async function approveCurrent() {
     );
     const updated = await response.json();
     if (!response.ok) throw new Error(updated.message || "Could not approve this draft.");
-    if (updated.status === "executed" && updated.result?.handoffUrl) openHandoff(updated);
     if (updated.status === "failed") {
       setStatus(updated.error || "That draft could not be sent.");
       setBusy(false);
       return;
     }
-    advance();
+    showApproved(item, updated);
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "Could not approve this draft.");
     setBusy(false);
@@ -223,7 +302,7 @@ async function approveCurrent() {
 }
 
 async function rejectCurrent() {
-  if (!clearActive) return;
+  if (!clearActive || clearPhase !== "review") return;
   const item = currentItem();
   if (!item) return;
   setBusy(true);
@@ -298,6 +377,10 @@ function ensureMounted() {
         <button type="button" class="close-btn clear-close" id="clear-close" aria-label="Back to the page" title="Back to the page"></button>
       </div>
       <div class="clear-fields" id="clear-fields"></div>
+      <div class="clear-result" id="clear-result" hidden>
+        <p class="clear-result-summary" id="clear-result-summary"></p>
+        <a class="clear-open" id="clear-open" href="#" hidden></a>
+      </div>
       <p class="clear-status" id="clear-status" role="status" aria-live="polite"></p>
       <div class="clear-foot">
         <button type="button" class="clear-btn" id="clear-skip">Skip</button>
@@ -305,6 +388,7 @@ function ensureMounted() {
         <span class="clear-spacer"></span>
         <span class="clear-keys"><kbd>S</kbd><kbd>↵</kbd></span>
         <button type="button" class="clear-btn primary" id="clear-approve">Approve</button>
+        <button type="button" class="clear-btn primary" id="clear-next" hidden>Next</button>
       </div>`;
     page.appendChild(section);
   }
@@ -332,6 +416,9 @@ function ensureMounted() {
   document.querySelector("#clear-skip")?.addEventListener("click", skipCurrent);
   document.querySelector("#clear-reject")?.addEventListener("click", rejectCurrent);
   document.querySelector("#clear-approve")?.addEventListener("click", approveCurrent);
+  document.querySelector("#clear-next")?.addEventListener("click", () => {
+    if (clearPhase === "resolved") advance();
+  });
   const close = document.querySelector("#clear-close");
   if (close) {
     close.innerHTML = typeof lineIcon === "function" ? lineIcon("x", 15) : "";
@@ -361,6 +448,7 @@ document.addEventListener("keydown", (event) => {
     skipCurrent();
   } else if (event.key === "Enter") {
     event.preventDefault();
-    approveCurrent();
+    if (clearPhase === "resolved") advance();
+    else approveCurrent();
   }
 });

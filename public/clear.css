@@ -127,6 +127,38 @@
   padding-left: 18px;
 }
 
+.clear-missing-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-weight: 600;
+}
+
+.clear-result {
+  margin: 0 22px 10px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--mint);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.clear-result-summary {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--ink);
+}
+
+.clear-open {
+  align-self: flex-start;
+  font: 600 13px/1.4 var(--f-ui);
+  color: var(--accent);
+}
+
+.clear-open:hover {
+  color: var(--accent-strong);
+}
+
 .clear-status {
   margin: 0;
   padding: 0 22px;
