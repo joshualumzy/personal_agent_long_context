@@ -1,3 +1,5 @@
+import { HomeSummarizer } from "./home-summary.js";
+import { OpenAiCompatibleModel } from "./recruiting/llm.js";
 import { loadEnvFile } from "node:process";
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -160,8 +162,22 @@ const meetings = meetingsFromEnvironment(process.env, {
     : {}),
   log: (context, error) => logMeetingFailure(context, error),
 });
+// The line under the home's headline: a short job, so the model runs without its thinking phase.
+const homeSummarizer =
+  process.env.SOCLAAS_BASE_URL && process.env.SOCLAAS_API_KEY
+    ? new HomeSummarizer(
+        new OpenAiCompatibleModel({
+          baseUrl: process.env.SOCLAAS_BASE_URL,
+          apiKey: process.env.SOCLAAS_API_KEY,
+          model: process.env.HOME_SUMMARY_MODEL ?? process.env.SOCLAAS_COMPANY_MODEL ?? "qwen3.8:27b",
+          timeoutMs: 20_000,
+        }),
+      )
+    : undefined;
+
 const app = buildApp({
   sessionConfig,
+  ...(homeSummarizer ? { homeSummarizer } : {}),
   memory,
   companyAgent,
   companyAgents,

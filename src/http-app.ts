@@ -1,3 +1,4 @@
+import { readHomeItems, type HomeSummarizer } from "./home-summary.js";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,6 +71,8 @@ export interface BuildAppOptions extends ApplicationOptions {
    * are answered exactly as before and the graph stays at its last export.
    */
   emergentMemory?: EmergentMemory;
+  /** Writes the line under the home's headline. Omitted, the page keeps its own. */
+  homeSummarizer?: HomeSummarizer;
   /** Meeting actions (S2). Omitted, its routes are not registered. */
   meetings?: {
     service: MeetingActions;
@@ -1114,6 +1117,13 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       });
     }
     return reply.send({ enabled: true, ...options.emergentMemory.status() });
+  });
+
+  app.post("/api/v1/home/summary", async (request, reply) => {
+    const read = readHomeItems(request.body);
+    if ("error" in read) return reply.code(400).send({ message: read.error });
+    const sentence = options.homeSummarizer ? await options.homeSummarizer.summarize(read.name, read.items) : null;
+    return { sentence };
   });
 
   app.get("/api/v1/policy", async () => ({

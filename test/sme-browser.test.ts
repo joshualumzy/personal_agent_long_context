@@ -554,3 +554,39 @@ describe("SME Assistant evidence list", () => {
     assert.deepEqual(rows.map((row) => row.hidden), [false, false, false, false, false]);
   });
 });
+
+describe("SME Assistant home: the line under the headline", () => {
+  const twoMeetings = (summary: (body: string) => Response | undefined) => signedIn((url, init) => {
+    if (url === "/api/v1/home/summary") return summary(init?.body ?? "");
+    if (url === "/api/v1/meetings") {
+      return json([
+        { meetingId: "m1", title: NOC, status: "ended", startedAt: "2026-09-27T02:00:00.000Z", actionCount: 1 },
+        { meetingId: "m2", title: "Kafka backend sync", status: "ended", startedAt: "2026-09-26T02:00:00.000Z", actionCount: 1 },
+      ]);
+    }
+    if (url === "/api/v1/meetings/m1") return json({ meetingId: "m1", title: NOC, status: "ended", actions: [action("a1", "email_draft", "approval", "proposed", "Send follow-up to Owen")] });
+    if (url === "/api/v1/meetings/m2") return json({ meetingId: "m2", title: "Kafka backend sync", status: "ended", actions: [{ ...action("b1", "doc_draft", "approval", "proposed", "Update the runbook"), meetingId: "m2" }] });
+    return undefined;
+  });
+
+  test("reads the way a colleague would say it, when the model has written it", async () => {
+    let asked = "";
+    const page = await openSmePage({ respond: twoMeetings((body) => ((asked = body), json({ sentence: "Owen's follow-up is from the NOC call; the runbook change came out of the Kafka sync." }))) });
+    after(() => page.close());
+    await until(() => /Owen's follow-up/.test(page.document.querySelector("#home-summary")!.textContent!), "the model's line");
+    const sent = JSON.parse(asked) as { name: string; items: Array<{ title: string; meeting: string; part: string }> };
+    assert.equal(sent.name, "Jax");
+    assert.deepEqual(sent.items.map((item) => [item.part, item.title, item.meeting]), [
+      ["needs", "Send follow-up to Owen", NOC],
+      ["needs", "Update the runbook", "Kafka backend sync"],
+    ]);
+  });
+
+  test("keeps its own plain line when the model has nothing", async () => {
+    const page = await openSmePage({ respond: twoMeetings(() => json({ sentence: null })) });
+    after(() => page.close());
+    await until(() => page.requests.some((request) => request.url === "/api/v1/home/summary"), "the request for a line");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.equal(page.document.querySelector("#home-summary")!.textContent, "Both are drafts from 2 meetings.");
+  });
+});

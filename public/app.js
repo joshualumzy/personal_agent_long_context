@@ -2236,7 +2236,8 @@ function homeSummary(needs) {
   if (needs.length === 0) return "";
   const titles = [...new Set(needs.map((item) => item.meeting.title))];
   const from = titles.length === 1 ? `<mark>${escapeHtml(titles[0])}</mark>` : `${titles.length} meetings`;
-  return needs.length === 1 ? `A draft from ${from}.` : `All ${needs.length} are drafts from ${from}.`;
+  if (needs.length === 1) return `A draft from ${from}.`;
+  return needs.length === 2 ? `Both are drafts from ${from}.` : `All ${needs.length} are drafts from ${from}.`;
 }
 
 function renderHomeMeetings(meetings) {
@@ -2253,6 +2254,41 @@ function renderHomeMeetings(meetings) {
     return row;
   });
   group.querySelector(".rows").replaceChildren(...rows);
+}
+
+/** Swaps the plain line for one the model writes, the way a colleague would say
+ * it; kept for the session, so a revisit does not ask again. */
+async function askForHomeLine(asked, needs, waiting) {
+  if (needs.length === 0) return;
+  const items = [...needs.map((item) => ["needs", item]), ...waiting.map((item) => ["waiting", item])].map(([part, { action, meeting }]) => ({
+    part, kind: action.kind, title: taskTitle(action.title), meeting: meeting.title,
+  }));
+  const body = JSON.stringify({ name: currentUser?.displayName || "", items });
+  const key = `home-line:${body}`;
+  let sentence = null;
+  try {
+    sentence = sessionStorage.getItem(key);
+  } catch (_) {}
+  if (!sentence) {
+    try {
+      const response = await fetch("/api/v1/home/summary", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body,
+      });
+      if (response.ok) sentence = (await response.json()).sentence ?? null;
+    } catch (_) {
+      // The plain line stays.
+    }
+    if (sentence) {
+      try {
+        sessionStorage.setItem(key, sentence);
+      } catch (_) {}
+    }
+  }
+  const summary = document.querySelector("#home-summary");
+  if (sentence && summary && asked === homeRequest) summary.textContent = sentence;
 }
 
 async function loadHome() {
@@ -2299,6 +2335,7 @@ async function loadHome() {
   }
   const summary = document.querySelector("#home-summary");
   if (summary) summary.innerHTML = homeSummary(needs);
+  askForHomeLine(asked, needs, waiting);
   // Everything from one meeting: the headline names it, so the rows do not repeat it.
   const oneMeeting = new Set([...needs, ...waiting, ...done].map((item) => item.meeting.meetingId)).size <= 1;
   fillHomeGroup("#home-needs", needs, "needs", oneMeeting);
