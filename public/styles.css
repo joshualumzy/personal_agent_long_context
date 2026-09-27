@@ -1836,3 +1836,15 @@ button, input, textarea, select { font-family: inherit; }
   .pinned-panel { position: fixed; right: 0; top: 0; bottom: 0; z-index: 20; margin: 8px; height: auto; box-shadow: var(--shadow-float); }
 }
 .composer-toolbar { justify-content: flex-end; }
+
+/* Header actions in the shared theme: quiet white pills, not the old sand. */
+.pill-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--panel); color: var(--ink-2); border: 1px solid var(--line);
+  font-weight: 500; font-size: 12.5px; padding: 5px 12px;
+}
+.pill-btn:hover { background: var(--hover); border-color: var(--line); color: var(--ink); }
+.model-selector-btn { background: var(--panel); border-color: var(--line); font-size: 12.5px; padding: 5px 12px; }
+.model-selector-btn:hover { background: var(--hover); border-color: var(--line); }
+.model-dot-icon { background: var(--good); }
+.employee-badge { border: 0; padding: 0; background: none; box-shadow: none; }

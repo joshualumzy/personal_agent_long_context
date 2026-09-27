@@ -237,7 +237,7 @@ describe("Meetings page", () => {
     const links = [...page.document.querySelectorAll(".app-nav a")];
     assert.deepEqual(
       links.map((link) => link.getAttribute("href")),
-      ["/meetings", "/"],
+      ["/meetings", "/", "/graph"],
     );
     assert.equal(page.document.querySelector('.app-nav a[aria-current="page"]')?.getAttribute("href"), "/meetings");
     assert.ok(page.document.querySelector('link[href="/theme.css"]'));

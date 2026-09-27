@@ -94,7 +94,7 @@ describe("SME Assistant shell", () => {
     const links = [...page.document.querySelectorAll("#sidebar .app-nav a")];
     assert.deepEqual(
       links.map((link) => link.getAttribute("href")),
-      ["/meetings", "/"],
+      ["/meetings", "/", "/graph"],
     );
     assert.equal(page.document.querySelector('.app-nav a[aria-current="page"]')?.getAttribute("href"), "/");
     const sheets = [...page.document.querySelectorAll('link[rel="stylesheet"]')].map((link) => link.getAttribute("href"));
@@ -160,28 +160,19 @@ describe("SME Assistant conversational rendering", () => {
     assert.match(contextTags.textContent ?? "", /Working context referenced/);
   });
 
-  test("the graph entry sits beside Working Context and leads somewhere", async () => {
+  test("the graph entry sits with the other apps in the sidebar and leads somewhere", async () => {
     const app = buildApp({ memory: new DeterministicMemoryProvider() });
     try {
       const page = await app.inject({ method: "GET", url: "/" });
       const dom = new JSDOM(page.body);
       const document = dom.window.document;
 
-      const link = document.querySelector('a[href="/graph"]');
-      assert.ok(link, "the chat header should offer a way into the graph");
-      assert.match(link!.textContent!, /Graph/);
-
-      // In the same header row as the Working Context badge, and before it, so
-      // the two read as one set of controls.
-      const badge = document.querySelector(".employee-badge")!;
-      assert.equal(link!.parentElement, badge.parentElement);
-      assert.ok(
-        Boolean(
-          link!.compareDocumentPosition(badge) &
-            dom.window.Node.DOCUMENT_POSITION_FOLLOWING,
-        ),
-        "the graph link should come before Working Context",
-      );
+      // One way in from every page: the shared sidebar, next to Meetings and the assistant.
+      const links = document.querySelectorAll('a[href="/graph"]');
+      assert.equal(links.length, 1, "one way into the graph, not two");
+      const link = links[0]!;
+      assert.ok(link.closest("#sidebar .app-nav"), "the graph is one of the apps in the sidebar");
+      assert.match(link.textContent!, /Graph/);
 
       assert.equal((await app.inject({ method: "GET", url: "/graph" })).statusCode, 200);
       dom.window.close();

@@ -10,7 +10,7 @@ import { MemoryRoleRepository, RoleBoard } from "../src/recruiting/roles.js";
 // Switching between the three apps must not move the sidebar: the same
 // pieces sit at the same pixels on every page. jsdom has no layout, so this
 // measures in a real browser.
-const PAGES = ["/", "/meetings", "/recruiting"];
+const PAGES = ["/", "/meetings", "/recruiting", "/graph", "/graph/emergent"];
 
 const MEASURE = `(() => {
   const rect = (element) => {
@@ -78,7 +78,7 @@ describe("Shared shell layout", () => {
   test("puts the sidebar, the workspace name and the app links at the same pixels on every page", async () => {
     const [first, ...rest] = await Promise.all(PAGES.map(measure));
     assert.ok(first!.sidebar, "the assistant page has the shared sidebar");
-    assert.equal(first!.links.length, 2);
+    assert.equal(first!.links.length, 3);
     assert.ok(first!.user, "the signed-in person sits at the foot of the sidebar");
     rest.forEach((other, index) => {
       assert.deepEqual(other, first, `${PAGES[index + 1]} differs from /`);
@@ -86,12 +86,23 @@ describe("Shared shell layout", () => {
   });
 
   test("draws icons as line icons, never as emoji or check-mark characters", async () => {
-    const assets = ["/", "/app.js", "/meetings", "/meetings/app.js", "/recruiting", "/recruiting/app.js"];
+    const assets = [
+      "/", "/app.js", "/meetings", "/meetings/app.js", "/recruiting", "/recruiting/app.js",
+      "/graph", "/graph/app.js", "/graph/emergent", "/graph/emergent.js",
+    ];
     const iconLike = /[\p{Extended_Pictographic}\u2713\u2715\u2717]/u;
     for (const url of assets) {
       const body = (await app.inject({ method: "GET", url })).body;
       const hit = body.split("\n").find((line) => iconLike.test(line));
       assert.equal(hit, undefined, `${url} draws an icon with a character: ${hit?.trim()}`);
+    }
+  });
+
+  test("the company graph pages sit in the shell, with the graph as the current page", async () => {
+    for (const url of ["/graph", "/graph/emergent"]) {
+      const html = (await app.inject({ method: "GET", url })).body;
+      assert.match(html, /<link rel="stylesheet" href="\/theme.css">/, url);
+      assert.match(html, /<a href="\/graph" aria-current="page">/, url);
     }
   });
 });

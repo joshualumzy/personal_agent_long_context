@@ -1,34 +1,28 @@
-/* Tokens match recruiting.css so the two pages read as one product. */
+/* The shared theme (theme.css) with this page's own names pointed at it. */
 :root {
-  color-scheme: light;
-  --sky: #f5f2ea;
-  --sky-raised: #fffdf8;
-  --sky-high: #efebe1;
-  --line: #d8d4ca;
-  --text: #1d2530;
-  --muted: #66717e;
-  --faint: #a7aeb6;
-  --gold: #1f6d5f;
-  --aqua: #4f8f82;
-  --ochre: #b7862b;
-  /* Two more fills, so each of the five node kinds has its own. Chosen to sit
-     in the same muted range as the rest rather than shouting over them. */
-  --slate: #5b6b7c;
-  --indigo: #4a6fa5;
-  --danger: #9a382f;
+  --sky: var(--panel);
+  --sky-raised: var(--panel-2);
+  --sky-high: var(--hover);
+  --text: var(--ink);
+  --gold: var(--accent);
+  --aqua: #6d62dc;
+  --ochre: #b27c00;
+  /* Five node kinds, five fills in the theme's range: violet, lavender-grey, amber, blue, teal. */
+  --slate: #8a86a8;
+  --indigo: #3f7bd9;
+  --danger: var(--error-text);
   --on-accent: #ffffff;
-  --radius-control: 10px;
-  --radius-surface: 16px;
-  /* Edges stay quiet so the nodes and their labels carry the meaning. */
-  --edge: #90a4ae;
-  font-family: Inter, "PingFang SC", "Hiragino Sans GB", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --edge: #b9b5d0;
+  font-family: var(--f-ui);
   font-size: 14px;
   line-height: 1.5;
-  color: var(--text);
-  background: var(--sky);
+  color: var(--ink);
+  background: var(--bg);
 }
 
-body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; background: var(--sky); }
+body { margin: 0; height: 100vh; overflow: hidden; background: var(--bg); }
+.shell { height: 100vh; display: flex; }
+.main { flex: 1; display: flex; flex-direction: column; overflow-y: auto; }
 [hidden] { display: none !important; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 :focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
@@ -90,10 +84,10 @@ button, .quiet { font: inherit; cursor: pointer; }
   width: min(1320px, calc(100% - 32px)); margin: 0 auto; padding: 14px 0 6px;
 }
 h1 {
-  margin: 0; font-family: Georgia, "Songti SC", serif;
+  margin: 0; font-family: var(--f-display);
   font-size: clamp(1.35rem, 2vw, 1.85rem); font-weight: 500; line-height: 1.1;
 }
-h2 { margin: 0 0 8px; font-family: Georgia, "Songti SC", serif; font-size: 1.05rem; font-weight: 500; }
+h2 { margin: 0 0 8px; font-family: var(--f-display); font-size: 1.05rem; font-weight: 500; }
 .status-line { margin: 4px 0 0; color: var(--muted); }
 .top-actions { flex: none; display: flex; gap: 8px; align-items: center; }
 
@@ -239,4 +233,33 @@ td.kind { color: var(--muted); white-space: nowrap; }
 
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
+}
+
+/* ------------------------------------------------------------------
+   In the shared shell: the page fills the white sheet, controls are pills,
+   headings use the display face, and nothing sets its own page width. */
+.top { width: auto; margin: 0; padding: 14px 20px 10px; border-bottom: 1px solid var(--line-2); align-items: center; }
+h1 { font-weight: 700; letter-spacing: -0.02em; font-size: 1.35rem; }
+h2 { font-weight: 600; font-size: 13px; }
+.banner, .provenance { width: auto; margin: 10px 20px 0; }
+.controls { width: auto; margin: 12px 20px 0; background: var(--panel); }
+.board { width: auto; margin: 14px 20px 20px; }
+.picture, .table-view, .details { background: var(--panel); }
+.primary, .quiet, .view-tab, .detail-tab, .field select, .field input[type="text"], .ask input[type="search"] { border-radius: var(--radius-pill); }
+.primary { padding: 7px 16px; }
+.primary:hover { filter: none; background: var(--accent-strong); }
+.quiet { background: var(--panel); font-size: 12.5px; }
+.quiet:hover { background: var(--hover); border-color: var(--line); }
+.quiet.on, .view-tab.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.view-tab { background: var(--panel); font-size: 12.5px; }
+.example { color: var(--accent); }
+.banner.working { background: var(--warn-bg); color: var(--warn); }
+.node .shape { stroke: var(--panel); }
+.node.kind-cluster .caption { fill: var(--accent); }
+.details .neighbours button { color: var(--accent); }
+.detail-tab.on { border-color: var(--accent); color: var(--accent); }
+@media (max-width: 900px) {
+  body { height: auto; overflow: visible; }
+  .shell { display: block; height: auto; }
+  .main { margin: 0 8px 8px; }
 }
