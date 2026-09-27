@@ -40,6 +40,7 @@ import {
   type ModelDescriptor,
 } from "./model-registry.js";
 import { MemoryUpdateQueue } from "./memory-queue.js";
+import { resolveAsOf, type AsOf } from "./as-of.js";
 
 const DEFAULT_PERSONAS = [
   { employeeId: "jax", displayName: "Jax", role: "Backend Engineer", department: "Engineering_Backend", avatar: "👨‍💻" },
@@ -321,6 +322,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     request: FastifyRequest,
     reply: FastifyReply,
     requestedConversationId?: string,
+    requestedAsOf?: AsOf,
   ) => {
     const turnStartTime = Date.now();
     const isStream =
@@ -423,10 +425,18 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       let conversationId = requestedConversationId;
       // Recent turns let the agent follow up on its own questions ("replace the role?" "yes").
       let history: Array<{ role: "user" | "assistant"; content: string }> = [];
+      // The day a conversation looks from is set by its first turn and kept:
+      // an answer from 2026-01-06 followed by one from today would read as one
+      // story with a hole in it.
+      let asOf = requestedAsOf;
       if (options.conversationStore) {
         if (conversationId) {
           const existing = await options.conversationStore.get(conversationId, userId);
           isFirstTurn = (existing?.messages.length ?? 0) === 0;
+          if (existing && existing.messages.length > 0) {
+            const kept = existing.messages[0]?.metadata?.asOf;
+            asOf = typeof kept === "string" ? (kept as AsOf) : undefined;
+          }
           history = (existing?.messages ?? [])
             .slice(-HISTORY_TURNS)
             .map(({ role, content }) => ({ role, content: clipped(content) }));
@@ -445,6 +455,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           conversationId,
           role: "user",
           content: message,
+          ...(asOf ? { metadata: { asOf } } : {}),
         });
       }
 
@@ -455,7 +466,12 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       let memoryUnavailableReason: string | undefined;
       let memorySources: Array<{ sourceId: string; label: string }> = [];
 
-      if (typeof options.memory.getContext === "function") {
+      if (asOf) {
+        // Personal memory is written today, so it knows how things turned
+        // out. Standing on a past day it is neither read nor written.
+        memoryStatus = "unavailable";
+        memoryUnavailableReason = `Personal memory is not used while looking at ${asOf}.`;
+      } else if (typeof options.memory.getContext === "function") {
         try {
           const memCtx = await options.memory.getContext(userId);
           memoryStatus = memCtx.status;
@@ -517,7 +533,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
       // Start the update and company answer in parallel, serialized per employee
       let memoryUpdated = false;
-      if (typeof options.memory.processWorkingContext === "function") {
+      if (!asOf && typeof options.memory.processWorkingContext === "function") {
         memoryUpdateQueue.enqueue(userId, async () => {
           try {
             const res = await options.memory.processWorkingContext!({ userId, message, history });
@@ -536,6 +552,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
           question: message,
           ...(history.length ? { history, conversationHistory: history } : {}),
           ...(contextConsidered ? { personalMemory: contextConsidered } : {}),
+          ...(asOf ? { asOf } : {}),
         },
         isStream
           ? {
@@ -559,7 +576,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       // The answer is already settled, so extraction can happen afterwards. It
       // reads prose with a model and takes minutes; queueing it here is what
       // lets the emergent graph grow around the questions people actually ask.
-      options.emergentMemory?.enqueue(message);
+      if (!asOf) options.emergentMemory?.enqueue(message);
 
       let persistenceStatus: "saved" | "failed" = "saved";
       if (options.conversationStore && conversationId) {
@@ -585,6 +602,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
               model: modelUsed,
               provider: providerUsed,
               outcome,
+              ...(asOf ? { asOf } : {}),
             },
           })
           .catch((error: unknown) => {
@@ -633,6 +651,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         provider: providerUsed,
         outcome,
         persistenceStatus,
+        ...(asOf ? { asOf } : {}),
       };
 
       if (isStream) {
@@ -743,8 +762,84 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
         ? (body as Record<string, string>).conversationId.trim()
         : undefined;
 
-    return handleAgentTurn(userId, employeeId, message, request, reply, conversationId);
+    // A day to answer from. Checked before anything streams, so a bad one is
+    // a plain 400; a conversation that already has a day keeps its own.
+    let asOf: AsOf | undefined;
+    if (fields.asOf !== undefined && fields.asOf !== null && fields.asOf !== "") {
+      const resolved = await resolveRequestedDay(fields.asOf);
+      if (!resolved.ok) return reply.code(resolved.status).send({ error: "invalid_as_of", message: resolved.error });
+      asOf = resolved.day;
+    }
+
+    return handleAgentTurn(userId, employeeId, message, request, reply, conversationId, asOf);
   });
+
+  /**
+   * A requested day, checked against the planner's working days. Absent, the
+   * latest working day. 503 where there are no dates to choose from.
+   */
+  const resolveRequestedDay = async (
+    requested: unknown,
+  ): Promise<
+    | { ok: true; day: AsOf; requested: string; adjusted: boolean; first: string; last: string }
+    | { ok: false; status: 400 | 503; error: string }
+  > => {
+    const knowledge = options.companyKnowledge;
+    if (!knowledge?.workingDays || !knowledge.asOf) {
+      return { ok: false, status: 503, error: "Looking at a past day is not available here." };
+    }
+    const days = await knowledge.workingDays();
+    const first = days[0];
+    const last = days[days.length - 1];
+    if (!first || !last) return { ok: false, status: 503, error: "No working days are recorded." };
+    const resolved = resolveAsOf(requested === undefined ? last : requested, days);
+    if (!resolved.ok) return { ok: false, status: 400, error: resolved.error };
+    return { ...resolved, first, last };
+  };
+
+  /** The days a date can be chosen from, for the date picker. */
+  app.get("/api/v1/planner/days", async (request, reply) => {
+    const employee = await requireEmployee(request, reply);
+    if (!employee) return;
+    const knowledge = options.companyKnowledge;
+    if (!knowledge?.workingDays || !knowledge.asOf) {
+      return reply.code(503).send({ message: "Looking at a past day is not available here." });
+    }
+    const days = await knowledge.workingDays();
+    return reply.send({ days, first: days[0] ?? null, last: days.at(-1) ?? null });
+  });
+
+  /**
+   * The signed-in employee's own open tickets, or own day plan, as of a day.
+   * There is no person parameter: another employee's list cannot be asked for.
+   */
+  const plannerRoute = (kind: "todo" | "day") =>
+    async (request: FastifyRequest<{ Querystring: { asOf?: string } }>, reply: FastifyReply) => {
+      const employee = await requireEmployee(request, reply);
+      if (!employee) return;
+      const knowledge = options.companyKnowledge;
+      if (!knowledge?.todo || !knowledge.dayPlan) {
+        return reply.code(503).send({ message: "The planner is not configured." });
+      }
+      const requested = request.query.asOf?.trim() || undefined;
+      const resolved = await resolveRequestedDay(requested);
+      if (!resolved.ok) return reply.code(resolved.status).send({ error: "invalid_as_of", message: resolved.error });
+      const person = employee.displayName;
+      const base = {
+        asOf: resolved.day,
+        requested: resolved.requested,
+        adjusted: resolved.adjusted,
+        first: resolved.first,
+        last: resolved.last,
+        person,
+      };
+      if (kind === "todo") {
+        return reply.send({ ...base, items: await knowledge.todo(person, resolved.day) });
+      }
+      return reply.send({ ...base, entries: await knowledge.dayPlan(person, resolved.day) });
+    };
+  app.get("/api/v1/planner/todo", plannerRoute("todo"));
+  app.get("/api/v1/planner/day", plannerRoute("day"));
 
   app.get("/api/v1/auth/personas", async (_request, reply) => {
     try {

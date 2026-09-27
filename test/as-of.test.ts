@@ -147,6 +147,45 @@ describe("nothing after the chosen day comes back", { skip: databaseUrl ? false 
     assert.equal(view.graphView, undefined);
   });
 
+  test("the planner reads the projection for the signed-in person and day", async () => {
+    const day = (value: string) => {
+      const resolved = resolveAsOf(value, days);
+      assert.ok(resolved.ok);
+      return resolved.day;
+    };
+    // A plan is the day's dept_plan_created agenda, item for item, in order.
+    const plan = await knowledge.dayPlan("Jax", day("2026-01-15"));
+    const raw = (await knowledge.pool.query<{ description: string }>(
+      `SELECT a->>'description' AS description
+       FROM source_documents d, jsonb_array_elements(d.facts->'engineer_plans') WITH ORDINALITY e(p, pi),
+            jsonb_array_elements(e.p->'agenda') WITH ORDINALITY x(a, ai)
+       WHERE d.source_type = 'dept_plan_created' AND e.p->>'name' = 'Jax'
+         AND (d.occurred_at AT TIME ZONE 'UTC')::date = '2026-01-15'
+       ORDER BY d.source_id, pi, ai`,
+    )).rows.map((row) => row.description);
+    assert.ok(raw.length > 0);
+    assert.deepEqual(plan.map((entry) => entry.title), raw);
+
+    // ENG-107: in progress with Taylor on the 2nd, in review from the 5th.
+    const second = await knowledge.todo("Taylor", day("2026-01-02"));
+    assert.equal(second.find((item) => item.itemKey === "ENG-107")?.status, "In Progress");
+    const seventh = await knowledge.todo("Taylor", day("2026-01-07"));
+    assert.equal(seventh.find((item) => item.itemKey === "ENG-107")?.status, "In Review");
+    // Chloe raised it; it was never on her list, because Taylor had it by then.
+    assert.ok(!(await knowledge.todo("Chloe", day("2026-01-07"))).some((item) => item.itemKey === "ENG-107"));
+
+    // ORG-105 went from Morgan to Jax on 2026-02-17.
+    const before = await knowledge.todo("Jax", day("2026-02-16"));
+    const afterward = await knowledge.todo("Jax", day("2026-02-17"));
+    assert.ok(!before.some((item) => item.itemKey === "ORG-105"));
+    assert.equal(afterward.find((item) => item.itemKey === "ORG-105")?.relation, "assignee");
+
+    // The dated view cannot be asked about a later day.
+    const dated = knowledge.asOf(day("2026-01-02"));
+    const later = await dated.todo!("Taylor", day("2026-01-07"));
+    assert.equal(later.find((item) => item.itemKey === "ENG-107")?.status, "In Progress");
+  });
+
   test("without a date nothing changes", async () => {
     const undated = await knowledge.sources(["DD-ENG-112", "ENG-112"]);
     assert.deepEqual(undated.map((item) => item.sourceId).sort(), ["DD-ENG-112", "ENG-112"]);

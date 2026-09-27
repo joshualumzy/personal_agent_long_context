@@ -148,6 +148,40 @@ export interface GraphExpandRequest {
 }
 
 
+/**
+ * One ticket on someone's list as of a day, from the planner projection
+ * (work_item_state). Not Company Evidence: `sources` names the artifacts it is
+ * about, which is what an answer cites.
+ */
+export interface TodoItem {
+  itemKey: string;
+  title: string | null;
+  status: string;
+  /** "assignee": the corpus has them working on it. "reporter": they raised it
+   * and nobody has picked it up yet. */
+  relation: "assignee" | "reporter";
+  /** The day the ticket reached this status and assignee. */
+  since: string;
+  department: string | null;
+  points: number | null;
+  sprintNo: number | null;
+  reporter: string | null;
+  sources: string[];
+}
+
+/** One item of someone's plan for a day, in plan order (day_plan_entry). */
+export interface DayPlanEntry {
+  seq: number;
+  title: string;
+  activityType: string | null;
+  estHours: number | null;
+  collaborators: string[];
+  deferred: boolean;
+  deferReason: string | null;
+  itemKey: string | null;
+  sources: string[];
+}
+
 export interface CompanyKnowledge {
   employee(employeeId: string): Promise<EmployeeContext | null>;
   listEmployees?(): Promise<EmployeePersona[]>;
@@ -181,6 +215,11 @@ export interface CompanyKnowledge {
    * absent. Absent where dates are not supported.
    */
   asOf?(day: AsOf): CompanyKnowledge;
+  /** The open tickets on a person's list at the end of a day, by display
+   * name. Absent where there is no planner projection. */
+  todo?(person: string, day: AsOf): Promise<TodoItem[]>;
+  /** A person's plan for a day, by display name, in plan order. */
+  dayPlan?(person: string, day: AsOf): Promise<DayPlanEntry[]>;
   close?(): Promise<void>;
 }
 
@@ -197,6 +236,8 @@ export interface CompanyQuestion {
   conversationHistory?: ConversationTurnMessage[];
   /** The last few turns of this conversation, oldest first. */
   history?: ConversationTurnMessage[];
+  /** Answer as of the end of this working day: nothing after it is read. */
+  asOf?: AsOf;
 }
 
 export interface CompanyAnswer {

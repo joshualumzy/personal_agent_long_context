@@ -1,6 +1,8 @@
 import pg from "pg";
 import type {
   CompanyKnowledge,
+  DayPlanEntry,
+  TodoItem,
   EmployeeContext,
   EmployeePersona,
   Evidence,
@@ -1034,6 +1036,62 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
 
   private workingDaysCache: Promise<string[]> | undefined;
 
+  async todo(person: string, day: AsOf): Promise<TodoItem[]> {
+    const result = await this.pool.query<{
+      item_key: string; title: string | null; status: string; relation: "assignee" | "reporter";
+      since: string; department: string | null; points: number | null; sprint_no: number | null;
+      reporter: string | null; sources: string[];
+    }>(
+      `SELECT item_key, title, status, valid_from::text AS since, department, points, sprint_no,
+              reporter, sources,
+              CASE WHEN assignee = $1 THEN 'assignee' ELSE 'reporter' END AS relation
+       FROM work_item_state
+       WHERE valid_from <= $2::date AND (valid_to IS NULL OR valid_to > $2::date)
+         AND status <> 'Done'
+         AND (assignee = $1 OR (assignee IS NULL AND reporter = $1))
+       ORDER BY (assignee = $1) DESC,
+                CASE status WHEN 'In Progress' THEN 0 WHEN 'In Review' THEN 1 ELSE 2 END,
+                valid_from, item_key`,
+      [person, day],
+    );
+    return result.rows.map((row) => ({
+      itemKey: row.item_key,
+      title: row.title,
+      status: row.status,
+      relation: row.relation,
+      since: row.since,
+      department: row.department,
+      points: row.points,
+      sprintNo: row.sprint_no,
+      reporter: row.reporter,
+      sources: row.sources,
+    }));
+  }
+
+  async dayPlan(person: string, day: AsOf): Promise<DayPlanEntry[]> {
+    const result = await this.pool.query<{
+      seq: number; title: string; activity_type: string | null; est_hours: string | null;
+      collaborators: string[]; deferred: boolean; defer_reason: string | null;
+      item_key: string | null; sources: string[];
+    }>(
+      `SELECT seq, title, activity_type, est_hours, collaborators, deferred, defer_reason, item_key, sources
+       FROM day_plan_entry WHERE person = $1 AND day = $2::date ORDER BY seq`,
+      [person, day],
+    );
+    return result.rows.map((row) => ({
+      seq: row.seq,
+      title: row.title,
+      activityType: row.activity_type,
+      // numeric comes back as a string
+      estHours: row.est_hours === null ? null : Number(row.est_hours),
+      collaborators: row.collaborators,
+      deferred: row.deferred,
+      deferReason: row.defer_reason,
+      itemKey: row.item_key,
+      sources: row.sources,
+    }));
+  }
+
   /** This knowledge seen from the end of day D (see src/as-of.ts). */
   asOf(day: AsOf): CompanyKnowledge {
     return new DatedCompanyKnowledge(this, day);
@@ -1090,5 +1148,14 @@ export class DatedCompanyKnowledge implements CompanyKnowledge {
 
   workingDays(): Promise<string[]> {
     return this.knowledge.workingDays();
+  }
+
+  /** An earlier day may be looked back at; a later one is read as this one. */
+  todo(person: string, day: AsOf): Promise<TodoItem[]> {
+    return this.knowledge.todo(person, day > this.day ? this.day : day);
+  }
+
+  dayPlan(person: string, day: AsOf): Promise<DayPlanEntry[]> {
+    return this.knowledge.dayPlan(person, day > this.day ? this.day : day);
   }
 }
