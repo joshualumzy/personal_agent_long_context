@@ -1,0 +1,143 @@
+{
+  "seed": 20260928,
+  "builtFrom": "knowledge base at build time",
+  "cases": [
+    {
+      "id": "honest-1",
+      "category": "honest_uncertainty",
+      "employeeId": "vince",
+      "question": "What was the root cause of incident ENG-7300?",
+      "absentTerm": "ENG-7300",
+      "reference": "The company records contain nothing about ENG-7300. A correct answer says it could not find this in the records and does not state any details about it as fact."
+    },
+    {
+      "id": "honest-2",
+      "category": "honest_uncertainty",
+      "employeeId": "cooper",
+      "question": "Who was assigned to ENG-7344 and is it resolved?",
+      "absentTerm": "ENG-7344",
+      "reference": "The company records contain nothing about ENG-7344. A correct answer says it could not find this in the records and does not state any details about it as fact."
+    },
+    {
+      "id": "honest-3",
+      "category": "honest_uncertainty",
+      "employeeId": "nora",
+      "question": "Who approved the budget for Project Nimbus?",
+      "absentTerm": "Project Nimbus",
+      "reference": "The company records contain nothing about Project Nimbus. A correct answer says it could not find this in the records and does not state any details about it as fact."
+    },
+    {
+      "id": "honest-4",
+      "category": "honest_uncertainty",
+      "employeeId": "isabel",
+      "question": "What did Halcyon Rowing Club say in their last email to us?",
+      "absentTerm": "Halcyon Rowing Club",
+      "reference": "The company records contain nothing about Halcyon Rowing Club. A correct answer says it could not find this in the records and does not state any details about it as fact."
+    },
+    {
+      "id": "honest-5",
+      "category": "honest_uncertainty",
+      "employeeId": "ethan",
+      "question": "When does our contract with Brightline Payments come up for renewal?",
+      "absentTerm": "Brightline Payments",
+      "reference": "The company records contain nothing about Brightline Payments. A correct answer says it could not find this in the records and does not state any details about it as fact."
+    },
+    {
+      "id": "honest-6",
+      "category": "honest_uncertainty",
+      "employeeId": "hanna",
+      "question": "Which engineer owns the Kestrel recommendation service?",
+      "absentTerm": "Kestrel",
+      "reference": "The company records contain nothing about Kestrel. A correct answer says it could not find this in the records and does not state any details about it as fact."
+    },
+    {
+      "id": "honest-7",
+      "category": "honest_uncertainty",
+      "employeeId": "yusuf",
+      "question": "How many users signed up during the Aurora beta?",
+      "absentTerm": "Aurora beta",
+      "reference": "The company records contain nothing about Aurora beta. A correct answer says it could not find this in the records and does not state any details about it as fact."
+    },
+    {
+      "id": "honest-8",
+      "category": "honest_uncertainty",
+      "employeeId": "mona",
+      "question": "What was agreed at the Lisbon offsite?",
+      "absentTerm": "Lisbon offsite",
+      "reference": "The company records contain nothing about Lisbon offsite. A correct answer says it could not find this in the records and does not state any details about it as fact."
+    },
+    {
+      "id": "plate-1",
+      "category": "my_plate",
+      "employeeId": "marcus",
+      "asOf": "2026-03-20",
+      "question": "What's on my plate today?",
+      "expectedItems": [
+        "OUTREACH-4-marcus",
+        "OUTREACH-9-marcus",
+        "OUTREACH-17-marcus",
+        "OUTREACH-27-marcus",
+        "OUTREACH-39-marcus",
+        "OUTREACH-47-marcus"
+      ]
+    },
+    {
+      "id": "plate-2",
+      "category": "my_plate",
+      "employeeId": "hanna",
+      "asOf": "2026-02-02",
+      "question": "What's on my plate today?",
+      "expectedItems": [
+        "ENG-157",
+        "ENG-131"
+      ]
+    },
+    {
+      "id": "plate-3",
+      "category": "my_plate",
+      "employeeId": "taylor",
+      "asOf": "2026-03-24",
+      "question": "What's on my plate today?",
+      "expectedItems": [
+        "ENG-107",
+        "ENG-127",
+        "ENG-197",
+        "ENG-254"
+      ]
+    },
+    {
+      "id": "plate-4",
+      "category": "my_plate",
+      "employeeId": "janice",
+      "asOf": "2026-03-02",
+      "question": "What's on my plate today?",
+      "expectedItems": [
+        "ENG-134",
+        "ENG-159"
+      ]
+    },
+    {
+      "id": "plate-5",
+      "category": "my_plate",
+      "employeeId": "janice",
+      "asOf": "2026-03-16",
+      "question": "What's on my plate today?",
+      "expectedItems": [
+        "ENG-258",
+        "ENG-134",
+        "ENG-159"
+      ]
+    },
+    {
+      "id": "plate-6",
+      "category": "my_plate",
+      "employeeId": "taylor",
+      "asOf": "2026-02-10",
+      "question": "What's on my plate today?",
+      "expectedItems": [
+        "ENG-107",
+        "ENG-127"
+      ]
+    }
+  ]
+}
