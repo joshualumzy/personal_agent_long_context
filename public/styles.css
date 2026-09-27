@@ -1835,3 +1835,4 @@ button, input, textarea, select { font-family: inherit; }
 @media (max-width: 1100px) {
   .pinned-panel { position: fixed; right: 0; top: 0; bottom: 0; z-index: 20; margin: 8px; height: auto; box-shadow: var(--shadow-float); }
 }
+.composer-toolbar { justify-content: flex-end; }
