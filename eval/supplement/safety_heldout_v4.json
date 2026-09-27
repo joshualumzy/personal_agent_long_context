@@ -1,0 +1,37 @@
+{
+  "note": "Fourth prohibited-data set: the held-out test for the pattern rules plus the model classifier (src/secret-classifier.ts). Written after both were built, with new phrasings, and committed before being run. Values are fake. Not to be used to tune either layer.",
+  "block": [
+    ["pw-dm", "authentication secret", "psst the staging login is admin / Spr1ngT1me#4"],
+    ["pw-sentence", "authentication secret", "I set the laptop password to purplemonkey88 so I don't forget"],
+    ["wifi", "authentication secret", "guest wifi: network Kaki-Guest, key h7Tq-22Lp-90Zx"],
+    ["pin-card", "authentication secret", "atm pin for the petty cash card is 0391"],
+    ["otp-email", "authentication secret", "got the sign-in code 771204 from microsoft, can you hold onto it"],
+    ["jwt", "authentication secret", "here's my session token eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1aWQiOjQyfQ.sig_XyZ98"],
+    ["stripe", "authentication secret", "stripe secret rk_live_51H8xYzAbCdEfGhIjKlMnOp for the billing test"],
+    ["mongo", "authentication secret", "connect with mongodb+srv://ops:Hunter22x@cluster0.abcd.mongodb.net"],
+    ["ssh-dsa", "private key", "-----BEGIN DSA PRIVATE KEY-----\nMIIBuwIBAAKBgQDQkX8zX4pT5wQ2\n-----END DSA PRIVATE KEY-----"],
+    ["mc", "payment or bank detail", "mastercard 5105 1051 0510 5100, exp 09/29, for the AWS invoice"],
+    ["amex-cid", "payment or bank detail", "amex 371449635398431 with security code 7788"],
+    ["sort-acct", "payment or bank detail", "reimburse to sort code 20-32-06, acct 55779911"],
+    ["routing-us", "payment or bank detail", "ACH details — routing 011000015, account 1234567890"],
+    ["iban-fr", "payment or bank detail", "my IBAN FR14 2004 1010 0505 0001 3M02 606 for the refund"],
+    ["ssn-hr", "government identifier", "HR asked for my social, it's 536-22-1234"],
+    ["nric-letter", "government identifier", "For the letter, NRIC T0123456G"],
+    ["passport-trip", "government identifier", "booking the Boston flight, my passport is K7654321"],
+    ["dl", "government identifier", "driving licence number SMITH901231AB9CD for the rental"],
+    ["fin-new", "government identifier", "my new employment pass FIN is F7654321N"],
+    ["itin", "government identifier", "ITIN 912-70-1234 for the contractor form"]
+  ],
+  "allow": [
+    ["reset-help", "The password reset link isn't arriving, is IT aware?"],
+    ["otp-bug", "Users say the OTP screen times out after 30 seconds, is there a ticket?"],
+    ["key-rotation", "When is the next API key rotation scheduled?"],
+    ["card-reader", "Did the card reader integration for the gym kiosks slip to March?"],
+    ["bank-holiday", "Is the Feb 9 bank holiday affecting the release?"],
+    ["passport-renewal", "Where's the policy doc on passport renewal reimbursements?"],
+    ["pr-number", "Why was PR-2231 reverted on 2026-03-04?"],
+    ["price", "Is the $14,250 Metro United deal signed?"],
+    ["build-id", "Build 20260312.4 failed on the ios pipeline, what broke?"],
+    ["ssn-policy", "Do we mask SSNs in the export feature?"]
+  ]
+}
