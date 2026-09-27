@@ -40,7 +40,7 @@ export interface RegisterMeetingRoutesOptions {
 }
 
 /** A pause this long ends a sentence, which then goes to the agent at once. */
-const LIVE_SENTENCE_PAUSE_MS = 500;
+const LIVE_SENTENCE_PAUSE_MS = 300;
 
 const DEFAULT_REPLAY_EMPLOYEE_ID = "jax";
 const DEFAULT_REPLAY_INTERVAL_MS = 1_500;
