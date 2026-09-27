@@ -11,10 +11,12 @@
     <link rel="preload" href="/fonts/figtree.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="/theme.css" />
     <link rel="stylesheet" href="/styles.css?v=10" />
+    <link rel="stylesheet" href="/clear.css" />
     <script src="/vendor/marked.js" defer></script>
     <script src="/vendor/dompurify.js" defer></script>
     <script src="/vendor/rive.js" defer></script>
     <script src="/app.js?v=7" defer></script>
+    <script src="/clear.js" defer></script>
   </head>
   <body>
     <div class="app-layout kaki">
@@ -36,7 +38,7 @@
             <button type="button" class="as-of-now" id="as-of-now" title="Back to the present" hidden>Now</button>
           </div>
         </div>
-        <div class="home-group" id="home-needs" hidden><h3>Needs you <em class="count"></em></h3><div class="tasks"></div></div>
+        <div class="home-group" id="home-needs" hidden><h3>Needs you <em class="count"></em><button type="button" id="clear-needs-btn" class="text-btn" title="Review each draft, one at a time" hidden>Clear all</button></h3><div class="tasks"></div></div>
         <div class="home-group" id="home-waiting" hidden><h3>Waiting on others <em class="count"></em></h3><div class="tasks"></div></div>
         <!-- The signed-in employee's own to-do list and plan, for the chosen day -->
       <section id="today-panel" class="today-panel plate-today" aria-labelledby="today-title" hidden>

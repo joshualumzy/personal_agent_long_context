@@ -2743,6 +2743,8 @@ async function loadHome() {
   fillHomeGroup("#home-needs", needs, "needs", oneMeeting);
   fillHomeGroup("#home-waiting", waiting, "waiting", oneMeeting);
   fillHomeGroup("#home-done", done.slice(0, 5), "done", oneMeeting);
+  // Hook for public/clear.js: the drafts that need approval, freshly gathered.
+  document.dispatchEvent(new CustomEvent("kaki:home-needs", { detail: { needs } }));
 }
 
 /**
