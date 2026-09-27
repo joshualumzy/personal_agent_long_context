@@ -804,11 +804,23 @@ export class GatewayCompanyAgent {
               authorization: `Bearer ${this.options.apiKey}`,
               "content-type": "application/json",
             },
+            // On the last step the tools are left out entirely. Offered with
+            // tool_choice "none", the model still tried to search, the call was
+            // stripped, and the turn came back empty ("\n") about half the time.
+            // The nudge is a system message so the user's question stays the
+            // latest user turn, which sets the reply language.
             body: JSON.stringify({
               model: this.model,
-              messages,
-              tools: offeredTools(),
-              tool_choice: mustAnswer ? "none" : step === 0 ? "required" : "auto",
+              messages: mustAnswer
+                ? [
+                    ...messages,
+                    {
+                      role: "system",
+                      content: "No more searches are available. Write the final answer now from the evidence gathered above.",
+                    },
+                  ]
+                : messages,
+              ...(mustAnswer ? {} : { tools: offeredTools(), tool_choice: step === 0 ? "required" : "auto" }),
               ...this.noThinking,
               max_tokens: 1800,
               ...(isStreaming ? { stream: true } : {}),
@@ -948,11 +960,11 @@ export class GatewayCompanyAgent {
                 authorization: `Bearer ${this.options.apiKey}`,
                 "content-type": "application/json",
               },
+              // No tools on a revision: offered with tool_choice "none", the model
+              // can still try one, and the stripped call leaves an empty turn.
               body: JSON.stringify({
                 model: this.model,
                 messages,
-                tools: offeredTools(),
-                tool_choice: "none",
                 ...this.noThinking,
                 max_tokens: 1800,
               }),
@@ -1015,7 +1027,7 @@ export class GatewayCompanyAgent {
                 const again = await this.request(`${this.baseUrl}/chat/completions`, {
                   method: "POST",
                   headers: { authorization: `Bearer ${this.options.apiKey}`, "content-type": "application/json" },
-                  body: JSON.stringify({ model: this.model, messages, tools: offeredTools(), tool_choice: "none", ...this.noThinking, max_tokens: 1800 }),
+                  body: JSON.stringify({ model: this.model, messages, ...this.noThinking, max_tokens: 1800 }),
                 });
                 if (!again.ok) {
                   await again.body?.cancel().catch(() => undefined);

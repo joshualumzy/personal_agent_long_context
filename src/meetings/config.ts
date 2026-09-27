@@ -49,6 +49,8 @@ export interface MeetingDependencies {
   knowledge: CompanyKnowledge;
   /** S1, for questions asked during the meeting. */
   answerer?: QuestionAnswerer;
+  /** Follows each quick answer with a deeper one on the same card. */
+  deepAnswerer?: QuestionAnswerer;
   /** The employee's mailbox, read-only, for finding a person's address a draft needs. */
   contacts?: ContactDirectory | null;
   /** The employee's calendar free/busy, read-only, for checking invites. */
@@ -80,6 +82,7 @@ export function meetingsFromEnvironment(environment: Environment, deps: MeetingD
   // seconds for a whole meeting, with the same actions found.
   const model: JsonModel = { json: (request) => base.json({ ...request, fast: true }) };
   const service = new MeetingService({
+    ...(deps.deepAnswerer ? { deepAnswerer: deps.deepAnswerer } : {}),
     store: new PostgresMeetingStore(deps.pool),
     extractor: new ModelCommitmentExtractor(model),
     drafter: new ActionDrafter({

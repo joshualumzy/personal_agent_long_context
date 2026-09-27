@@ -22,6 +22,8 @@ import type { RoleBoard } from "./recruiting/roles.js";
 import type { MeetingActions } from "./meetings/domain.js";
 import { replayTranscript, type ReplaySource } from "./meetings/replay.js";
 import { registerMeetingRoutes, type GoogleStatus } from "./meetings/routes.js";
+import type { Transcribe } from "./meetings/speech.js";
+import type { LiveAsrConfig } from "./meetings/doubao.js";
 import type { RecruitingService } from "./recruiting/service.js";
 import {
   EmployeeIdentity,
@@ -62,7 +64,13 @@ export interface BuildAppOptions extends ApplicationOptions {
   /** The recruiting direction (S3). Omitted, its routes are not registered. */
   recruiting?: { board: RoleBoard; gmail: GmailClient | null };
   /** Meeting actions (S2). Omitted, its routes are not registered. */
-  meetings?: { service: MeetingActions; replays?: ReplaySource; googleStatus?: () => Promise<GoogleStatus> };
+  meetings?: {
+    service: MeetingActions;
+    replays?: ReplaySource;
+    googleStatus?: () => Promise<GoogleStatus>;
+    transcribe?: Transcribe;
+    liveAsr?: LiveAsrConfig;
+  };
 }
 
 const publicDirectory = fileURLToPath(new URL("../public/", import.meta.url));
@@ -1057,9 +1065,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   }
 
   if (options.meetings) {
-    const { service, replays, googleStatus } = options.meetings;
+    const { service, replays, googleStatus, transcribe, liveAsr } = options.meetings;
     registerMeetingRoutes(app, service, {
       ...(googleStatus ? { googleStatus } : {}),
+      ...(transcribe ? { transcribe } : {}),
+      ...(liveAsr ? { liveAsr } : {}),
       ...(replays
         ? {
             listReplays: () => replays.list(),
@@ -1079,6 +1089,9 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     app.get("/meetings/", async (_request, reply) => reply.redirect("/meetings", 301));
     app.get("/meetings/app.js", serve("meetings.js", "text/javascript; charset=utf-8"));
     app.get("/meetings/styles.css", serve("meetings.css", "text/css; charset=utf-8"));
+    // Checks whether screen sharing hands this page system audio; open it in two tabs to test sharing twice.
+    app.get("/meetings/share-test", serve("share-test.html", "text/html; charset=utf-8"));
+    app.get("/meetings/share-test.js", serve("share-test.js", "text/javascript; charset=utf-8"));
   }
 
   app.addHook("onClose", async () => {
