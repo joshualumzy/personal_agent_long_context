@@ -58,7 +58,10 @@ export function parseGraphNodeId(id: string): { type?: GraphNodeType; refKey: st
 export interface GraphNode {
   id: string;
   refKey: string;
-  type: GraphNodeType;
+  /** A stored node's type, or one of two the query API makes up: 'query',
+   * the question a query graph is centred on, and 'cluster', the neighbours
+   * of one category an expansion folded away (see graph-neighbourhood.ts). */
+  type: GraphNodeType | "query" | "cluster";
   subtype?: string;
   label: string;
   sourceType?: string;
@@ -88,6 +91,37 @@ export interface GraphSlice {
   edges: GraphEdge[];
   /** Set when the slice hit its node cap, so the view can say so. */
   truncated: boolean;
+  /** The node the slice is about — a query graph's question, an expansion's
+   * parent — so the view knows what to put in the middle. */
+  centre?: string;
+  /** The evidence a query graph's seeds were found from. */
+  evidence?: Evidence[];
+}
+
+/** A query graph: the question, and the graph nodes its evidence and its own
+ * words point at. */
+export interface GraphQueryRequest {
+  query: string;
+  /** Keep only seeds of these categories (see GRAPH_CATEGORIES). */
+  categories?: string[];
+  /** How many seeds at most. */
+  seeds?: number;
+}
+
+/** One node's neighbourhood, or the next page of a cluster's. */
+export interface GraphExpandRequest {
+  /** A node id (`type:refKey`) or a cluster id from an earlier expansion. */
+  id: string;
+  categories?: string[];
+  /** How many neighbours per category before the rest are folded. */
+  budget?: number;
+  /** For a cluster id: how many of its category are already drawn — the
+   * `offset` its cluster node carries in props — so the next page starts
+   * after them. */
+  offset?: number;
+  /** Include the 420 daily department-plan events, left out by default: a
+   * person is on one every day, and they would bury everything else. */
+  includePlans?: boolean;
 }
 
 /** How to choose a slice: a causal chain from one document, or a filter. */
@@ -141,6 +175,11 @@ export interface CompanyKnowledge {
    * without the graph tables omits it.
    */
   graphSlice?(request: GraphSliceRequest): Promise<GraphSlice>;
+  /** A question's graph: a centre node for the question, linked to the nodes
+   * its evidence and its words point at. */
+  graphQuery?(request: GraphQueryRequest): Promise<GraphSlice>;
+  /** One node's neighbourhood, by category, ranked and budgeted. */
+  graphExpand?(request: GraphExpandRequest): Promise<GraphSlice>;
   close?(): Promise<void>;
 }
 

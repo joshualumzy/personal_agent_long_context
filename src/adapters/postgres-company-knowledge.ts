@@ -8,7 +8,17 @@ import type {
   GraphSlice,
   GraphSliceRequest,
   GraphNodeType,
+  GraphExpandRequest,
+  GraphQueryRequest,
 } from "../company-domain.js";
+import {
+  budgetNeighbours,
+  categoryOf,
+  isGraphCategory,
+  parseClusterId,
+  type GraphCategory,
+  type NeighbourCandidate,
+} from "../graph-neighbourhood.js";
 import { GRAPH_NODE_TYPES, graphNodeId, parseGraphNodeId } from "../company-domain.js";
 import type { EmbeddingProvider } from "../embeddings.js";
 import { pgVector } from "../embeddings.js";
@@ -53,6 +63,28 @@ function graphNode(row: GraphNodeRow): GraphNode {
     ...(row.props ? { props: row.props } : {}),
   };
 }
+
+
+/** The daily department-plan events: a person is on one every day, so they
+ * would bury everything else in an expansion or a query. Left out unless
+ * asked for. */
+const PLAN_SUBTYPES = ["dept_plan_created"];
+
+/** How much each evidence route says a node is what the evidence is about
+ * (evidence_nodes.via). The evidence being the node itself says the most; a
+ * person merely named in it says the least. */
+const VIA_WEIGHT: Record<string, number> = {
+  self: 1,
+  thread: 0.9,
+  event: 0.8,
+  link: 0.8,
+  organization: 0.6,
+  department: 0.15,
+  person: 0.15,
+};
+
+/** A node named outright in the question outranks anything evidence adds up to. */
+const NAMED_SCORE = 5;
 
 type EvidenceRow = {
   source_id: string;
@@ -485,6 +517,284 @@ export class PostgresCompanyKnowledge implements CompanyKnowledge {
       target: graphNodeId(wireNodeType(row.target_type), row.target_key),
       type: row.edge_type,
     }));
+  }
+
+  // -------------------------------------------------------------------------
+  // Query graph
+  // -------------------------------------------------------------------------
+
+  /**
+   * A question's graph: a centre node standing for the question, linked to the
+   * graph nodes the question points at. Two ways a node is pointed at:
+   *
+   *  - its name is in the question ("TitanDB", "Jax", "Metro United FC"),
+   *    which is the strongest signal there is;
+   *  - the question's evidence belongs to it. Most evidence is a slack
+   *    message or an email, which is not a node; evidence_nodes (built with
+   *    the graph) says which ticket, incident, page, customer, department or
+   *    person each piece belongs to, and by which route. A ticket the
+   *    evidence is about outranks a person it merely names.
+   *
+   * Only the centre and its seeds are returned, with the edges among them:
+   * everything further is a click away (graphExpand), so the first picture
+   * stays readable.
+   */
+  async graphQuery(request: GraphQueryRequest): Promise<GraphSlice> {
+    const query = request.query.trim();
+    const maxSeeds = Math.min(Math.max(request.seeds ?? 8, 1), 16);
+    const categories = (request.categories ?? []).filter(isGraphCategory);
+
+    let evidence = await this.search(query, 10);
+    if (evidence.length < 3) {
+      // Keyword search needs every term; a question rarely has them all in one
+      // chunk. Accepting any term recovers it, at some cost in precision that
+      // the scoring below absorbs.
+      const loose = await this.anyTermSearch(query, 10);
+      const seen = new Set(evidence.map((item) => item.sourceId));
+      evidence = [...evidence, ...loose.filter((item) => !seen.has(item.sourceId))].slice(0, 10);
+    }
+
+    const scores = new Map<string, number>();
+    const add = (nodeId: string, score: number) =>
+      scores.set(nodeId, (scores.get(nodeId) ?? 0) + score);
+
+    for (const row of await this.nodesNamedIn(query)) add(row.node_id, NAMED_SCORE);
+
+    if (evidence.length > 0) {
+      const routes = await this.pool.query<{ source_id: string; node_id: string; via: string }>(
+        `SELECT e.source_id, e.node_id::text AS node_id, e.via
+         FROM evidence_nodes e
+         JOIN graph_nodes n ON n.node_id = e.node_id
+         WHERE e.source_id = ANY($1::text[])
+           AND NOT (n.node_type = 'event' AND n.node_subtype = ANY($2::text[]))`,
+        [evidence.map((item) => item.sourceId), PLAN_SUBTYPES],
+      );
+      const rank = new Map(evidence.map((item, index) => [item.sourceId, index]));
+      // Evidence that is itself a node counts as that node and nothing else:
+      // its other routes (the event that created a page, the people on a
+      // ticket) restate it, and only crowd it out of the seats.
+      const isNode = new Set(
+        routes.rows.filter((route) => route.via === "self").map((route) => route.source_id),
+      );
+      for (const route of routes.rows) {
+        if (isNode.has(route.source_id) && route.via !== "self") continue;
+        const position = rank.get(route.source_id) ?? evidence.length;
+        add(route.node_id, (VIA_WEIGHT[route.via] ?? 0.1) / (position + 1));
+      }
+    }
+
+    const candidates = await this.rowsByNodeId([...scores.keys()]);
+    const ranked = candidates
+      .map((row) => ({ row, node: graphNode(row), score: scores.get(row.node_id) ?? 0 }))
+      .filter(({ node }) => {
+        const category = categoryOf(node);
+        return category !== null && (categories.length === 0 || categories.includes(category));
+      })
+      .sort((left, right) => right.score - left.score || left.node.label.localeCompare(right.node.label));
+
+    // No single category may take every seat: a question about an incident
+    // names a dozen people in its evidence, and they should not crowd out the
+    // incident, its ticket and its domain.
+    const perCategory = Math.max(2, Math.ceil(maxSeeds / 2));
+    const taken = new Map<string, number>();
+    const seeds: typeof ranked = [];
+    for (const candidate of ranked) {
+      if (seeds.length >= maxSeeds) break;
+      const category = categoryOf(candidate.node)!;
+      // People are named on almost everything, so they add up; three is
+      // enough to say who was around without hiding what happened.
+      const cap = category === "people" ? Math.min(3, perCategory) : perCategory;
+      if ((taken.get(category) ?? 0) >= cap) continue;
+      taken.set(category, (taken.get(category) ?? 0) + 1);
+      seeds.push(candidate);
+    }
+
+    const centre: GraphNode = {
+      id: `query:${query}`,
+      refKey: query,
+      type: "query",
+      label: query,
+    };
+    if (seeds.length === 0) {
+      return { nodes: [centre], edges: [], truncated: false, centre: centre.id, evidence };
+    }
+
+    const inner = await this.edgesWithin(seeds.map(({ row }) => row.node_id));
+    return {
+      nodes: [centre, ...seeds.map(({ node, score }) => ({
+        ...node,
+        props: { ...(node.props ?? {}), match_score: Number(score.toFixed(3)) },
+      }))],
+      edges: [
+        ...seeds.map(({ node }) => ({ source: centre.id, target: node.id, type: "matches" })),
+        ...inner,
+      ],
+      truncated: ranked.length > seeds.length,
+      centre: centre.id,
+      evidence,
+    };
+  }
+
+  /**
+   * One node's neighbourhood along every edge type, in both directions —
+   * unlike the causal-chain slice, which follows only outgoing 'produced'
+   * edges and so found nothing new from a person, a ticket or a domain.
+   * Ranked and budgeted per category by budgetNeighbours; what does not fit is
+   * folded into cluster nodes. Expanding a cluster id returns the next page of
+   * that category.
+   */
+  async graphExpand(request: GraphExpandRequest): Promise<GraphSlice> {
+    const budget = Math.min(Math.max(request.budget ?? 6, 1), 40);
+    const cluster = parseClusterId(request.id);
+    const parentId = cluster ? cluster.parentId : request.id;
+    const categories: GraphCategory[] = cluster
+      ? [cluster.category]
+      : (request.categories ?? []).filter(isGraphCategory);
+    // A cluster's next page is bigger: the reader asked for this category.
+    const pageBudget = cluster ? Math.max(budget, 20) : budget;
+    // Only a cluster pages: its node carried how far the previous page reached.
+    const offset = cluster ? Math.max(request.offset ?? 0, 0) : 0;
+
+    const { type, refKey } = parseGraphNodeId(parentId);
+    const parentRows = await this.pool.query<GraphNodeRow>(
+      `SELECT node_id::text AS node_id, ref_key, node_type, node_subtype, label, props
+       FROM graph_nodes WHERE ref_key = $1 AND ($2::text IS NULL OR node_type = $2)
+       ORDER BY node_type LIMIT 1`,
+      [refKey, type ?? null],
+    );
+    const parentRow = parentRows.rows[0];
+    if (!parentRow) return { nodes: [], edges: [], truncated: false };
+    const parent = graphNode(parentRow);
+
+    const candidates = await this.neighbours(parentRow.node_id, request.includePlans === true);
+    const kept = budgetNeighbours(parent.id, candidates, {
+      budget: pageBudget,
+      offset,
+      ...(categories.length > 0 ? { categories } : {}),
+    });
+
+    return {
+      nodes: [parent, ...kept.nodes],
+      edges: kept.edges,
+      truncated: kept.folded.length > 0,
+      centre: parent.id,
+    };
+  }
+
+  private async neighbours(nodeId: string, includePlans: boolean): Promise<NeighbourCandidate[]> {
+    const result = await this.pool.query<GraphNodeRow & {
+      edge_type: string;
+      source_type: string;
+      source_key: string;
+      target_type: string;
+      target_key: string;
+      degree: string;
+    }>(
+      `WITH touching AS (
+         SELECT e.edge_type, e.src_node_id, e.dst_node_id,
+                CASE WHEN e.src_node_id = $1 THEN e.dst_node_id ELSE e.src_node_id END AS other
+         FROM graph_edges e
+         WHERE e.src_node_id = $1 OR e.dst_node_id = $1
+       )
+       SELECT o.node_id::text AS node_id, o.ref_key, o.node_type, o.node_subtype, o.label, o.props,
+              t.edge_type,
+              s.node_type AS source_type, s.ref_key AS source_key,
+              d.node_type AS target_type, d.ref_key AS target_key,
+              (SELECT count(*) FROM graph_edges x
+               WHERE x.src_node_id = o.node_id OR x.dst_node_id = o.node_id) AS degree
+       FROM touching t
+       JOIN graph_nodes o ON o.node_id = t.other
+       JOIN graph_nodes s ON s.node_id = t.src_node_id
+       JOIN graph_nodes d ON d.node_id = t.dst_node_id
+       WHERE o.node_id <> $1
+         AND ($2::boolean OR NOT (o.node_type = 'event' AND o.node_subtype = ANY($3::text[])))
+       LIMIT 5000`,
+      [nodeId, includePlans, PLAN_SUBTYPES],
+    );
+
+    const byNode = new Map<string, NeighbourCandidate>();
+    for (const row of result.rows) {
+      const edge: GraphEdge = {
+        source: graphNodeId(wireNodeType(row.source_type), row.source_key),
+        target: graphNodeId(wireNodeType(row.target_type), row.target_key),
+        type: row.edge_type,
+      };
+      const existing = byNode.get(row.node_id);
+      if (existing) {
+        existing.edges.push(edge);
+      } else {
+        byNode.set(row.node_id, { node: graphNode(row), edges: [edge], degree: Number(row.degree) });
+      }
+    }
+    return [...byNode.values()];
+  }
+
+  /** Nodes whose own name appears in the question as a whole word or phrase:
+   * a domain, a person, a department, a customer or vendor — about ninety
+   * names, so they are matched here rather than in SQL. Names shorter than
+   * three characters are skipped, so "QA" does not match every "qa". A
+   * department's key is matched with spaces for underscores ("Engineering
+   * Backend"), as is a domain's ("aws cost structure"). */
+  private async nodesNamedIn(query: string) {
+    const result = await this.pool.query<GraphNodeRow>(
+      `SELECT node_id::text AS node_id, ref_key, node_type, node_subtype, label, props
+       FROM graph_nodes
+       WHERE node_type IN ('person', 'organization')
+          OR (node_type = 'item' AND node_subtype = 'domain')`,
+    );
+    const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const named = (name: string) =>
+      name.length >= 3 &&
+      new RegExp(`(^|[^\\p{L}\\p{N}])${escape(name)}($|[^\\p{L}\\p{N}])`, "iu").test(query);
+    // Also with hyphens and underscores as spaces: "redis cache" names the
+    // redis-cache domain, "Engineering Backend" the Engineering_Backend one.
+    const spaced = (name: string) => name.replace(/[-_]/g, " ");
+    return result.rows.filter(
+      (row) =>
+        named(row.label) ||
+        named(spaced(row.label)) ||
+        named(spaced(row.ref_key)),
+    );
+  }
+
+  private async rowsByNodeId(nodeIds: string[]) {
+    if (nodeIds.length === 0) return [];
+    const result = await this.pool.query<GraphNodeRow>(
+      `SELECT node_id::text AS node_id, ref_key, node_type, node_subtype, label, props
+       FROM graph_nodes WHERE node_id = ANY($1::bigint[])`,
+      [nodeIds],
+    );
+    return result.rows;
+  }
+
+  /** Keyword search accepting any of the question's terms, for when requiring
+   * all of them finds too little. */
+  private async anyTermSearch(query: string, limit: number): Promise<Evidence[]> {
+    const result = await this.pool.query<EvidenceRow>(
+      `WITH requested AS (
+         SELECT to_tsquery('english',
+                  replace(plainto_tsquery('english', $1)::text, '&', '|')) AS query
+       ),
+       ranked AS (
+         SELECT c.source_id, c.content,
+                ts_rank_cd(c.search_vector, requested.query) AS score,
+                row_number() OVER (
+                  PARTITION BY c.source_id
+                  ORDER BY ts_rank_cd(c.search_vector, requested.query) DESC
+                ) AS source_rank
+         FROM document_chunks c, requested
+         WHERE plainto_tsquery('english', $1)::text <> ''
+           AND c.search_vector @@ requested.query
+       )
+       SELECT d.source_id, d.source_type, d.title,
+              ranked.content AS excerpt, d.occurred_at, d.department, ranked.score
+       FROM ranked JOIN source_documents d USING (source_id)
+       WHERE ranked.source_rank = 1
+       ORDER BY ranked.score DESC, d.occurred_at DESC NULLS LAST
+       LIMIT $2`,
+      [query, limit],
+    );
+    return result.rows.map(evidence);
   }
 
   async close(): Promise<void> {

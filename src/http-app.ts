@@ -62,6 +62,11 @@ const securityHeaders = {
 
 const HISTORY_TURNS = 6;
 
+/** A comma-separated query parameter as a list, blanks dropped. */
+function splitList(value: string): string[] {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
 export function buildApp(options: BuildAppOptions): FastifyInstance {
   const app = Fastify({
     logger: options.logger ?? false,
@@ -535,6 +540,65 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       return reply.code(404).send({ message: "Nothing matched that question." });
     }
     return reply.send({ sourceId: top.sourceId, label: top.title });
+  });
+
+  /**
+   * A question's graph: the question as a centre node, linked to the graph
+   * nodes its evidence belongs to and the ones it names outright. Only the
+   * centre and its seeds — the rest is reached by expanding.
+   */
+  app.get<{ Querystring: { q?: string; categories?: string; seeds?: string } }>(
+    "/api/v1/graph/query",
+    async (request, reply) => {
+      const knowledge = options.companyKnowledge;
+      if (!knowledge?.graphQuery) {
+        return reply.code(503).send({ message: "The graph is not configured." });
+      }
+      const query = request.query.q?.trim();
+      if (!query) return reply.code(400).send({ message: "Provide a q parameter." });
+      const seeds = Number(request.query.seeds);
+      const slice = await knowledge.graphQuery({
+        query,
+        ...(request.query.categories ? { categories: splitList(request.query.categories) } : {}),
+        ...(Number.isFinite(seeds) && seeds > 0 ? { seeds } : {}),
+      });
+      return reply.send(slice);
+    },
+  );
+
+  /**
+   * One node's neighbourhood, along every relationship in both directions,
+   * ranked and budgeted per category; the remainder of a category comes back
+   * as a cluster node, and expanding that returns its next page.
+   */
+  app.get<{
+    Querystring: {
+      id?: string;
+      categories?: string;
+      budget?: string;
+      offset?: string;
+      includePlans?: string;
+    };
+  }>("/api/v1/graph/expand", async (request, reply) => {
+    const knowledge = options.companyKnowledge;
+    if (!knowledge?.graphExpand) {
+      return reply.code(503).send({ message: "The graph is not configured." });
+    }
+    const id = request.query.id?.trim();
+    if (!id) return reply.code(400).send({ message: "Provide an id parameter." });
+    const budget = Number(request.query.budget);
+    const offset = Number(request.query.offset);
+    const slice = await knowledge.graphExpand({
+      id,
+      ...(request.query.categories ? { categories: splitList(request.query.categories) } : {}),
+      ...(Number.isFinite(budget) && budget > 0 ? { budget } : {}),
+      ...(Number.isFinite(offset) && offset > 0 ? { offset } : {}),
+      includePlans: request.query.includePlans === "true",
+    });
+    if (slice.nodes.length === 0) {
+      return reply.code(404).send({ message: "No node has that id." });
+    }
+    return reply.send(slice);
   });
 
   /**

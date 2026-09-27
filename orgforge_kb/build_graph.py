@@ -406,7 +406,7 @@ def build_zd_ticket_event_nodes(cursor) -> int:
         """
         WITH opened AS (
             SELECT facts->>'ticket_id' AS ticket_id, source_id, title, occurred_at,
-                   facts->>'org_name' AS org_name
+                   facts->>'org_name' AS org_name, facts->>'subject' AS subject
             FROM source_documents WHERE source_type = 'zd_ticket_opened'
         ),
         escalated AS (
@@ -422,7 +422,10 @@ def build_zd_ticket_event_nodes(cursor) -> int:
         INSERT INTO graph_nodes (node_type, node_subtype, ref_key, label, props)
         SELECT
             'event', 'zd_ticket', o.ticket_id,
-            coalesce(nullif(o.title, ''), o.ticket_id),
+            -- The corpus titles the row "Zd Ticket Opened"; say whose ticket
+            -- it is and what it asks instead.
+            o.ticket_id || coalesce(' from ' || o.org_name, '')
+                        || coalesce(': ' || o.subject, ''),
             jsonb_build_object(
                 'occurred_at', o.occurred_at,
                 'org_name', o.org_name,
@@ -441,20 +444,48 @@ def build_zd_ticket_event_nodes(cursor) -> int:
 
 def build_standalone_event_nodes(cursor) -> int:
     """One node per row for the sim_event types that are not part of the
-    incident merge below."""
+    incident merge below.
+
+    The corpus titles these rows with their type alone — every one of 656
+    confluence_created rows is titled "Confluence Created" — which makes a
+    diagram of them unreadable. The label says what happened to what instead,
+    from the row's own facts and links: "Page created: Design: ...",
+    "Discussion: <topic>", "Progress: <ticket title>". The corpus title is
+    kept in props.title.
+    """
     cursor.execute(
         """
         INSERT INTO graph_nodes (node_type, node_subtype, ref_key, label, props)
         SELECT
             'event', d.source_type, d.source_id,
-            coalesce(nullif(d.title, ''), d.source_id),
+            coalesce(
+                CASE d.source_type
+                    WHEN 'confluence_created'  THEN 'Page created: ' || coalesce(d.facts->>'title', nullif(page.title, ''), d.original_links->>'confluence')
+                    WHEN 'design_discussion'   THEN 'Discussion: ' || (d.facts->>'topic')
+                    WHEN 'jira_ticket_created' THEN 'Ticket opened: ' || coalesce(d.facts->>'title', d.original_links->>'jira')
+                    WHEN 'ticket_progress'     THEN 'Progress: ' || coalesce(nullif(ticket.title, ''), d.original_links->>'jira')
+                    WHEN 'pr_review'           THEN 'PR review: ' || (d.original_links->>'pr')
+                                                    || coalesce(' (' || (d.original_links->>'jira') || ')', '')
+                    WHEN 'sprint_planned'      THEN 'Sprint ' || (d.facts->>'sprint_number')
+                                                    || coalesce(': ' || (d.facts->>'sprint_theme'), '')
+                    WHEN 'dept_plan_created'   THEN replace(d.facts->>'dept', '_', ' ') || ' plan, day '
+                                                    || d.simulation_day::text
+                END,
+                nullif(d.title, ''),
+                d.source_id
+            ),
             jsonb_build_object(
+                'title', d.title,
                 'source_type', d.source_type,
                 'occurred_at', d.occurred_at,
                 'department', d.department,
                 'facts', d.facts
             )
         FROM source_documents d
+        LEFT JOIN source_documents ticket ON ticket.source_id = d.original_links->>'jira'
+                                         AND ticket.category = 'artifact'
+        LEFT JOIN source_documents page ON page.source_id = d.original_links->>'confluence'
+                                       AND page.category = 'artifact'
         WHERE d.category = 'sim_event' AND d.source_type = ANY(%s)
         ON CONFLICT (node_type, ref_key) DO UPDATE SET
             label = EXCLUDED.label, props = EXCLUDED.props
@@ -485,7 +516,11 @@ def build_incident_event_nodes(cursor) -> int:
         INSERT INTO graph_nodes (node_type, node_subtype, ref_key, label, props)
         SELECT
             'event', 'incident', i.incident_key,
-            coalesce(nullif(j.title, ''), i.incident_key),
+            -- Not the jira title: some were renamed "Postmortem: ..." once
+            -- written up, ENG-210 has none, and all end in the same bracketed
+            -- gap list (see STRIP_BRACKETS). The root cause is what tells one
+            -- incident from another, and all twelve have one.
+            'Incident ' || i.incident_key || coalesce(': ' || i.root_cause, ''),
             jsonb_build_object(
                 'opened_at', i.opened_at,
                 'resolved_at', i.resolved_at,
