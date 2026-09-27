@@ -304,17 +304,26 @@ describe("Browser surface", () => {
     const graph = new JSDOM((await app.inject({ method: "GET", url: "/graph" })).body).window.document;
     const plate = graph.querySelector(".app-layout.kaki > aside#plate")!;
     assert.ok(plate, "the plate");
-    for (const id of ["home-link", "as-of", "home-needs", "home-waiting", "plan-list", "todo-list", "sidebar-user-container"]) {
+    for (const id of ["home-link", "as-of", "plate-summary", "plan-list", "todo-list", "sidebar-user-container"]) {
       assert.ok(plate.querySelector(`#${id}`), `#${id} is on the plate`);
     }
+    // What needs you is listed in full on the home only; here, one line leads there.
+    assert.equal(plate.querySelector("#home-needs"), null);
+    assert.equal(plate.querySelector("#plate-summary")!.getAttribute("href"), "/");
     assert.ok(graph.querySelector(".app-layout.kaki > #page #canvas"), "the graph is the page beside it");
     const scripts = [...graph.querySelectorAll("script[src]")].map((script) => script.getAttribute("src")!.split("?")[0]);
     assert.ok(scripts.includes("/plate.js") && scripts.includes("/shell.js"), "the plate's own scripts");
 
-    // From every plate, Company map opens the graph on its own first view (Documents), not on a chosen one.
+    // From every plate, Company map opens the graph on its own first view (Documents), not on a chosen one;
+    // the two ways out each carry a line icon, and the one for the page you are on says so.
+    const current: Record<string, string | null> = { "index.html": null, "meetings.html": "all-meetings", "graph.html": "company-graph-link" };
     for (const page of ["index.html", "meetings.html", "graph.html"]) {
       const plateDocument = new JSDOM(readFileSync(new URL(`../public/${page}`, import.meta.url), "utf8")).window.document;
       assert.equal(plateDocument.querySelector("#company-graph-link")!.getAttribute("href"), "/graph", page);
+      assert.equal(plateDocument.querySelector("#all-meetings")!.getAttribute("href"), "/meetings", page);
+      for (const link of plateDocument.querySelectorAll(".plate-nav a")) assert.ok(link.querySelector("svg"), `${page}: ${link.textContent}`);
+      const here = plateDocument.querySelector('.plate-nav a[aria-current="page"]');
+      assert.equal(here?.id ?? null, current[page], page);
     }
 
     const answer = new JSDOM((await app.inject({ method: "GET", url: "/graph/answer?q=x" })).body).window.document;

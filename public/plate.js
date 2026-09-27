@@ -535,6 +535,14 @@ function homeTask({ action, meeting, asks = 1, meetingCount = 1 }, part, oneMeet
   return row;
 }
 
+/** "4 need you · 1 waiting": what needs you and what waits on others, in one line; empty when neither. */
+function plateSummary(needs, waiting) {
+  const parts = [];
+  if (needs.length) parts.push(`${needs.length} ${needs.length === 1 ? "needs" : "need"} you`);
+  if (waiting.length) parts.push(`${waiting.length} waiting`);
+  return parts.join(" · ");
+}
+
 function fillHomeGroup(id, items, part, oneMeeting = false) {
   const group = document.querySelector(id);
   if (!group) return;
@@ -589,5 +597,11 @@ async function loadPlateNeeds() {
   fillHomeGroup("#home-needs", needs, "needs", oneMeeting);
   const waitingGroups = groupWaiting(waiting);
   fillHomeGroup("#home-waiting", waitingGroups, "waiting", oneMeeting);
+  // Away from the home, which lists them in full, the plate sums them up in one line that leads there.
+  const summary = document.querySelector("#plate-summary");
+  if (summary) {
+    summary.textContent = plateSummary(needs, waitingGroups);
+    summary.hidden = summary.textContent === "";
+  }
   return { asked, meetings, needs, waiting: waitingGroups, done, oneMeeting };
 }

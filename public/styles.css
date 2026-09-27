@@ -2485,3 +2485,36 @@ body.has-context .kaki .messages-container { padding: 0 20px 28px; }
 body.has-context .kaki .input-container { padding: 10px 20px 16px; }
 body.has-context .kaki .chat-messages, body.has-context .kaki .chat-form { margin-left: 0; max-width: none; }
 body.has-context .kaki .message-row.user.long .message-bubble { font-size: 15px; }
+
+/* ------------------------------------------------------------ the plate's ways out
+   Meetings and the map: a line icon and a word each, quiet until pointed at;
+   the one for the page you are on is marked. */
+.plate-nav { display: flex; flex-direction: column; gap: 2px; }
+.plate-nav a { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 9px; color: var(--ink-2); font: 500 13.5px/1.2 var(--f-ui); text-decoration: none; }
+.plate-nav a svg { flex: none; color: var(--muted); }
+.plate-nav a:hover { background: rgb(28 27 34 / .045); color: var(--ink); }
+.plate-nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
+.plate-nav a[aria-current="page"] svg { color: var(--accent); }
+.plate-nav a[hidden] { display: none; }
+.plate-foot { gap: 8px; }
+
+/* Away from the home: what needs you, summed up in one line that leads there. */
+.plate-summary { display: inline-flex; align-self: flex-start; margin: -8px 6px 0; font: 500 12.5px/1.3 var(--f-ui); color: var(--accent); text-decoration: none; }
+.plate-summary:hover { text-decoration: underline; }
+.plate-summary[hidden] { display: none; }
+
+/* Chats on the plate, under the plan and tickets: one line each, the time quiet at the end. */
+.plate #home-conversations h3 { display: flex; align-items: center; gap: 10px; }
+.plate #home-conversations h3 .text-btn { margin-left: auto; padding: 0; border: 0; background: none; font: 400 12px/1 var(--f-ui); color: var(--muted); cursor: pointer; }
+.plate #home-conversations h3 .text-btn + .text-btn { margin-left: 0; }
+.plate #home-conversations h3 .text-btn:hover { color: var(--accent); }
+.plate #home-conversations .conversations-list { display: flex; min-width: 0; flex-direction: column; gap: 0; }
+.kaki .plate #home-conversations .conversation-item { display: flex; min-width: 0; box-sizing: border-box; align-items: center; gap: 8px; width: 100%; padding: 5px 6px; margin: 0; border: 0; border-radius: 8px; background: none; text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
+.kaki .plate #home-conversations .conversation-item:hover, .kaki .plate #home-conversations .conversation-item.active { color: var(--ink); background: rgb(28 27 34 / .045); }
+.plate #home-conversations .conv-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.plate .conversation-item .conv-icon { display: none; }
+.plate #home-conversations .conv-title { font: 400 13px/1.35 var(--f-ui); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plate #home-conversations .conv-meta { flex: none; display: flex; align-items: center; }
+.plate #home-conversations .conv-date { font-size: 11.5px; color: var(--faint); white-space: nowrap; }
+.plate .conversations-empty { padding: 4px 6px; font-size: 12.5px; color: var(--faint); }
+.plate .more-btn { margin: 4px 6px 0; }

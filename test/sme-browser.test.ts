@@ -101,14 +101,20 @@ describe("SME Assistant shell", () => {
     const page = document.querySelector("#page")!;
     const context = document.querySelector("aside#context")!;
     assert.ok(plate && page && context);
-    // On the plate: the day, what needs you, what waits on others, tickets and plan, and who is signed in.
-    for (const id of ["as-of", "home-needs", "home-waiting", "today-panel", "todo-list", "plan-list", "sidebar-user-container", "logout-btn"]) {
+    // On the plate: the day, the plan and tickets, the chats, the way to meetings and the map, and who is signed in.
+    for (const id of ["as-of", "today-panel", "plan-list", "todo-list", "conversations-list", "new-chat-btn", "all-meetings", "company-graph-link", "sidebar-user-container", "logout-btn"]) {
       assert.ok(plate.querySelector(`#${id}`), `#${id} is on the plate`);
     }
-    // The page: the headline, today's timeline, and the conversation with its composer.
-    for (const id of ["home-title", "timeline", "chat-messages", "chat-form", "conversations-list", "new-chat-btn"]) {
+    // Plan and tickets above the chats: the day's few, then the list that grows.
+    assert.ok(plate.querySelector("#today-panel")!.compareDocumentPosition(plate.querySelector("#conversations-list")!) & 4);
+    // The page: the headline, then what needs you and what waits on others right under it, today's timeline, and the conversation.
+    for (const id of ["home-title", "home-needs", "home-waiting", "timeline", "chat-messages", "chat-form"]) {
       assert.ok(page.querySelector(`#${id}`), `#${id} is on the page`);
     }
+    // The home lists them in full, so its plate needs no summary of them.
+    assert.equal(plate.querySelector("#plate-summary"), null);
+    // Meetings and the map: a line icon and a word each, the way to the other two places.
+    for (const link of plate.querySelectorAll(".plate-nav a")) assert.ok(link.querySelector("svg"), link.textContent!);
     // What it touches: pinned candidates and an answer's graph.
     assert.ok(context.querySelector("#pinned-panel"));
     assert.ok(context.querySelector("#graph-panel"));
@@ -640,8 +646,19 @@ describe("SME Assistant home: what needs you", () => {
     (entries[1]!.querySelector("button") as HTMLButtonElement).click();
     await until(() => page.document.querySelector("#chat-messages .message-row.assistant"), "the chat to open on the page");
 
-    assert.equal(page.document.querySelector("#plate a.all-meetings")!.getAttribute("href"), "/meetings");
+    assert.equal(page.document.querySelector("#plate #all-meetings")!.getAttribute("href"), "/meetings");
     assert.equal(page.document.querySelector("#chat-form a.record")!.getAttribute("href"), "/meetings");
+  });
+
+  test("away from the home, the plate sums up what needs you in one line", async () => {
+    const page = await openSmePage({ respond: signedIn() });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "sign-in to finish");
+    const summary = (page.window as unknown as { plateSummary: (needs: unknown[], waiting: unknown[]) => string }).plateSummary;
+    assert.equal(summary([1, 2, 3, 4], [1]), "4 need you · 1 waiting");
+    assert.equal(summary([1], []), "1 needs you");
+    assert.equal(summary([], [1, 2]), "2 waiting");
+    assert.equal(summary([], []), "");
   });
 
   test("with nothing to approve, says so plainly", async () => {
