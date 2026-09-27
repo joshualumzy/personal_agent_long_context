@@ -17,6 +17,7 @@ import {
 import type { CompanyKnowledge, EmployeePersona } from "./company-domain.js";
 import type { SoCLaaSCompanyAgent } from "./soclaas-company-agent.js";
 import { detectProhibitedData } from "./prohibited-data.js";
+import type { SecretClassifier } from "./secret-classifier.js";
 import type { ConversationStore } from "./conversation-domain.js";
 import type { GmailClient } from "./recruiting/gmail.js";
 import { registerRecruitingRoutes } from "./recruiting/routes.js";
@@ -81,6 +82,8 @@ export interface BuildAppOptions extends ApplicationOptions {
    * company knowledge and recruiting board, with an in-memory ledger.
    */
   gapHiring?: GapHiring;
+  /** The Prohibited Data gate's second layer, run on what the pattern rules let through. */
+  secretClassifier?: SecretClassifier;
   /** Meeting actions (S2). Omitted, its routes are not registered. */
   meetings?: {
     service: MeetingActions;
@@ -250,6 +253,16 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
 
   const memoryUpdateQueue = new MemoryUpdateQueue();
 
+  /** Pattern rules first (fast, no call), then the model classifier if one is configured. */
+  const screenProhibited = async (text: string): Promise<{ category: string; rule: string } | null> => {
+    const matched = detectProhibitedData(text);
+    if (matched) return matched;
+    if (options.secretClassifier && (await options.secretClassifier(text))) {
+      return { category: "secret or identity number", rule: "model-classifier" };
+    }
+    return null;
+  };
+
   const requireAuth = options.requireAuth ?? Boolean(options.sessionConfig);
 
   // With sign-in required, the meetings and recruiting pages are for signed-in
@@ -361,7 +374,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
       return reply.code(400).send({ message: "Provide a valid employeeId and question." });
     }
     // The same gate as the chat: secrets never reach the model.
-    const prohibited = detectProhibitedData(question);
+    const prohibited = await screenProhibited(question);
     if (prohibited) {
       return reply.code(400).send({
         status: "rejected",
@@ -475,7 +488,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     const activeAgent = resolution.agent;
     const resolvedModel = resolution.descriptor;
 
-    const prohibited = detectProhibitedData(message);
+    const prohibited = await screenProhibited(message);
     if (prohibited) {
       const payload = {
         status: "rejected",

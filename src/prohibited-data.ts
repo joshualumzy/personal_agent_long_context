@@ -121,6 +121,24 @@ const rules: Rule[] = [
       /\b(?:otp|2fa|mfa|one[ -]?time|verification|login|sms|auth(?:entication)?)[ _-]?(?:code|pin)?\b[^\n.?!]{0,30}?\b(?:is|was|=|:)[ \t]*(\d{4,8})\b/i,
   },
   {
+    // A secret word, then within the same clause a value shaped like a secret:
+    // "the admin password was changed to Winter2026!!", "door passcode is 7731",
+    // "okta sent a login code, it's 902144". The value decides: a short run of
+    // digits, or a token mixing letters and digits. Ordinary words ("the
+    // password reset flow is broken") and small numbers ("the 2FA step is 3
+    // screens") never qualify.
+    id: "secret-shaped-value",
+    category: "authentication secret",
+    pattern:
+      /\b(?:password|passcode|pass code|passphrase|passwd|pwd|pw|pin|code|token|key|secret|creds|credentials)s?\b[^\n.?!]{0,40}?(?:\bis\b|\bwas\b|\bare\b|\bto\b|\bit'?s\b|=|:)[ \t]*["']?((?=\S*\d)\S{4,})/i,
+    confirm: (captured) => {
+      const value = captured.replace(/[,;"')]+$/, "");
+      if (/^\d{4,8}$/.test(value)) return true;
+      if (/^[A-Z]{2,}-\d+$/i.test(value) || /^\d{4}-\d{2}-\d{2}/.test(value) || /^v?\d+(?:\.\d+)+/.test(value)) return false;
+      return value.length >= 6 && /[A-Za-z]/.test(value) && /\d/.test(value);
+    },
+  },
+  {
     id: "vendor-key-prefix",
     category: "authentication secret",
     pattern:
@@ -146,6 +164,14 @@ const rules: Rule[] = [
     confirm: luhn,
   },
   {
+    // A card number typed with no label and no spaces. The checksum carries the
+    // signal; an invoice, order or reference number is left alone.
+    id: "unlabelled-card-number",
+    category: "payment or bank detail",
+    pattern: /(?<!(?:invoice|order|ref|reference|id|no\.?|#)[ \t:#]*)\b(\d{13,19})\b/i,
+    confirm: luhn,
+  },
+  {
     id: "card-security-code",
     category: "payment or bank detail",
     pattern: /\b(?:cvv|cvc|cid|card security code)\b[ \t]*(?:is|=|:)?[ \t]*(\d{3,4})\b/i,
@@ -156,7 +182,7 @@ const rules: Rule[] = [
     // An explicit separator and a digit-led value are both required. Without
     // them, ordinary prose about accounts reads as an account number.
     pattern:
-      /\b(?:bank account(?: number)?|account number|acct(?: no| number)?|sort code|routing number)\b[ \t]*(?:is|was|=|:|#)[ \t]*(\d[\d -]{5,33})\b/i,
+      /\b(?:bank account(?: number)?|account number|acct(?: no| number)?|sort code|routing number)\b[ \t]*(?:(?:is|was|=|:|#)[ \t]*)?(\d[\d -]{5,33})\b/i,
   },
   {
     id: "iban",

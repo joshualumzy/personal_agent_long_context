@@ -226,3 +226,35 @@ describe("Prohibited Data detector: shorthand and loose phrasing", () => {
     }
   });
 });
+
+describe("Prohibited Data gate: model classifier layer", () => {
+  test("the chat blocks what the classifier flags, before the agent sees it, and lets the rest through", async () => {
+    const { buildApp } = await import("../src/http-app.js");
+    const { createSessionToken } = await import("../src/auth.js");
+    const TEST_SECRET = "test-auth-session-secret-key-32chars-min";
+    const asked: string[] = [];
+    const companyAgent = {
+      async answer(input: { question: string }) {
+        asked.push(input.question);
+        return { answer: "ok", sources: [], runId: "run", toolCalls: [] };
+      },
+    };
+    const app = buildApp({
+      sessionConfig: { secret: TEST_SECRET },
+      memory: new DeterministicMemoryProvider(),
+      companyAgent: companyAgent as never,
+      secretClassifier: async (text) => text.includes("Bearer"),
+    });
+    const headers = { cookie: `sme_session=${createSessionToken("jax", TEST_SECRET)}` };
+
+    const blocked = await app.inject({ method: "POST", url: "/api/v1/agent/chat", headers, payload: { message: "Authorization: Bearer 9f8e7d6c5b4a" } });
+    assert.equal(blocked.statusCode, 400);
+    assert.equal(blocked.json().code, "prohibited_data");
+    assert.equal(blocked.body.includes("9f8e7d6c5b4a"), false);
+
+    const allowed = await app.inject({ method: "POST", url: "/api/v1/agent/chat", headers, payload: { message: "When is the next key rotation?" } });
+    assert.equal(allowed.statusCode, 200);
+    assert.deepEqual(asked, ["When is the next key rotation?"]);
+    await app.close();
+  });
+});

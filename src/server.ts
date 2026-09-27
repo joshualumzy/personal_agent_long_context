@@ -1,3 +1,4 @@
+import { secretClassifier } from "./secret-classifier.js";
 import { HomeSummarizer } from "./home-summary.js";
 import { OpenAiCompatibleModel } from "./recruiting/llm.js";
 import { loadEnvFile } from "node:process";
@@ -189,6 +190,11 @@ const homeSummarizer =
 
 const app = buildApp({
   sessionConfig,
+  secretClassifier: secretClassifier({
+    baseUrl: process.env.SOCLAAS_BASE_URL ?? "https://soclaas-api.comp.nus.edu.sg/v1",
+    apiKey: soCLaaSApiKey,
+    model: process.env.SOCLAAS_COMPANY_MODEL ?? "qwen3.8:27b",
+  }),
   ...(homeSummarizer ? { homeSummarizer } : {}),
   memory,
   companyAgent,
