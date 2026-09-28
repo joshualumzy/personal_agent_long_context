@@ -212,8 +212,10 @@
 <ol>
   <li><b>Hybrid search:</b> exact identifier lookup, English full-text search and pgvector semantic search, fused by reciprocal rank. The agent can pass a <b>date window</b> and <b>record types</b> ("the Confluence pages from that week") so records from other days cannot crowd out the right ones. If embeddings fail, search degrades to keyword-only rather than failing.</li>
   <li><b>Explicit links:</b> <code>get_related_sources</code> follows document references (PR → ticket → postmortem) from records already retrieved.</li>
-  <li><b>Graph views:</b> a deterministic graph (3,286 nodes, 16,065 edges) powers the evidence graph and company map; an optional Cognee layer extracts an emergent graph from a query's retrieved slice without writing back to PostgreSQL.</li>
+  <li><b>Graph views:</b> a deterministic graph (3,286 nodes, 16,065 edges) records which document references which and who appears in each. It powers the evidence graph and the company map.</li>
 </ol>
+<h3>Emergent knowledge graph (Cognee)</h3>
+<p>The deterministic graph records what documents reference; it cannot say what the text <i>means</i>: that a decision was reversed, that two teams disagreed about a cause, that a risk was raised before it happened. For that, Kaki builds an <b>emergent graph per question</b>. After an answer is returned, a background job selects the dozen or so records the question was about, and Cognee uses a language model to extract entities and relationships from just those. Each question gets its own graph, so every relationship can be traced to the question that found it, and extraction cost grows with what people ask rather than with the size of the company's records. The graph is stored locally (Ladybug for the graph, LanceDB for vectors) and never writes back to PostgreSQL, so the authoritative record stays untouched. Answers never wait on it: it appears in the graph view once extraction finishes.</p>
 <h3>Planner projection</h3>
 <p><code>orgforge_kb/build_timeline.py</code> projects each person's day plans, ticket states and the employee roster from the corpus. This powers "what's on my plate" for any chosen day. It is shown to the user but never cited as company evidence.</p>
 
