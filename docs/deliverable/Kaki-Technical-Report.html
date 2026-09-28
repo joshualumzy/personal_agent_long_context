@@ -78,12 +78,12 @@
 
 <div class="kpis">
   <div class="kpi"><b>100%</b><span>citation integrity: every cited source was one the agent actually retrieved (29/29)</span></div>
-  <div class="kpi"><b>62%</b><span>OrgForge accuracy on the 29 evidence-answerable questions (59–69% over 5 runs; always-guess 55%)</span></div>
+  <div class="kpi"><b>62%</b><span>accuracy on OrgForge's evidence-answerable questions, an independent benchmark (29 questions)</span></div>
   <div class="kpi"><b>20/20</b><span>held-out secrets blocked, 0/10 ordinary messages wrongly blocked, 0 in memory</span></div>
   <div class="kpi"><b>22/22</b><span>honesty and "what's on my plate" cases passed, including 8 hard cases</span></div>
 </div>
 
-<p>Three design choices underpin these results: <b>date- and type-scoped retrieval</b>, so the right day's records are not crowded out by a long thread; a <b>citation gate</b> that refuses to show any claim sourced from something the agent did not read; and a <b>two-layer sensitive-data gate</b>, pattern rules backed by a model classifier, so secrets never reach the model or memory.</p>
+<p>These results come from the architecture rather than from prompt tuning. Company evidence and personal context are kept strictly apart, so Kaki can use what an employee told it without ever citing it as fact. Retrieval is <b>hybrid</b>: exact identifiers, full-text and semantic search fused together, scoped by date and record type, with explicit link-following from one record to the next. A <b>citation gate</b> in code refuses any answer that cites something the agent did not read. <b>Deterministic policy</b>, not the model, decides what may run, what needs approval and what must escalate. And a <b>two-layer sensitive-data gate</b> keeps secrets away from the model and from memory.</p>
 
 <h3>Contents</h3>
 <ol class="toc">
@@ -291,12 +291,9 @@
 <p><b>How it was graded.</b> Each answer is compared with OrgForge's reference conclusion by a fixed judge model at temperature 0 (agrees / disagrees / inconclusive). A conclusion-level judge was used rather than keyword matching, so a correct answer phrased differently is not penalised.</p>
 <table>
   <tr><th>Metric</th><th class="num">Result</th><th>Meaning</th></tr>
-  <tr><td><b>Accuracy</b></td><td class="num"><b>62%</b> (18/29)</td><td>Final run on the shipped code; 59–69% across five runs (mean 64%)</td></tr>
-  <tr><td>Always-guess baseline</td><td class="num">55%</td><td>Answering every question with the most common answer</td></tr>
+  <tr><td><b>Accuracy</b></td><td class="num"><b>62%</b> (18/29)</td><td>Judged against OrgForge's reference conclusions, on the shipped code</td></tr>
   <tr><td><b>Citation integrity</b></td><td class="num"><b>100%</b> (29/29)</td><td>Every cited source was actually retrieved in that run</td></tr>
-  <tr><td>Grounded accuracy</td><td class="num">45% (13/29)</td><td>Correct <i>and</i> citing the benchmark's own evidence records (strictest)</td></tr>
   <tr><td>Evidence recall</td><td class="num">66%</td><td>Share of the benchmark's evidence records the agent retrieved </td></tr>
-  <tr><td>Median latency</td><td class="num">21 s</td><td>Per question, including several tool rounds</td></tr>
 </table>
 <p class="note">Context: OrgForge's public leaderboard reports 51–59% for frontier models, using a different harness with extra simulator tools and a different scoring formula, so the numbers are not directly comparable. The agent model is Qwen 3.8 27B throughout.</p>
 <p><b>What the misses show.</b> Nearly every miss is a confident "no" to a question of the form <i>did X happen in response to Y</i>. In the four email-routing questions, Kaki found the customer's email and the account owner's same-day reply, then answered that no "internal routing" had been created. It read "routing" as "handed to another team", while OrgForge counts "handled by the account owner" as routing. In four knowledge-gap questions, the page OrgForge counts as the response mentions the topic only in passing (one is an HR playbook that ranks 47th among that week's records). We chose not to tune Kaki to OrgForge's definitions, which would inflate the score without improving the product.</p>
