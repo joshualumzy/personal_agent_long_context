@@ -552,6 +552,7 @@ window.addEventListener("popstate", () => {
 // Start New Chat
 function startNewChat({ fromAddress = false } = {}) {
   chatEpoch += 1;
+  waitingQuestions.length = 0;
   historyLoading = null;
   activeConversationId = null;
   if (!fromAddress) setChatAddress(null);
@@ -655,6 +656,13 @@ if (memoryDialog) {
 /** Past this many characters a message is a passage handed over (a meeting's hiring need, say), not a question. */
 const LONG_QUESTION = 140;
 
+/** An answer (or its error) goes right under its question: above any question still waiting to be sent. */
+function placeAnswer(row) {
+  const firstWaiting = waitingQuestions[0]?.row;
+  if (firstWaiting && firstWaiting.parentNode === chatMessages) chatMessages.insertBefore(row, firstWaiting);
+  else chatMessages.appendChild(row);
+}
+
 function appendUserMessage(text) {
   const row = document.createElement("div");
   row.className = "message-row user";
@@ -663,6 +671,7 @@ function appendUserMessage(text) {
   row.innerHTML = `<div class="message-bubble"><p>${escapeHtml(text)}</p></div>`;
   chatMessages.appendChild(row);
   scrollToBottom();
+  return row;
 }
 
 function appendAssistantMessage(data) {
@@ -689,7 +698,7 @@ function appendAssistantMessage(data) {
   attachAssistantMeta(bubble, data);
 
   row.appendChild(bubble);
-  chatMessages.appendChild(row);
+  placeAnswer(row);
   scrollToBottom();
 }
 
@@ -1214,7 +1223,7 @@ function appendErrorMessage(message) {
       <p style="margin: 4px 0 0;">${escapeHtml(message)}</p>
     </div>
   `;
-  chatMessages.appendChild(row);
+  placeAnswer(row);
   scrollToBottom();
 }
 
@@ -1413,6 +1422,7 @@ function updateConversationTitleUI(convId, title) {
 
 async function selectConversation(conversationId, title, { fromAddress = false } = {}) {
   const asked = ++chatEpoch;
+  waitingQuestions.length = 0;
   try {
     activeConversationId = conversationId;
     if (!fromAddress) setChatAddress(conversationId);
@@ -1554,23 +1564,45 @@ window.addEventListener("keydown", (e) => {
   }
 });
 
-chatForm.addEventListener("submit", async (e) => {
+/**
+ * Questions sent while an answer is still coming in. The box stays open, so the
+ * next question can be written and sent at once; it shows straight away, marked
+ * as waiting, and goes when the answer above it has landed: never over an answer
+ * mid-stream, and into the same chat (a new chat is only named by its first
+ * answer). Leaving the chat drops them with it.
+ */
+const waitingQuestions = [];
+
+chatForm.addEventListener("submit", (e) => {
   e.preventDefault();
   const message = messageInput.value.trim();
   // Not while a conversation's history is loading: it would redraw over this question.
-  if (!message || asking || historyLoading) return;
+  if (!message || historyLoading) return;
+  messageInput.value = "";
+  messageInput.style.height = "auto";
+  if (asking) {
+    if (emptyState) emptyState.style.display = "none";
+    const row = appendUserMessage(message);
+    row.classList.add("queued");
+    row.title = "Sends when the answer above is done";
+    waitingQuestions.push({ message, row, epoch: chatEpoch });
+    return;
+  }
+  ask(message);
+});
+
+/** Asks one question and draws its answer; `shown` is its row when it already waited on screen. */
+async function ask(message, shown = null) {
   asking = true;
 
   if (emptyState) {
     emptyState.style.display = "none";
   }
 
-  appendUserMessage(message);
+  if (shown) shown.classList.remove("queued");
+  else appendUserMessage(message);
 
   currentAbortController = new AbortController();
-  messageInput.value = "";
-  messageInput.style.height = "auto";
-  messageInput.disabled = true;
   sendButton.hidden = true;
   if (stopButton) stopButton.hidden = false;
 
@@ -1724,7 +1756,7 @@ chatForm.addEventListener("submit", async (e) => {
             textContainer.className = "message-text";
             bubble.appendChild(textContainer);
             assistantRow.appendChild(bubble);
-            chatMessages.appendChild(assistantRow);
+            placeAnswer(assistantRow);
           }
           const text = parsed?.text || "";
           accumulatedContent = text;
@@ -1860,8 +1892,12 @@ chatForm.addEventListener("submit", async (e) => {
       elsewhere && elsewhere !== messageInput && (isTextBox(elsewhere) || isTextBox(insideFrame(elsewhere)));
     if (!typingElsewhere) messageInput.focus();
     scrollToBottom();
+    // The next question that waited for this answer goes now, if the chat is still the one it was asked in.
+    const next = waitingQuestions.shift();
+    if (next && next.epoch === chatEpoch) ask(next.message, next.row);
+    else waitingQuestions.length = 0;
   }
-});
+}
 
 // Authentication & Persona Management
 function handleAuthRequired() {

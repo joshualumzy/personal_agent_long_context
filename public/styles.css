@@ -2565,3 +2565,6 @@ body.has-context .kaki .message-row.user.long .message-bubble { font-size: 15px;
 /* The page's group labels sit on one line, the count right after them: "Waiting on others 1". */
 .kaki { --rail: 124px; }
 .kaki #page .home-group > h3 { flex-direction: row; align-items: baseline; gap: 6px; white-space: nowrap; }
+/* A question sent while an answer is still coming in: shown at once, quietly, until it goes. */
+.kaki .message-row.user.queued .message-bubble { opacity: .55; }
+.kaki .message-row.user.queued .message-bubble::after { content: "Sends after this answer"; display: block; margin-top: 4px; font: 400 12px/1.3 var(--f-ui); letter-spacing: 0; color: var(--faint); }

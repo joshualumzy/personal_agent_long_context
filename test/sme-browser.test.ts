@@ -7,7 +7,7 @@ import { buildApp } from "../src/http-app.js";
 
 interface PageOptions {
   /** Answers a request before the default chat answer does; undefined falls through. */
-  respond?: (url: string, init?: { method?: string; body?: string }) => Response | undefined;
+  respond?: (url: string, init?: { method?: string; body?: string }) => Response | Promise<Response> | undefined;
   /** Runs before the page's own script, for storage the page reads as it starts. */
   setup?: (window: JSDOM["window"]) => void;
   /** The address the page opens at, after the host: "/?asOf=2026-01-06". */
@@ -469,6 +469,136 @@ describe("SME Assistant keeps what it already does", () => {
     input.value = "Was ENG-210 the same bug?";
     page.document.querySelector("#chat-form")!.dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
     await until(() => page.window.location.pathname === "/chat/c9", "the new chat's address");
+  });
+
+  test("while an answer comes in, the next question can be typed and sent; it waits, then follows in the same chat", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const asked: Array<{ message: string; conversationId?: string }> = [];
+    const page = await openSmePage({
+      respond: signedIn((url, init) => {
+        if (url !== "/api/v1/agent/chat") return undefined;
+        const body = JSON.parse(init!.body!);
+        asked.push({ message: body.message, conversationId: body.conversationId });
+        const first = asked.length === 1;
+        const answer = json({ answer: first ? "ENG-210 is a recurrence, not the same bug." : "Ben owns the alerting ticket.", runId: `r${asked.length}`, toolCalls: [], sources: [], conversationId: "c7", title: "ENG-210" });
+        return first ? held.then(() => answer) : answer;
+      }),
+    });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "sign-in to finish");
+    const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
+    const send = (text: string) => {
+      input.value = text;
+      page.document.querySelector("#chat-form")!.dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+    };
+
+    send("Is ENG-210 the same bug as ENG-148?");
+    await until(() => asked.length === 1, "the first question");
+    // The answer is still coming: the box stays open for the next question.
+    assert.equal(input.disabled, false);
+    send("Who owns the alerting ticket?");
+    assert.equal(input.value, "", "sent, so the box is clear again");
+    const rows = () => [...page.document.querySelectorAll(".message-row.user")];
+    assert.equal(rows().length, 2, "it shows at once");
+    assert.ok(rows()[1]!.classList.contains("queued"), "marked as waiting for the answer above");
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    assert.equal(asked.length, 1, "nothing is sent over an answer still coming in");
+
+    // The first answer lands whole; then the waiting question goes, in the same chat.
+    release();
+    await until(() => asked.length === 2, "the second question to follow");
+    assert.equal(asked[1]!.message, "Who owns the alerting ticket?");
+    assert.equal(asked[1]!.conversationId, "c7", "into the chat the first answer named");
+    await until(() => page.document.querySelectorAll(".message-row.assistant").length === 2, "both answers");
+    const answers = [...page.document.querySelectorAll(".message-row.assistant")].map((row) => row.textContent!);
+    assert.match(answers[0]!, /recurrence, not the same bug/);
+    assert.match(answers[1]!, /Ben owns the alerting ticket/);
+    assert.equal(rows()[1]!.classList.contains("queued"), false);
+    // In order: question, its answer, question, its answer.
+    const order = [...page.document.querySelectorAll("#chat-messages .message-row")].map((row) => row.classList.contains("user") ? "Q" : "A");
+    assert.deepEqual(order, ["Q", "A", "Q", "A"]);
+  });
+
+  test("a question sent mid-stream waits for the streamed answer to finish, then follows it", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const asked: Array<{ message: string; conversationId?: string }> = [];
+    const frame = (event: string, data: unknown) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+    const page = await openSmePage({
+      respond: signedIn((url, init) => {
+        if (url !== "/api/v1/agent/chat") return undefined;
+        const body = JSON.parse(init!.body!);
+        asked.push({ message: body.message, conversationId: body.conversationId });
+        if (asked.length > 1) return json({ answer: "Ben owns it.", runId: "r2", toolCalls: [], sources: [], conversationId: "c9" });
+        const encoder = new TextEncoder();
+        const stream = new ReadableStream({
+          async start(controller) {
+            controller.enqueue(encoder.encode(frame("status", { message: "Searching" }) + frame("token", { delta: "ENG-210 is " })));
+            await held;
+            controller.enqueue(encoder.encode(
+              frame("token", { delta: "a recurrence." }) +
+              frame("answer", { text: "ENG-210 is a recurrence, not the same bug." }) +
+              frame("done", { answer: "ENG-210 is a recurrence, not the same bug.", runId: "r1", toolCalls: [], sources: [], conversationId: "c9", title: "ENG-210" }),
+            ));
+            controller.close();
+          },
+        });
+        return new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } });
+      }),
+      // Browsers have it; jsdom does not.
+      setup: (window) => { Object.assign(window, { TextDecoder }); },
+    });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "sign-in to finish");
+    const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
+    const send = (text: string) => {
+      input.value = text;
+      page.document.querySelector("#chat-form")!.dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+    };
+    send("Is ENG-210 the same bug?");
+    await until(() => asked.length === 1, "the first question");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(input.disabled, false, "open while the answer streams");
+    send("Who owns the alerting ticket?");
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(asked.length, 1, "not sent over the stream");
+
+    release();
+    await until(() => asked.length === 2, "the waiting question to follow");
+    assert.equal(asked[1]!.conversationId, "c9");
+    await until(() => page.document.querySelectorAll(".message-row.assistant").length === 2, "both answers");
+    const order = [...page.document.querySelectorAll("#chat-messages .message-row")].map((row) => row.classList.contains("user") ? "Q" : "A");
+    assert.deepEqual(order, ["Q", "A", "Q", "A"]);
+    assert.match(page.document.querySelectorAll(".message-row.assistant")[0]!.textContent!, /recurrence, not the same bug/);
+  });
+
+  test("a question waiting on an answer is dropped when the chat is left, never sent into another", async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => { release = resolve; });
+    const asked: string[] = [];
+    const page = await openSmePage({
+      respond: signedIn((url, init) => {
+        if (url !== "/api/v1/agent/chat") return undefined;
+        asked.push(JSON.parse(init!.body!).message);
+        return held.then(() => json({ answer: "Done.", runId: "r", toolCalls: [], sources: [], conversationId: "c8" }));
+      }),
+    });
+    after(() => page.close());
+    await until(() => page.document.querySelector(".conversation-item"), "sign-in to finish");
+    const input = page.document.querySelector("#message-input") as HTMLTextAreaElement;
+    const send = (text: string) => {
+      input.value = text;
+      page.document.querySelector("#chat-form")!.dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+    };
+    send("First question");
+    await until(() => asked.length === 1, "the first question");
+    send("Second question");
+    (page.document.querySelector("#new-chat-btn") as HTMLButtonElement).click();
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.deepEqual(asked, ["First question"]);
+    assert.equal(page.document.querySelectorAll(".message-row.queued").length, 0);
   });
 
   test("a new chat clears the conversation on screen", async () => {
