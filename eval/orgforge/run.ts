@@ -141,6 +141,13 @@ async function run(): Promise<void> {
     embeddingProviderFromEnvironment(process.env),
   );
 
+  // NO_EVENT_LINKS=1: related sources follow explicit document links only, never
+  // siblings found through a simulator event (OrgForge's answer-key layer).
+  if (process.env.NO_EVENT_LINKS === "1") {
+    (companyKnowledge as { relatedThroughEvents?: unknown }).relatedThroughEvents = undefined;
+    console.log("Related sources: explicit document links only (NO_EVENT_LINKS=1)");
+  }
+
   const companyAgent = new SoCLaaSCompanyAgent(companyKnowledge, {
     apiKey: config.apiKey,
     baseUrl: config.baseUrl,
