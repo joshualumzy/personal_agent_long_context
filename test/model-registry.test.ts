@@ -19,9 +19,9 @@ describe("ModelRegistry", () => {
     const registry = new ModelRegistry([
       {
         id: "soclaas",
-        name: "Qwen 2.5 32B (SoCLaaS)",
+        name: "Qwen 3.8 27B (SoCLaaS)",
         shortName: "SoCLaaS Qwen",
-        configuredModel: "Qwen/Qwen2.5-32B-Instruct",
+        configuredModel: "qwen3.8:27b",
         provider: "NUS SoC",
         available: true,
         agent: mockAgent,
@@ -53,9 +53,9 @@ describe("ModelRegistry", () => {
     const registry = new ModelRegistry([
       {
         id: "soclaas",
-        name: "Qwen 2.5 32B (SoCLaaS)",
+        name: "Qwen 3.8 27B (SoCLaaS)",
         shortName: "SoCLaaS Qwen",
-        configuredModel: "Qwen/Qwen2.5-32B-Instruct",
+        configuredModel: "qwen3.8:27b",
         provider: "NUS SoC",
         available: true,
         agent: mockAgent,

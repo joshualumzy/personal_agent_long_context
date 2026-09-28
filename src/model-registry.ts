@@ -164,14 +164,14 @@ export function createDefaultModelRegistry(options: {
   const descriptors: ModelDescriptor[] = [
     {
       id: "soclaas",
-      name: "Qwen 2.5 32B (SoCLaaS)",
+      name: "Qwen 3.8 27B (SoCLaaS)",
       shortName: "SoCLaaS Qwen",
-      configuredModel: env.SOCLAAS_COMPANY_MODEL ?? "Qwen/Qwen2.5-32B-Instruct",
+      configuredModel: env.SOCLAAS_COMPANY_MODEL ?? "qwen3.8:27b",
       provider: "NUS SoC",
       badge: "Default",
       available: Boolean(soclaasAgent),
       unavailableReason: "The SoCLaaS Qwen model is not configured on this server.",
-      aliases: ["qwen", "qwen-2.5-32b", "soclaas-qwen"],
+      aliases: ["qwen", "qwen-3.8-27b", "qwen-2.5-32b", "soclaas-qwen"],
       agent: soclaasAgent,
     },
     {

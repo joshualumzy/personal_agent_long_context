@@ -336,7 +336,7 @@ function updateModelSelectorUI(modelId) {
 
   if (selectedModelName) {
     selectedModelName.textContent =
-      modelId === "sonnet" ? "Claude Sonnet 4.5" : "Qwen 2.5 32B";
+      modelId === "sonnet" ? "Claude Sonnet 4.5" : "Qwen 3.8 27B";
   }
   if (modelDotIcon) {
     modelDotIcon.className = modelId === "sonnet" ? "model-dot-icon sonnet" : "model-dot-icon";
@@ -904,7 +904,7 @@ function attachAssistantMeta(bubble, data) {
     modelTag.title =
       data.model === "sonnet"
         ? "Answered using Claude Sonnet 4.5 through the configured LLM gateway"
-        : "Answered using Qwen 2.5 32B on NUS SoCLaaS";
+        : "Answered using Qwen 3.8 27B on NUS SoCLaaS";
     contextTags.appendChild(modelTag);
   }
 

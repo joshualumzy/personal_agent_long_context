@@ -16,7 +16,7 @@ The system is divided into three interconnected agentic workflows:
 ### 1.3 Technology Stack
 * **Databases:** **PostgreSQL** (with the `pgvector` extension) serves as the authoritative evidence store. **Cognee** (Ladybug Graph + LanceDB) handles local, emergent graph extraction.
 * **Memory Management:** A local **Letta** App Server isolates and persists user persona state across sessions.
-* **AI Models:** The reasoning loop supports a seamless dual-toggle architecture. Local development and testing are powered by **NUS SoCLaaS (Qwen 32B)**, while the production deployment utilizes **AWS Bedrock (Claude 3.5 Sonnet)** for robust enterprise-grade reasoning. 
+* **AI Models:** The reasoning loop supports a seamless dual-toggle architecture. Local development and testing are powered by **NUS SoCLaaS (Qwen 3.8 27B)**, while the production deployment utilizes **AWS Bedrock (Claude 3.5 Sonnet)** for robust enterprise-grade reasoning. 
 * **Embeddings:** Amazon Titan Text Embeddings V2 (1024 dimensions).
 
 ---
