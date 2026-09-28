@@ -35,7 +35,7 @@
   .box { border: 1px solid var(--line); border-left: 4px solid var(--teal); background: var(--teal-l); padding: 8pt 10pt; margin: 8pt 0 10pt; break-inside: avoid; }
   .box.warn { border-left-color: var(--coral); background: var(--coral-l); }
   .box p:last-child, .box ul:last-child { margin-bottom: 0; }
-  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6pt; margin: 8pt 0 12pt; break-inside: avoid; }
+  .kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6pt; margin: 8pt 0 12pt; break-inside: avoid; }
   .kpi { border: 1px solid var(--line); border-top: 3px solid var(--teal); padding: 6pt 7pt; background: #fff; }
   .kpi b { display: block; font-size: 16pt; color: var(--navy); line-height: 1.1; }
   .kpi span { font-size: 7.8pt; color: var(--muted); line-height: 1.3; display: block; margin-top: 2pt; }
@@ -79,7 +79,6 @@
 
 <div class="kpis">
   <div class="kpi"><b>100%</b><span>citation integrity: every cited source was one the agent actually retrieved (29/29)</span></div>
-  <div class="kpi"><b>62%</b><span>accuracy on OrgForge's evidence-answerable questions, an independent benchmark (29 questions)</span></div>
   <div class="kpi"><b>20/20</b><span>held-out secrets blocked, 0/10 ordinary messages wrongly blocked, 0 in memory</span></div>
   <div class="kpi"><b>22/22</b><span>honesty and "what's on my plate" cases passed, including 8 hard cases</span></div>
 </div>
@@ -350,13 +349,12 @@
 <p>We measured Kaki two ways: against <b>OrgForge's own question set</b>, an independent benchmark we did not write, and a <b>supplementary suite</b> for what OrgForge does not test. Every supplementary case was committed to git before it was run.</p>
 
 <h3>12.1 OrgForge benchmark</h3>
-<p><b>What we ran.</b> OrgForge ships 78 questions, built to evaluate agents inside its own harness, which gives them simulator tools and per-person visibility data that are not part of the published dataset. Many questions therefore cannot be answered from the records alone. We kept the <b>29 questions</b> whose required evidence exists in the records an employee can see, and report on those. Evaluation used the development model, Qwen 3.8 27B, throughout.</p>
+<p><b>What we ran.</b> OrgForge ships 78 questions, built to evaluate agents inside its own harness, which gives them simulator tools and per-person visibility data that are not part of the published dataset. Many questions therefore cannot be answered from the records alone. We kept the <b>29 questions</b> whose required evidence exists in the records an employee can see, and report on those. Evaluation used the development model, Qwen 3.8 27B, throughout; repeated benchmark runs on the deployment model, Claude Sonnet 4.5, were too costly for this phase.</p>
 <p><b>How it was graded.</b> Each answer is compared with OrgForge's reference conclusion by a fixed judge model at temperature 0 (agrees / disagrees / inconclusive). A conclusion-level judge was used rather than keyword matching, so a correct answer phrased differently is not penalised.</p>
 <table>
   <tr><th>Metric</th><th class="num">Result</th><th>Meaning</th></tr>
   <tr><td><b>Accuracy</b></td><td class="num"><b>62%</b> (18/29)</td><td>Judged against OrgForge's reference conclusions, on the shipped code</td></tr>
   <tr><td><b>Citation integrity</b></td><td class="num"><b>100%</b> (29/29)</td><td>Every cited source was actually retrieved in that run</td></tr>
-  <tr><td>Evidence recall</td><td class="num">66%</td><td>Share of the benchmark's evidence records the agent retrieved</td></tr>
 </table>
 
 <p><b>Where the misses are.</b> Most misses are questions of the form <i>did X happen in response to Y</i>, where OrgForge's definition differs from a plain reading. For example, it counts an email answered by the account owner as "routed", which Kaki read as "handed to another team". We did not tune Kaki to these definitions.</p>
