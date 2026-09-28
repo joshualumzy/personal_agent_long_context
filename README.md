@@ -1,4 +1,4 @@
-# Kaki
+# Kaki.ai -- Your Company Best Buddy
 
 <p align="center">
   <img src="public/assets/kaki-logo-256.png" alt="Kaki logo" width="128" />
