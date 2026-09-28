@@ -6,6 +6,7 @@
 <title>Kaki Technical Report</title>
 <style>
   @page { size: A4; margin: 16mm 17mm 16mm 17mm; }
+  @page :first { margin: 0; }
   :root {
     --navy: #14263d; --navy2: #203a5f; --teal: #18a999; --teal-l: #e8f7f4;
     --coral: #f26b4e; --coral-l: #fff0eb; --ink: #1e293b; --muted: #5f6b7a;
@@ -23,10 +24,13 @@
   ul, ol { margin: 0 0 8pt; padding-left: 16pt; }
   li { margin-bottom: 2.5pt; }
   code { font: 8.8pt Menlo, Consolas, monospace; color: var(--navy2); background: var(--paper); padding: 0 2pt; border-radius: 2pt; }
-  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt; font-size: 8.8pt; break-inside: avoid; }
+  table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt; font-size: 8.8pt; }
+  tr, .kpi, .box { break-inside: avoid; }
+  h2, h3 { break-after: avoid; }
+  h2 + p, h3 + p, h2 + table, h3 + table { break-before: avoid; }
   th { background: var(--navy); color: #fff; text-align: left; font-weight: 600; padding: 4pt 6pt; }
   td { padding: 4pt 6pt; border-bottom: 1px solid var(--line); vertical-align: top; }
-  tr:nth-child(even) td { background: var(--paper); }
+  tbody tr:nth-child(even) td { background: var(--paper); }
   td.num, th.num { text-align: right; white-space: nowrap; }
   figure { margin: 8pt 0 12pt; break-inside: avoid; }
   figure svg { width: 100%; height: auto; display: block; }
@@ -39,7 +43,7 @@
   .kpi { border: 1px solid var(--line); border-top: 3px solid var(--teal); padding: 6pt 7pt; background: #fff; }
   .kpi b { display: block; font-size: 16pt; color: var(--navy); line-height: 1.1; }
   .kpi span { font-size: 7.8pt; color: var(--muted); line-height: 1.3; display: block; margin-top: 2pt; }
-  .cover { height: 263mm; background: var(--navy); color: #fff; padding: 34mm 18mm 18mm; display: flex; flex-direction: column; break-after: page; margin: -16mm -17mm 0; width: calc(100% + 34mm); max-width: none; }
+  .cover { width: 210mm; height: 296mm; background: var(--navy); color: #fff; padding: 50mm 24mm 24mm; display: flex; flex-direction: column; break-after: page; overflow: hidden; }
   .cover .brand { font-size: 46pt; font-weight: 800; letter-spacing: 1pt; }
   .cover .rule { width: 34mm; height: 3pt; background: var(--teal); margin: 8pt 0 14pt; }
   .cover .sub { font-size: 17pt; color: #cfeae6; line-height: 1.35; max-width: 130mm; }
@@ -50,19 +54,17 @@
   @media screen {
     body { background: #eef2f6; }
     main { background: #fff; padding: 16mm 17mm; margin: 12px auto; box-shadow: 0 1px 6px rgba(0,0,0,.12); }
-    .cover { margin: -16mm -17mm 16mm; }
+    .cover { margin: 12px auto 0; box-shadow: 0 1px 6px rgba(0,0,0,.12); }
   }
   @media screen and (max-width: 720px) {
     main { padding: 16px; }
-    .cover { margin: -16px -16px 16px; width: calc(100% + 32px); height: auto; min-height: 480px; padding: 48px 20px 24px; }
+    .cover { width: 100%; height: auto; min-height: 480px; padding: 48px 20px 24px; margin: 0; }
     .kpis { grid-template-columns: repeat(2, 1fr); }
     table { display: block; overflow-x: auto; }
   }
 </style>
 </head>
 <body>
-<main>
-
 <section class="cover">
   <div class="brand">KAKI</div>
   <div class="rule"></div>
@@ -70,6 +72,8 @@
   <div class="label">HACKATHON TECHNICAL REPORT</div>
   <div class="meta">28 September 2026 · live at kakiai.me</div>
 </section>
+<main>
+
 
 <h2><span class="n">1</span>Executive summary</h2>
 <p>Small and medium enterprises carry the same coordination load as large ones with far fewer people to absorb it. Decisions are scattered across meetings, tickets, email, chat and documents, and employees lose hours reconstructing what happened, what they own and what needs sign-off. A generic chatbot makes this worse when it answers confidently without evidence or acts without a human checkpoint.</p>
@@ -100,14 +104,16 @@
 
 <h2><span class="n">3</span>Product</h2>
 <table>
-  <tr><th style="width:22%">Module</th><th>What it does</th><th style="width:30%">Human control</th></tr>
+  <thead><tr><th style="width:22%">Module</th><th>What it does</th><th style="width:30%">Human control</th></tr></thead>
+  <tbody>
   <tr><td><b>S1 Company context</b></td><td>Answers workplace questions from company records with inline citations and an evidence graph; shows the employee's own plan and open work for any chosen day.</td><td>Read-only. Every company claim cites a retrieved record.</td></tr>
   <tr><td><b>S2 Meeting actions</b></td><td>Screens a live or uploaded transcript, extracts decisions and commitments, checks them against earlier decisions, and drafts emails, invites, tickets and messages.</td><td>Drafts wait for review; money and contract commitments escalate; the employee clicks send in their own tools.</td></tr>
   <tr><td><b>S3 Recruiting</b></td><td>Turns a role into hiring criteria, searches public profiles, tiers candidates and drafts outreach. A knowledge gap found in S1 can open a role here directly.</td><td>No search runs until the criteria are confirmed; outreach is a draft.</td></tr>
+  </tbody>
 </table>
 <p>Kaki is deliberately not an autonomous replacement for an employee. It is a context and preparation layer that removes reconstruction work while consequential decisions stay with people.</p>
 
-<h2 class="pb"><span class="n">4</span>Architecture</h2>
+<h2><span class="n">4</span>Architecture</h2>
 <p>Kaki is a modular monolith: one TypeScript/Fastify service powers a stateless agent reasoning loop and coordinates identity, retrieval, models, memory and workflows, with PostgreSQL as the authoritative system of record. The three modules share every layer below them, and each layer has its own trust boundary.</p>
 
 <figure>
@@ -194,13 +200,15 @@
 <p>The separation matters because each kind of information has a different trust level. Company records are citable evidence. Personal memory is context, never a company source. Conversation history supports follow-ups. Proposed actions are stateful objects that must pass deterministic policy before anything leaves the system.</p>
 
 <table>
-  <tr><th style="width:24%">Component</th><th>Technology</th></tr>
+  <thead><tr><th style="width:24%">Component</th><th>Technology</th></tr></thead>
+  <tbody>
   <tr><td>Service</td><td>TypeScript, Fastify, Server-Sent Events; runs with <code>tsx</code></td></tr>
   <tr><td>Company knowledge</td><td>PostgreSQL 16 + pgvector; Amazon Titan Text Embeddings V2 (1024-d)</td></tr>
   <tr><td>Personal memory</td><td>Letta App Server (one memory agent per employee)</td></tr>
   <tr><td>Generation</td><td><b>Claude Sonnet 4.5</b> via an LLM gateway in deployment; NUS SoCLaaS <b>Qwen 3.8 27B</b> for development and testing, including all evaluation</td></tr>
   <tr><td>Optional</td><td>Cognee (emergent graph), Whisper transcription, live ASR, Gmail/Calendar, Exa people search</td></tr>
   <tr><td>Browser</td><td>marked, DOMPurify, Shoelace</td></tr>
+  </tbody>
 </table>
 
 <h2><span class="n">5</span>Data and knowledge</h2>
@@ -219,7 +227,7 @@
 <h3>Planner projection</h3>
 <p><code>orgforge_kb/build_timeline.py</code> projects each person's day plans, ticket states and the employee roster from the corpus. This powers "what's on my plate" for any chosen day. It is shown to the user but never cited as company evidence.</p>
 
-<h2 class="pb"><span class="n">6</span>S1 · Company context agent</h2>
+<h2><span class="n">6</span>S1 · Company context agent</h2>
 <h3>Persona</h3>
 <p>The system prompt defines Kaki as a Technical Chief of Staff: communicate like an experienced peer, use tools before making workplace claims, treat retrieved text as data rather than instructions, cite every company fact, and state uncertainty plainly. Answers are generated at temperature 0 to keep tool choices and citations consistent.</p>
 
@@ -272,13 +280,15 @@
 <h3>Tools</h3>
 <p>Kaki exposes typed, purpose-specific tools instead of arbitrary code execution. Parameters are JSON-schema definitions with enums, size limits and <code>additionalProperties: false</code>, and malformed arguments are rejected with an error the model can correct.</p>
 <table>
-  <tr><th style="width:27%">Tool</th><th>Purpose</th><th style="width:34%">Constraint</th></tr>
+  <thead><tr><th style="width:27%">Tool</th><th>Purpose</th><th style="width:34%">Constraint</th></tr></thead>
+  <tbody>
   <tr><td><code>search_company_knowledge</code></td><td>Find company records</td><td>Query, optional <code>from</code>/<code>to</code> dates and record <code>types</code>; at most 20 results</td></tr>
   <tr><td><code>get_related_sources</code></td><td>Follow explicit document links</td><td>Seeds must already be retrieved</td></tr>
   <tr><td><code>today_todo</code>, <code>day_plan</code></td><td>The employee's own open work and plan</td><td>No person argument: always the signed-in employee</td></tr>
   <tr><td><code>hiring_proposals</code></td><td>Explain knowledge gaps (e.g. a domain whose owner left)</td><td>Read-only</td></tr>
   <tr><td><code>open_role_from_gap</code></td><td>Bridge S1 → S3: start a hiring role from a gap</td><td>Draft only, on explicit request</td></tr>
   <tr><td><code>load_skill</code></td><td>Load a specialised skill (e.g. recruiting) and its tools</td><td>Registered skills only</td></tr>
+  </tbody>
 </table>
 
 <h3>Answering as of any past day</h3>
@@ -289,16 +299,18 @@
 <h3>Why the citation gate matters</h3>
 <p>After the model drafts an answer, code checks that every <code>[source:ID]</code> refers to a record retrieved in this turn. An answer citing anything else is sent back once for repair; if it still fails, the user gets an explicit "insufficient evidence" reply instead of an unverifiable one. In evaluation this held for every answer (29/29): Kaki never cited a record it had not read. A per-turn <b>tool-output budget</b> (about 100k tokens of retrieved text) keeps even long, parallel investigations comfortably inside the model's context window.</p>
 
-<h2 class="pb"><span class="n">7</span>S2 · Meeting actions</h2>
+<h2><span class="n">7</span>S2 · Meeting actions</h2>
 <p>S2 turns a meeting into reviewed follow-up. Audio is transcribed by Whisper, or by an optional live speech service that shows a fast preview while someone is still talking; uploaded transcripts work the same way. Each transcript segment then passes through a fixed pipeline:</p>
 <table>
-  <tr><th style="width:20%">Stage</th><th>What happens</th><th style="width:30%">Why it is built this way</th></tr>
+  <thead><tr><th style="width:20%">Stage</th><th>What happens</th><th style="width:30%">Why it is built this way</th></tr></thead>
+  <tbody>
   <tr><td><b>1. Screen</b></td><td>Every segment passes the sensitive-data gate and a narrow prompt-injection screen before any model sees it; blocked segments are withheld.</td><td>Rules are anchored to injection wording, so "let's ignore the previous slide" still passes.</td></tr>
   <tr><td><b>2. Extract</b></td><td>The model proposes decisions and candidate actions from a closed set of kinds: email, calendar invite, ticket, message, document, sheet, hiring request, question, escalation.</td><td>A closed set keeps every action typed and checkable.</td></tr>
   <tr><td><b>3. Resolve dates</b></td><td>For "next Wednesday" or "the Friday after next", the model fills a form whose fields are closed choices; code turns the form into a date, and asks which day when two fit.</td><td>The model understands the words; it never counts days.</td></tr>
   <tr><td><b>4. Check conflicts</b></td><td>Each new decision is checked against decisions from earlier meetings and against company evidence.</td><td>Conflicts are found by a dedicated check, never guessed by the extractor.</td></tr>
   <tr><td><b>5. Draft</b></td><td>Drafts are written with company evidence to hand. A commitment repeated later in the meeting stays one action, and a money commitment is never stated as settled until its escalation is approved. Approve stays disabled while a draft is missing something it needs, such as an unresolved date.</td><td>One commitment, one draft; no promises made on someone else's behalf.</td></tr>
   <tr><td><b>6. Tier and hand off</b></td><td>Policy code assigns the tier (section 10); approved drafts open prefilled in Gmail, Google Calendar or GitHub.</td><td>The employee sends from their own account.</td></tr>
+  </tbody>
 </table>
 <p>A question asked aloud in the meeting is answered in a single model call using the question itself as the search, so the answer starts streaming within seconds and is kept to a few sentences.</p>
 
@@ -315,21 +327,25 @@
 
 <h2><span class="n">9</span>Memory</h2>
 <table>
-  <tr><th style="width:20%">Kind</th><th>Where</th><th style="width:36%">Used for</th></tr>
+  <thead><tr><th style="width:20%">Kind</th><th>Where</th><th style="width:36%">Used for</th></tr></thead>
+  <tbody>
   <tr><td>Conversation</td><td>PostgreSQL conversations and messages; the last six turns go in the prompt, long messages clipped</td><td>Follow-up questions in the same chat</td></tr>
   <tr><td>Personal working memory</td><td>Letta: one persistent memory agent per employee, updated in the background after each turn</td><td>Durable facts the employee shared (focus, preferences, schedule), across chats</td></tr>
   <tr><td>Company memory</td><td>PostgreSQL records, chunks and links</td><td>Citable evidence</td></tr>
+  </tbody>
 </table>
 <p>Personal memory may shape an answer but is never presented as company evidence, which avoids a common agent failure: mixing what a user said earlier with what the organisation can prove. When the user looks at a past day, current personal memory is withheld so later context cannot leak into a historical answer. Letta runs in strict permission mode with a memory-file tool allowlist confined to the employee's memory directory.</p>
 <p><b>Persona-scoped by design.</b> Memory is keyed to the signed-in employee. When a different employee signs in (say, from Jax in backend to Priya in design), Kaki's memory switches with them, so working context, preferences and hiring criteria persist across sessions for each person without ever mixing between people or being cited as company fact.</p>
 
-<h2 class="pb"><span class="n">10</span>Autonomy and human control</h2>
+<h2><span class="n">10</span>Autonomy and human control</h2>
 <table>
-  <tr><th style="width:16%">Tier</th><th>Examples</th><th style="width:40%">Behaviour</th></tr>
+  <thead><tr><th style="width:16%">Tier</th><th>Examples</th><th style="width:40%">Behaviour</th></tr></thead>
+  <tbody>
   <tr><td><b>Auto</b></td><td>Read-only answers, conflict flags</td><td>May complete automatically</td></tr>
   <tr><td><b>Approval</b></td><td>Email, ticket, calendar invite, message, document, hiring draft</td><td>Waits for the employee's review</td></tr>
   <tr><td><b>Escalate</b></td><td>Money, discounts, prices, refunds, contracts</td><td>Needs a named human decision; cannot execute</td></tr>
   <tr><td><b>Blocked</b></td><td>Secrets, prompt injections, disallowed content</td><td>Withheld from the model; cannot execute</td></tr>
+  </tbody>
 </table>
 <p><b>Code, not the model, assigns the tier.</b> The model proposes an action kind and payload; deterministic policy decides whether it is automatic, needs approval or escalates. Approval is bound to a hash of the exact payload, so editing a draft invalidates the old approval and stale approvals cannot send modified content.</p>
 <h3>Zero-credential handoff</h3>
@@ -345,29 +361,33 @@
 </ul>
 <div class="box"><p><b>Deployment scope.</b> In the demo company every employee may read every record. Per-document permissions in retrieval, a production identity provider and HTTPS-only cookies are part of the pilot phase (section 14).</p></div>
 
-<h2 class="pb"><span class="n">12</span>Evaluation</h2>
+<h2><span class="n">12</span>Evaluation</h2>
 <p>We measured Kaki two ways: against <b>OrgForge's own question set</b>, an independent benchmark we did not write, and a <b>supplementary suite</b> for what OrgForge does not test. Every supplementary case was committed to git before it was run.</p>
 
 <h3>12.1 OrgForge benchmark</h3>
 <p><b>What we ran.</b> OrgForge ships 78 questions, built to evaluate agents inside its own harness, which gives them simulator tools and per-person visibility data that are not part of the published dataset. Many questions therefore cannot be answered from the records alone. We kept the <b>29 questions</b> whose required evidence exists in the records an employee can see, and report on those. Evaluation used the development model, Qwen 3.8 27B, throughout; repeated benchmark runs on the deployment model, Claude Sonnet 4.5, were too costly for this phase.</p>
 <p><b>How it was graded.</b> Each answer is compared with OrgForge's reference conclusion by a fixed judge model at temperature 0 (agrees / disagrees / inconclusive). A conclusion-level judge was used rather than keyword matching, so a correct answer phrased differently is not penalised.</p>
 <table>
-  <tr><th>Metric</th><th class="num">Result</th><th>Meaning</th></tr>
+  <thead><tr><th>Metric</th><th class="num">Result</th><th>Meaning</th></tr></thead>
+  <tbody>
   <tr><td><b>Accuracy</b></td><td class="num"><b>62%</b> (18/29)</td><td>Judged against OrgForge's reference conclusions, on the shipped code</td></tr>
   <tr><td><b>Citation integrity</b></td><td class="num"><b>100%</b> (29/29)</td><td>Every cited source was actually retrieved in that run</td></tr>
+  </tbody>
 </table>
 
 <p><b>Where the misses are.</b> Most misses are questions of the form <i>did X happen in response to Y</i>, where OrgForge's definition differs from a plain reading. For example, it counts an email answered by the account owner as "routed", which Kaki read as "handed to another team". We did not tune Kaki to these definitions.</p>
 
 <h3>12.2 Supplementary suite</h3>
 <table>
-  <tr><th style="width:30%">Capability</th><th class="num">Result</th><th>Cases, including hard ones</th></tr>
+  <thead><tr><th style="width:30%">Capability</th><th class="num">Result</th><th>Cases, including hard ones</th></tr></thead>
+  <tbody>
   <tr><td>Says so when the records don't have the answer</td><td class="num">12/12</td><td>8 invented subjects ("Project Nimbus", a nonexistent ticket); 4 false premises on real tickets ("Why did Tasha take over ENG-101?" when she never did)</td></tr>
   <tr><td>"What's on my plate today?"</td><td class="num">10/10 days, 60/60 items</td><td>Includes 4 busy days (8–12 items) asked four different ways</td></tr>
   <tr><td>Personal memory</td><td class="num">17/18 checks</td><td>Remembers across chats, updates a fact changed twice, survives 5 unrelated questions, stays isolated between employees with look-alike facts, never cited as company evidence</td></tr>
   <tr><td>Sensitive data (held-out set)</td><td class="num">20/20 blocked<br>0/10 false blocks</td><td>Passwords, one-time codes, tokens, connection strings, keys, cards, bank details and government IDs, in phrasings written after the system was built; no secret reached memory in any test</td></tr>
   <tr><td>Hiring-gap detection (backtest)</td><td class="num">3/3 hires foreseen</td><td>Over 60 working days, each hire was preceded by a proposal for its domain 6–7 days earlier; 5 of 6 proposals were followed by a hire or an internal hand-over</td></tr>
   <tr><td>Meeting actions</td><td class="num">23/24 actions found<br>100% correct risk tier</td><td>18 transcript cases: 9/9 injections and secrets blocked, 0/44 false blocks, every matched action given the right approval tier</td></tr>
+  </tbody>
 </table>
 <p class="note">Four hard cases were removed after review because our expected answers were wrong: Kaki correctly found that the tickets had been completed through merged pull requests.</p>
 
@@ -377,15 +397,17 @@
 <h3>12.4 Automated tests</h3>
 <p>More than 900 automated tests run on every change, and TypeScript compiles cleanly under <code>tsc --noEmit</code>. They cover identity and user isolation, citations, memory behaviour, the sensitive-data gate, meeting approvals, recruiting confirmation and browser behaviour. A separate oracle-isolation check (<code>npm run test:orgforge</code>) verifies that no simulator record can enter retrieval, chunking or embedding.</p>
 
-<h2 class="pb"><span class="n">13</span>Success metrics and demo</h2>
+<h2><span class="n">13</span>Success metrics and demo</h2>
 <table>
-  <tr><th>Outcome</th><th>KPI</th><th>Now</th><th>Pilot target</th></tr>
+  <thead><tr><th>Outcome</th><th>KPI</th><th>Now</th><th>Pilot target</th></tr></thead>
+  <tbody>
   <tr><td>Trustworthy answers</td><td>Citation integrity</td><td>100%</td><td>100%</td></tr>
   <tr><td>Correct answers</td><td>Accuracy on answerable questions</td><td>62% (OrgForge)</td><td>≥ 80% on the pilot company's own questions</td></tr>
   <tr><td>Fast answers</td><td>Time to first useful text</td><td>(pilot baseline)</td><td>&lt; 3 s</td></tr>
   <tr><td>Safe automation</td><td>External sends without employee click</td><td>0 by design</td><td>0</td></tr>
   <tr><td>No secret leakage</td><td>Held-out secrets blocked / false blocks</td><td>20/20, 0/10</td><td>≥ 95%, ≤ 2%</td></tr>
   <tr><td>Less follow-up work</td><td>Commitment → approved draft time</td><td>(pilot)</td><td>−50% vs manual</td></tr>
+  </tbody>
 </table>
 <h3>Demo narrative: one day with Jax</h3>
 <p>The demo follows one engineer through one hard day, using real records from the demo company.</p>
@@ -399,11 +421,13 @@
 </ol>
 <h2><span class="n">14</span>Roadmap</h2>
 <table>
-  <tr><th style="width:20%">Phase</th><th>Focus</th><th style="width:32%">Outcome</th></tr>
+  <thead><tr><th style="width:20%">Phase</th><th>Focus</th><th style="width:32%">Outcome</th></tr></thead>
+  <tbody>
   <tr><td><b>1. Pilot</b><br><span class="note">0–3 months</span></td><td>Read connectors for a real SME's Slack, Google Workspace and Jira; single sign-on and per-document permissions in retrieval; the OrgForge and supplementary suites run on every change, alongside questions from the pilot company itself.</td><td>Kaki answering from one company's live records, with measured time saved per employee.</td></tr>
   <tr><td><b>2. Team rollout</b><br><span class="note">3–6 months</span></td><td>Managed, multi-tenant memory infrastructure and durable background queues for many concurrent employees; more candidate-sourcing connectors (e.g. GitHub, Stack Overflow) beyond Exa; streamed first responses within seconds; employees can view and edit what Kaki remembers about them.</td><td>Daily use across a whole team, with per-tenant cost and latency targets.</td></tr>
   <tr><td><b>3. Trusted actions</b><br><span class="note">6–12 months</span></td><td>Enterprise single sign-on and role-based access control, then delegated write access (e.g. creating a Jira ticket directly) for action types a company has approved, extending the same tiered policy and payload-hash approval.</td><td>Fewer clicks for routine follow-ups, with humans still approving anything consequential.</td></tr>
   <tr><td><b>4. More SME functions</b></td><td>Customer support, finance operations and onboarding, built on the same contract.</td><td>One operating agent for the whole SME.</td></tr>
+  </tbody>
 </table>
 <p>Each phase keeps Kaki's core contract unchanged: retrieve evidence, keep memory separated, prepare typed actions, and keep risk-proportionate human control.</p>
 
