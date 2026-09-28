@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 380" role="img" aria-label="Kaki bounded reasoning loop">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <defs>
+    <marker id="a2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#8a9bb0"/></marker>
+  </defs>
+  <style>
+    .n{font:700 22px Helvetica,Arial,sans-serif;fill:#18a999}
+    .h{font:700 18px Helvetica,Arial,sans-serif;fill:#14263d}
+    .b{font:14.5px Helvetica,Arial,sans-serif;fill:#5f6b7a}
+    .nc{font:700 22px Helvetica,Arial,sans-serif;fill:#f26b4e}
+  </style>
+  <g fill="#e8f7f4" stroke="#18a999" stroke-width="2.5">
+    <rect x="20" y="20" width="260" height="140" rx="16"/><rect x="326" y="20" width="260" height="140" rx="16"/>
+    <rect x="632" y="20" width="260" height="140" rx="16"/><rect x="920" y="20" width="260" height="140" rx="16"/>
+    <rect x="920" y="220" width="260" height="140" rx="16"/><rect x="20" y="220" width="260" height="140" rx="16"/>
+  </g>
+  <g fill="#fff0eb" stroke="#f26b4e" stroke-width="2.5">
+    <rect x="632" y="220" width="260" height="140" rx="16"/><rect x="326" y="220" width="260" height="140" rx="16"/>
+  </g>
+  <text x="40" y="56" class="n">1</text><text x="70" y="56" class="h">Identify and screen</text>
+  <text x="40" y="86" class="b">Signed session → employee.</text><text x="40" y="108" class="b">Secrets blocked before</text><text x="40" y="130" class="b">any model sees them.</text>
+  <text x="346" y="56" class="n">2</text><text x="376" y="56" class="h">Load context</text>
+  <text x="346" y="86" class="b">Recent turns + personal</text><text x="346" y="108" class="b">memory (context only,</text><text x="346" y="130" class="b">never evidence).</text>
+  <text x="652" y="56" class="n">3</text><text x="682" y="56" class="h">Search</text>
+  <text x="652" y="86" class="b">Tools required on step 1;</text><text x="652" y="108" class="b">parallel searches with</text><text x="652" y="130" class="b">date and type filters.</text>
+  <text x="940" y="56" class="n">4</text><text x="970" y="56" class="h">Follow links</text>
+  <text x="940" y="86" class="b">Related sources from</text><text x="940" y="108" class="b">retrieved records only.</text><text x="940" y="130" class="b">Output budget per turn.</text>
+  <text x="940" y="256" class="n">5</text><text x="970" y="256" class="h">Synthesise</text>
+  <text x="940" y="286" class="b">Answer from evidence;</text><text x="940" y="308" class="b">cite as [source:ID].</text><text x="940" y="330" class="b">Max 4 steps (8 with skills).</text>
+  <text x="652" y="256" class="nc">6</text><text x="682" y="256" class="h">Validate citations</text>
+  <text x="652" y="286" class="b">Every cited ID must be</text><text x="652" y="308" class="b">in this run's retrieved</text><text x="652" y="330" class="b">set.</text>
+  <text x="346" y="256" class="nc">7</text><text x="376" y="256" class="h">Repair or abstain</text>
+  <text x="346" y="286" class="b">One repair attempt,</text><text x="346" y="308" class="b">else "insufficient</text><text x="346" y="330" class="b">evidence".</text>
+  <text x="40" y="256" class="n">8</text><text x="70" y="256" class="h">Persist trace</text>
+  <text x="40" y="286" class="b">Answer, sources, tool</text><text x="40" y="308" class="b">calls, model, timings;</text><text x="40" y="330" class="b">memory updates async.</text>
+  <g stroke="#8a9bb0" stroke-width="3" fill="none" marker-end="url(#a2)">
+    <line x1="282" y1="90" x2="320" y2="90"/><line x1="588" y1="90" x2="626" y2="90"/><line x1="894" y1="90" x2="914" y2="90"/>
+    <line x1="1050" y1="162" x2="1050" y2="214"/>
+    <line x1="918" y1="290" x2="898" y2="290"/><line x1="630" y1="290" x2="592" y2="290"/><line x1="324" y1="290" x2="286" y2="290"/>
+    <path d="M 960 218 C 900 196 800 196 770 168" stroke-dasharray="6 5"/>
+  </g>
+  <text x="700" y="206" class="b">another search round</text>
+</svg>

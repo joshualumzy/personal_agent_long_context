@@ -77,10 +77,10 @@ async function main(): Promise<void> {
 
   // A fact changed twice.
   await say(owner, OWNER, "My on-call week has moved to April 13.");
-  await memoryMatching(owner, /13/);
+  await memoryMatching(owner, /april\s*13/i);
   await say(owner, OWNER, DISTRACTIONS[1]!);
   await say(owner, OWNER, "Scratch that: on-call is now the week of April 20.");
-  const updated = await memoryMatching(owner, /20/);
+  const updated = await memoryMatching(owner, /april\s*20/i);
   record("stored-second-change", updated !== null, updated ? "latest change in memory" : "not in memory after 3 min");
   const latest = await say(owner, OWNER, "When am I on call?");
   await judged(

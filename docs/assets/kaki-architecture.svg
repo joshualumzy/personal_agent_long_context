@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" aria-label="Kaki layered architecture">
+  <rect width="100%" height="100%" fill="#ffffff"/>
+  <defs>
+    <marker id="a1" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9aa9ba"/></marker>
+  </defs>
+  <style>
+    .t{font:700 21px Helvetica,Arial,sans-serif;fill:#fff}
+    .d{font:18px Helvetica,Arial,sans-serif;fill:#fff}
+    .s{font:600 16px Helvetica,Arial,sans-serif;fill:#14263d}
+    .x{font:15px Helvetica,Arial,sans-serif;fill:#5f6b7a}
+  </style>
+  <rect x="20" y="16" width="1160" height="76" rx="16" fill="#14263d"/>
+  <text x="44" y="48" class="t">EXPERIENCE</text>
+  <text x="44" y="76" class="d">Assistant chat · Today plan · Meetings · Recruiting · Company map (browser, streamed answers)</text>
+
+  <rect x="20" y="118" width="1160" height="76" rx="16" fill="#203a5f"/>
+  <text x="44" y="150" class="t">API, IDENTITY AND SENSITIVE-DATA GATE</text>
+  <text x="44" y="178" class="d">Fastify · signed sessions · pattern rules, then model classifier, before any model sees a message</text>
+
+  <rect x="20" y="220" width="1160" height="76" rx="16" fill="#18a999"/>
+  <text x="44" y="252" class="t">AGENT</text>
+  <text x="44" y="280" class="d">Model registry (Qwen 3.8 27B · Claude Sonnet 4.5) · bounded tool loop · citation gate · tool-output budget</text>
+
+  <rect x="20" y="322" width="560" height="200" rx="16" fill="#427aa1"/>
+  <text x="44" y="354" class="t">COMPANY EVIDENCE (citable)</text>
+  <text x="44" y="386" class="d">PostgreSQL full-text + pgvector</text>
+  <text x="44" y="412" class="d">Titan V2 embeddings · date/type filters</text>
+  <text x="44" y="438" class="d">Explicit document links · causal graph</text>
+  <text x="44" y="464" class="d">Planner projection (shown, never cited)</text>
+  <text x="44" y="490" class="d">Optional Cognee emergent graph</text>
+
+  <rect x="620" y="322" width="560" height="200" rx="16" fill="#5b6f8a"/>
+  <text x="644" y="354" class="t">PERSONAL CONTEXT (never cited)</text>
+  <text x="644" y="386" class="d">Letta: one memory agent per employee</text>
+  <text x="644" y="412" class="d">Conversation history (last six turns)</text>
+  <text x="644" y="438" class="d">Isolated between employees</text>
+  <text x="644" y="464" class="d">Not used when viewing a past day</text>
+
+  <rect x="20" y="548" width="1160" height="76" rx="16" fill="#f26b4e"/>
+  <text x="44" y="580" class="t">ACTION CONTROL</text>
+  <text x="44" y="608" class="d">Risk tiers set by code · approval bound to payload hash · zero-credential handoff to the employee's own tools</text>
+
+  <line x1="600" y1="94" x2="600" y2="114" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="600" y1="196" x2="600" y2="216" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="300" y1="298" x2="300" y2="318" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="900" y1="298" x2="900" y2="318" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="600" y1="524" x2="600" y2="544" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+</svg>
