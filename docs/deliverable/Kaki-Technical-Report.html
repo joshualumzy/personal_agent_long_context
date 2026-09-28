@@ -117,7 +117,7 @@
 <p>Kaki is a modular monolith: one TypeScript/Fastify service powers a stateless agent reasoning loop and coordinates identity, retrieval, models, memory and workflows, with PostgreSQL as the authoritative system of record. The three modules share every layer below them, and each layer has its own trust boundary.</p>
 
 <figure>
-<svg viewBox="0 0 1200 760" role="img" aria-label="Kaki layered architecture with its three modules">
+<svg viewBox="0 0 1200 830" role="img" aria-label="Kaki layered architecture with its three agent modules">
   <defs>
     <marker id="a1" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9aa9ba"/></marker>
     <marker id="a3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#18a999"/></marker>
@@ -126,6 +126,7 @@
     .t{font:700 20px Helvetica,Arial,sans-serif;fill:#fff}
     .d{font:17px Helvetica,Arial,sans-serif;fill:#fff}
     .mt{font:700 18px Helvetica,Arial,sans-serif;fill:#14263d}
+    .ag{font:italic 600 15.5px Helvetica,Arial,sans-serif;fill:#128a7c}
     .ml{font:15.5px Helvetica,Arial,sans-serif;fill:#1e293b}
     .lane{font:600 15px Helvetica,Arial,sans-serif;fill:#128a7c}
   </style>
@@ -133,68 +134,76 @@
   <text x="44" y="44" class="t">EXPERIENCE</text>
   <text x="44" y="70" class="d">Assistant chat · Today plan · Live and uploaded meetings · Recruiting board · Company map</text>
 
-  <rect x="20" y="106" width="1160" height="70" rx="16" fill="#203a5f"/>
-  <text x="44" y="136" class="t">API, IDENTITY AND SENSITIVE-DATA GATE</text>
-  <text x="44" y="162" class="d">Fastify · signed sessions · pattern rules, then model classifier, before any model sees a message</text>
+  <rect x="20" y="104" width="1160" height="70" rx="16" fill="#203a5f"/>
+  <text x="44" y="134" class="t">API, IDENTITY AND SENSITIVE-DATA GATE</text>
+  <text x="44" y="160" class="d">Fastify · signed sessions · pattern rules, then model classifier, before any model sees a message</text>
+
+  <rect x="20" y="194" width="1160" height="58" rx="14" fill="#18a999"/>
+  <text x="44" y="221" class="t">SHARED MODEL LAYER</text>
+  <text x="44" y="243" class="d" style="font-size:15.5px">Claude Sonnet 4.5 in deployment · Qwen 3.8 27B in development · every model reply is validated by code</text>
 
   <g stroke="#18a999" stroke-width="2.5">
-    <rect x="20" y="198" width="373" height="212" rx="14" fill="#e8f7f4"/>
-    <rect x="413" y="198" width="374" height="212" rx="14" fill="#e8f7f4"/>
-    <rect x="807" y="198" width="373" height="212" rx="14" fill="#e8f7f4"/>
+    <rect x="20" y="272" width="373" height="236" rx="14" fill="#e8f7f4"/>
+    <rect x="413" y="272" width="374" height="236" rx="14" fill="#e8f7f4"/>
+    <rect x="807" y="272" width="373" height="236" rx="14" fill="#e8f7f4"/>
   </g>
-  <text x="40" y="228" class="mt">S1 · COMPANY CONTEXT AGENT</text>
-  <text x="40" y="258" class="ml">Bounded tool loop (Claude Sonnet 4.5;</text>
-  <text x="40" y="280" class="ml">Qwen 3.8 27B in development)</text>
-  <text x="40" y="306" class="ml">Hybrid search + link-following</text>
-  <text x="40" y="332" class="ml">Citation gate on every answer</text>
-  <text x="40" y="358" class="ml">Own plan and open work, any day</text>
-  <text x="40" y="384" class="ml">Knowledge-gap detection</text>
+  <text x="40" y="302" class="mt">S1 · COMPANY CONTEXT AGENT</text>
+  <text x="40" y="328" class="ag">Agent plans searches and writes the answer</text>
+  <text x="40" y="358" class="ml">Bounded tool loop, typed tools</text>
+  <text x="40" y="384" class="ml">Hybrid search + link-following</text>
+  <text x="40" y="410" class="ml">Citation gate on every answer</text>
+  <text x="40" y="436" class="ml">Answers as of any past day</text>
+  <text x="40" y="462" class="ml">Own plan and open work</text>
+  <text x="40" y="488" class="ml">Knowledge-gap detection</text>
 
-  <text x="433" y="228" class="mt">S2 · MEETING ACTIONS</text>
-  <text x="433" y="258" class="ml">Whisper / live transcription</text>
-  <text x="433" y="284" class="ml">Screen secrets and injections</text>
-  <text x="433" y="310" class="ml">Extract decisions and commitments</text>
-  <text x="433" y="336" class="ml">Check against earlier decisions</text>
-  <text x="433" y="362" class="ml">Draft email, invite, ticket, doc</text>
-  <text x="433" y="388" class="ml">Risk tier set by policy code</text>
+  <text x="433" y="302" class="mt">S2 · MEETING ACTIONS AGENT</text>
+  <text x="433" y="328" class="ag">Agent extracts, reads dates and drafts</text>
+  <text x="433" y="358" class="ml">Whisper / live transcription</text>
+  <text x="433" y="384" class="ml">Screen secrets and injections</text>
+  <text x="433" y="410" class="ml">Decisions and commitments</text>
+  <text x="433" y="436" class="ml">Conflicts with earlier decisions</text>
+  <text x="433" y="462" class="ml">Draft email, invite, ticket, doc</text>
+  <text x="433" y="488" class="ml">Code sets the date and risk tier</text>
 
-  <text x="827" y="228" class="mt">S3 · RECRUITING</text>
-  <text x="827" y="258" class="ml">Role → 3–6 hiring criteria</text>
-  <text x="827" y="284" class="ml">Founder confirms before any search</text>
-  <text x="827" y="310" class="ml">Public-profile search (Exa)</text>
-  <text x="827" y="336" class="ml">Candidate tiers ("unclear" default)</text>
-  <text x="827" y="362" class="ml">Personalised outreach drafts</text>
-  <text x="827" y="388" class="ml">Nothing sent without review</text>
+  <text x="827" y="302" class="mt">S3 · RECRUITING AGENT</text>
+  <text x="827" y="328" class="ag">Agent proposes criteria, judges fit, drafts</text>
+  <text x="827" y="358" class="ml">Role → 3–6 hiring criteria</text>
+  <text x="827" y="384" class="ml">Founder confirms before any search</text>
+  <text x="827" y="410" class="ml">Public-profile search (Exa)</text>
+  <text x="827" y="436" class="ml">Fit reasons per criterion</text>
+  <text x="827" y="462" class="ml">Code computes candidate tiers</text>
+  <text x="827" y="488" class="ml">Outreach drafts, founder sends</text>
 
-  <path d="M 206 412 L 206 440 L 993 440 L 993 416" fill="none" stroke="#18a999" stroke-width="3" stroke-dasharray="7 6" marker-end="url(#a3)"/>
-  <rect x="440" y="428" width="320" height="24" fill="#fff"/>
-  <text x="600" y="446" class="lane" text-anchor="middle">knowledge gap in S1 → opens a role in S3</text>
+  <path d="M 206 510 L 206 538 L 993 538 L 993 514" fill="none" stroke="#18a999" stroke-width="3" stroke-dasharray="7 6" marker-end="url(#a3)"/>
+  <rect x="440" y="526" width="320" height="24" fill="#fff"/>
+  <text x="600" y="544" class="lane" text-anchor="middle">knowledge gap in S1 → opens a role in S3</text>
 
-  <rect x="20" y="468" width="560" height="178" rx="16" fill="#427aa1"/>
-  <text x="44" y="498" class="t">COMPANY EVIDENCE (citable)</text>
-  <text x="44" y="528" class="d">PostgreSQL full-text + pgvector (Titan V2)</text>
-  <text x="44" y="554" class="d">Date and record-type scoping</text>
-  <text x="44" y="580" class="d">Document links · causal graph · optional Cognee</text>
-  <text x="44" y="606" class="d">Planner projection (shown, never cited)</text>
+  <rect x="20" y="566" width="560" height="152" rx="16" fill="#427aa1"/>
+  <text x="44" y="596" class="t">COMPANY EVIDENCE (citable)</text>
+  <text x="44" y="626" class="d">PostgreSQL full-text + pgvector (Titan V2)</text>
+  <text x="44" y="652" class="d">Document links · deterministic graph</text>
+  <text x="44" y="678" class="d">Emergent graph per question (Cognee)</text>
+  <text x="44" y="704" class="d">Planner projection (shown, never cited)</text>
 
-  <rect x="620" y="468" width="560" height="178" rx="16" fill="#5b6f8a"/>
-  <text x="644" y="498" class="t">PERSONAL CONTEXT (never cited)</text>
-  <text x="644" y="528" class="d">Letta: one memory agent per employee</text>
-  <text x="644" y="554" class="d">Conversation history (last six turns)</text>
-  <text x="644" y="580" class="d">Isolated between employees</text>
-  <text x="644" y="606" class="d">Hiring criteria and preferences</text>
+  <rect x="620" y="566" width="560" height="152" rx="16" fill="#5b6f8a"/>
+  <text x="644" y="596" class="t">PERSONAL CONTEXT (never cited)</text>
+  <text x="644" y="626" class="d">Letta: one memory agent per employee</text>
+  <text x="644" y="652" class="d">Conversation history (last six turns)</text>
+  <text x="644" y="678" class="d">Hiring intent and preferences</text>
+  <text x="644" y="704" class="d">Isolated between employees</text>
 
-  <rect x="20" y="670" width="1160" height="76" rx="16" fill="#f26b4e"/>
-  <text x="44" y="702" class="t">ACTION CONTROL</text>
-  <text x="44" y="730" class="d">Auto · approval · escalate · blocked, set by code · approval bound to payload hash · zero-credential handoff</text>
+  <rect x="20" y="740" width="1160" height="76" rx="16" fill="#f26b4e"/>
+  <text x="44" y="772" class="t">ACTION CONTROL</text>
+  <text x="44" y="800" class="d">Auto · approval · escalate · blocked, set by code · approval bound to payload hash · zero-credential handoff</text>
 
-  <line x1="600" y1="86" x2="600" y2="102" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
-  <line x1="206" y1="178" x2="206" y2="194" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
-  <line x1="600" y1="178" x2="600" y2="194" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
-  <line x1="993" y1="178" x2="993" y2="194" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
-  <line x1="600" y1="648" x2="600" y2="666" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="600" y1="85" x2="600" y2="100" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="600" y1="175" x2="600" y2="190" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="206" y1="253" x2="206" y2="268" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="600" y1="253" x2="600" y2="268" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="993" y1="253" x2="993" y2="268" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="600" y1="720" x2="600" y2="736" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
 </svg>
-<figcaption>Figure 1. Three modules on shared layers. Company evidence is citable; personal context shapes answers but is never cited; every action passes the same control layer.</figcaption>
+<figcaption>Figure 1. Three agents on shared layers. Models do the reading and writing; code makes the consequential calls (dates, tiers, candidate scores). Company evidence is citable, personal context is never cited, and every action passes the same control layer.</figcaption>
 </figure>
 
 <p>The separation matters because each kind of information has a different trust level. Company records are citable evidence. Personal memory is context, never a company source. Conversation history supports follow-ups. Proposed actions are stateful objects that must pass deterministic policy before anything leaves the system.</p>
