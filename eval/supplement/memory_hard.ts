@@ -7,6 +7,10 @@
  * Needs the app on :3000 with Letta. Every turn is a fresh conversation, so
  * anything recalled came from memory. Fixed here before any run; uses non-demo
  * accounts that the easy tier does not.
+ *
+ * The look-alike facts are service ownership, not pets: the first version asked
+ * about a dog's name, which the memory deliberately does not keep (it records
+ * durable working context only), so those checks tested something out of scope.
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -55,17 +59,17 @@ async function main(): Promise<void> {
   };
 
   // Three facts in one message, and a look-alike fact for someone else.
-  await say(owner, OWNER, "A few things to remember about me: my dog is called Pepper, I'm on call the week of April 6, and I'd rather not have meetings before 10am.");
-  await say(other, OTHER, "Something to remember about me: my dog is called Biscuit.");
-  const stored = await memoryMatching(owner, /pepper/i, /april\s*6|6\s*april|apr\s*6/i, /10\s*(am|a\.m\.|:00)/i);
+  await say(owner, OWNER, "A few things to remember about me: I own the billing-export service, I'm on call the week of April 6, and I'd rather not have meetings before 10am.");
+  await say(other, OTHER, "Something to remember about me: I own the push-notifications service.");
+  const stored = await memoryMatching(owner, /billing[- ]export/i, /april\s*6|6\s*april|apr\s*6/i, /10\s*(am|a\.m\.|:00)/i);
   record("stored-all-three", stored !== null, stored ? "all three facts in memory" : `memory after 3 min: ${(await memory(owner)).slice(0, 200)}`);
-  await memoryMatching(other, /biscuit/i);
+  await memoryMatching(other, /push[- ]notification/i);
 
   // Unrelated work in between: each turn also runs the memory update.
   for (const question of DISTRACTIONS) await say(owner, OWNER, question);
 
   // Recall after the distractions.
-  record("recall-dog", /pepper/i.test(await say(owner, OWNER, "What's my dog's name?")), "names Pepper");
+  record("recall-service", /billing[- ]export/i.test(await say(owner, OWNER, "Which service do I own?")), "names billing-export");
   const oncall = await say(owner, OWNER, "When am I on call?");
   record("recall-oncall", /april\s*6|6\s*april|apr\s*6/i.test(oncall), "gives the week of April 6");
   const meetings = await say(owner, OWNER, "Is 9am a good time to put a meeting in my calendar?");
@@ -87,10 +91,10 @@ async function main(): Promise<void> {
   );
 
   // Look-alike facts stay with their owners.
-  const otherDog = await say(other, OTHER, "What's my dog's name?");
-  record("isolation-other", /biscuit/i.test(otherDog) && !/pepper/i.test(otherDog), "the other employee gets Biscuit, never Pepper");
-  const ownerDog = await say(owner, OWNER, "Remind me what my dog is called?");
-  record("isolation-owner", /pepper/i.test(ownerDog) && !/biscuit/i.test(ownerDog), "the owner gets Pepper, never Biscuit");
+  const otherService = await say(other, OTHER, "Which service do I own?");
+  record("isolation-other", /push[- ]notification/i.test(otherService) && !/billing[- ]export/i.test(otherService), "the other employee gets push-notifications, never billing-export");
+  const ownerService = await say(owner, OWNER, "Remind me which service is mine?");
+  record("isolation-owner", /billing[- ]export/i.test(ownerService) && !/push[- ]notification/i.test(ownerService), "the owner gets billing-export, never push-notifications");
 
   const memoryCited = transcript.filter((t) => t.sources.some((id) => id === OWNER || id === OTHER || /human\.md|memory/i.test(id)));
   record("separation", memoryCited.length === 0, `${memoryCited.length} answer(s) cited personal memory as a company source`);
