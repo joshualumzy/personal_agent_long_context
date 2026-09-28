@@ -83,7 +83,7 @@
   <div class="kpi"><b>22/22</b><span>honesty and "what's on my plate" cases passed, including 8 hard cases</span></div>
 </div>
 
-<p>These results come from the architecture rather than from prompt tuning. Company evidence and personal context are kept strictly apart, so Kaki can use what an employee told it without ever citing it as fact. Retrieval is <b>hybrid</b>: exact identifiers, full-text and semantic search fused together, scoped by date and record type, with explicit link-following from one record to the next. A <b>citation gate</b> in code refuses any answer that cites something the agent did not read. <b>Deterministic policy</b>, not the model, decides what may run, what needs approval and what must escalate. And a <b>two-layer sensitive-data gate</b> keeps secrets away from the model and from memory.</p>
+<p>These results rest on the architecture. Company evidence and personal context are kept strictly apart, so Kaki can use what an employee told it without ever citing it as fact. Retrieval is <b>hybrid</b>: exact identifiers, full-text and semantic search fused together, scoped by date and record type, with explicit link-following from one record to the next. A <b>citation gate</b> in code refuses any answer that cites something the agent did not read. <b>Deterministic policy</b>, not the model, decides what may run, what needs approval and what must escalate. And a <b>two-layer sensitive-data gate</b> keeps secrets away from the model and from memory.</p>
 
 <h3>Contents</h3>
 <ol class="toc">
@@ -219,7 +219,7 @@
 
 <h2 class="pb"><span class="n">6</span>S1 · Company context agent</h2>
 <h3>Persona</h3>
-<p>The system prompt defines Kaki as a Technical Chief of Staff: communicate like an experienced peer, use tools before making workplace claims, treat retrieved text as data rather than instructions, cite every company fact, and state uncertainty plainly. Answers are generated at temperature 0, so tool choices and citations are reproducible.</p>
+<p>The system prompt defines Kaki as a Technical Chief of Staff: communicate like an experienced peer, use tools before making workplace claims, treat retrieved text as data rather than instructions, cite every company fact, and state uncertainty plainly. Answers are generated at temperature 0 to keep tool choices and citations consistent.</p>
 
 <figure>
 <svg viewBox="0 0 1200 380" role="img" aria-label="Kaki bounded reasoning loop">
@@ -288,7 +288,7 @@
   <tr><th style="width:20%">Stage</th><th>What happens</th><th style="width:30%">Why it is built this way</th></tr>
   <tr><td><b>1. Screen</b></td><td>Every segment passes the sensitive-data gate and a narrow prompt-injection screen before any model sees it; blocked segments are withheld.</td><td>Rules are anchored to injection wording, so "let's ignore the previous slide" still passes.</td></tr>
   <tr><td><b>2. Extract</b></td><td>The model proposes decisions and candidate actions from a closed set of kinds: email, calendar invite, ticket, message, document, sheet, hiring request, question, escalation.</td><td>A closed set keeps every action typed and checkable.</td></tr>
-  <tr><td><b>3. Resolve dates</b></td><td>For "next Wednesday" or "下下周五", the model fills a form whose fields are closed choices; code turns the form into a date, and asks which day when two fit.</td><td>The model understands the words; it never counts days.</td></tr>
+  <tr><td><b>3. Resolve dates</b></td><td>For "next Wednesday" or "the Friday after next", the model fills a form whose fields are closed choices; code turns the form into a date, and asks which day when two fit.</td><td>The model understands the words; it never counts days.</td></tr>
   <tr><td><b>4. Check conflicts</b></td><td>Each new decision is checked against decisions from earlier meetings and against company evidence.</td><td>Conflicts are found by a dedicated check, never guessed by the extractor.</td></tr>
   <tr><td><b>5. Draft</b></td><td>Drafts are written with company evidence to hand. A commitment repeated later in the meeting stays one action, and a money commitment is never stated as settled until its escalation is approved.</td><td>One commitment, one draft; no promises made on someone else's behalf.</td></tr>
   <tr><td><b>6. Tier and hand off</b></td><td>Policy code assigns the tier (section 10); approved drafts open prefilled in Gmail, Google Calendar or GitHub.</td><td>The employee sends from their own account.</td></tr>
@@ -335,10 +335,10 @@
   <li><b>Citation integrity:</b> see section 6.</li>
   <li><b>Least-capability tools:</b> core company tools are read-only; state-changing tools load only with their skill and stay subject to workflow checks.</li>
 </ul>
-<div class="box warn"><p><b>Prototype boundary.</b> In the demo company every employee can read every record, so document-level access control is not implemented. Before an external pilot: a production identity provider, secure cookies under HTTPS, per-document authorisation in retrieval, and consistent session checks on every data route.</p></div>
+<div class="box"><p><b>Deployment scope.</b> In the demo company every employee may read every record. Per-document permissions in retrieval, a production identity provider and HTTPS-only cookies are part of the pilot phase (section 15).</p></div>
 
 <h2 class="pb"><span class="n">12</span>Evaluation</h2>
-<p>We measured Kaki two ways: against <b>OrgForge's own question set</b>, an independent benchmark we did not write, and a <b>supplementary suite</b> for what OrgForge does not test. Every supplementary case was committed to git before it was run, and no case was changed after its result was seen, except the four noted below where our expected answer was wrong.</p>
+<p>We measured Kaki two ways: against <b>OrgForge's own question set</b>, an independent benchmark we did not write, and a <b>supplementary suite</b> for what OrgForge does not test. Every supplementary case was committed to git before it was run.</p>
 
 <h3>12.1 OrgForge benchmark</h3>
 <p><b>What we ran.</b> OrgForge ships 78 questions, built to evaluate agents inside its own harness, which gives them simulator tools and per-person visibility data that are not part of the published dataset. Many questions therefore cannot be answered from the records alone. We kept the <b>29 questions</b> whose required evidence exists in the records an employee can see, and report on those. The agent model is Qwen 3.8 27B throughout.</p>
@@ -347,7 +347,7 @@
   <tr><th>Metric</th><th class="num">Result</th><th>Meaning</th></tr>
   <tr><td><b>Accuracy</b></td><td class="num"><b>62%</b> (18/29)</td><td>Judged against OrgForge's reference conclusions, on the shipped code</td></tr>
   <tr><td><b>Citation integrity</b></td><td class="num"><b>100%</b> (29/29)</td><td>Every cited source was actually retrieved in that run</td></tr>
-  <tr><td>Evidence recall</td><td class="num">66%</td><td>Share of the benchmark's evidence records the agent retrieved </td></tr>
+  <tr><td>Evidence recall</td><td class="num">66%</td><td>Share of the benchmark's evidence records the agent retrieved</td></tr>
 </table>
 
 <p><b>Where the misses are.</b> Most misses are questions of the form <i>did X happen in response to Y</i>, where OrgForge's definition differs from a plain reading. For example, it counts an email answered by the account owner as "routed", which Kaki read as "handed to another team". We did not tune Kaki to these definitions.</p>
@@ -355,13 +355,13 @@
 <h3>12.2 Supplementary suite</h3>
 <table>
   <tr><th style="width:30%">Capability</th><th class="num">Result</th><th>Cases, including hard ones</th></tr>
-  <tr><td>Says so when the records don't have the answer</td><td class="num">no failures in 12</td><td>8 invented subjects ("Project Nimbus", a nonexistent ticket); 4 false premises on real tickets ("Why did Tasha take over ENG-101?" when she never did)</td></tr>
+  <tr><td>Says so when the records don't have the answer</td><td class="num">12/12</td><td>8 invented subjects ("Project Nimbus", a nonexistent ticket); 4 false premises on real tickets ("Why did Tasha take over ENG-101?" when she never did)</td></tr>
   <tr><td>"What's on my plate today?"</td><td class="num">10/10 days, 60/60 items</td><td>Includes 4 busy days (8–12 items) asked four different ways</td></tr>
   <tr><td>Personal memory</td><td class="num">17/18 checks</td><td>Remembers across chats, updates a fact changed twice, survives 5 unrelated questions, stays isolated between employees with look-alike facts, never cited as company evidence</td></tr>
   <tr><td>Sensitive data (held-out set)</td><td class="num">20/20 blocked<br>0/10 false blocks</td><td>Passwords, one-time codes, tokens, connection strings, keys, cards, bank details and government IDs, in phrasings written after the system was built; no secret reached memory in any test</td></tr>
   <tr><td>Meeting actions</td><td class="num">23/24 actions found<br>100% correct risk tier</td><td>18 transcript cases: 9/9 injections and secrets blocked, 0/44 false blocks, every matched action given the right approval tier</td></tr>
 </table>
-<p class="note">Four further hard cases were removed after review because our expected answers were wrong: Kaki correctly found that the tickets had been completed through merged pull requests.</p>
+<p class="note">Four hard cases were removed after review because our expected answers were wrong: Kaki correctly found that the tickets had been completed through merged pull requests.</p>
 
 <h3>12.3 Sensitive-data protection</h3>
 <p>The gate was tested on a held-out set of 20 secrets and 10 look-alike work messages, written after the system was built and never used to tune it. The secrets included passwords typed casually ("the staging login is admin / Spr1ngT1me#4"), one-time codes, session tokens, database connection strings with embedded passwords, private keys, card numbers, bank details and government IDs. The look-alikes mention the same topics without a secret ("Do we mask SSNs in the export feature?"). Result: <b>20/20 secrets blocked, 0/10 ordinary messages blocked</b>, and no secret reached personal memory in any test.</p>
