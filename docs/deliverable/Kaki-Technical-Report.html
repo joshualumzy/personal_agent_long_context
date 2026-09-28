@@ -68,14 +68,14 @@
   <div class="rule"></div>
   <div class="sub">An evidence-grounded operating agent for SME employees: it answers from company records, remembers your working context, and prepares actions without taking control away from you.</div>
   <div class="label">HACKATHON TECHNICAL REPORT</div>
-  <div class="meta">28 September 2026</div>
+  <div class="meta">28 September 2026 · live at kakiai.me</div>
 </section>
 
 <h2><span class="n">1</span>Executive summary</h2>
 <p>Small and medium enterprises carry the same coordination load as large ones with far fewer people to absorb it. Decisions are scattered across meetings, tickets, email, chat and documents, and employees lose hours reconstructing what happened, what they own and what needs sign-off. A generic chatbot makes this worse when it answers confidently without evidence or acts without a human checkpoint.</p>
 <p><b>Kaki</b> is an employee-facing operating agent built for that gap. It combines three workflows in one product: <b>company Q&amp;A grounded in cited records</b>, <b>meeting follow-through</b> that turns commitments into reviewable drafts, and a <b>human-controlled recruiting assistant</b>, all on top of a persistent, per-employee working memory. Its runtime persona is an adaptive Technical Chief of Staff: it searches before answering, cites what it read, keeps personal context apart from company evidence, and prepares actions for a person to approve.</p>
 <div class="box"><p><b>Three engineering principles.</b> <b>Read-only intelligence:</b> the agent reads company knowledge but holds no write access to company systems. <b>Zero-credential action handoffs:</b> every action is prepared as a draft and completed by the employee in their own tools. <b>Strictly grounded company context:</b> every company claim cites a record the agent actually retrieved, or it says the evidence is insufficient.</p></div>
-<p>We evaluated Kaki against an independent benchmark (OrgForge) and a supplementary suite we wrote for what OrgForge does not test, with every test case committed to version control before it was run.</p>
+<p>Kaki is live at <b>kakiai.me</b>. We evaluated it against an independent benchmark (OrgForge) and a supplementary suite we wrote for what OrgForge does not test, with every test case committed to version control before it was run.</p>
 
 <div class="kpis">
   <div class="kpi"><b>100%</b><span>citation integrity: every cited source was one the agent actually retrieved (29/29)</span></div>
@@ -282,8 +282,11 @@
   <tr><td><code>load_skill</code></td><td>Load a specialised skill (e.g. recruiting) and its tools</td><td>Registered skills only</td></tr>
 </table>
 
+<h3>Answering as of any past day</h3>
+<p>An employee can pick a past working day and ask "what did we know then?". Kaki then answers from the records as they stood at the end of that day: search sees nothing dated later, graph traversal that cannot be date-filtered is withheld, and today's personal memory is left out, so no later knowledge leaks into a historical answer. This is how a team reviews what was actually known when an incident broke.</p>
 <h3>The knowledge-gap hiring bridge</h3>
 <p>A core architectural idea in Kaki is that operational discovery can turn directly into capacity building. When S1 finds a missing capability while researching (for example, a knowledge domain whose only owner has left the company), it can explain the gap through <code>hiring_proposals</code> and, on the employee's request, call <code>open_role_from_gap</code>. That opens a new role in S3 with the gap as its starting brief, taking the workflow from "we have a problem" to "we are hiring for it" without re-entering anything.</p>
+<p>Gap detection reads only domain health: whether a domain's owner has left, how few people still work on it, and whether its owner is overloaded with incidents. In a backtest over the corpus's 60 working days, scored against OrgForge's own record of hires, which the rules never see, <b>all three hires were preceded by a proposal for their domain, 6–7 days ahead</b>. Of six proposals, five were followed by a hire or by someone inside taking the domain on.</p>
 <h3>Why the citation gate matters</h3>
 <p>After the model drafts an answer, code checks that every <code>[source:ID]</code> refers to a record retrieved in this turn. An answer citing anything else is sent back once for repair; if it still fails, the user gets an explicit "insufficient evidence" reply instead of an unverifiable one. In evaluation this held for every answer (29/29): Kaki never cited a record it had not read. A per-turn <b>tool-output budget</b> (about 100k tokens of retrieved text) keeps even long, parallel investigations comfortably inside the model's context window.</p>
 
@@ -295,7 +298,7 @@
   <tr><td><b>2. Extract</b></td><td>The model proposes decisions and candidate actions from a closed set of kinds: email, calendar invite, ticket, message, document, sheet, hiring request, question, escalation.</td><td>A closed set keeps every action typed and checkable.</td></tr>
   <tr><td><b>3. Resolve dates</b></td><td>For "next Wednesday" or "the Friday after next", the model fills a form whose fields are closed choices; code turns the form into a date, and asks which day when two fit.</td><td>The model understands the words; it never counts days.</td></tr>
   <tr><td><b>4. Check conflicts</b></td><td>Each new decision is checked against decisions from earlier meetings and against company evidence.</td><td>Conflicts are found by a dedicated check, never guessed by the extractor.</td></tr>
-  <tr><td><b>5. Draft</b></td><td>Drafts are written with company evidence to hand. A commitment repeated later in the meeting stays one action, and a money commitment is never stated as settled until its escalation is approved.</td><td>One commitment, one draft; no promises made on someone else's behalf.</td></tr>
+  <tr><td><b>5. Draft</b></td><td>Drafts are written with company evidence to hand. A commitment repeated later in the meeting stays one action, and a money commitment is never stated as settled until its escalation is approved. Approve stays disabled while a draft is missing something it needs, such as an unresolved date.</td><td>One commitment, one draft; no promises made on someone else's behalf.</td></tr>
   <tr><td><b>6. Tier and hand off</b></td><td>Policy code assigns the tier (section 10); approved drafts open prefilled in Gmail, Google Calendar or GitHub.</td><td>The employee sends from their own account.</td></tr>
 </table>
 <p>A question asked aloud in the meeting is answered in a single model call using the question itself as the search, so the answer starts streaming within seconds and is kept to a few sentences.</p>
@@ -365,6 +368,7 @@
   <tr><td>"What's on my plate today?"</td><td class="num">10/10 days, 60/60 items</td><td>Includes 4 busy days (8–12 items) asked four different ways</td></tr>
   <tr><td>Personal memory</td><td class="num">17/18 checks</td><td>Remembers across chats, updates a fact changed twice, survives 5 unrelated questions, stays isolated between employees with look-alike facts, never cited as company evidence</td></tr>
   <tr><td>Sensitive data (held-out set)</td><td class="num">20/20 blocked<br>0/10 false blocks</td><td>Passwords, one-time codes, tokens, connection strings, keys, cards, bank details and government IDs, in phrasings written after the system was built; no secret reached memory in any test</td></tr>
+  <tr><td>Hiring-gap detection (backtest)</td><td class="num">3/3 hires foreseen</td><td>Over 60 working days, each hire was preceded by a proposal for its domain 6–7 days earlier; 5 of 6 proposals were followed by a hire or an internal hand-over</td></tr>
   <tr><td>Meeting actions</td><td class="num">23/24 actions found<br>100% correct risk tier</td><td>18 transcript cases: 9/9 injections and secrets blocked, 0/44 false blocks, every matched action given the right approval tier</td></tr>
 </table>
 <p class="note">Four hard cases were removed after review because our expected answers were wrong: Kaki correctly found that the tickets had been completed through merged pull requests.</p>
@@ -385,16 +389,16 @@
   <tr><td>No secret leakage</td><td>Held-out secrets blocked / false blocks</td><td>20/20, 0/10</td><td>≥ 95%, ≤ 2%</td></tr>
   <tr><td>Less follow-up work</td><td>Commitment → approved draft time</td><td>(pilot)</td><td>−50% vs manual</td></tr>
 </table>
-<h3>Demo narrative</h3>
+<h3>Demo narrative: one day with Jax</h3>
+<p>The demo follows one engineer through one hard day, using real records from the demo company.</p>
 <ol>
-  <li><b>Ask:</b> a question spanning a ticket, a meeting and a policy; Kaki searches, follows links and answers with citations.</li>
-  <li><b>Inspect:</b> open the source cards and the evidence graph.</li>
-  <li><b>Remember:</b> state a working fact, then in a new chat ask something that depends on it; it is used as context, not cited.</li>
-  <li><b>Protect:</b> paste a password; it is blocked before any model sees it.</li>
-  <li><b>Act safely:</b> a meeting commitment becomes a draft; edit it (the old approval is invalidated), approve, and it opens in Gmail for the employee to send.</li>
-  <li><b>Escalate:</b> a discount commitment is routed to a named approver and cannot execute.</li>
+  <li><b>The pressure:</b> last week a customer's live data froze and an SLA was missed; at 11:00 Jax has to face them.</li>
+  <li><b>Know before the call:</b> Jax asks whether last week's outage is the same bug as February's. Kaki searches tickets, postmortems and chat and answers "not the same bug, but the same code", with every line cited. The evidence graph shows how it followed the links, and an "as of" view answers from the records on the day it broke.</li>
+  <li><b>During the call:</b> Kaki transcribes live. When the customer asks the same question, the answer is already there. It flags a plan that contradicts last week's decision, withholds an API key read aloud before any model sees it, and routes a 20% discount to Finance.</li>
+  <li><b>After the call:</b> four commitments become drafts, each showing whose words it came from. "Next Tuesday" fits two dates, so Kaki asks instead of guessing, and Approve waits. Approving the email opens it in Jax's own mailbox; sending is his click.</li>
+  <li><b>Short-handed:</b> Kaki shows a knowledge domain fewer and fewer people understand, proposes a hire, and runs the recruiting flow: confirmed criteria, candidates with reasons, and outreach for Jax to send.</li>
+  <li><b>Evening:</b> nothing needs Jax.</li>
 </ol>
-
 <h2><span class="n">14</span>Roadmap</h2>
 <table>
   <tr><th style="width:20%">Phase</th><th>Focus</th><th style="width:32%">Outcome</th></tr>
