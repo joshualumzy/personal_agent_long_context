@@ -156,6 +156,20 @@
 .stage-frame img:nth-child(5) { object-fit: contain; object-position: center; background: #fbfbfa; }
 .stage-frame img.is-on { opacity: 1; transform: none; }
 
+/* ------------------------------------------------------------ maker */
+
+.maker { padding: 96px 0; border-top: 1px solid var(--l-line); }
+.maker-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 64px; align-items: center; }
+.maker-shot img {
+  width: 100%; height: auto; display: block;
+  border-radius: var(--radius-surface); border: 1px solid var(--l-line); box-shadow: var(--l-shot-shadow);
+}
+/* The product shot is lit on white; on the dark page it keeps a white tile like the mascot does. */
+.maker-shot img { background: #fff; }
+.kicker { font: 500 14px/1 var(--f-mono); color: var(--l-accent); letter-spacing: 0.02em; }
+.maker-copy h2 { margin-top: 14px; font-size: clamp(30px, 3.4vw, 44px); letter-spacing: -0.03em; line-height: 1.1; }
+.maker-copy p:not(.kicker) { margin-top: 18px; max-width: 46ch; font-size: 18px; line-height: 1.6; color: var(--l-ink-2); }
+
 /* ------------------------------------------------------------ control (bento) */
 
 .control { padding: 128px 0; }
@@ -244,7 +258,8 @@
   .hero h1 { font-size: 38px; }
   .lede { font-size: 17.5px; }
   .cta-row .btn { flex: 1 1 100%; }
-  .problem, .control, .results, .close { padding: 80px 0; }
+  .problem, .control, .results, .close, .maker { padding: 80px 0; }
+  .maker-grid { grid-template-columns: 1fr; gap: 28px; }
   .problem p { font-size: 18px; }
   .day { padding: 80px 0 40px; }
   .day-grid { grid-template-columns: 1fr; gap: 0; }

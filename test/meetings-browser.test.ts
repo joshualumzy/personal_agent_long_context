@@ -495,7 +495,7 @@ describe("Meetings page", () => {
     assert.equal(shown("#end-meeting-btn"), false, "ending replaces starting once recording, not beside it");
     assert.equal(page.document.querySelector("#mic-lang"), null, "the language is recognised, not picked");
     const sources = [...page.document.querySelectorAll("#mic-start sl-menu-item")].map((item) => item.getAttribute("value"));
-    assert.deepEqual(sources, ["tab", "mic"], "what to record is asked when starting");
+    assert.deepEqual(sources, ["tab", "mic", "ring"], "what to record is asked when starting");
 
     assert.equal(shown("#live-form"), true, "a live meeting takes typed lines");
     assert.equal(shown("#ended-note"), false);

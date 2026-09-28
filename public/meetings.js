@@ -1392,7 +1392,19 @@ const recording = {
   queue: Promise.resolve(),
 };
 
-// source: "tab" records a browser tab (the call) and the mic; "mic" the mic alone.
+// The Stellar Ark ring shows up as a Bluetooth audio input once paired. Unpaired
+// (or before the first permission grant, when labels are blank), the built-in
+// mic records the room instead, so the choice never blocks a meeting.
+async function microphoneFor(source) {
+  const audio = { echoCancellation: true, noiseSuppression: true };
+  if (source !== "ring") return audio;
+  const devices = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+  const ring = devices.find((device) => device.kind === "audioinput" && /stellar|ark|ring/i.test(device.label));
+  return ring ? { ...audio, deviceId: { exact: ring.deviceId } } : audio;
+}
+
+// source: "tab" records a browser tab (the call) and the mic; "mic" the mic alone;
+// "ring" the Stellar Ark ring, or the mic when the ring is not paired.
 async function startRecording(source = "tab") {
   if (!state.current || state.current.status !== "live" || recording.active) return;
   showError("");
@@ -1414,10 +1426,10 @@ async function startRecording(source = "tab") {
       }
     }
     try {
-      streams.push(await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }));
+      streams.push(await navigator.mediaDevices.getUserMedia({ audio: await microphoneFor(source) }));
     } catch (error) {
       // Without the mic, tab audio still records everyone except you.
-      if (source === "mic") throw error;
+      if (source !== "tab") throw error;
     }
   } catch (error) {
     for (const stream of streams) for (const track of stream.getTracks()) track.stop();
