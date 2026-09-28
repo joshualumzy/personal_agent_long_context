@@ -58,3 +58,6 @@ eval/orgforge/questions.md
 output/
 skills-lock.json
 tmp/claude-work/
+
+tmp/
+.gifana/
