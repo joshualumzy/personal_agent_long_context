@@ -73,7 +73,8 @@
 
 <h2><span class="n">1</span>Executive summary</h2>
 <p>Small and medium enterprises carry the same coordination load as large ones with far fewer people to absorb it. Decisions are scattered across meetings, tickets, email, chat and documents, and employees lose hours reconstructing what happened, what they own and what needs sign-off. A generic chatbot makes this worse when it answers confidently without evidence or acts without a human checkpoint.</p>
-<p><b>Kaki</b> is an employee-facing operating agent built for that gap. It combines three workflows in one product: <b>company Q&amp;A grounded in cited records</b>, <b>meeting follow-through</b> that turns commitments into reviewable drafts, and a <b>human-controlled recruiting assistant</b>, all on top of a persistent, per-employee working memory. Its runtime persona is a pragmatic Technical Chief of Staff: it searches before answering, cites what it read, keeps personal context apart from company evidence, and prepares actions for a person to approve.</p>
+<p><b>Kaki</b> is an employee-facing operating agent built for that gap. It combines three workflows in one product: <b>company Q&amp;A grounded in cited records</b>, <b>meeting follow-through</b> that turns commitments into reviewable drafts, and a <b>human-controlled recruiting assistant</b>, all on top of a persistent, per-employee working memory. Its runtime persona is an adaptive Technical Chief of Staff: it searches before answering, cites what it read, keeps personal context apart from company evidence, and prepares actions for a person to approve.</p>
+<div class="box"><p><b>Three engineering principles.</b> <b>Read-only intelligence:</b> the agent reads company knowledge but holds no write access to company systems. <b>Zero-credential action handoffs:</b> every action is prepared as a draft and completed by the employee in their own tools. <b>Strictly grounded company context:</b> every company claim cites a record the agent actually retrieved, or it says the evidence is insufficient.</p></div>
 <p>We evaluated Kaki against an independent benchmark (OrgForge) and a supplementary suite we wrote for what OrgForge does not test, with every test case committed to version control before it was run.</p>
 
 <div class="kpis">
@@ -108,7 +109,7 @@
 <p>Kaki is deliberately not an autonomous replacement for an employee. It is a context and preparation layer that removes reconstruction work while consequential decisions stay with people.</p>
 
 <h2 class="pb"><span class="n">4</span>Architecture</h2>
-<p>Kaki is a modular monolith: one TypeScript/Fastify service coordinates identity, retrieval, models, memory and workflows, with PostgreSQL as the system of record. Each layer has its own trust boundary.</p>
+<p>Kaki is a modular monolith: one TypeScript/Fastify service powers a stateless agent reasoning loop and coordinates identity, retrieval, models, memory and workflows, with PostgreSQL as the authoritative system of record. The three modules share every layer below them, and each layer has its own trust boundary.</p>
 
 <figure>
 <svg viewBox="0 0 1200 760" role="img" aria-label="Kaki layered architecture with its three modules">
@@ -206,13 +207,13 @@
 <h2><span class="n">5</span>Data and knowledge</h2>
 <h3>The OrgForge corpus</h3>
 <p>The demo company is the <b>OrgForge</b> synthetic SME workplace (Hugging Face): about 5,000 employee-visible records across 11 record types, including Slack, email, Confluence, Jira, Zoom transcripts, pull requests, alerts and invoices. <code>scripts/orgforge/ingest.py</code> normalises them into one PostgreSQL schema, split into 7,526 embedded chunks.</p>
-<h3>Oracle isolation</h3>
-<p>OrgForge also ships its simulator's event log (17,541 "SimEvents"), which its authors describe as the answer-key layer. These are stored for offline builders but are <b>never chunked, embedded or returned by any search, citation or related-source path</b>. The agent sees only what an employee could see. A regression test rejects simulator records even when mislabelled, so the agent cannot use them as a shortcut.</p>
-<h3>Retrieval</h3>
+<h3>Strict oracle isolation</h3>
+<p>OrgForge also ships its simulator's event log (17,541 "SimEvents"), which its authors describe as the answer-key layer. These are stored for offline builders but are <b>never chunked, embedded, returned or cited</b>: every record the agent reads or cites is one an employee could see. A regression test rejects simulator records even when mislabelled. The event log is used in one place only, to link records that share an origin (layer 2 below).</p>
+<h3>Multi-layer knowledge retrieval</h3>
 <ol>
-  <li><b>Hybrid search:</b> exact identifier lookup, English full-text search and pgvector semantic search, fused by reciprocal rank. The agent can pass a <b>date window</b> and <b>record types</b> ("the Confluence pages from that week") so records from other days cannot crowd out the right ones. If embeddings fail, search degrades to keyword-only rather than failing.</li>
-  <li><b>Explicit links:</b> <code>get_related_sources</code> follows document references (PR → ticket → postmortem) from records already retrieved.</li>
-  <li><b>Graph views:</b> a deterministic graph (3,286 nodes, 16,065 edges) records which document references which and who appears in each. It powers the evidence graph and the company map.</li>
+  <li><b>Layer 1: hybrid search.</b> Exact identifier lookup, English full-text search and pgvector semantic search, fused by reciprocal rank. The agent can scope a search by date window and record type ("the Confluence pages from that week"), and if embeddings fail, search degrades to keyword-only rather than failing.</li>
+  <li><b>Layer 2: deterministic graph.</b> <code>get_related_sources</code> follows 16,502 explicit references between records (PR → ticket → postmortem), and records that share an origin, such as an incident's alert, ticket and postmortem. These are built offline into a graph of 3,286 nodes and 16,065 edges, which also powers the evidence graph and company map. In a real deployment, shared-origin links come from tool integrations (a Jira issue linked from Slack, an alert that opened a ticket).</li>
+  <li><b>Layer 3: emergent graph.</b> A per-question graph of meaning, extracted by Cognee, described below.</li>
 </ol>
 <h3>Emergent knowledge graph (Cognee)</h3>
 <p>The deterministic graph records what documents reference; it cannot say what the text <i>means</i>: that a decision was reversed, that two teams disagreed about a cause, that a risk was raised before it happened. For that, Kaki builds an <b>emergent graph per question</b>. After an answer is returned, a background job selects the dozen or so records the question was about, and Cognee uses a language model to extract entities and relationships from just those. Each question gets its own graph, so every relationship can be traced to the question that found it, and extraction cost grows with what people ask rather than with the size of the company's records. The graph is stored locally (Ladybug for the graph, LanceDB for vectors) and never writes back to PostgreSQL, so the authoritative record stays untouched. Answers never wait on it: it appears in the graph view once extraction finishes.</p>
@@ -281,6 +282,8 @@
   <tr><td><code>load_skill</code></td><td>Load a specialised skill (e.g. recruiting) and its tools</td><td>Registered skills only</td></tr>
 </table>
 
+<h3>The knowledge-gap hiring bridge</h3>
+<p>A core architectural idea in Kaki is that operational discovery can turn directly into capacity building. When S1 finds a missing capability while researching (for example, a knowledge domain whose only owner has left the company), it can explain the gap through <code>hiring_proposals</code> and, on the employee's request, call <code>open_role_from_gap</code>. That opens a new role in S3 with the gap as its starting brief, taking the workflow from "we have a problem" to "we are hiring for it" without re-entering anything.</p>
 <h3>Why the citation gate matters</h3>
 <p>After the model drafts an answer, code checks that every <code>[source:ID]</code> refers to a record retrieved in this turn. An answer citing anything else is sent back once for repair; if it still fails, the user gets an explicit "insufficient evidence" reply instead of an unverifiable one. In evaluation this held for every answer (29/29): Kaki never cited a record it had not read. A per-turn <b>tool-output budget</b> (about 100k tokens of retrieved text) keeps even long, parallel investigations comfortably inside the model's context window.</p>
 
@@ -316,6 +319,7 @@
   <tr><td>Company memory</td><td>PostgreSQL records, chunks and links</td><td>Citable evidence</td></tr>
 </table>
 <p>Personal memory may shape an answer but is never presented as company evidence, which avoids a common agent failure: mixing what a user said earlier with what the organisation can prove. When the user looks at a past day, current personal memory is withheld so later context cannot leak into a historical answer. Letta runs in strict permission mode with a memory-file tool allowlist confined to the employee's memory directory.</p>
+<p><b>Persona-scoped by design.</b> Memory is keyed to the signed-in employee. When a different employee signs in (say, from Jax in backend to Priya in design), Kaki's memory switches with them, so working context, preferences and hiring criteria persist across sessions for each person without ever mixing between people or being cited as company fact.</p>
 
 <h2 class="pb"><span class="n">10</span>Autonomy and human control</h2>
 <table>
@@ -327,7 +331,7 @@
 </table>
 <p><b>Code, not the model, assigns the tier.</b> The model proposes an action kind and payload; deterministic policy decides whether it is automatic, needs approval or escalates. Approval is bound to a hash of the exact payload, so editing a draft invalidates the old approval and stale approvals cannot send modified content.</p>
 <h3>Zero-credential handoff</h3>
-<p>SMEs rarely have the SSO and fine-grained access control needed to give an agent safe write access. Kaki therefore holds no write credentials for external systems. An approved action opens <b>prefilled in the employee's own tools</b>: Gmail compose, a Google Calendar event (or a downloadable <code>.ics</code>), a GitHub issue form. The final "send" is always the employee's click, in their own authenticated session. Recruiting follows the same principle (section 8).</p>
+<p>In an SME without enterprise single sign-on and fine-grained role-based access control, giving an AI agent write permissions is a serious security risk. Kaki avoids it with a <b>zero-credential architecture</b>: it holds no write credentials for external systems. An approved action opens <b>prefilled in the employee's own tools</b>: Gmail compose, a Google Calendar event (or a downloadable <code>.ics</code>), a GitHub issue form. The final "send" is always the employee's click, in their own authenticated session. Recruiting follows the same principle (section 8).</p>
 
 <h2><span class="n">11</span>Security and guardrails</h2>
 <ul>
@@ -369,7 +373,7 @@
 <p>The gate was tested on a held-out set of 20 secrets and 10 look-alike work messages, written after the system was built and never used to tune it. The secrets included passwords typed casually ("the staging login is admin / Spr1ngT1me#4"), one-time codes, session tokens, database connection strings with embedded passwords, private keys, card numbers, bank details and government IDs. The look-alikes mention the same topics without a secret ("Do we mask SSNs in the export feature?"). Result: <b>20/20 secrets blocked, 0/10 ordinary messages blocked</b>, and no secret reached personal memory in any test.</p>
 
 <h3>12.4 Automated tests</h3>
-<p>More than 900 automated tests run on every change, and TypeScript compiles cleanly under <code>tsc --noEmit</code>. They cover identity and user isolation, citations, memory behaviour, the sensitive-data gate, meeting approvals, recruiting confirmation and browser behaviour.</p>
+<p>More than 900 automated tests run on every change, and TypeScript compiles cleanly under <code>tsc --noEmit</code>. They cover identity and user isolation, citations, memory behaviour, the sensitive-data gate, meeting approvals, recruiting confirmation and browser behaviour. A separate oracle-isolation check (<code>npm run test:orgforge</code>) verifies that no simulator record can enter retrieval, chunking or embedding.</p>
 
 <h2 class="pb"><span class="n">13</span>Success metrics and demo</h2>
 <table>
@@ -395,8 +399,8 @@
 <table>
   <tr><th style="width:20%">Phase</th><th>Focus</th><th style="width:32%">Outcome</th></tr>
   <tr><td><b>1. Pilot</b><br><span class="note">0–3 months</span></td><td>Read connectors for a real SME's Slack, Google Workspace and Jira; single sign-on and per-document permissions in retrieval; the OrgForge and supplementary suites run on every change, alongside questions from the pilot company itself.</td><td>Kaki answering from one company's live records, with measured time saved per employee.</td></tr>
-  <tr><td><b>2. Team rollout</b><br><span class="note">3–6 months</span></td><td>Managed memory and durable background queues for many concurrent employees; streamed first responses within seconds; employees can view and edit what Kaki remembers about them.</td><td>Daily use across a whole team, with per-tenant cost and latency targets.</td></tr>
-  <tr><td><b>3. Trusted actions</b><br><span class="note">6–12 months</span></td><td>Delegated write access (e.g. creating a Jira ticket directly) for action types a company has approved, extending the same tiered policy and payload-hash approval.</td><td>Fewer clicks for routine follow-ups, with humans still approving anything consequential.</td></tr>
+  <tr><td><b>2. Team rollout</b><br><span class="note">3–6 months</span></td><td>Managed, multi-tenant memory infrastructure and durable background queues for many concurrent employees; more candidate-sourcing connectors (e.g. GitHub, Stack Overflow) beyond Exa; streamed first responses within seconds; employees can view and edit what Kaki remembers about them.</td><td>Daily use across a whole team, with per-tenant cost and latency targets.</td></tr>
+  <tr><td><b>3. Trusted actions</b><br><span class="note">6–12 months</span></td><td>Enterprise single sign-on and role-based access control, then delegated write access (e.g. creating a Jira ticket directly) for action types a company has approved, extending the same tiered policy and payload-hash approval.</td><td>Fewer clicks for routine follow-ups, with humans still approving anything consequential.</td></tr>
   <tr><td><b>4. More SME functions</b></td><td>Customer support, finance operations and onboarding, built on the same contract.</td><td>One operating agent for the whole SME.</td></tr>
 </table>
 <p>Each phase keeps Kaki's core contract unchanged: retrieve evidence, keep memory separated, prepare typed actions, and keep risk-proportionate human control.</p>
