@@ -1637,6 +1637,11 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
     app.get(`/assets/${pose}.mp4`, serve(`assets/${pose}.mp4`, "video/mp4"));
     app.get(`/assets/${pose}.webm`, serve(`assets/${pose}.webm`, "video/webm"));
     app.get(`/assets/${pose}.jpg`, serve(`assets/${pose}.jpg`, "image/jpeg"));
+    // The same loops keyed off their white ground, for dark and coloured backgrounds:
+    // VP9 with alpha for Chrome and Firefox, HEVC with alpha for Safari.
+    app.get(`/assets/${pose}-alpha.webm`, serve(`assets/${pose}-alpha.webm`, "video/webm"));
+    app.get(`/assets/${pose}-alpha.mov`, serve(`assets/${pose}-alpha.mov`, "video/quicktime"));
+    app.get(`/assets/${pose}-alpha.png`, serve(`assets/${pose}-alpha.png`, "image/png"));
   }
   app.get("/theme.css", serve("theme.css", "text/css; charset=utf-8"));
   // The public front page, with screenshots of the product taken from the demo company.

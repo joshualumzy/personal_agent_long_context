@@ -87,26 +87,32 @@
     }
     </script>
   </head>
-  <body class="landing">
+  <body class="landing film">
+    <!-- Three quiet boxes on the page's own ground: the brand, the page's
+         sections, the one action. -->
     <header class="nav">
       <div class="wrap nav-row">
-        <a class="brand" href="/landing" aria-label="Kaki home">
-          <img src="/assets/kaki-logo-64.png" width="32" height="32" alt="">
+        <a class="brand nav-box" href="/landing" aria-label="Kaki home">
+          <img src="/assets/kaki-logo-64.png" width="28" height="28" alt="">
           <span>Kaki</span>
         </a>
-        <nav aria-label="Page">
+        <nav class="nav-box" aria-label="Page">
           <a href="#what">What it does</a>
           <a href="#results">Results</a>
           <a href="#faq">FAQ</a>
         </nav>
-        <a class="btn btn-primary btn-small" href="/">Open the demo</a>
+        <a class="btn btn-primary btn-small nav-cta" href="/">Open the demo</a>
       </div>
     </header>
 
     <main>
-      <!-- The video first: it is what people came for. -->
+      <!-- The video first: it is what people came for. Kaki walks into the
+           title once, out from behind its own name, then keeps walking in place. -->
       <section class="watch wrap">
-        <h1>See Kaki at work</h1>
+        <h1 class="words reveal"><span class="w">See</span> <span class="w">Kaki</span> <i class="kaki kaki-walk" aria-hidden="true"><video muted loop playsinline autoplay preload="auto" poster="/assets/kaki-walk-alpha.png" width="264" height="264">
+            <source src="/assets/kaki-walk-alpha.mov" type="video/quicktime; codecs=hvc1">
+            <source src="/assets/kaki-walk-alpha.webm" type="video/webm">
+          </video></i> <span class="w">at</span> <span class="w">work</span></h1>
         <figure class="player">
           <div class="player-frame">
             <video src="/video/kaki-promo.mp4" controls playsinline preload="metadata" poster="/assets/landing/video-poster.jpg" width="1920" height="1080"></video>
@@ -117,6 +123,7 @@
           </div>
           <figcaption>
             <p class="lede">One workday with the operating agent for small teams: a question answered from company records, a customer call turned into drafts, and a hiring gap caught early.</p>
+            <span class="rule" aria-hidden="true"></span>
             <a href="/video/kaki-promo.mp4" download>Download the video (MP4)</a>
           </figcaption>
         </figure>
@@ -124,18 +131,20 @@
 
       <!-- A plain definition for anyone who arrives from a search. -->
       <section class="intro">
-        <div class="wrap narrow reveal">
-          <h2>What is Kaki?</h2>
-          <p>Kaki is an AI assistant for employees of small companies. It reads the company's records across <mark>Slack, Jira, Confluence and email</mark>, answers questions from them, keeps track of meetings, and turns what people promised into work that is ready to go. It suggests; the employee decides.</p>
+        <div class="wrap narrow">
+          <p class="tag">What it is</p>
+          <h2 class="words reveal"><span class="w">What</span> <span class="w">is</span> <span class="w">Kaki?</span></h2>
+          <p class="reveal">Kaki is an AI assistant for employees of small companies. It reads the company's records across <mark>Slack, Jira, Confluence and email</mark>, answers questions from them, keeps track of meetings, and turns what people promised into work that is ready to go. It suggests; the employee decides.</p>
         </div>
       </section>
 
       <section class="what" id="what">
         <div class="wrap">
-          <h2 class="reveal">What Kaki does</h2>
+          <p class="tag">What it does</p>
+          <h2 class="words reveal"><span class="w">What</span> <span class="w">Kaki</span> <i class="kaki kaki-win" aria-hidden="true"><img src="/assets/kaki-win-alpha.png" width="264" height="264" alt=""></i> <span class="w">does</span></h2>
 
-          <article class="feature feature-split reveal">
-            <div class="feature-copy">
+          <article class="feature feature-split">
+            <div class="feature-copy reveal">
               <h3>Answers questions from company records</h3>
               <p>Ask whether last week's outage is the same bug as February's. Kaki reads the tickets, postmortems and chats and gives a short answer with the record behind every claim.</p>
               <ul>
@@ -144,26 +153,26 @@
                 <li>Ask as of a past date to see only what was known then</li>
               </ul>
             </div>
-            <figure class="feature-shot"><img src="/assets/landing/answer.webp" width="1920" height="960" loading="lazy" alt="Kaki's answer on whether ENG-210 is the same bug as ENG-148, each claim tagged with its source."></figure>
+            <figure class="feature-shot reveal"><img src="/assets/landing/answer.webp" width="1920" height="960" loading="lazy" alt="Kaki's answer on whether ENG-210 is the same bug as ENG-148, each claim tagged with its source."></figure>
           </article>
 
-          <article class="feature feature-wide reveal">
-            <figure class="feature-shot"><img src="/assets/landing/meeting.webp" width="1920" height="960" loading="lazy" alt="A meeting summary in Kaki with a conflict flag on a decision that contradicts an earlier one."></figure>
-            <div class="feature-cols">
+          <article class="feature feature-wide">
+            <figure class="feature-shot reveal"><img src="/assets/landing/meeting.webp" width="1920" height="960" loading="lazy" alt="A meeting summary in Kaki with a conflict flag on a decision that contradicts an earlier one."></figure>
+            <div class="feature-cols reveal">
               <h3>Turns meetings into follow-up drafts</h3>
               <p>Kaki writes the call down line by line and flags a decision that contradicts an earlier one. When the call ends, each promise becomes an email, ticket or meeting draft that shows whose words it came from. Approve it and the draft opens prefilled in your own Gmail, calendar or tracker.</p>
               <p>Every action falls into one of four levels. Lookups are answered on the spot. Everyday work waits for your approval, and editing a draft asks for approval again. Money and contract terms go to their owner, such as a discount to Finance. Secrets and planted instructions are held back before any model reads them.</p>
             </div>
           </article>
 
-          <article class="feature feature-split feature-flip reveal">
-            <div class="feature-copy">
+          <article class="feature feature-split feature-flip">
+            <div class="feature-copy reveal">
               <h3>Spots knowledge gaps and helps you hire</h3>
               <p>Kaki tracks who has worked on each part of the system. When an area is left without an owner, has too few people, or rests on someone already overloaded, it proposes a hire. Approve it and a role opens: you confirm the criteria, Kaki searches public profiles, explains why each person fits and drafts the outreach.</p>
             </div>
             <div class="feature-stack">
-              <figure class="feature-shot"><img src="/assets/landing/map.webp" width="1500" height="560" loading="lazy" alt="Who knows what: how many people have worked on each part of the system, with kubernetes-deploy the thinnest."></figure>
-              <figure class="feature-shot"><img src="/assets/landing/backtest.webp" width="1680" height="420" loading="lazy" alt="Backtest over 60 working days: each of three real hires was proposed six or seven days ahead."></figure>
+              <figure class="feature-shot reveal"><img src="/assets/landing/map.webp" width="1500" height="560" loading="lazy" alt="Who knows what: how many people have worked on each part of the system, with kubernetes-deploy the thinnest."></figure>
+              <figure class="feature-shot reveal"><img src="/assets/landing/backtest.webp" width="1680" height="420" loading="lazy" alt="Backtest over 60 working days: each of three real hires was proposed six or seven days ahead."></figure>
             </div>
           </article>
         </div>
@@ -171,9 +180,10 @@
 
       <section class="results" id="results">
         <div class="wrap">
-          <div class="results-head reveal">
-            <h2>Results so far</h2>
-            <p>Each figure is one recorded run on the demo company, not a production result.</p>
+          <div class="results-head">
+            <p class="tag">Results</p>
+            <h2 class="words reveal"><span class="w">Results</span> <span class="w">so</span> <span class="w">far</span></h2>
+            <p class="reveal">Each figure is one recorded run on the demo company, not a production result.</p>
           </div>
           <dl class="stats stats-3">
             <div class="stat reveal">
@@ -194,7 +204,10 @@
 
       <section class="who">
         <div class="wrap who-grid">
-          <h2 class="reveal">Who it is for</h2>
+          <div>
+            <p class="tag">Audience</p>
+            <h2 class="words reveal"><span class="w">Who</span> <span class="w">it</span> <span class="w">is</span> <span class="w">for</span></h2>
+          </div>
           <dl class="who-list reveal">
             <div><dt>Engineers and staff</dt><dd>who lose hours rebuilding context before a call.</dd></div>
             <div><dt>Team leads</dt><dd>who need decisions and promises from meetings to actually happen.</dd></div>
@@ -204,15 +217,17 @@
       </section>
 
       <section class="stack">
-        <div class="wrap narrow reveal">
-          <h2>How it is built</h2>
-          <p>One Fastify server runs the agent loop, with PostgreSQL and pgvector for company records and search, and Letta for each employee's personal memory. The reasoning runs on Claude through AWS Bedrock or on Qwen through NUS SoCLaaS. Server code checks every citation and action level before anything reaches the employee. The code is <a href="https://github.com/joshualumzy/personal_agent_long_context">open on GitHub</a>.</p>
+        <div class="wrap narrow">
+          <p class="tag">Architecture</p>
+          <h2 class="words reveal"><span class="w">How</span> <span class="w">it</span> <span class="w">is</span> <span class="w">built</span></h2>
+          <p class="reveal">One Fastify server runs the agent loop, with PostgreSQL and pgvector for company records and search, and Letta for each employee's personal memory. The reasoning runs on Claude through AWS Bedrock or on Qwen through NUS SoCLaaS. Server code checks every citation and action level before anything reaches the employee. The code is <a href="https://github.com/joshualumzy/personal_agent_long_context">open on GitHub</a>.</p>
         </div>
       </section>
 
       <section class="faq" id="faq">
         <div class="wrap narrow">
-          <h2 class="reveal">Frequently asked questions</h2>
+          <p class="tag">FAQ</p>
+          <h2 class="words reveal"><span class="w">Frequently</span> <span class="w">asked</span> <span class="w">questions</span></h2>
           <div class="faq-list reveal">
             <details>
               <summary>What happens when the records don't have the answer?</summary>
@@ -234,15 +249,15 @@
         </div>
       </section>
 
+      <!-- The one block of colour on the page, and Kaki's last appearance. -->
       <section class="close">
-        <div class="wrap narrow close-inner reveal">
-          <video class="close-kaki" muted loop playsinline autoplay preload="none" poster="/assets/kaki-win.jpg" width="132" height="132" aria-hidden="true">
-            <source src="/assets/kaki-win.webm" type="video/webm">
-            <source src="/assets/kaki-win.mp4" type="video/mp4">
-          </video>
-          <h2>Try it on the demo company</h2>
-          <p>Ask it about a ticket, a person or a meeting.</p>
-          <a class="btn btn-primary" href="/">Open the demo</a>
+        <div class="wrap narrow close-inner">
+          <h2 class="words reveal"><span class="w">Try</span> <span class="w">it</span> <span class="w">on</span> <span class="w">the</span> <span class="w">demo</span> <span class="w">company</span> <i class="kaki kaki-win" aria-hidden="true"><video muted loop playsinline autoplay preload="none" poster="/assets/kaki-win-alpha.png" width="264" height="264">
+            <source src="/assets/kaki-win-alpha.mov" type="video/quicktime; codecs=hvc1">
+            <source src="/assets/kaki-win-alpha.webm" type="video/webm">
+          </video></i></h2>
+          <p class="reveal">Ask it about a ticket, a person or a meeting.</p>
+          <a class="btn close-btn reveal" href="/">Open the demo</a>
         </div>
       </section>
     </main>
