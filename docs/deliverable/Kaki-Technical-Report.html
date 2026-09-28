@@ -25,7 +25,7 @@
   li { margin-bottom: 2.5pt; }
   code { font: 8.8pt Menlo, Consolas, monospace; color: var(--navy2); background: var(--paper); padding: 0 2pt; border-radius: 2pt; }
   table { width: 100%; border-collapse: collapse; margin: 6pt 0 10pt; font-size: 8.8pt; }
-  tr, .kpi, .box { break-inside: avoid; }
+  tr, .kpi, .box, table.keep { break-inside: avoid; }
   h2, h3 { break-after: avoid; }
   h2 + p, h3 + p, h2 + table, h3 + table { break-before: avoid; }
   th { background: var(--navy); color: #fff; text-align: left; font-weight: 600; padding: 4pt 6pt; }
@@ -103,7 +103,7 @@
 <p><b>Value hypothesis.</b> Fewer manual searches across systems; answers tied to evidence rather than recollection; commitments made visible as drafts with explicit approval; shared context reused without proportional headcount. These are hypotheses for a measured pilot. We do not yet claim realised time or revenue savings.</p>
 
 <h2><span class="n">3</span>Product</h2>
-<table>
+<table class="keep">
   <thead><tr><th style="width:22%">Module</th><th>What it does</th><th style="width:30%">Human control</th></tr></thead>
   <tbody>
   <tr><td><b>S1 Company context</b></td><td>Answers workplace questions from company records with inline citations and an evidence graph; shows the employee's own plan and open work for any chosen day.</td><td>Read-only. Every company claim cites a retrieved record.</td></tr>
@@ -113,11 +113,11 @@
 </table>
 <p>Kaki is deliberately not an autonomous replacement for an employee. It is a context and preparation layer that removes reconstruction work while consequential decisions stay with people.</p>
 
-<h2><span class="n">4</span>Architecture</h2>
+<h2 class="pb"><span class="n">4</span>Architecture</h2>
 <p>Kaki is a modular monolith: one TypeScript/Fastify service powers a stateless agent reasoning loop and coordinates identity, retrieval, models, memory and workflows, with PostgreSQL as the authoritative system of record. The three modules share every layer below them, and each layer has its own trust boundary.</p>
 
 <figure>
-<svg viewBox="0 0 1200 880" role="img" aria-label="Kaki multi-agent architecture">
+<svg viewBox="0 0 1200 900" role="img" aria-label="Kaki multi-agent architecture">
   <defs>
     <marker id="a1" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9aa9ba"/></marker>
     <marker id="a3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#128a7c"/></marker>
@@ -143,7 +143,7 @@
   <text x="44" y="151" class="d">Fastify · signed sessions · pattern rules, then a classifier model, before any agent sees a message</text>
 
   <!-- agent layer container -->
-  <rect x="20" y="182" width="1160" height="438" rx="18" fill="#f3faf8" stroke="#18a999" stroke-width="2"/>
+  <rect x="20" y="182" width="1160" height="458" rx="18" fill="#f3faf8" stroke="#18a999" stroke-width="2"/>
   <text x="44" y="210" class="band">MULTI-AGENT LAYER</text>
   <text x="232" y="210" class="bands">shared models: Claude Sonnet 4.5 in deployment · Qwen 3.8 27B in development</text>
 
@@ -184,15 +184,16 @@
 
   <!-- supporting agents row -->
   <g stroke-width="2.5">
-    <rect x="40" y="456" width="340" height="146" rx="14" fill="#ffffff" stroke="#9aa9ba"/>
-    <rect x="430" y="456" width="340" height="146" rx="14" fill="#eef2f7" stroke="#5b6f8a"/>
-    <rect x="820" y="456" width="340" height="146" rx="14" fill="#ffffff" stroke="#9aa9ba"/>
+    <rect x="40" y="456" width="340" height="166" rx="14" fill="#ffffff" stroke="#9aa9ba"/>
+    <rect x="430" y="456" width="340" height="166" rx="14" fill="#eef2f7" stroke="#5b6f8a"/>
+    <rect x="820" y="456" width="340" height="166" rx="14" fill="#ffffff" stroke="#9aa9ba"/>
   </g>
   <text x="58" y="484" class="mt">SPECIALIST MODELS</text>
-  <text x="58" y="512" class="ml">Sensitive-data classifier</text>
-  <text x="58" y="536" class="ml">Date reader (closed-choice form)</text>
-  <text x="58" y="560" class="ml">Emergent-graph extraction (Cognee)</text>
-  <text x="58" y="584" class="ml">Conflict checker</text>
+  <text x="58" y="510" class="ml" style="font-weight:700">Jev decision model (TypeSafe)</text>
+  <text x="58" y="532" class="ml">Calibrated yes/no on meeting conflicts</text>
+  <text x="58" y="554" class="ml">and times, with model fallback</text>
+  <text x="58" y="584" class="ml">Sensitive-data classifier</text>
+  <text x="58" y="608" class="ml">Emergent-graph extraction (Cognee)</text>
 
   <text x="448" y="484" class="mt">MEMORY AGENT (LETTA)</text>
   <text x="448" y="508" class="ag" style="fill:#5b6f8a">One per employee, edits its own memory</text>
@@ -210,42 +211,42 @@
   <line x1="386" y1="392" x2="426" y2="470" stroke="#5b6f8a" stroke-width="2.5" marker-start="url(#a4)" marker-end="url(#a4)"/>
   <line x1="814" y1="392" x2="774" y2="470" stroke="#5b6f8a" stroke-width="2.5" marker-end="url(#a4)"/>
 
-  <rect x="20" y="640" width="560" height="140" rx="16" fill="#427aa1"/>
-  <text x="44" y="670" class="t">COMPANY EVIDENCE (citable)</text>
-  <text x="44" y="698" class="d">PostgreSQL full-text + pgvector (Titan V2)</text>
-  <text x="44" y="722" class="d">Document links · deterministic graph</text>
-  <text x="44" y="746" class="d">Emergent graph per question</text>
-  <text x="44" y="770" class="d">Planner projection (shown, never cited)</text>
+  <rect x="20" y="660" width="560" height="140" rx="16" fill="#427aa1"/>
+  <text x="44" y="690" class="t">COMPANY EVIDENCE (citable)</text>
+  <text x="44" y="718" class="d">PostgreSQL full-text + pgvector (Titan V2)</text>
+  <text x="44" y="742" class="d">Document links · deterministic graph</text>
+  <text x="44" y="766" class="d">Emergent graph per question</text>
+  <text x="44" y="790" class="d">Planner projection (shown, never cited)</text>
 
-  <rect x="620" y="640" width="560" height="140" rx="16" fill="#5b6f8a"/>
-  <text x="644" y="670" class="t">PERSONAL CONTEXT (never cited)</text>
-  <text x="644" y="698" class="d">Letta memory files, one set per employee</text>
-  <text x="644" y="722" class="d">Conversation history (last six turns)</text>
-  <text x="644" y="746" class="d">Isolated between employees</text>
+  <rect x="620" y="660" width="560" height="140" rx="16" fill="#5b6f8a"/>
+  <text x="644" y="690" class="t">PERSONAL CONTEXT (never cited)</text>
+  <text x="644" y="718" class="d">Letta memory files, one set per employee</text>
+  <text x="644" y="742" class="d">Conversation history (last six turns)</text>
+  <text x="644" y="766" class="d">Isolated between employees</text>
 
-  <rect x="20" y="798" width="1160" height="70" rx="16" fill="#f26b4e"/>
-  <text x="44" y="828" class="t">ACTION CONTROL</text>
-  <text x="44" y="854" class="d">Auto · approval · escalate · blocked, set by code · approval bound to payload hash · zero-credential handoff</text>
+  <rect x="20" y="818" width="1160" height="70" rx="16" fill="#f26b4e"/>
+  <text x="44" y="848" class="t">ACTION CONTROL</text>
+  <text x="44" y="874" class="d">Auto · approval · escalate · blocked, set by code · approval bound to payload hash · zero-credential handoff</text>
 
   <line x1="600" y1="81" x2="600" y2="94" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
   <line x1="600" y1="165" x2="600" y2="178" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
-  <line x1="300" y1="621" x2="300" y2="636" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
-  <line x1="900" y1="621" x2="900" y2="636" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
-  <line x1="600" y1="781" x2="600" y2="794" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="300" y1="641" x2="300" y2="656" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="900" y1="641" x2="900" y2="656" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="600" y1="801" x2="600" y2="814" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
 </svg>
 <figcaption>Figure 1. Kaki as a multi-agent system: three task agents that hand work to each other (S3 also runs as a skill inside S1), a memory agent per employee, and specialist models, all on shared layers. Models do the reading and writing; code makes the consequential calls.</figcaption>
 </figure>
 
 <p>The separation matters because each kind of information has a different trust level. Company records are citable evidence. Personal memory is context, never a company source. Conversation history supports follow-ups. Proposed actions are stateful objects that must pass deterministic policy before anything leaves the system.</p>
 
-<table>
+<table class="keep">
   <thead><tr><th style="width:24%">Component</th><th>Technology</th></tr></thead>
   <tbody>
   <tr><td>Service</td><td>TypeScript, Fastify, Server-Sent Events; runs with <code>tsx</code></td></tr>
   <tr><td>Company knowledge</td><td>PostgreSQL 16 + pgvector; Amazon Titan Text Embeddings V2 (1024-d)</td></tr>
   <tr><td>Personal memory</td><td>Letta App Server (one memory agent per employee)</td></tr>
   <tr><td>Generation</td><td><b>Claude Sonnet 4.5</b> via an LLM gateway in deployment; NUS SoCLaaS <b>Qwen 3.8 27B</b> for development and testing, including all evaluation</td></tr>
-  <tr><td>Optional</td><td>Cognee (emergent graph), Whisper transcription, live ASR, Gmail/Calendar, Exa people search</td></tr>
+  <tr><td>Optional</td><td>Jev decision model (TypeSafe, via Vercel AI Gateway), Cognee (emergent graph), Whisper transcription, live ASR, Gmail/Calendar, Exa people search</td></tr>
   <tr><td>Browser</td><td>marked, DOMPurify, Shoelace</td></tr>
   </tbody>
 </table>
@@ -346,7 +347,7 @@
   <tr><td><b>1. Screen</b></td><td>Every segment passes the sensitive-data gate and a narrow prompt-injection screen before any model sees it; blocked segments are withheld.</td><td>Rules are anchored to injection wording, so "let's ignore the previous slide" still passes.</td></tr>
   <tr><td><b>2. Extract</b></td><td>The model proposes decisions and candidate actions from a closed set of kinds: email, calendar invite, ticket, message, document, sheet, hiring request, question, escalation.</td><td>A closed set keeps every action typed and checkable.</td></tr>
   <tr><td><b>3. Resolve dates</b></td><td>For "next Wednesday" or "the Friday after next", the model fills a form whose fields are closed choices; code turns the form into a date, and asks which day when two fit.</td><td>The model understands the words; it never counts days.</td></tr>
-  <tr><td><b>4. Check conflicts</b></td><td>Each new decision is checked against decisions from earlier meetings and against company evidence.</td><td>Conflicts are found by a dedicated check, never guessed by the extractor.</td></tr>
+  <tr><td><b>4. Check conflicts</b></td><td>Each new decision is checked against decisions from earlier meetings and against company evidence. Yes/no calls such as "does this conflict?" and "which time was meant?" go to Jev, TypeSafe's decision model, which returns a calibrated probability for each option; the main model is the fallback.</td><td>Conflicts are found by a dedicated check, never guessed by the extractor.</td></tr>
   <tr><td><b>5. Draft</b></td><td>Drafts are written with company evidence to hand. A commitment repeated later in the meeting stays one action, and a money commitment is never stated as settled until its escalation is approved. Approve stays disabled while a draft is missing something it needs, such as an unresolved date.</td><td>One commitment, one draft; no promises made on someone else's behalf.</td></tr>
   <tr><td><b>6. Tier and hand off</b></td><td>Policy code assigns the tier (section 10); approved drafts open prefilled in Gmail, Google Calendar or GitHub.</td><td>The employee sends from their own account.</td></tr>
   </tbody>
@@ -365,7 +366,7 @@
 <p><b>Hiring intent is memory.</b> Criteria versions, the reasons behind feedback and accepted preferences go into the founder's Letta memory, so "why do we require Rust?" can be answered weeks later. Candidate records never enter memory.</p>
 
 <h2><span class="n">9</span>Memory</h2>
-<table>
+<table class="keep">
   <thead><tr><th style="width:20%">Kind</th><th>Where</th><th style="width:36%">Used for</th></tr></thead>
   <tbody>
   <tr><td>Conversation</td><td>PostgreSQL conversations and messages; the last six turns go in the prompt, long messages clipped</td><td>Follow-up questions in the same chat</td></tr>
@@ -377,7 +378,7 @@
 <p><b>Persona-scoped by design.</b> Memory is keyed to the signed-in employee. When a different employee signs in (say, from Jax in backend to Priya in design), Kaki's memory switches with them, so working context, preferences and hiring criteria persist across sessions for each person without ever mixing between people or being cited as company fact.</p>
 
 <h2><span class="n">10</span>Autonomy and human control</h2>
-<table>
+<table class="keep">
   <thead><tr><th style="width:16%">Tier</th><th>Examples</th><th style="width:40%">Behaviour</th></tr></thead>
   <tbody>
   <tr><td><b>Auto</b></td><td>Read-only answers, conflict flags</td><td>May complete automatically</td></tr>
@@ -406,7 +407,7 @@
 <h3>12.1 OrgForge benchmark</h3>
 <p><b>What we ran.</b> OrgForge ships 78 questions, built to evaluate agents inside its own harness, which gives them simulator tools and per-person visibility data that are not part of the published dataset. Many questions therefore cannot be answered from the records alone. We kept the <b>29 questions</b> whose required evidence exists in the records an employee can see, and report on those. Evaluation used the development model, Qwen 3.8 27B, throughout; repeated benchmark runs on the deployment model, Claude Sonnet 4.5, were too costly for this phase.</p>
 <p><b>How it was graded.</b> Each answer is compared with OrgForge's reference conclusion by a fixed judge model at temperature 0 (agrees / disagrees / inconclusive). A conclusion-level judge was used rather than keyword matching, so a correct answer phrased differently is not penalised.</p>
-<table>
+<table class="keep">
   <thead><tr><th>Metric</th><th class="num">Result</th><th>Meaning</th></tr></thead>
   <tbody>
   <tr><td><b>Accuracy</b></td><td class="num"><b>62%</b> (18/29)</td><td>Judged against OrgForge's reference conclusions, on the shipped code</td></tr>
@@ -459,7 +460,7 @@
   <li><b>Evening:</b> nothing needs Jax.</li>
 </ol>
 <h2><span class="n">14</span>Roadmap</h2>
-<table>
+<table class="keep">
   <thead><tr><th style="width:20%">Phase</th><th>Focus</th><th style="width:32%">Outcome</th></tr></thead>
   <tbody>
   <tr><td><b>1. Pilot</b><br><span class="note">0–3 months</span></td><td>Read connectors for a real SME's Slack, Google Workspace and Jira; single sign-on and per-document permissions in retrieval; the OrgForge and supplementary suites run on every change, alongside questions from the pilot company itself.</td><td>Kaki answering from one company's live records, with measured time saved per employee.</td></tr>
