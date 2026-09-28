@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Kaki demo video: an AI operating agent for small teams</title>
+    <meta name="description" content="Watch Kaki work through one real day: answers from company records with sources, a meeting turned into follow-up drafts, and a hiring gap caught a week early.">
+    <link rel="canonical" href="https://kakiai.me/video">
+    <meta property="og:type" content="video.other">
+    <meta property="og:title" content="Kaki demo video: an AI operating agent for small teams">
+    <meta property="og:description" content="Answers with sources, meetings turned into drafts, hiring gaps caught early. Four minutes, one workday.">
+    <meta property="og:url" content="https://kakiai.me/video">
+    <meta property="og:image" content="https://kakiai.me/assets/landing/video-poster.jpg">
+    <meta property="og:video" content="https://kakiai.me/video/kaki-promo.mp4">
+    <meta property="og:video:type" content="video/mp4">
+    <meta property="og:video:width" content="1920">
+    <meta property="og:video:height" content="1080">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" href="/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
+    <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+    <link rel="stylesheet" href="/theme.css">
+    <link rel="stylesheet" href="/landing.css">
+    <link rel="stylesheet" href="/video.css">
+    <script src="/landing.js" defer></script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "VideoObject",
+          "name": "Kaki demo: one workday with an AI operating agent",
+          "description": "Kaki answers a question from company records with sources, keeps track of a customer call, turns what was promised into drafts, and flags a hiring gap early.",
+          "thumbnailUrl": "https://kakiai.me/assets/landing/video-poster.jpg",
+          "uploadDate": "2026-09-28",
+          "duration": "PT4M25S",
+          "contentUrl": "https://kakiai.me/video/kaki-promo.mp4",
+          "embedUrl": "https://kakiai.me/video"
+        },
+        {
+          "@type": "SoftwareApplication",
+          "name": "Kaki",
+          "applicationCategory": "BusinessApplication",
+          "operatingSystem": "Web",
+          "url": "https://kakiai.me",
+          "description": "An operating agent for small teams: answers from company records, meeting follow-up drafts, and early hiring signals."
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "What happens when the records don't have the answer?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Kaki says the evidence is insufficient instead of guessing."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Is the data in the demo real?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "No. The demo runs on OrgForge, a synthetic company built for testing. No real company records are used."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "How do I try Kaki?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Open the demo and sign in as anyone on the demo company's staff list. There is no sign-up, because at work your company assigns the account."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Does Kaki remember me?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Yes, in a personal memory scoped to you. It is kept apart from company records and is never cited as fact."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
+  </head>
+  <body class="landing">
+    <header class="nav">
+      <div class="wrap nav-row">
+        <a class="brand" href="/landing" aria-label="Kaki home">
+          <img src="/assets/kaki-logo-64.png" width="32" height="32" alt="">
+          <span>Kaki</span>
+        </a>
+        <nav aria-label="Page">
+          <a href="#what">What it does</a>
+          <a href="#results">Results</a>
+          <a href="#faq">FAQ</a>
+        </nav>
+        <a class="btn btn-primary btn-small" href="/">Open the demo</a>
+      </div>
+    </header>
+
+    <main>
+      <!-- The video first: it is what people came for. -->
+      <section class="watch wrap">
+        <h1>See Kaki at work: the operating agent for small teams</h1>
+        <p class="lede">Four minutes, one workday. A question answered from company records, a customer call turned into drafts, and a hiring gap caught early.</p>
+        <figure class="player">
+          <video src="/video/kaki-promo.mp4" controls playsinline preload="metadata" poster="/assets/landing/video-poster.jpg" width="1920" height="1080"></video>
+          <figcaption><a href="/video/kaki-promo.mp4" download>Download the video (MP4)</a></figcaption>
+        </figure>
+      </section>
+
+      <!-- A plain definition for anyone who arrives from a search. -->
+      <section class="intro">
+        <div class="wrap narrow reveal">
+          <h2>What is Kaki?</h2>
+          <p>Kaki is an AI assistant for employees of small companies. It reads the company's records across <mark>Slack, Jira, Confluence and email</mark>, answers questions from them, keeps track of meetings, and turns what people promised into work that is ready to go. It suggests; the employee decides.</p>
+        </div>
+      </section>
+
+      <section class="what" id="what">
+        <div class="wrap">
+          <h2 class="reveal">What Kaki does</h2>
+
+          <article class="feature feature-split reveal">
+            <div class="feature-copy">
+              <h3>Answers questions from company records</h3>
+              <p>Ask whether last week's outage is the same bug as February's. Kaki reads the tickets, postmortems and chats and gives a short answer with the record behind every claim.</p>
+              <ul>
+                <li>Hybrid search: keywords, meaning and the links between records</li>
+                <li>A graph of how the evidence connects</li>
+                <li>Ask as of a past date to see only what was known then</li>
+              </ul>
+            </div>
+            <figure class="feature-shot"><img src="/assets/landing/answer.webp" width="1920" height="960" loading="lazy" alt="Kaki's answer on whether ENG-210 is the same bug as ENG-148, each claim tagged with its source."></figure>
+          </article>
+
+          <article class="feature feature-wide reveal">
+            <figure class="feature-shot"><img src="/assets/landing/meeting.webp" width="1920" height="960" loading="lazy" alt="A meeting summary in Kaki with a conflict flag on a decision that contradicts an earlier one."></figure>
+            <div class="feature-cols">
+              <h3>Turns meetings into follow-up drafts</h3>
+              <p>Kaki writes the call down line by line and flags a decision that contradicts an earlier one. When the call ends, each promise becomes an email, ticket or meeting draft that shows whose words it came from. Approve it and the draft opens prefilled in your own Gmail, calendar or tracker.</p>
+              <p>Every action falls into one of four levels. Lookups are answered on the spot. Everyday work waits for your approval, and editing a draft asks for approval again. Money and contract terms go to their owner, such as a discount to Finance. Secrets and planted instructions are held back before any model reads them.</p>
+            </div>
+          </article>
+
+          <article class="feature feature-split feature-flip reveal">
+            <div class="feature-copy">
+              <h3>Spots knowledge gaps and helps you hire</h3>
+              <p>Kaki tracks who has worked on each part of the system. When an area is left without an owner, has too few people, or rests on someone already overloaded, it proposes a hire. Approve it and a role opens: you confirm the criteria, Kaki searches public profiles, explains why each person fits and drafts the outreach.</p>
+            </div>
+            <div class="feature-stack">
+              <figure class="feature-shot"><img src="/assets/landing/map.webp" width="1500" height="560" loading="lazy" alt="Who knows what: how many people have worked on each part of the system, with kubernetes-deploy the thinnest."></figure>
+              <figure class="feature-shot"><img src="/assets/landing/backtest.webp" width="1680" height="420" loading="lazy" alt="Backtest over 60 working days: each of three real hires was proposed six or seven days ahead."></figure>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="results" id="results">
+        <div class="wrap">
+          <div class="results-head reveal">
+            <h2>Results so far</h2>
+            <p>Each figure is one recorded run on the demo company, not a production result.</p>
+          </div>
+          <dl class="stats stats-3">
+            <div class="stat reveal">
+              <dt>100%</dt>
+              <dd>of cited sources were real records, across 78 evaluated questions.</dd>
+            </div>
+            <div class="stat reveal">
+              <dt>20/20</dt>
+              <dd>unsafe lines in meeting transcripts held back before any model saw them.</dd>
+            </div>
+            <div class="stat reveal">
+              <dt>4,966</dt>
+              <dd>company records Kaki reads across tickets, docs, chats and email, for 51 employees.</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="who">
+        <div class="wrap who-grid">
+          <h2 class="reveal">Who it is for</h2>
+          <dl class="who-list reveal">
+            <div><dt>Engineers and staff</dt><dd>who lose hours rebuilding context before a call.</dd></div>
+            <div><dt>Team leads</dt><dd>who need decisions and promises from meetings to actually happen.</dd></div>
+            <div><dt>Founders</dt><dd>who hire without a recruiter and need to see a gap before it hurts.</dd></div>
+          </dl>
+        </div>
+      </section>
+
+      <section class="stack">
+        <div class="wrap narrow reveal">
+          <h2>How it is built</h2>
+          <p>One Fastify server runs the agent loop, with PostgreSQL and pgvector for company records and search, and Letta for each employee's personal memory. The reasoning runs on Claude through AWS Bedrock or on Qwen through NUS SoCLaaS. Server code checks every citation and action level before anything reaches the employee. The code is <a href="https://github.com/joshualumzy/personal_agent_long_context">open on GitHub</a>.</p>
+        </div>
+      </section>
+
+      <section class="faq" id="faq">
+        <div class="wrap narrow">
+          <h2 class="reveal">Frequently asked questions</h2>
+          <div class="faq-list reveal">
+            <details>
+              <summary>What happens when the records don't have the answer?</summary>
+              <p>Kaki says the evidence is insufficient instead of guessing.</p>
+            </details>
+            <details>
+              <summary>Is the data in the demo real?</summary>
+              <p>No. The demo runs on OrgForge, a synthetic company built for testing. No real company records are used.</p>
+            </details>
+            <details>
+              <summary>How do I try Kaki?</summary>
+              <p>Open the demo and sign in as anyone on the demo company's staff list. There is no sign-up, because at work your company assigns the account.</p>
+            </details>
+            <details>
+              <summary>Does Kaki remember me?</summary>
+              <p>Yes, in a personal memory scoped to you. It is kept apart from company records and is never cited as fact.</p>
+            </details>
+          </div>
+        </div>
+      </section>
+
+      <section class="close">
+        <div class="wrap narrow close-inner reveal">
+          <video class="close-kaki" muted loop playsinline autoplay preload="none" poster="/assets/kaki-win.jpg" width="132" height="132" aria-hidden="true">
+            <source src="/assets/kaki-win.webm" type="video/webm">
+            <source src="/assets/kaki-win.mp4" type="video/mp4">
+          </video>
+          <h2>Try it on the demo company</h2>
+          <p>Ask it about a ticket, a person or a meeting.</p>
+          <a class="btn btn-primary" href="/">Open the demo</a>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="wrap foot-row">
+        <span>Kaki, built for Show Me Your Agent 2026.</span>
+        <a href="/landing">About Kaki</a>
+        <a href="https://github.com/joshualumzy/personal_agent_long_context">Source on GitHub</a>
+      </div>
+    </footer>
+  </body>
+</html>
