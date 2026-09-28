@@ -1643,9 +1643,14 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.get("/landing", serve("landing.html", "text/html; charset=utf-8"));
   app.get("/landing.css", serve("landing.css", "text/css; charset=utf-8"));
   app.get("/landing.js", serve("landing.js", "text/javascript; charset=utf-8"));
-  for (const shot of ["answer", "source", "meeting", "draft", "map"]) {
+  for (const shot of ["answer", "graph", "meeting", "draft", "promised", "map", "recruit", "backtest"]) {
     app.get(`/assets/landing/${shot}.webp`, serve(`assets/landing/${shot}.webp`, "image/webp"));
   }
+  // The demo video's page. The film itself is too large for the repository: the
+  // web server hands out /video/kaki-promo.mp4 from disk, next to this route.
+  app.get("/video", serve("video.html", "text/html; charset=utf-8"));
+  app.get("/video.css", serve("video.css", "text/css; charset=utf-8"));
+  app.get("/assets/landing/video-poster.jpg", serve("assets/landing/video-poster.jpg", "image/jpeg"));
   // Shoelace, the UI components, served from its package: only its scripts,
   // styles and icons, only inside its folder.
   app.get<{ Params: { "*": string } }>("/vendor/shoelace/*", async (request, reply) => {

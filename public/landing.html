@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Kaki: walk into every meeting caught up</title>
-    <meta name="description" content="Kaki answers from your company's records with a source for every line, and turns meeting promises into drafts you approve.">
+    <title>Kaki: less digging, less chasing</title>
+    <meta name="description" content="Kaki finds answers across your company's records, turns meetings into ready drafts, and tells you when to hire.">
     <link rel="icon" href="/favicon.ico" sizes="any">
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/favicon-32.png">
     <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
-    <link rel="preload" as="image" href="/assets/landing/answer.webp" type="image/webp">
+    <link rel="preload" as="image" href="/assets/landing/draft.webp" type="image/webp">
     <link rel="stylesheet" href="/theme.css">
     <link rel="stylesheet" href="/landing.css">
     <script src="/landing.js" defer></script>
@@ -25,7 +25,7 @@
           <a href="#control">Control</a>
           <a href="#results">Results</a>
         </nav>
-        <a class="btn btn-primary btn-small" href="/">Try Kaki as Jax</a>
+        <a class="btn btn-primary btn-small" href="/">Open the demo</a>
       </div>
     </header>
 
@@ -33,17 +33,17 @@
       <!-- Hero: the promise on the left, the real product on the right. -->
       <section class="hero wrap">
         <div class="hero-copy">
-          <h1>Walk into every meeting already <mark>caught up</mark>.</h1>
-          <p class="lede">Kaki answers from your company's records, shows the source for every line, and turns meeting promises into drafts you approve.</p>
+          <h1>Less digging. Less chasing. <mark>More real work.</mark></h1>
+          <p class="lede">Kaki finds answers across your company's records, turns meetings into ready drafts, and tells you when to hire.</p>
           <div class="cta-row">
-            <a class="btn btn-primary" href="/">Try Kaki as Jax</a>
+            <a class="btn btn-primary" href="/">Open the demo</a>
             <a class="btn btn-ghost" href="#day">See a day with Kaki</a>
           </div>
         </div>
         <figure class="hero-shot">
-          <img src="/assets/landing/answer.webp" width="2240" height="1235"
-               alt="Kaki answering whether ENG-210 is the same bug as ENG-148, with each claim linked to a postmortem.">
-          <video class="hero-kaki" muted loop playsinline autoplay preload="auto" poster="/assets/kaki-logo-256.png" width="132" height="132" aria-hidden="true">
+          <img src="/assets/landing/draft.webp" width="1920" height="960"
+               alt="A follow-up email Kaki drafted after a meeting, next to the sentence it came from.">
+          <video class="hero-kaki" muted loop playsinline autoplay preload="auto" poster="/assets/kaki-walk.jpg" width="132" height="132" aria-hidden="true">
             <source src="/assets/kaki-walk.webm" type="video/webm">
             <source src="/assets/kaki-walk.mp4" type="video/mp4">
           </video>
@@ -54,7 +54,7 @@
       <section class="problem">
         <div class="wrap narrow reveal">
           <h2>At a small company, the answer already exists. Finding it is the job.</h2>
-          <p>It sits in <mark>a postmortem</mark>, <mark>a Slack thread</mark> and <mark>one colleague's memory</mark>. People rebuild it by hand before every call, then write the follow-up from memory after. Promises slip, and the people who know the system get stretched thinner.</p>
+          <p>It sits in <mark>Slack, Jira, Confluence, email</mark> and <mark>one colleague's memory</mark>. People dig it out by hand before every call, write the follow-ups from memory after, and notice they need to hire only when the same three people get paged for every incident.</p>
         </div>
       </section>
 
@@ -63,43 +63,57 @@
         <div class="wrap">
           <div class="day-head reveal">
             <h2>One Tuesday with Kaki</h2>
-            <p>At 11, Jax meets a customer the team just let down. Here is how the day goes.</p>
+            <p>You are a backend engineer at a small company. At 11, you meet a customer your team just let down. Here is how the day goes.</p>
           </div>
 
           <div class="day-grid">
             <ol class="steps">
               <li class="step" data-shot="0">
                 <time>09:00</time>
-                <h3>Homework, with receipts</h3>
-                <p>Jax asks if ENG-210 is the same bug as ENG-148. Kaki reads the tickets, postmortems and chats, and every claim opens the record it came from. Pick a past date and it answers from what was known that day.</p>
-                <figure class="step-shot"><img src="/assets/landing/source.webp" width="1200" height="1130" loading="lazy" alt="The ENG-210 postmortem opened from a citation in Kaki's answer."></figure>
+                <h3>Answers, with receipts</h3>
+                <p>You ask if last week's outage is the same bug as February's. Kaki reads the tickets, postmortems and chats: not the same bug, but the same piece of code. Every line opens the record it came from.</p>
+                <figure class="step-shot"><img src="/assets/landing/answer.webp" width="1920" height="960" loading="lazy" alt="Kaki's answer on whether ENG-210 is the same bug as ENG-148, each claim tagged with its source."></figure>
               </li>
               <li class="step" data-shot="1">
-                <time>11:00</time>
-                <h3>On the call, it keeps track</h3>
-                <p>Kaki writes the call down line by line. When someone says plan A after the team agreed on B, it flags the conflict. When someone reads out a key, that line is withheld before any model sees it.</p>
-                <figure class="step-shot"><img src="/assets/landing/meeting.webp" width="1920" height="1080" loading="lazy" alt="A live meeting in Kaki: promises, decisions, a conflict flag and a withheld secret in the transcript."></figure>
+                <time>09:05</time>
+                <h3>See how it connects</h3>
+                <p>The answer comes with a map of what it rests on: both incidents, the fixes, the people who wrote them up. Pick a past date and Kaki answers from only what was known that day.</p>
+                <figure class="step-shot"><img src="/assets/landing/graph.webp" width="1920" height="960" loading="lazy" alt="Kaki's answer with its sources listed and a graph of how the evidence connects."></figure>
               </li>
               <li class="step" data-shot="2">
-                <time>12:00</time>
-                <h3>Promises become drafts</h3>
-                <p>When the call ends, each promise is a draft email, ticket or meeting, and each shows whose words it came from. Approve, and your own Gmail opens with it filled in. You press send. The 20% discount goes to Finance.</p>
-                <figure class="step-shot"><img src="/assets/landing/draft.webp" width="1920" height="1080" loading="lazy" alt="A follow-up email drafted by Kaki, next to the sentence Jax said in the meeting."></figure>
+                <time>11:00</time>
+                <h3>On the call, it keeps track</h3>
+                <p>Kaki writes the call down line by line. When someone says plan A after the team agreed on B, it flags the conflict.</p>
+                <figure class="step-shot"><img src="/assets/landing/meeting.webp" width="1920" height="960" loading="lazy" alt="A live meeting in Kaki: promises, decisions, a conflict flag and a withheld secret in the transcript."></figure>
               </li>
               <li class="step" data-shot="3">
-                <time>16:00</time>
+                <time>12:00</time>
+                <h3>Promises become drafts</h3>
+                <p>When the call ends, each promise is a draft email, ticket or meeting, and each shows whose words it came from.</p>
+                <figure class="step-shot"><img src="/assets/landing/promised.webp" width="1920" height="920" loading="lazy" alt="What was promised in the meeting, each item marked as a draft ready or waiting on Finance."></figure>
+              </li>
+              <li class="step" data-shot="4">
+                <time>15:00</time>
                 <h3>It sees the gap early</h3>
-                <p>Kaki tracks who knows what. When part of the system is left with too few people, it proposes a hire, then helps you go from criteria to candidates to an outreach draft.</p>
-                <figure class="step-shot"><img src="/assets/landing/map.webp" width="1400" height="982" loading="lazy" alt="Kaki's company map linking departments, people and knowledge areas."></figure>
+                <p>Kaki tracks who knows what. When part of the system is left with too few people, it proposes a hire.</p>
+                <figure class="step-shot"><img src="/assets/landing/map.webp" width="1500" height="560" loading="lazy" alt="Kaki's company map linking departments, people and knowledge areas."></figure>
+              </li>
+              <li class="step" data-shot="5">
+                <time>16:00</time>
+                <h3>From “we need someone” to outreach</h3>
+                <p>You confirm what the role needs. Kaki searches public profiles, puts the best matches in the middle and says why each one fits. It drafts the outreach.</p>
+                <figure class="step-shot"><img src="/assets/landing/recruit.webp" width="1800" height="1200" loading="lazy" alt="Candidates for a backend role arranged by how many criteria they meet, with the criteria listed beside them."></figure>
               </li>
             </ol>
 
             <div class="stage" aria-hidden="true">
               <div class="stage-frame">
-                <img class="is-on" src="/assets/landing/source.webp" width="1200" height="1130" alt="">
-                <img src="/assets/landing/meeting.webp" width="1920" height="1080" alt="" loading="lazy">
-                <img src="/assets/landing/draft.webp" width="1920" height="1080" alt="" loading="lazy">
-                <img src="/assets/landing/map.webp" width="1400" height="982" alt="" loading="lazy">
+                <img class="is-on" src="/assets/landing/answer.webp" width="1920" height="960" alt="">
+                <img src="/assets/landing/graph.webp" width="1920" height="960" alt="" loading="lazy">
+                <img src="/assets/landing/meeting.webp" width="1920" height="960" alt="" loading="lazy">
+                <img src="/assets/landing/promised.webp" width="1920" height="920" alt="" loading="lazy">
+                <img src="/assets/landing/map.webp" width="1500" height="560" alt="" loading="lazy">
+                <img src="/assets/landing/recruit.webp" width="1800" height="1200" alt="" loading="lazy">
               </div>
             </div>
           </div>
@@ -111,25 +125,17 @@
         <div class="wrap">
           <h2 class="reveal">Kaki suggests. You decide.</h2>
           <div class="bento">
-            <article class="cell cell-source reveal">
-              <h3>Every answer shows its sources</h3>
-              <p>Kaki checks each citation against the records it actually read in that run. If the records don't support an answer, it says so instead of guessing.</p>
-              <blockquote class="quote-line">
-                <span class="chip">CONF-ENG-311</span>
-                “The same code path was implicated in ENG-148; the prior fix only addressed a specific edge case.”
-              </blockquote>
-            </article>
-            <article class="cell reveal">
+            <article class="cell cell-send reveal">
               <h3>Nothing sends itself</h3>
               <p>Approving opens your own Gmail, calendar or tracker with the draft filled in. The last click is always yours.</p>
             </article>
-            <article class="cell reveal">
+            <article class="cell cell-edit reveal">
               <h3>Edit it, approve it again</h3>
               <p>Approval belongs to the exact draft you read. Change a word and it asks again.</p>
             </article>
             <article class="cell cell-escalate reveal">
               <h3>Money goes to its owner</h3>
-              <p>Discounts and contract terms are passed to the person who can approve them, not to you and not to Kaki.</p>
+              <p>A discount promised on a call goes to Finance, not to you and not to Kaki.</p>
             </article>
             <article class="cell cell-secret reveal">
               <h3>Secrets never reach the model</h3>
@@ -145,7 +151,7 @@
         <div class="wrap">
           <div class="results-head reveal">
             <h2>What we have measured so far</h2>
-            <p>On OrgForge, a synthetic 51-person company with 4,966 records. Each figure is one recorded run, not a production result.</p>
+            <p>On OrgForge, a synthetic company built for testing. Each figure is one recorded run, not a production result.</p>
           </div>
           <dl class="stats">
             <div class="stat reveal">
@@ -153,16 +159,16 @@
               <dd>of cited sources were real records, across 78 evaluated questions.</dd>
             </div>
             <div class="stat reveal">
-              <dt>9 of 9</dt>
-              <dd>unsafe transcript lines blocked, with 0 of 44 ordinary lines blocked by mistake.</dd>
+              <dt>20/20</dt>
+              <dd>unsafe lines in meeting transcripts held back before any model saw them.</dd>
             </div>
             <div class="stat reveal">
-              <dt>23 of 23</dt>
-              <dd>meeting actions given the right approval level.</dd>
+              <dt>4,966</dt>
+              <dd>company records Kaki reads across tickets, docs, chats and email, for 51 employees.</dd>
             </div>
             <div class="stat reveal">
-              <dt>3 of 3</dt>
-              <dd>hires in a 60-day backtest were preceded by a Kaki proposal, 6 to 7 days ahead.</dd>
+              <dt>1 week</dt>
+              <dd>before each of three real hires, Kaki had already proposed it. Backtest over two months of records.</dd>
             </div>
           </dl>
         </div>
@@ -171,13 +177,13 @@
       <!-- Close: the product's own end-of-day line. -->
       <section class="close">
         <div class="wrap narrow close-inner reveal">
-          <video class="close-kaki" muted loop playsinline autoplay preload="none" poster="/assets/kaki-win-256.png" width="120" height="120" aria-hidden="true">
+          <video class="close-kaki" muted loop playsinline autoplay preload="none" poster="/assets/kaki-win.jpg" width="132" height="132" aria-hidden="true">
             <source src="/assets/kaki-win.webm" type="video/webm">
             <source src="/assets/kaki-win.mp4" type="video/mp4">
           </video>
-          <h2>“Jax, nothing needs you.”</h2>
-          <p>That's how Jax's day ends with Kaki. Sign in as Jax and try it on the demo company.</p>
-          <a class="btn btn-primary" href="/">Try Kaki as Jax</a>
+          <h2>End the day with nothing waiting on you.</h2>
+          <p>The demo runs on a made-up company of 51 people: pick anyone from its staff list to sign in. There's no sign-up, because at work your company gives you the account.</p>
+          <a class="btn btn-primary" href="/">Open the demo</a>
         </div>
       </section>
     </main>
