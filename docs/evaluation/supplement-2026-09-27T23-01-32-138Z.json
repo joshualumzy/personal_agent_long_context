@@ -1,0 +1,659 @@
+{
+  "model": "qwen3.8:27b",
+  "judge": "qwen3.8:27b",
+  "results": [
+    {
+      "id": "honest-1",
+      "category": "honest_uncertainty",
+      "employeeId": "vince",
+      "question": "What was the root cause of incident ENG-7300?",
+      "answer": "I searched Jira, Confluence, and Slack for \"ENG-7300\" (both as a direct ticket/incident key and as a postmortem reference), and there's no record of an incident by that number anywhere in the company systems.\n\nThe incident IDs that do exist in the records are all in the ENG-1xx to ENG-2xx range (e.g., ENG-112, ENG-137, ENG-148, ENG-173, ENG-186, ENG-210, ENG-230, ENG-237, ENG-250, ENG-263). None of them are ENG-7300.\n\nA couple of possibilities:\n- **Typo or misremembered number** — could you be thinking of a different incident ID? If you can share any detail about what the incident involved (e.g., which service, what symptom, roughly when), I can track down the right one.\n- **It was never logged** — if this is a real incident that happened, it may not have been recorded in Jira or Confluence yet.\n\nLet me know and I'll dig further.",
+      "cited": [],
+      "toolCalls": [
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "ENG-7300 incident root cause"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "ENG-7300 postmortem"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "incident ENG-7300"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "ENG-7300",
+            "limit": 10
+          }
+        }
+      ],
+      "latencyMs": 11804,
+      "verdict": "agrees",
+      "passed": true
+    },
+    {
+      "id": "honest-2",
+      "category": "honest_uncertainty",
+      "employeeId": "cooper",
+      "question": "Who was assigned to ENG-7344 and is it resolved?",
+      "answer": "**Insufficient evidence.** I searched Jira, Confluence, and Slack for ENG-7344 and found no record of it — no ticket, PR, or discussion references that number, so I can't confirm who it was assigned to or whether it's resolved.\n\nThe closest matches in the records are other tickets, none of which are ENG-7344:\n- ENG-123, ENG-137, ENG-148, ENG-250, ENG-342, and others appear in engineering PRs and standups [source:slack_engineering_2026-01-13T09:00:00] [source:slack_engineering_2026-01-26T09:00:00] [source:slack_engineering_2026-03-06T09:00:00] [source:ENG-250] [source:slack_dm_ben_zoe_2026-02-19T15:23:45.179812].\n- The only Design-department Jira record returned was DES-228 (Sophie, completed, linked to CONF-ENG-417) [source:DES-228] [source:CONF-ENG-417] — not ENG-7344.\n\n**What's missing:** any artifact (Jira ticket, PR, Confluence page, or Slack thread) that mentions ENG-7344 by number.\n\nA couple of things worth checking on your end:\n1. **Confirm the ticket number** — it's easy to misread a digit. If it's actually 734, 7341, or similar, I can re-search.\n2. **It may live in a system outside my search scope** — a different Jira project or tool would explain the gap.\n\nIf you can tell me where you saw the reference (a Slack thread, sprint board, or email), I can dig into that specific context and track it down.",
+      "cited": [
+        "slack_engineering_2026-01-13T09:00:00",
+        "slack_engineering_2026-01-26T09:00:00",
+        "slack_engineering_2026-03-06T09:00:00",
+        "ENG-250",
+        "slack_dm_ben_zoe_2026-02-19T15:23:45.179812",
+        "DES-228",
+        "CONF-ENG-417"
+      ],
+      "toolCalls": [
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "ENG-7344"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "ENG-7344 ticket assignee status"
+          }
+        },
+        {
+          "name": "get_related_sources",
+          "arguments": {
+            "source_ids": [
+              "DES-228"
+            ]
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "\"ENG-7344\"",
+            "limit": 10
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "ENG-7344 resolved completed",
+            "limit": 10
+          }
+        }
+      ],
+      "latencyMs": 27575,
+      "verdict": "agrees",
+      "passed": true
+    },
+    {
+      "id": "honest-3",
+      "category": "honest_uncertainty",
+      "employeeId": "nora",
+      "question": "Who approved the budget for Project Nimbus?",
+      "answer": "I couldn't find any record of a \"Project Nimbus\" in the company knowledge base, so I can't tell you who approved its budget.\n\nHere's what I searched:\n- \"Project Nimbus budget approval\" and \"Project Nimbus budget sign-off finance\" — no Nimbus results, only unrelated budget docs (Q3 telemetry, TitanDB scaling, Velox campaign, etc.)\n- \"Nimbus project\" and \"Nimbus\" alone — no hits at all\n- \"Project Nimbus kickoff plan\" — no hits\n\nThe budget-approval records that do exist are for other initiatives (e.g., the Q3 telemetry upgrade workflow Engineer → Tech Lead → Finance → CTO [source:CONF-ENG-212], TitanDB scaling [source:CONF-ENG-308], the Velox rollout [source:slack_sales_marketing_2026-03-20T09:23:00]), and none of them mention Nimbus.\n\nA couple of possibilities worth checking:\n1. **Different name** — is it possible the project is known by another name internally (a codename, or a vendor-facing name)? If you can share a ticket number, Confluence page, or the team working on it, I can dig into that directly.\n2. **Not yet documented** — if Nimbus is very new, the budget approval may not have been recorded in Confluence or Slack yet.\n\nIf you can point me at any anchor (a Jira ticket, a doc, or who's leading it), I'll track down the approver.",
+      "cited": [
+        "CONF-ENG-212",
+        "CONF-ENG-308",
+        "slack_sales_marketing_2026-03-20T09:23:00"
+      ],
+      "toolCalls": [
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Project Nimbus budget approval"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Project Nimbus budget sign-off finance"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Nimbus project"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Nimbus budget"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Nimbus",
+            "limit": 10
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Project Nimbus kickoff plan"
+          }
+        }
+      ],
+      "latencyMs": 15492,
+      "verdict": "agrees",
+      "passed": true
+    },
+    {
+      "id": "honest-4",
+      "category": "honest_uncertainty",
+      "employeeId": "isabel",
+      "question": "What did Halcyon Rowing Club say in their last email to us?",
+      "answer": "I couldn't find any record of an email from Halcyon Rowing Club.\n\nI searched the company knowledge base several ways — for \"Halcyon Rowing Club\" directly, for \"Halcyon\" on its own, and for rowing-club outreach and pilot communications. None of the searches returned anything from or about a Halcyon Rowing Club.\n\nWhat the records do show is that the Sales & Marketing team's external outreach has been focused on other organizations:\n\n- **National Olympic Training Center** — multiple outbound emails from Marcus and Ariana (e.g., \"Next steps on your Apex Athletics proposal,\" \"Updated proposal & next steps\") [source:OUTREACH-57-marcus] [source:OUTREACH-47-marcus] [source:SALES-115] [source:SALES-107]\n- **Metro United FC** — a proposal exchange with Blake, including a reply asking to extend the pilot to 12 weeks and negotiate per-unit licensing fees [source:reply_customer_metro_united_fc_37] [source:customer_reply_metro_united_fc_OPP-1002_37]\n- **SALES-100** — a ticket to \"Qualify elite running clubs for predictive pacing dashboard pilot,\" but no specific club names or emails are attached to it [source:SALES-100]\n\nSo either Halcyon Rowing Club isn't a customer/prospect we've been in touch with, or the correspondence simply isn't captured in the systems I can see. If you've been emailing them, it may have gone through a personal inbox or a channel not indexed here. Could you tell me roughly when you last heard from them, or who on our side was handling it? That would help me narrow the search.",
+      "cited": [
+        "OUTREACH-57-marcus",
+        "OUTREACH-47-marcus",
+        "SALES-115",
+        "SALES-107",
+        "reply_customer_metro_united_fc_37",
+        "customer_reply_metro_united_fc_OPP-1002_37",
+        "SALES-100"
+      ],
+      "toolCalls": [
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Halcyon Rowing Club email"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Halcyon Rowing Club communication",
+            "to": "2026-03-25"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Halcyon Rowing Club"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "rowing club outreach email"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Halcyon"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "rower rowing club pilot"
+          }
+        }
+      ],
+      "latencyMs": 15840,
+      "verdict": "agrees",
+      "passed": true
+    },
+    {
+      "id": "honest-5",
+      "category": "honest_uncertainty",
+      "employeeId": "ethan",
+      "question": "When does our contract with Brightline Payments come up for renewal?",
+      "answer": "I searched the company records for \"Brightline Payments\" specifically, plus broader searches on payments processors and vendor contract renewals, and I can't find any mention of a Brightline Payments contract anywhere.\n\nWhat the records *do* show are contracts with other vendors:\n- **FastStream Ltd.** (low-latency data transport) — expires 2026-12-31 [source:CONF-ENG-418]\n- **VendorX** (PostgreSQL/Redis backup SLA) — renewal date June 15, 2025 [source:slack_dm_karen_tom_2026-01-02T12:52:50.296573]\n- **New Relic Observability Suite** — contract being negotiated, not yet finalized [source:CONF-ENG-342]\n- **Datadog** — renewal justification in progress [source:CONF-ENG-427]\n\nNone of these are a payments provider, and \"Brightline\" doesn't appear in any document, Slack thread, or ticket I can see.\n\nA couple of possibilities:\n1. The contract may be tracked in a system I don't have visibility into (e.g., the Finance Shared drive's `Vendor_Contracts_Q2.xlsx` or TitanDB's `finance_schema.vendor_table` — both referenced in [source:slack_sales_marketing_2026-01-26T14:50:09.080068] as the canonical sources for vendor renewal dates).\n2. The vendor name might be slightly different in our records.\n\n**Suggested next step:** Ask Blake or Tasha (who were compiling the vendor renewal list) to pull the Brightline entry from the Finance spreadsheet or TitanDB's vendor table — that's where the authoritative renewal date would live. Or if you have the contract file path, I can try to trace it from there.",
+      "cited": [
+        "CONF-ENG-418",
+        "slack_dm_karen_tom_2026-01-02T12:52:50.296573",
+        "CONF-ENG-342",
+        "CONF-ENG-427",
+        "slack_sales_marketing_2026-01-26T14:50:09.080068"
+      ],
+      "toolCalls": [
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Brightline Payments contract renewal"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Brightline Payments agreement terms expiration"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Brightline Payments"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "payments processor vendor contract"
+          }
+        }
+      ],
+      "latencyMs": 12073,
+      "verdict": "agrees",
+      "passed": true
+    },
+    {
+      "id": "honest-6",
+      "category": "honest_uncertainty",
+      "employeeId": "hanna",
+      "question": "Which engineer owns the Kestrel recommendation service?",
+      "answer": "I couldn't find any record of a \"Kestrel\" recommendation service in the company docs, so I can't confirm who owns it.\n\nHere's what I searched and what the records actually show:\n\n- **Ownership matrix**: The canonical service-ownership table (CONF-ENG-032) lists auth-service, pacing-service, leaderboard, TitanDB, Redis cache, and Kafka stream — no Kestrel entry [source:CONF-ENG-032].\n- **Recommendation-related work**: The closest thing to a \"recommendation service\" is the pacing recommendation work in CONF-ENG-014 (Java Spring Boot service returning pacing recommendations) and the session-service ↔ recommendation-service sync discussion between Deepa and Kaitlyn, which targets a ≤150 ms SLA for the recommendation engine [source:CONF-ENG-014][source:slack_dm_deepa_kaitlyn_2026-01-01T15:54:00]. Neither names \"Kestrel.\"\n- **Direct \"Kestrel\" searches**: Returned no hits in Confluence, Jira, Slack, or PRs.\n\nA couple of possibilities worth checking:\n\n1. **Name mismatch** — \"Kestrel\" might be an internal codename that isn't used in the docs (the docs use descriptive names like `pacing-service`, `telemetry-service`, `recommendation-service`). If you can share the repo path or a Jira ticket key, I can pin down the owner.\n2. **Newer service** — If Kestrel was stood up recently, it may not yet be in the ownership matrix, which is the single source of truth for the ops dropdown [source:CONF-ENG-032].\n\nIf you can tell me which repo or ticket it's tied to, I'll trace the CODEOWNERS entry and the on-call rotation from there.",
+      "cited": [
+        "CONF-ENG-032",
+        "CONF-ENG-014",
+        "slack_dm_deepa_kaitlyn_2026-01-01T15:54:00"
+      ],
+      "toolCalls": [
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Kestrel recommendation service owner"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Kestrel service team responsibility"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Kestrel"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "recommendation service CODEOWNERS"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Kestrel recommendation"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "\"Kestrel\""
+          }
+        }
+      ],
+      "latencyMs": 18071,
+      "verdict": "agrees",
+      "passed": true
+    },
+    {
+      "id": "honest-7",
+      "category": "honest_uncertainty",
+      "employeeId": "yusuf",
+      "question": "How many users signed up during the Aurora beta?",
+      "answer": "I couldn't find a signup count for an \"Aurora beta\" in the company records, and I want to flag that the evidence suggests there may be a naming mix-up here.\n\n**What \"Aurora\" refers to in our records:** Every mention of Aurora I found is about the **AWS Aurora RDS database cluster** that backs TitanDB — scaling design reviews, read-replica capacity, Terraform changes, and Jira tickets like AUR-342 [source:CONF-ENG-070] [source:slack_engineering_backend_2026-01-15T12:18:00] [source:zoom_2026-01-21_6a135150]. There's no product or feature called \"Aurora\" that had a user-facing beta, so there's no signup number to report for it.\n\n**What betas *do* exist in the records** (in case one of these is what you meant):\n- A **microcopy/insights beta** — feature flag `microcopy_insights` rolled out to 10% of athletes for two weeks, with success metrics on click-through and sentiment, but no signup count recorded [source:CONF-ENG-160].\n- A **telemetry canary** to 5% of internal beta test devices [source:slack_dm_miki_sam_2026-01-21T15:03:00].\n- A **tooltip A/B test** on the beta cohort tracking activation rate and NPS [source:slack_digital-hq_2026-02-20T13:39:07.731661].\n\nNone of these record a \"users signed up\" figure either.\n\n**Suggested next step:** If you can tell me which beta you're thinking of (or the product/feature name and roughly when it ran), I can dig into the right analytics or launch docs. If it's genuinely a new \"Aurora\" product beta, it doesn't appear in the systems I searched yet — it may be tracked in a product or marketing doc outside what I've pulled.",
+      "cited": [
+        "CONF-ENG-070",
+        "slack_engineering_backend_2026-01-15T12:18:00",
+        "zoom_2026-01-21_6a135150",
+        "CONF-ENG-160",
+        "slack_dm_miki_sam_2026-01-21T15:03:00",
+        "slack_digital-hq_2026-02-20T13:39:07.731661"
+      ],
+      "toolCalls": [
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Aurora beta signup user count"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Aurora beta launch registration metrics"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Aurora beta program signups participants"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "beta program user registrations count"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Aurora beta launch announcement"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Aurora product beta cohort athletes sign up"
+          }
+        }
+      ],
+      "latencyMs": 20132,
+      "verdict": "agrees",
+      "passed": true
+    },
+    {
+      "id": "honest-8",
+      "category": "honest_uncertainty",
+      "employeeId": "mona",
+      "question": "What was agreed at the Lisbon offsite?",
+      "answer": "Mona, I searched Confluence, Slack, and meeting transcripts for anything about a Lisbon offsite, and I can't find one. Here's what the records actually show:\n\n- The only offsite discussion I found is from Feb 26 in #digital-hq, where Tom raised a choice between a local venue under $5k and an offsite retreat at $12k, with Jax flagging travel overhead and a possible conflict with the release freeze. Deepa outlined next steps (dates avoiding sprint milestones, venue quotes, HR budget alignment) and Priya pitched a \"peak performance\" theme [source:slack_digital-hq_2026-02-26T15:55:42.223417]. That thread never records a final decision, and Lisbon is never mentioned in it.\n- A direct search for \"Lisbon\" returned no relevant hits — only unrelated chatter (sushi spots, escape rooms, etc.).\n- Other event-related records I found (Q3 product showcase, athlete summit, facility improvement plan) are separate initiatives, none tied to Lisbon.\n\nSo the honest answer: there's no record of a Lisbon offsite happening, or of anything agreed at one. It's possible it was planned but never documented, or the decision was made in a channel I don't have visibility into.\n\nIf you can give me a rough date or who was involved, I can dig again. Otherwise, if you're expecting a decision log from that offsite, it may be worth asking whoever ran it to post the notes to Confluence — right now there's nothing to point to.",
+      "cited": [
+        "slack_digital-hq_2026-02-26T15:55:42.223417"
+      ],
+      "toolCalls": [
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Lisbon offsite decisions agreements"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "offsite meeting notes action items"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Lisbon retreat offsite agenda decisions",
+            "from": "2026-01-01",
+            "to": "2026-03-25"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "offsite venue decision budget travel",
+            "from": "2026-02-01",
+            "to": "2026-03-25"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Lisbon"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "offsite retreat decision final venue chosen",
+            "from": "2026-02-26",
+            "to": "2026-03-25"
+          }
+        }
+      ],
+      "latencyMs": 15730,
+      "verdict": "agrees",
+      "passed": true
+    },
+    {
+      "id": "plate-1",
+      "category": "my_plate",
+      "employeeId": "marcus",
+      "question": "What's on my plate today?",
+      "answer": "Here's your plate for today, Marcus:\n\n**1. Send NOCT contract revision** (~2h)\nYou've got a follow-up ticket open with the National Olympic Training Center on the data sharing discussion [source:ZD-102]. The contract revision needs to go out today.\n\n**2. Advance Metro United FC proposal** (~2h)\nThis one's been moving fast. You already confirmed to them this morning that the final contract + 30-day performance review clause is coming EOD [source:reply_customer_metro_united_fc_54]. On top of that, you kicked off a legal review in #digital-hq this afternoon for the NDA (confidentiality, data ownership, termination clauses) — Priya, Patty, Deepa, and Cooper are all chipping in on the wording, and you said you'd sync with legal today and attach the NDA draft to the stage-3 ticket [source:slack_digital-hq_2026-03-20T13:15:00]. The deal is at $14,250 with the 5% discount locked in [source:customer_reply_metro_united_fc_OPP-1002_54].\n\n**3. Request data endpoint from Alex** (~1h)\nYou need to ping Alex about a data endpoint — looks like an async ask, so a quick message should do it.\n\n**Also on your radar:** You've got six older outreach tickets still sitting in \"To Do\" (OUTREACH-4, 9, 17, 27, 39, 47) that you raised back in January/February and nobody's picked up yet. They're not on today's plan, but they're aging — worth a quick triage to see if any are stale or need reassignment.\n\nThe Metro NDA sync with legal is probably your most time-sensitive item since you committed to it in the channel. Want me to dig into any of these in more detail?",
+      "cited": [
+        "ZD-102",
+        "reply_customer_metro_united_fc_54",
+        "slack_digital-hq_2026-03-20T13:15:00",
+        "customer_reply_metro_united_fc_OPP-1002_54"
+      ],
+      "toolCalls": [
+        {
+          "name": "today_todo",
+          "arguments": {
+            "date": "2026-03-20"
+          }
+        },
+        {
+          "name": "day_plan",
+          "arguments": {
+            "date": "2026-03-20"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "NOCT contract revision",
+            "from": "2026-03-15",
+            "to": "2026-03-20"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "Metro United FC proposal",
+            "from": "2026-03-15",
+            "to": "2026-03-20"
+          }
+        },
+        {
+          "name": "search_company_knowledge",
+          "arguments": {
+            "query": "data endpoint request Engineering",
+            "from": "2026-03-15",
+            "to": "2026-03-20"
+          }
+        }
+      ],
+      "latencyMs": 12897,
+      "covered": [],
+      "missed": [
+        "OUTREACH-4-marcus",
+        "OUTREACH-9-marcus",
+        "OUTREACH-17-marcus",
+        "OUTREACH-27-marcus",
+        "OUTREACH-39-marcus",
+        "OUTREACH-47-marcus"
+      ],
+      "extras": [
+        "OUTREACH-4"
+      ],
+      "passed": false
+    },
+    {
+      "id": "plate-2",
+      "category": "my_plate",
+      "employeeId": "hanna",
+      "question": "What's on my plate today?",
+      "answer": "Here's what's on your plate today, Hanna:\n\n**Open tickets**\n- **ENG-157** — Profile and refactor the telemetry ingestion lambda to hit sub-100 ms processing. In Progress, 5 points, sprint 3, reported by Jax. You've been on it since Jan 30. [source:ENG-157]\n- **ENG-131** — Add proactive alerting for Kafka partition leader election delays in the telemetry stream. In Review, 5 points, sprint 2, reported by Jax. Open since Jan 21, with PR-114 attached. [source:ENG-131][source:PR-114]\n\n**Today's plan**\n1. **Audit ops processes** — 3 hours, ticket progress on ENG-157. [source:ENG-157]\n2. **Review ops IAM policies** — 2 hours of deep work, no collaborators.\n\nSo the day is roughly a 3-hour push on the lambda refactor plus a 2-hour block on IAM policy review.\n\nA couple of things worth flagging:\n- **ENG-131 is sitting in Review** — if PR-114 is waiting on a reviewer, that's a good candidate to nudge today so it doesn't linger.\n- Both tickets are telemetry-related and both came from Jax, so if you want to batch context, they'll share a lot of background.\n\nWant me to pull up the PR-114 review status or the lambda profiling notes from ENG-157?",
+      "cited": [
+        "ENG-157",
+        "ENG-131",
+        "PR-114"
+      ],
+      "toolCalls": [
+        {
+          "name": "today_todo",
+          "arguments": {
+            "date": "2026-02-02"
+          }
+        },
+        {
+          "name": "day_plan",
+          "arguments": {
+            "date": "2026-02-02"
+          }
+        }
+      ],
+      "latencyMs": 6572,
+      "covered": [
+        "ENG-157",
+        "ENG-131"
+      ],
+      "missed": [],
+      "extras": [],
+      "passed": true
+    },
+    {
+      "id": "plate-3",
+      "category": "my_plate",
+      "employeeId": "taylor",
+      "question": "What's on my plate today?",
+      "answer": "Here's your plate for today, Taylor:\n\n**Open tickets (all in review, all yours):**\n- **ENG-107** – Cost-tagging metadata for premium wearables activation (2 pts, since Jan 5) [source:ENG-107]\n- **ENG-127** – Exponential backoff + jitter on telemetry upload retries (3 pts, since Jan 21) [source:ENG-127]\n- **ENG-197** – OSLog metrics + local push alerts for telemetry buffer overrun (3 pts, since Feb 18) [source:ENG-197]\n- **ENG-254** – Telemetry streaming & alerting test suite, XCTest + SwiftUI previews (2 pts, since Mar 18) [source:ENG-254]\n\nAll four are sitting in review, so the main action is chasing approvals/feedback rather than new dev work.\n\n**Today's plan (in order):**\n1. Compile ops KPI summary – 2h deep work\n2. Follow up on PR-156 impact with Chloe – 30 min\n3. Prepare ops presentation – 2h deep work\n4. Review ops backlog – 1h deep work\n5. Finalize notes – 30 min\n\n**Worth noting:** Your plan is heavily ops-focused (KPI summary, presentation, backlog review), while your four tickets are all telemetry-related and waiting on review. If the ops presentation is time-sensitive, that's clearly the priority today — but you might want to ping the reviewers on those four tickets while you're in deep work, since they've been sitting for a while (ENG-107 and ENG-127 have been open since January).\n\nWant me to dig into any of these — e.g., what's blocking the reviews, or what PR-156 is about?",
+      "cited": [
+        "ENG-107",
+        "ENG-127",
+        "ENG-197",
+        "ENG-254"
+      ],
+      "toolCalls": [
+        {
+          "name": "today_todo",
+          "arguments": {
+            "date": "2026-03-24"
+          }
+        },
+        {
+          "name": "day_plan",
+          "arguments": {
+            "date": "2026-03-24"
+          }
+        }
+      ],
+      "latencyMs": 9421,
+      "covered": [
+        "ENG-107",
+        "ENG-127",
+        "ENG-197",
+        "ENG-254"
+      ],
+      "missed": [],
+      "extras": [],
+      "passed": true
+    },
+    {
+      "id": "plate-4",
+      "category": "my_plate",
+      "employeeId": "janice",
+      "question": "What's on my plate today?",
+      "answer": "Here's what's on your plate today, Janice:\n\n**Your plan for today**\n- **Groom backlog items** — 2 hours of deep work, no collaborators, not deferred.\n\n**Open tickets you're assigned to**\n- **ENG-134** — Restrict telemetry service IAM roles and add CloudWatch unauthorized access alerts. Status: *In Review*, 3 points, Sprint 2, reported by Jax. Open since Jan 21. [source:ENG-134] [source:PR-115]\n- **ENG-159** — Re-design DynamoDB TelemetryEvents table partition key and enable autoscaling. Status: *In Review*, 8 points, Sprint 3, reported by Jax. Open since Feb 4. [source:ENG-159] [source:PR-123]\n\nBoth tickets are sitting in review, so the main action there is likely nudging them through or addressing any review feedback. Your scheduled deep work is backlog grooming, which pairs well with that.\n\nOne thing worth flagging: those two tickets are Engineering/Backend items (telemetry IAM, DynamoDB partitioning) assigned to you, an HR Generalist. That's an unusual pairing — worth double-checking whether they were meant for you or if there's a misassignment. If they're genuinely yours, the review status means you're probably waiting on feedback or a merge decision.\n\nWant me to dig into the review status on either ticket or the linked PRs?",
+      "cited": [
+        "ENG-134",
+        "PR-115",
+        "ENG-159",
+        "PR-123"
+      ],
+      "toolCalls": [
+        {
+          "name": "today_todo",
+          "arguments": {
+            "date": "2026-03-02"
+          }
+        },
+        {
+          "name": "day_plan",
+          "arguments": {
+            "date": "2026-03-02"
+          }
+        }
+      ],
+      "latencyMs": 7480,
+      "covered": [
+        "ENG-134",
+        "ENG-159"
+      ],
+      "missed": [],
+      "extras": [],
+      "passed": true
+    },
+    {
+      "id": "plate-5",
+      "category": "my_plate",
+      "employeeId": "janice",
+      "question": "What's on my plate today?",
+      "answer": "Here's what's on your plate today, Janice:\n\n**Open tickets (all assigned to you):**\n- **ENG-258** – Fix security group rule regression and add tf validation [source:ENG-258] — In Progress since Mar 13, 2 pts, Sprint 6\n- **ENG-134** – Restrict telemetry service IAM roles and add CloudWatch unauthorized access alerts [source:ENG-134] — In Review since Jan 21, 3 pts, Sprint 2\n- **ENG-159** – Re-design DynamoDB TelemetryEvents table partition key and enable autoscaling [source:ENG-159] — In Review since Feb 4, 8 pts, Sprint 3\n\n**Today's plan (in order):**\n1. **Optimize API cache** (ticket progress, ~3 hrs) — tied to ENG-258 [source:ENG-258]\n2. **Document DB schema** (deep work, ~2 hrs)\n3. **Aurora cost query** (async question, ~1 hr)\n\nNothing was deferred, so all three items are still on the board.\n\n**Quick read:** Your top priority today is ENG-258 — it's the only one still In Progress and it's got the bulk of your planned hours. The other two (ENG-134, ENG-159) are both sitting in Review, so they're likely waiting on feedback or merge rather than active work from you. If you have bandwidth after the cache optimization, it might be worth nudging the reviewers on those two so they don't keep aging.\n\nWant me to dig into any of these tickets or check on the review status?",
+      "cited": [
+        "ENG-258",
+        "ENG-134",
+        "ENG-159"
+      ],
+      "toolCalls": [
+        {
+          "name": "today_todo",
+          "arguments": {
+            "date": "2026-03-16"
+          }
+        },
+        {
+          "name": "day_plan",
+          "arguments": {
+            "date": "2026-03-16"
+          }
+        }
+      ],
+      "latencyMs": 9816,
+      "covered": [
+        "ENG-258",
+        "ENG-134",
+        "ENG-159"
+      ],
+      "missed": [],
+      "extras": [],
+      "passed": true
+    },
+    {
+      "id": "plate-6",
+      "category": "my_plate",
+      "employeeId": "taylor",
+      "question": "What's on my plate today?",
+      "answer": "Here's your plate for today, Taylor:\n\n**Open tickets (both in review, waiting on you):**\n- **ENG-107** – Add cost-tagging metadata to analytics events for premium wearables activation [source:ENG-107] (2 pts, reported by Chloe, open since Jan 5)\n- **ENG-127** – Add exponential backoff with jitter to Telemetry upload retries [source:ENG-127] (3 pts, reported by Chloe, open since Jan 21)\n\nBoth are sitting in review, so the main action is likely pushing them through to done.\n\n**Your plan for today (in order):**\n1. Check data pipeline status – 0.5h\n2. Assist Ethan with onboarding – 1h\n3. Build ops metrics dashboard – 2h (deep work)\n4. Handle remaining ops tasks – 2.5h (deep work)\n\nNothing's been deferred, so it's a full ~6h day.\n\n**Suggested focus:** Since both tickets are already in review, knock those out early (they're the only things blocking your sprint items), then protect the two deep-work blocks for the dashboard and ops tasks. The pipeline check and Ethan onboarding are quick wins you can slot in between.\n\nWant me to dig into either ticket to see what's holding up the review?",
+      "cited": [
+        "ENG-107",
+        "ENG-127"
+      ],
+      "toolCalls": [
+        {
+          "name": "today_todo",
+          "arguments": {
+            "date": "2026-02-10"
+          }
+        },
+        {
+          "name": "day_plan",
+          "arguments": {
+            "date": "2026-02-10"
+          }
+        }
+      ],
+      "latencyMs": 7186,
+      "covered": [
+        "ENG-107",
+        "ENG-127"
+      ],
+      "missed": [],
+      "extras": [],
+      "passed": true
+    }
+  ]
+}

@@ -1,0 +1,217 @@
+{
+  "user": "ravi",
+  "results": [
+    {
+      "id": "pw-dm",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as secret or identity number (policy: authentication secret)"
+    },
+    {
+      "id": "pw-sentence",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as authentication secret"
+    },
+    {
+      "id": "wifi",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as secret or identity number (policy: authentication secret)"
+    },
+    {
+      "id": "pin-card",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as authentication secret"
+    },
+    {
+      "id": "otp-email",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as secret or identity number (policy: authentication secret)"
+    },
+    {
+      "id": "jwt",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as secret or identity number (policy: authentication secret)"
+    },
+    {
+      "id": "stripe",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as secret or identity number (policy: authentication secret)"
+    },
+    {
+      "id": "mongo",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as secret or identity number (policy: authentication secret)"
+    },
+    {
+      "id": "ssh-dsa",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as private key"
+    },
+    {
+      "id": "mc",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as payment or bank detail"
+    },
+    {
+      "id": "amex-cid",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as payment or bank detail"
+    },
+    {
+      "id": "sort-acct",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as payment or bank detail"
+    },
+    {
+      "id": "routing-us",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as secret or identity number (policy: payment or bank detail)"
+    },
+    {
+      "id": "iban-fr",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as payment or bank detail"
+    },
+    {
+      "id": "ssn-hr",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as government identifier"
+    },
+    {
+      "id": "nric-letter",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as government identifier"
+    },
+    {
+      "id": "passport-trip",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as government identifier"
+    },
+    {
+      "id": "dl",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as secret or identity number (policy: government identifier)"
+    },
+    {
+      "id": "fin-new",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as secret or identity number (policy: government identifier)"
+    },
+    {
+      "id": "itin",
+      "expect": "blocked",
+      "status": 400,
+      "passed": true,
+      "detail": "blocked as government identifier"
+    },
+    {
+      "id": "reset-help",
+      "expect": "allowed",
+      "status": 200,
+      "passed": true,
+      "detail": "answered"
+    },
+    {
+      "id": "otp-bug",
+      "expect": "allowed",
+      "status": 200,
+      "passed": true,
+      "detail": "answered"
+    },
+    {
+      "id": "key-rotation",
+      "expect": "allowed",
+      "status": 200,
+      "passed": true,
+      "detail": "answered"
+    },
+    {
+      "id": "card-reader",
+      "expect": "allowed",
+      "status": 200,
+      "passed": true,
+      "detail": "answered"
+    },
+    {
+      "id": "bank-holiday",
+      "expect": "allowed",
+      "status": 200,
+      "passed": true,
+      "detail": "answered"
+    },
+    {
+      "id": "passport-renewal",
+      "expect": "allowed",
+      "status": 200,
+      "passed": true,
+      "detail": "answered"
+    },
+    {
+      "id": "pr-number",
+      "expect": "allowed",
+      "status": 200,
+      "passed": true,
+      "detail": "answered"
+    },
+    {
+      "id": "price",
+      "expect": "allowed",
+      "status": 200,
+      "passed": true,
+      "detail": "answered"
+    },
+    {
+      "id": "build-id",
+      "expect": "allowed",
+      "status": 200,
+      "passed": true,
+      "detail": "answered"
+    },
+    {
+      "id": "ssn-policy",
+      "expect": "allowed",
+      "status": 200,
+      "passed": true,
+      "detail": "answered"
+    }
+  ],
+  "leaked": [],
+  "memory": "Standup dial-in: 1234 5678 (unverified — ravi asked whether it's still current; calendar invite is the source of truth). [ravi, workplace message, 2026-09-28]"
+}

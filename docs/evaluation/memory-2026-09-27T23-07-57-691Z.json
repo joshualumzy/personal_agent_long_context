@@ -1,0 +1,117 @@
+{
+  "owner": "mona",
+  "other": "yusuf",
+  "checks": [
+    {
+      "id": "stored-side-project",
+      "kind": "stored",
+      "passed": true,
+      "detail": "written to memory"
+    },
+    {
+      "id": "stored-thursday",
+      "kind": "stored",
+      "passed": true,
+      "detail": "written to memory"
+    },
+    {
+      "id": "recall-thursday",
+      "kind": "recall",
+      "passed": true,
+      "detail": "answer gives 4:30"
+    },
+    {
+      "id": "recall-side-project",
+      "kind": "recall",
+      "passed": true,
+      "detail": "answer names Juniper"
+    },
+    {
+      "id": "stored-update",
+      "kind": "stored",
+      "passed": true,
+      "detail": "correction written to memory"
+    },
+    {
+      "id": "update-side-project",
+      "kind": "update",
+      "passed": true,
+      "detail": "judge: agrees"
+    },
+    {
+      "id": "update-thursday",
+      "kind": "update",
+      "passed": true,
+      "detail": "judge: agrees"
+    },
+    {
+      "id": "isolation",
+      "kind": "isolation",
+      "passed": true,
+      "detail": "nothing leaked"
+    },
+    {
+      "id": "separation",
+      "kind": "separation",
+      "passed": true,
+      "detail": "0 answer(s) cited personal memory as a company source"
+    }
+  ],
+  "transcript": [
+    {
+      "who": "mona",
+      "message": "For future chats: I leave early at 4:30pm on Thursdays for physio appointments. Also, my side project at the moment is the Juniper migration checklist.",
+      "answer": "**Conclusion: I've noted both preferences, but I can't verify either against company records — here's what I found.**\n\n**Thursday 4:30pm physio:** I searched for any record of your early Thursday departures and found nothing. The closest hits are general PTO policy discussions (accrual rates, handbook vs. portal mismatches) [source:slack_hr_ops_2026-01-20T15:59:52.687241] and a PTO policy communication plan [source:CONF-ENG-075] — none of which mention you, physio, or a recurring Thursday leave. So this is recorded only from what you just told me, not from any company artifact.\n\n**Juniper migration checklist:** I searched for \"Juniper\" and found no document, ticket, or discussion by that name. The migration material that does exist is all TitanDB-related: the PostgreSQL cluster migration [source:slack_digital-hq_2026-01-06T09:41:00], the schema-evolution work [source:slack_digital-hq_2026-02-26T17:20:46.856974], the Terraform infra migration plan [source:CONF-ENG-080], and a QA migration checklist draft [source:slack_digital-hq_2026-02-10T15:20:59.399176]. None reference \"Juniper.\"\n\n**What's missing:**\n- No record of your Thursday physio schedule (no PTO request, calendar note, or team announcement).\n- No artifact named \"Juniper\" — if it's a codename, it hasn't landed in Confluence, Jira, or Slack yet.\n\nI'll keep both in mind for future chats. If you point me at the Juniper ticket or doc, I can dig in properly.",
+      "sources": [
+        "slack_hr_ops_2026-01-20T15:59:52.687241",
+        "CONF-ENG-075",
+        "slack_digital-hq_2026-01-06T09:41:00",
+        "slack_digital-hq_2026-02-26T17:20:46.856974",
+        "CONF-ENG-080",
+        "slack_digital-hq_2026-02-10T15:20:59.399176"
+      ]
+    },
+    {
+      "who": "mona",
+      "message": "What time do I leave on Thursdays?",
+      "answer": "You leave at **4:30pm on Thursdays** for your recurring physio appointments.\n\nI didn't find a separate company record (like a calendar invite or HR note) confirming this, but you mentioned it to me directly, so I'll go with that. If you'd like, I can help you set up a recurring calendar block or a Slack status reminder for those Thursdays so teammates know you're out early.",
+      "sources": []
+    },
+    {
+      "who": "mona",
+      "message": "What's my side project at the moment?",
+      "answer": "Based on what you told me earlier, your current side project is the **Juniper migration checklist**.\n\nI searched the company records (Confluence, Slack, Jira) for anything on \"Juniper\" or \"Juniper migration\" in the last few weeks and found no matching artifacts — no Confluence page, ticket, or Slack thread by that name. So it looks like it's still a personal/off-the-radar thing rather than something tracked in the team's systems.\n\nA couple of things I did find that might be adjacent, in case they're related:\n\n- There's a **Kafka schema evolution / TitanDB integration** notice you acknowledged on Mar 20, with a compatibility matrix and migration plan for the Spring Boot services and Go consumers, and you said you'd have an update before COB April 14 [source:ack_vendor_mona_57].\n- The team's broader **Terraform migration** work (state management, tagging, CI/CD) is active in the \"Terraform Migration\" space [source:CONF-ENG-388].\n\nIf the Juniper checklist is meant to feed into any of those (or you want it turned into a tracked ticket/page so it stops being invisible), let me know and I can help scope it out.",
+      "sources": [
+        "ack_vendor_mona_57",
+        "CONF-ENG-388"
+      ]
+    },
+    {
+      "who": "mona",
+      "message": "Update: physio has finished, so I no longer leave early on Thursdays. And I've dropped the Juniper checklist; my side project is now the Larkspur dashboard.",
+      "answer": "Got it — noted both changes:\n\n- **Thursday early leave:** Physio is done, so you're back to full Thursdays. No more 4:30pm cutoff.\n- **Side project:** Juniper migration checklist is dropped; your current side project is now the **Larkspur dashboard**.\n\nI checked the company records and there's nothing there that needs updating on my end — the Thursday leave and the Juniper checklist were just things you'd mentioned to me, not tracked in any ticket or doc I can see. (The \"Larkspur dashboard\" doesn't show up in company docs yet either, so I'm treating it as your personal project name for now.)\n\nIf you'd like, I can help with the Larkspur dashboard — e.g., sketch out what it should cover, find relevant data sources or existing dashboard patterns in the codebase, or set up a ticket. Just say the word.",
+      "sources": []
+    },
+    {
+      "who": "mona",
+      "message": "What's my side project at the moment?",
+      "answer": "Your side project is the **Larkspur dashboard** — that's what you told me earlier, and it's still the current one.\n\nI did a quick sweep of company records (Confluence, Slack, Jira) and there's no trace of \"Larkspur\" in any of them, which makes sense — it's your personal project, not a company initiative. So I can't pull up any details on it from here.\n\nIf you want, I can help with something specific around it — e.g., thinking through architecture, reviewing a design doc you paste in, or comparing it against patterns used in the company's own dashboard work (the athlete dashboard refresh in CONF-ENG-363 has some interesting real-time data patterns that might be relevant).",
+      "sources": []
+    },
+    {
+      "who": "mona",
+      "message": "Do I still leave early on Thursdays?",
+      "answer": "I couldn't find any record of a standing Thursday early-leave arrangement for you, Mona.\n\nHere's what I checked:\n- **Your day plan for today (2026-03-25)** — it's empty, no early-leave entry.\n- **Company knowledge (Slack, Confluence, HR Ops discussions)** — I searched for your name alongside \"Thursday,\" \"early leave,\" \"schedule,\" and \"arrangement\" across the last few months. Nothing came up tying you to a recurring early Thursday departure.\n\nThe only Thursday-related items in the records are other people's meetings (Dave's HR walkthrough, a career-growth chat, etc.) and general flexible-work policy discussions — none of which reference you.\n\nSo I can't confirm you have a standing early-leave arrangement on Thursdays. If you do have one (e.g., a manager-approved flexible schedule), it may not be documented in the systems I can see. A couple of options:\n\n1. **Check the HR portal** — flexible work arrangements are typically logged there (Policies → Flexible Work).\n2. **Confirm with your manager** — if it was an informal agreement, it might not be in any system.\n\nWant me to dig into anything else, like the flexible-work policy details or your current open tickets?",
+      "sources": []
+    },
+    {
+      "who": "yusuf",
+      "message": "What's my side project at the moment?",
+      "answer": "Based on the records, your side project is the **chessboard coffee table** — a 48\" × 48\" black walnut veneer top with maple inlay squares for the board.\n\nFrom your March 4th chat with Tom and Raj, you were actively working through the design: [source:slack_dm_raj_tom_yusuf_2026-03-04T17:08:00]\n\n- **Top:** 48\" × 48\", black walnut veneer\n- **Board:** Maple inlay squares\n- **Extras you proposed:** A hidden storage drawer beneath the board and side USB-C ports for charging\n\nYou were the one driving the feature decisions (drawer + USB-C), while Tom was handling the material specs and Raj was weighing in on the drawer question.\n\nThat's the most recent \"side project\" activity I can find for you. Your work plan today is all Datadog alert threshold stuff, so it's not on the official schedule — but the table design was clearly in motion as of early March.\n\nWant me to dig up anything else on it, like whether you've ordered materials or set a build date?",
+      "sources": [
+        "slack_dm_raj_tom_yusuf_2026-03-04T17:08:00"
+      ]
+    }
+  ],
+  "finalMemory": "Current side project: Larkspur dashboard. [mona, workplace message, 2026-09-28]"
+}
