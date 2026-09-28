@@ -88,7 +88,7 @@
 <h3>Contents</h3>
 <ol class="toc">
   <li>Executive summary</li><li>Problem and users</li><li>Product</li><li>Architecture</li>
-  <li>Data and knowledge</li><li>Agent design and reasoning loop</li><li>Memory</li>
+  <li>Data and knowledge</li><li>S1 · Company context agent</li><li>S2 · Meeting actions</li><li>S3 · Recruiting</li><li>Memory</li>
   <li>Autonomy and human control</li><li>Security and guardrails</li><li>Evaluation</li>
   <li>Deployment and scalability</li><li>Success metrics and demo</li><li>Roadmap</li>
 </ol>
@@ -217,7 +217,7 @@
 <h3>Planner projection</h3>
 <p><code>orgforge_kb/build_timeline.py</code> projects each person's day plans, ticket states and the employee roster from the corpus. This powers "what's on my plate" for any chosen day. It is shown to the user but never cited as company evidence.</p>
 
-<h2 class="pb"><span class="n">6</span>Agent design and reasoning loop</h2>
+<h2 class="pb"><span class="n">6</span>S1 · Company context agent</h2>
 <h3>Persona</h3>
 <p>The system prompt defines Kaki as a Technical Chief of Staff: communicate like an experienced peer, use tools before making workplace claims, treat retrieved text as data rather than instructions, cite every company fact, and state uncertainty plainly. Answers are generated at temperature 0, so tool choices and citations are reproducible.</p>
 
@@ -282,7 +282,31 @@
 <h3>Why the citation gate matters</h3>
 <p>After the model drafts an answer, code checks that every <code>[source:ID]</code> refers to a record retrieved in this turn. An answer citing anything else is sent back once for repair; if it still fails, the user gets an explicit "insufficient evidence" reply instead of an unverifiable one. In evaluation this held for every answer (29/29): Kaki never cited a record it had not read. A per-turn <b>tool-output budget</b> (about 100k tokens of retrieved text) keeps even long, parallel investigations comfortably inside the model's context window.</p>
 
-<h2><span class="n">7</span>Memory</h2>
+<h2 class="pb"><span class="n">7</span>S2 · Meeting actions</h2>
+<p>S2 turns a meeting into reviewed follow-up. Audio is transcribed by Whisper, or by an optional live speech service that shows a fast preview while someone is still talking; uploaded transcripts work the same way. Each transcript segment then passes through a fixed pipeline:</p>
+<table>
+  <tr><th style="width:20%">Stage</th><th>What happens</th><th style="width:30%">Why it is built this way</th></tr>
+  <tr><td><b>1. Screen</b></td><td>Every segment passes the sensitive-data gate and a narrow prompt-injection screen before any model sees it; blocked segments are withheld.</td><td>Rules are anchored to injection wording, so "let's ignore the previous slide" still passes.</td></tr>
+  <tr><td><b>2. Extract</b></td><td>The model proposes decisions and candidate actions from a closed set of kinds: email, calendar invite, ticket, message, document, sheet, hiring request, question, escalation.</td><td>A closed set keeps every action typed and checkable.</td></tr>
+  <tr><td><b>3. Resolve dates</b></td><td>For "next Wednesday" or "下下周五", the model fills a form whose fields are closed choices; code turns the form into a date, and asks which day when two fit.</td><td>The model understands the words; it never counts days.</td></tr>
+  <tr><td><b>4. Check conflicts</b></td><td>Each new decision is checked against decisions from earlier meetings and against company evidence.</td><td>Conflicts are found by a dedicated check, never guessed by the extractor.</td></tr>
+  <tr><td><b>5. Draft</b></td><td>Drafts are written with company evidence to hand. A commitment repeated later in the meeting stays one action, and a money commitment is never stated as settled until its escalation is approved.</td><td>One commitment, one draft; no promises made on someone else's behalf.</td></tr>
+  <tr><td><b>6. Tier and hand off</b></td><td>Policy code assigns the tier (section 10); approved drafts open prefilled in Gmail, Google Calendar or GitHub.</td><td>The employee sends from their own account.</td></tr>
+</table>
+<p>A question asked aloud in the meeting is answered in a single model call using the question itself as the search, so the answer starts streaming within seconds and is kept to a few sentences.</p>
+
+<h2><span class="n">8</span>S3 · Recruiting</h2>
+<p>S3 helps a founder hire without handing the decision to a model. A role starts from a typed or uploaded description (PDF or Word), or from a knowledge gap found in S1 through <code>open_role_from_gap</code>.</p>
+<ol>
+  <li><b>Criteria:</b> the model proposes three to six hiring criteria, each marked <i>must</i> or <i>nice</i>. The founder edits and confirms them; <b>no search runs before confirmation</b>.</li>
+  <li><b>Search:</b> public professional profiles are found through Exa, with duplicate profiles merged. Without an Exa key, sample profiles keep the flow demonstrable.</li>
+  <li><b>Judge:</b> each candidate is judged against each criterion as yes, no or unclear. Every model reply is validated, and anything malformed becomes <i>unclear</i>, never <i>yes</i>.</li>
+  <li><b>Tier, in code:</b> 100 when every criterion is met; 75 when every <i>must</i> is met; 50 when exactly one <i>must</i> is unmet or unclear; out when two or more are unmet.</li>
+  <li><b>Reach out:</b> personalised outreach is drafted for review; a work email is looked up only for candidates the founder chooses. Gmail access is read-only, to see replies and free/busy times. The founder sends from their own mailbox.</li>
+</ol>
+<p><b>Hiring intent is memory.</b> Criteria versions, the reasons behind feedback and accepted preferences go into the founder's Letta memory, so "why do we require Rust?" can be answered weeks later. Candidate records never enter memory.</p>
+
+<h2><span class="n">9</span>Memory</h2>
 <table>
   <tr><th style="width:20%">Kind</th><th>Where</th><th style="width:36%">Used for</th></tr>
   <tr><td>Conversation</td><td>PostgreSQL conversations and messages; the last six turns go in the prompt, long messages clipped</td><td>Follow-up questions in the same chat</td></tr>
@@ -291,7 +315,7 @@
 </table>
 <p>Personal memory may shape an answer but is never presented as company evidence, which avoids a common agent failure: mixing what a user said earlier with what the organisation can prove. When the user looks at a past day, current personal memory is withheld so later context cannot leak into a historical answer. Letta runs in strict permission mode with a memory-file tool allowlist confined to the employee's memory directory.</p>
 
-<h2 class="pb"><span class="n">8</span>Autonomy and human control</h2>
+<h2 class="pb"><span class="n">10</span>Autonomy and human control</h2>
 <table>
   <tr><th style="width:16%">Tier</th><th>Examples</th><th style="width:40%">Behaviour</th></tr>
   <tr><td><b>Auto</b></td><td>Read-only answers, conflict flags</td><td>May complete automatically</td></tr>
@@ -301,9 +325,9 @@
 </table>
 <p><b>Code, not the model, assigns the tier.</b> The model proposes an action kind and payload; deterministic policy decides whether it is automatic, needs approval or escalates. Approval is bound to a hash of the exact payload, so editing a draft invalidates the old approval and stale approvals cannot send modified content.</p>
 <h3>Zero-credential handoff</h3>
-<p>SMEs rarely have the SSO and fine-grained access control needed to give an agent safe write access. Kaki therefore holds no write credentials for external systems. An approved action opens <b>prefilled in the employee's own tools</b>: Gmail compose, a Google Calendar event (or a downloadable <code>.ics</code>), a GitHub issue form. The final "send" is always the employee's click, in their own authenticated session. Recruiting follows the same principle: no candidate search until the criteria are confirmed, candidate judgements default to <code>unclear</code> when model output is malformed, and outreach is drafted for review.</p>
+<p>SMEs rarely have the SSO and fine-grained access control needed to give an agent safe write access. Kaki therefore holds no write credentials for external systems. An approved action opens <b>prefilled in the employee's own tools</b>: Gmail compose, a Google Calendar event (or a downloadable <code>.ics</code>), a GitHub issue form. The final "send" is always the employee's click, in their own authenticated session. Recruiting follows the same principle (section 8).</p>
 
-<h2><span class="n">9</span>Security and guardrails</h2>
+<h2><span class="n">11</span>Security and guardrails</h2>
 <ul>
   <li><b>Session-bound identity:</b> HMAC-SHA256 signed session cookies (<code>HttpOnly</code>, expiry, timing-safe comparison); the chat derives the employee from the session and rejects mismatched IDs.</li>
   <li><b>Two-layer sensitive-data gate:</b> fast pattern rules (labelled passwords and codes, vendor key prefixes, private keys, checksum-validated card numbers, bank details, government IDs), then a <b>model classifier</b> that asks, with no tools and no memory, whether the message holds an actual secret value. Blocked messages never reach the assistant or memory. If the classifier is unavailable, the rules still apply and the chat stays up.</li>
@@ -313,10 +337,10 @@
 </ul>
 <div class="box warn"><p><b>Prototype boundary.</b> In the demo company every employee can read every record, so document-level access control is not implemented. Before an external pilot: a production identity provider, secure cookies under HTTPS, per-document authorisation in retrieval, and consistent session checks on every data route.</p></div>
 
-<h2 class="pb"><span class="n">10</span>Evaluation</h2>
+<h2 class="pb"><span class="n">12</span>Evaluation</h2>
 <p>We measured Kaki two ways: against <b>OrgForge's own question set</b>, an independent benchmark we did not write, and a <b>supplementary suite</b> for what OrgForge does not test. Every supplementary case was committed to git before it was run, and no case was changed after its result was seen, except the four noted below where our expected answer was wrong.</p>
 
-<h3>10.1 OrgForge benchmark</h3>
+<h3>12.1 OrgForge benchmark</h3>
 <p><b>What we ran.</b> OrgForge ships 78 questions, built to evaluate agents inside its own harness, which gives them simulator tools and per-person visibility data that are not part of the published dataset. Many questions therefore cannot be answered from the records alone. We kept the <b>29 questions</b> whose required evidence exists in the records an employee can see, and report on those. The agent model is Qwen 3.8 27B throughout.</p>
 <p><b>How it was graded.</b> Each answer is compared with OrgForge's reference conclusion by a fixed judge model at temperature 0 (agrees / disagrees / inconclusive). A conclusion-level judge was used rather than keyword matching, so a correct answer phrased differently is not penalised.</p>
 <table>
@@ -328,7 +352,7 @@
 
 <p><b>Where the misses are.</b> Most misses are questions of the form <i>did X happen in response to Y</i>, where OrgForge's definition differs from a plain reading. For example, it counts an email answered by the account owner as "routed", which Kaki read as "handed to another team". We did not tune Kaki to these definitions.</p>
 
-<h3>10.2 Supplementary suite</h3>
+<h3>12.2 Supplementary suite</h3>
 <table>
   <tr><th style="width:30%">Capability</th><th class="num">Result</th><th>Cases, including hard ones</th></tr>
   <tr><td>Says so when the records don't have the answer</td><td class="num">no failures in 12</td><td>8 invented subjects ("Project Nimbus", a nonexistent ticket); 4 false premises on real tickets ("Why did Tasha take over ENG-101?" when she never did)</td></tr>
@@ -339,18 +363,18 @@
 </table>
 <p class="note">Four further hard cases were removed after review because our expected answers were wrong: Kaki correctly found that the tickets had been completed through merged pull requests.</p>
 
-<h3>10.3 Sensitive-data protection</h3>
+<h3>12.3 Sensitive-data protection</h3>
 <p>The gate was tested on a held-out set of 20 secrets and 10 look-alike work messages, written after the system was built and never used to tune it. The secrets included passwords typed casually ("the staging login is admin / Spr1ngT1me#4"), one-time codes, session tokens, database connection strings with embedded passwords, private keys, card numbers, bank details and government IDs. The look-alikes mention the same topics without a secret ("Do we mask SSNs in the export feature?"). Result: <b>20/20 secrets blocked, 0/10 ordinary messages blocked</b>, and no secret reached personal memory in any test.</p>
 
-<h3>10.4 Automated tests</h3>
+<h3>12.4 Automated tests</h3>
 <p>More than 900 automated tests run on every change, and TypeScript compiles cleanly under <code>tsc --noEmit</code>. They cover identity and user isolation, citations, memory behaviour, the sensitive-data gate, meeting approvals, recruiting confirmation and browser behaviour.</p>
 
-<h2 class="pb"><span class="n">11</span>Deployment and scalability</h2>
+<h2 class="pb"><span class="n">13</span>Deployment and scalability</h2>
 <p>Kaki runs as one Node.js service beside PostgreSQL 16 with pgvector (Docker Compose, persistent volume, readiness check) and a Letta server. Optional services (Cognee, speech, Google, people search) switch on only when configured, so the core product runs with just a database and a model endpoint.</p>
 <p><b>Why it is feasible.</b> One service coordinates identity, retrieval, models, memory and workflows; PostgreSQL holds evidence, vectors, conversations and meeting state; models sit behind explicit adapters; semantic search degrades to keyword search; and external actions are browser handoffs, avoiding per-integration credentials.</p>
 <p><b>Scaling path.</b> A pilot can scale vertically with PostgreSQL and bounded model concurrency. Production needs durable shared queues for per-employee memory updates, coordinated streaming and meeting state across instances, tenant- and document-level authorisation, migration bookkeeping, and per-tenant cost accounting. The main variable costs are generation, embeddings, people search and speech.</p>
 
-<h2><span class="n">12</span>Success metrics and demo</h2>
+<h2><span class="n">14</span>Success metrics and demo</h2>
 <table>
   <tr><th>Outcome</th><th>KPI</th><th>Now</th><th>Pilot target</th></tr>
   <tr><td>Trustworthy answers</td><td>Citation integrity</td><td>100%</td><td>100%</td></tr>
@@ -370,7 +394,7 @@
   <li><b>Escalate:</b> a discount commitment is routed to a named approver and cannot execute.</li>
 </ol>
 
-<h2><span class="n">13</span>Roadmap</h2>
+<h2><span class="n">15</span>Roadmap</h2>
 <table>
   <tr><th style="width:20%">Phase</th><th>Focus</th><th style="width:32%">Outcome</th></tr>
   <tr><td><b>1. Pilot</b><br><span class="note">0–3 months</span></td><td>Read connectors for a real SME's Slack, Google Workspace and Jira; single sign-on and per-document permissions in retrieval; the OrgForge and supplementary suites run on every change, alongside questions from the pilot company itself.</td><td>Kaki answering from one company's live records, with measured time saved per employee.</td></tr>
