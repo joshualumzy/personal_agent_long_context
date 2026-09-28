@@ -97,6 +97,13 @@ describe("InMemoryMeetingStore", () => {
     assert.equal(list[0]!.actionCount, 2);
   });
 
+  test("keeps a ring meeting's source in the state and the summary", async () => {
+    const store = new InMemoryMeetingStore();
+    await store.save(meeting("m1", { sourceId: "stellar-ark-ring:rec-42" }));
+    assert.equal((await store.load("m1"))?.sourceId, "stellar-ark-ring:rec-42");
+    assert.equal((await store.list())[0]!.sourceId, "stellar-ark-ring:rec-42");
+  });
+
   test("priorDecisions() excludes the given meeting and orders newest first", async () => {
     const store = new InMemoryMeetingStore();
     await store.save(
@@ -300,9 +307,11 @@ describe("PostgresMeetingStore", { skip: !PG_URL ? "MEETINGS_PG_TEST_URL is not 
 
       const store = new PostgresMeetingStore(pool);
       const proposed = action("a1", { meetingId, status: "proposed" });
-      await store.save(meeting(meetingId, { actions: [proposed] }));
+      const ring = "stellar-ark-ring:rec-42";
+      await store.save(meeting(meetingId, { sourceId: ring, actions: [proposed] }));
 
       const loaded = await store.load(meetingId);
+      assert.equal(loaded?.sourceId, ring);
       assert.equal(loaded?.actions.length, 1);
       assert.equal(loaded?.actions[0]!.status, "proposed");
 
@@ -339,6 +348,8 @@ describe("PostgresMeetingStore", { skip: !PG_URL ? "MEETINGS_PG_TEST_URL is not 
       const ids = list.map((entry) => entry.meetingId);
       assert.ok(ids.includes(meetingId));
       assert.ok(ids.includes(otherMeetingId));
+      // The list reads the source from its own column, not the state JSON.
+      assert.equal(list.find((entry) => entry.meetingId === meetingId)?.sourceId, ring);
       // The most recently saved meeting (otherMeetingId) must sort before the other.
       assert.ok(ids.indexOf(otherMeetingId) < ids.indexOf(meetingId));
 

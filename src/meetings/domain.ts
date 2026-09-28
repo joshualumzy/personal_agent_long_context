@@ -58,12 +58,18 @@ export interface MeetingMinutes {
 
 export type MeetingStatus = "live" | "ended";
 
+/**
+ * The sourceId prefix of a meeting whose transcript was recorded offline on a
+ * Stellar Ark ring and synced in through the API once the ring reached the phone.
+ */
+export const RING_SOURCE_PREFIX = "stellar-ark-ring:";
+
 export interface MeetingSummary {
   meetingId: string;
   title: string;
   status: MeetingStatus;
   startedAt: string;
-  /** The OrgForge zoom_transcript this meeting replays, when it is a replay. */
+  /** Where the transcript came from, when not typed or recorded live; see MeetingState.sourceId. */
   sourceId?: string;
   actionCount: number;
 }
@@ -84,6 +90,12 @@ export interface MeetingState {
   status: MeetingStatus;
   startedAt: string;
   endedAt?: string;
+  /**
+   * Where the transcript came from, when it was not typed or recorded live on
+   * this page. A replay carries the OrgForge zoom_transcript id it replays; a
+   * recording synced from a Stellar Ark ring carries RING_SOURCE_PREFIX and
+   * the ring's recording id, so the page can say where the meeting came from.
+   */
   sourceId?: string;
   segments: TranscriptSegment[];
   /** Who was invited, as the calendar invite lists them; absent for a meeting started by hand. */

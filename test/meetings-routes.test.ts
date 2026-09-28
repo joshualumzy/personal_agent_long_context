@@ -193,6 +193,35 @@ describe("meeting routes: validation", () => {
     assert.equal(body.status, "live");
   });
 
+  test("starts a meeting synced from a Stellar Ark ring, and keeps that source when read back", async () => {
+    const app = buildTestApp(new FakeMeetings());
+    after(() => app.close());
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/meetings",
+      payload: { title: "Hallway chat", employeeId: "jax", sourceId: "stellar-ark-ring:rec-42" },
+    });
+    assert.equal(response.statusCode, 201);
+    const body = response.json() as MeetingState;
+    assert.equal(body.sourceId, "stellar-ark-ring:rec-42");
+
+    const read = await app.inject({ method: "GET", url: `/api/v1/meetings/${body.meetingId}` });
+    assert.equal((read.json() as MeetingState).sourceId, "stellar-ark-ring:rec-42");
+    const list = await app.inject({ method: "GET", url: "/api/v1/meetings" });
+    assert.equal((list.json() as MeetingSummary[])[0]!.sourceId, "stellar-ark-ring:rec-42");
+
+    // Only the ring may be named here; a replay's source is set by the replay route.
+    for (const sourceId of ["zoom-1", "stellar-ark-ring:", 42]) {
+      const rejected = await app.inject({
+        method: "POST",
+        url: "/api/v1/meetings",
+        payload: { title: "Standup", employeeId: "jax", sourceId },
+      });
+      assert.equal(rejected.statusCode, 400, `sourceId ${JSON.stringify(sourceId)} must be refused`);
+      assert.equal(rejected.json().code, "invalid_request");
+    }
+  });
+
   test("rejects segments with no entries, too many entries, or text over 2000 characters", async () => {
     const meetings = new FakeMeetings();
     const app = buildTestApp(meetings);

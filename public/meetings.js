@@ -189,6 +189,7 @@ function renderMeetingList() {
           },
           meeting.status === "live" ? h("span", { class: "live-dot", title: "Live" }) : null,
           h("span", { class: "meeting-name" }, meeting.title),
+          isFromRing(meeting) ? ringIcon("Synced from Stellar Ark ring") : null,
         ),
       ),
     );
@@ -380,6 +381,9 @@ function renderBoard() {
 function renderMeetingHead() {
   if (!state.current) return;
   $("#meeting-title-heading").textContent = state.current.title;
+  const source = $("#meeting-source");
+  source.hidden = !isFromRing(state.current);
+  source.replaceChildren(ringIcon(), "Synced from Stellar Ark ring");
   $("#doc-title").textContent = state.current.title;
   $("#status-line").textContent = state.current.status === "live" ? "Live" : "Ended";
   renderDocMeta();
@@ -887,6 +891,35 @@ async function copyRich(text, format) {
     return;
   }
   await navigator.clipboard.writeText(text);
+}
+
+// Mirrors RING_SOURCE_PREFIX in src/meetings/domain.ts: a meeting recorded
+// offline on the ring and synced in once it reached the phone.
+const RING_SOURCE_PREFIX = "stellar-ark-ring:";
+
+function isFromRing(meeting) {
+  return typeof meeting?.sourceId === "string" && meeting.sourceId.startsWith(RING_SOURCE_PREFIX);
+}
+
+// A plain ring, drawn like the page's other line icons. With a label it stands
+// alone and is named for screen readers; without one it sits beside its text.
+function ringIcon(label) {
+  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const attributes = { viewBox: "0 0 24 24", width: 12, height: 12, fill: "none", stroke: "currentColor", "stroke-width": 2.5, class: "ring-icon" };
+  for (const [key, value] of Object.entries(attributes)) svg.setAttribute(key, String(value));
+  if (label) {
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", label);
+    const title = document.createElementNS("http://www.w3.org/2000/svg", "title");
+    title.textContent = label;
+    svg.append(title);
+  } else {
+    svg.setAttribute("aria-hidden", "true");
+  }
+  const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+  for (const [key, value] of Object.entries({ cx: 12, cy: 12, r: 8 })) circle.setAttribute(key, String(value));
+  svg.append(circle);
+  return svg;
 }
 
 // The arrow on links that open another app, drawn like the page's other line icons.

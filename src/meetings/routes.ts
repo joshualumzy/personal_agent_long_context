@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { ActionPayload, MeetingActions, MeetingEvent, MeetingParticipant } from "./domain.js";
-import { MeetingError } from "./domain.js";
+import { MeetingError, RING_SOURCE_PREFIX } from "./domain.js";
 import type { Transcribe } from "./speech.js";
 import { WebSocketServer, type WebSocket } from "ws";
 import { openDoubaoStream, type LiveAsrConfig } from "./doubao.js";
@@ -64,6 +64,21 @@ function requiredString(body: unknown, key: string, maxLength: number): string {
     throw new MeetingError(
       "invalid_request",
       `Provide a valid "${key}" (up to ${maxLength} characters).`,
+      400,
+    );
+  }
+  return value;
+}
+
+// A meeting started here may only say it came from a Stellar Ark ring; replay
+// source ids are set by the replay route, which checks them against OrgForge.
+function optionalRingSource(body: unknown): string | undefined {
+  if (!isRecord(body) || body.sourceId === undefined) return undefined;
+  const value = requiredString(body, "sourceId", 200);
+  if (!value.startsWith(RING_SOURCE_PREFIX) || value.length === RING_SOURCE_PREFIX.length) {
+    throw new MeetingError(
+      "invalid_request",
+      `"sourceId" must be "${RING_SOURCE_PREFIX}" followed by the ring's recording id.`,
       400,
     );
   }
@@ -187,7 +202,8 @@ export function registerMeetingRoutes(
     route(app, async (body) => {
       const title = requiredString(body, "title", 200);
       const employeeId = requiredString(body, "employeeId", 200);
-      const meeting = await meetings.start({ title, employeeId });
+      const sourceId = optionalRingSource(body);
+      const meeting = await meetings.start({ title, employeeId, ...(sourceId ? { sourceId } : {}) });
       return { status: 201, body: meeting };
     }),
   );

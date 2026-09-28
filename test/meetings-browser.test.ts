@@ -97,11 +97,11 @@ function scenario(): MeetingState {
   };
 }
 
-async function openMeetingsPage(path = "/meetings") {
+async function openMeetingsPage(path = "/meetings", meeting = scenario()) {
   const app = buildApp({ memory: new DeterministicMemoryProvider(), meetings: { service: unusedService } });
   await app.listen({ host: "127.0.0.1", port: 0 });
   try {
-    return await loadMeetingsPage(app, path);
+    return await loadMeetingsPage(app, path, meeting);
   } catch (error) {
     // A page that fails to load must not leave the server holding the test run open.
     await app.close();
@@ -109,7 +109,7 @@ async function openMeetingsPage(path = "/meetings") {
   }
 }
 
-async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: string) {
+async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: string, meeting: MeetingState) {
   const { port } = app.server.address() as AddressInfo;
   const base = `http://127.0.0.1:${port}`;
   const [html, markedScript, domPurifyScript, plateScript, shellScript, script] = await Promise.all(
@@ -123,7 +123,6 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
   const posts: Array<{ path: string; body: unknown }> = [];
   let followUp: Record<string, unknown> | null = null;
   const loaded = new Set<string>();
-  const meeting = scenario();
   Object.defineProperty(window, "fetch", {
     writable: true,
     value: async (path: string, init?: { method?: string; body?: string }) => {
@@ -156,7 +155,7 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
         return json({});
       }
       loaded.add(path);
-      if (path === "/api/v1/meetings") return json([{ meetingId: "m1", title: meeting.title, status: "live" }]);
+      if (path === "/api/v1/meetings") return json([{ meetingId: "m1", title: meeting.title, status: "live", sourceId: meeting.sourceId }]);
       if (path === "/api/v1/meetings/replays") return json([]);
       if (path === "/api/v1/meetings/integrations") return json({ google: null });
       if (path === "/api/v1/auth/me") {
@@ -251,6 +250,30 @@ async function loadMeetingsPage(app: ReturnType<typeof buildApp>, pagePath: stri
 const text = (element: Element | null) => (element?.textContent ?? "").replace(/\s+/g, " ").trim();
 
 describe("Meetings page", () => {
+  test("a meeting synced from the Stellar Ark ring says so in its header and in the list", async () => {
+    const page = await openMeetingsPage("/meetings", { ...scenario(), sourceId: "stellar-ark-ring:rec-42" });
+    after(() => page.close());
+
+    const listed = page.document.querySelector("#meeting-list button")!;
+    assert.equal(listed.querySelector(".ring-icon")?.getAttribute("aria-label"), "Synced from Stellar Ark ring");
+
+    await page.open();
+    const source = page.document.querySelector("#meeting-source")!;
+    await page.until(() => !source.hasAttribute("hidden"), "the ring source label");
+    assert.equal(text(source), "Synced from Stellar Ark ring");
+    assert.ok(source.querySelector("svg.ring-icon circle"), "the label leads with the ring icon");
+  });
+
+  test("a meeting started here shows no ring source", async () => {
+    const page = await openMeetingsPage();
+    after(() => page.close());
+
+    assert.equal(page.document.querySelector("#meeting-list .ring-icon"), null);
+    await page.open();
+    await page.until(() => text(page.document.querySelector("#meeting-title-heading")) === scenario().title, "the header");
+    assert.ok(page.document.querySelector("#meeting-source")!.hasAttribute("hidden"));
+  });
+
   test("one entry: the plate with Kaki that leads home, and no sidebar", async () => {
     const page = await openMeetingsPage();
     after(() => page.close());
