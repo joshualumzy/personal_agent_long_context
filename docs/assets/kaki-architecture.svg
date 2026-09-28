@@ -25,8 +25,8 @@
     <rect x="807" y="198" width="373" height="212" rx="14" fill="#e8f7f4"/>
   </g>
   <text x="40" y="228" class="mt">S1 · COMPANY CONTEXT AGENT</text>
-  <text x="40" y="258" class="ml">Bounded tool loop (Qwen 3.8 27B /</text>
-  <text x="40" y="280" class="ml">Claude Sonnet 4.5)</text>
+  <text x="40" y="258" class="ml">Bounded tool loop (Claude Sonnet 4.5;</text>
+  <text x="40" y="280" class="ml">Qwen 3.8 27B in development)</text>
   <text x="40" y="306" class="ml">Hybrid search + link-following</text>
   <text x="40" y="332" class="ml">Citation gate on every answer</text>
   <text x="40" y="358" class="ml">Own plan and open work, any day</text>

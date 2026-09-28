@@ -90,7 +90,7 @@
   <li>Executive summary</li><li>Problem and users</li><li>Product</li><li>Architecture</li>
   <li>Data and knowledge</li><li>S1 · Company context agent</li><li>S2 · Meeting actions</li><li>S3 · Recruiting</li><li>Memory</li>
   <li>Autonomy and human control</li><li>Security and guardrails</li><li>Evaluation</li>
-  <li>Deployment and scalability</li><li>Success metrics and demo</li><li>Roadmap</li>
+  <li>Success metrics and demo</li><li>Roadmap</li>
 </ol>
 
 <h2><span class="n">2</span>Problem and users</h2>
@@ -137,8 +137,8 @@
     <rect x="807" y="198" width="373" height="212" rx="14" fill="#e8f7f4"/>
   </g>
   <text x="40" y="228" class="mt">S1 · COMPANY CONTEXT AGENT</text>
-  <text x="40" y="258" class="ml">Bounded tool loop (Qwen 3.8 27B /</text>
-  <text x="40" y="280" class="ml">Claude Sonnet 4.5)</text>
+  <text x="40" y="258" class="ml">Bounded tool loop (Claude Sonnet 4.5;</text>
+  <text x="40" y="280" class="ml">Qwen 3.8 27B in development)</text>
   <text x="40" y="306" class="ml">Hybrid search + link-following</text>
   <text x="40" y="332" class="ml">Citation gate on every answer</text>
   <text x="40" y="358" class="ml">Own plan and open work, any day</text>
@@ -198,7 +198,7 @@
   <tr><td>Service</td><td>TypeScript, Fastify, Server-Sent Events; runs with <code>tsx</code></td></tr>
   <tr><td>Company knowledge</td><td>PostgreSQL 16 + pgvector; Amazon Titan Text Embeddings V2 (1024-d)</td></tr>
   <tr><td>Personal memory</td><td>Letta App Server (one memory agent per employee)</td></tr>
-  <tr><td>Generation</td><td>NUS SoCLaaS <b>Qwen 3.8 27B</b> (default, used for all evaluation); <b>Claude Sonnet 4.5</b> via an LLM gateway (selectable)</td></tr>
+  <tr><td>Generation</td><td><b>Claude Sonnet 4.5</b> via an LLM gateway in deployment; NUS SoCLaaS <b>Qwen 3.8 27B</b> for development and testing, including all evaluation</td></tr>
   <tr><td>Optional</td><td>Cognee (emergent graph), Whisper transcription, live ASR, Gmail/Calendar, Exa people search</td></tr>
   <tr><td>Browser</td><td>marked, DOMPurify, Shoelace</td></tr>
 </table>
@@ -335,13 +335,13 @@
   <li><b>Citation integrity:</b> see section 6.</li>
   <li><b>Least-capability tools:</b> core company tools are read-only; state-changing tools load only with their skill and stay subject to workflow checks.</li>
 </ul>
-<div class="box"><p><b>Deployment scope.</b> In the demo company every employee may read every record. Per-document permissions in retrieval, a production identity provider and HTTPS-only cookies are part of the pilot phase (section 15).</p></div>
+<div class="box"><p><b>Deployment scope.</b> In the demo company every employee may read every record. Per-document permissions in retrieval, a production identity provider and HTTPS-only cookies are part of the pilot phase (section 14).</p></div>
 
 <h2 class="pb"><span class="n">12</span>Evaluation</h2>
 <p>We measured Kaki two ways: against <b>OrgForge's own question set</b>, an independent benchmark we did not write, and a <b>supplementary suite</b> for what OrgForge does not test. Every supplementary case was committed to git before it was run.</p>
 
 <h3>12.1 OrgForge benchmark</h3>
-<p><b>What we ran.</b> OrgForge ships 78 questions, built to evaluate agents inside its own harness, which gives them simulator tools and per-person visibility data that are not part of the published dataset. Many questions therefore cannot be answered from the records alone. We kept the <b>29 questions</b> whose required evidence exists in the records an employee can see, and report on those. The agent model is Qwen 3.8 27B throughout.</p>
+<p><b>What we ran.</b> OrgForge ships 78 questions, built to evaluate agents inside its own harness, which gives them simulator tools and per-person visibility data that are not part of the published dataset. Many questions therefore cannot be answered from the records alone. We kept the <b>29 questions</b> whose required evidence exists in the records an employee can see, and report on those. Evaluation used the development model, Qwen 3.8 27B, throughout.</p>
 <p><b>How it was graded.</b> Each answer is compared with OrgForge's reference conclusion by a fixed judge model at temperature 0 (agrees / disagrees / inconclusive). A conclusion-level judge was used rather than keyword matching, so a correct answer phrased differently is not penalised.</p>
 <table>
   <tr><th>Metric</th><th class="num">Result</th><th>Meaning</th></tr>
@@ -369,12 +369,7 @@
 <h3>12.4 Automated tests</h3>
 <p>More than 900 automated tests run on every change, and TypeScript compiles cleanly under <code>tsc --noEmit</code>. They cover identity and user isolation, citations, memory behaviour, the sensitive-data gate, meeting approvals, recruiting confirmation and browser behaviour.</p>
 
-<h2 class="pb"><span class="n">13</span>Deployment and scalability</h2>
-<p>Kaki runs as one Node.js service beside PostgreSQL 16 with pgvector (Docker Compose, persistent volume, readiness check) and a Letta server. Optional services (Cognee, speech, Google, people search) switch on only when configured, so the core product runs with just a database and a model endpoint.</p>
-<p><b>Why it is feasible.</b> One service coordinates identity, retrieval, models, memory and workflows; PostgreSQL holds evidence, vectors, conversations and meeting state; models sit behind explicit adapters; semantic search degrades to keyword search; and external actions are browser handoffs, avoiding per-integration credentials.</p>
-<p><b>Scaling path.</b> A pilot can scale vertically with PostgreSQL and bounded model concurrency. Production needs durable shared queues for per-employee memory updates, coordinated streaming and meeting state across instances, tenant- and document-level authorisation, migration bookkeeping, and per-tenant cost accounting. The main variable costs are generation, embeddings, people search and speech.</p>
-
-<h2><span class="n">14</span>Success metrics and demo</h2>
+<h2 class="pb"><span class="n">13</span>Success metrics and demo</h2>
 <table>
   <tr><th>Outcome</th><th>KPI</th><th>Now</th><th>Pilot target</th></tr>
   <tr><td>Trustworthy answers</td><td>Citation integrity</td><td>100%</td><td>100%</td></tr>
@@ -394,7 +389,7 @@
   <li><b>Escalate:</b> a discount commitment is routed to a named approver and cannot execute.</li>
 </ol>
 
-<h2><span class="n">15</span>Roadmap</h2>
+<h2><span class="n">14</span>Roadmap</h2>
 <table>
   <tr><th style="width:20%">Phase</th><th>Focus</th><th style="width:32%">Outcome</th></tr>
   <tr><td><b>1. Pilot</b><br><span class="note">0–3 months</span></td><td>Read connectors for a real SME's Slack, Google Workspace and Jira; single sign-on and per-document permissions in retrieval; the OrgForge and supplementary suites run on every change, alongside questions from the pilot company itself.</td><td>Kaki answering from one company's live records, with measured time saved per employee.</td></tr>
