@@ -287,7 +287,7 @@
 <p>We measured Kaki two ways: against <b>OrgForge's own question set</b>, an independent benchmark we did not write, and a <b>supplementary suite</b> for what OrgForge does not test. Every supplementary case was committed to git before it was run, and no case was changed after its result was seen, except the four noted below where our expected answer was wrong.</p>
 
 <h3>10.1 OrgForge benchmark</h3>
-<p><b>What we ran.</b> OrgForge ships 78 questions. For each we checked whether the evidence needed to answer it exists among the records an employee can see. Only <b>29 questions</b> pass that rule; the rest depend on the simulator's hidden event log or on per-person visibility data OrgForge does not publish. We report those 29 and state the rule, rather than scoring questions no employee-facing agent could answer.</p>
+<p><b>What we ran.</b> OrgForge ships 78 questions, built to evaluate agents inside its own harness, which gives them simulator tools and per-person visibility data that are not part of the published dataset. Many questions therefore cannot be answered from the records alone. We kept the <b>29 questions</b> whose required evidence exists in the records an employee can see, and report on those. The agent model is Qwen 3.8 27B throughout.</p>
 <p><b>How it was graded.</b> Each answer is compared with OrgForge's reference conclusion by a fixed judge model at temperature 0 (agrees / disagrees / inconclusive). A conclusion-level judge was used rather than keyword matching, so a correct answer phrased differently is not penalised.</p>
 <table>
   <tr><th>Metric</th><th class="num">Result</th><th>Meaning</th></tr>
@@ -295,8 +295,8 @@
   <tr><td><b>Citation integrity</b></td><td class="num"><b>100%</b> (29/29)</td><td>Every cited source was actually retrieved in that run</td></tr>
   <tr><td>Evidence recall</td><td class="num">66%</td><td>Share of the benchmark's evidence records the agent retrieved </td></tr>
 </table>
-<p class="note">Context: OrgForge's public leaderboard reports 51–59% for frontier models, using a different harness with extra simulator tools and a different scoring formula, so the numbers are not directly comparable. The agent model is Qwen 3.8 27B throughout.</p>
-<p><b>What the misses show.</b> Nearly every miss is a confident "no" to a question of the form <i>did X happen in response to Y</i>. In the four email-routing questions, Kaki found the customer's email and the account owner's same-day reply, then answered that no "internal routing" had been created. It read "routing" as "handed to another team", while OrgForge counts "handled by the account owner" as routing. In four knowledge-gap questions, the page OrgForge counts as the response mentions the topic only in passing (one is an HR playbook that ranks 47th among that week's records). We chose not to tune Kaki to OrgForge's definitions, which would inflate the score without improving the product.</p>
+
+<p><b>Where the misses are.</b> Most misses are questions of the form <i>did X happen in response to Y</i>, where OrgForge's definition differs from a plain reading. For example, it counts an email answered by the account owner as "routed", which Kaki read as "handed to another team". We did not tune Kaki to these definitions.</p>
 
 <h3>10.2 Supplementary suite</h3>
 <table>
