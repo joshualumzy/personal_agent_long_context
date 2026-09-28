@@ -1650,6 +1650,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   // web server hands out /video/kaki-promo.mp4 from disk, next to this route.
   app.get("/video", serve("video.html", "text/html; charset=utf-8"));
   app.get("/video.css", serve("video.css", "text/css; charset=utf-8"));
+  app.get("/video.js", serve("video.js", "text/javascript; charset=utf-8"));
   app.get("/assets/landing/video-poster.jpg", serve("assets/landing/video-poster.jpg", "image/jpeg"));
   // Shoelace, the UI components, served from its package: only its scripts,
   // styles and icons, only inside its folder.

@@ -23,6 +23,7 @@
     <link rel="stylesheet" href="/landing.css">
     <link rel="stylesheet" href="/video.css">
     <script src="/landing.js" defer></script>
+    <script src="/video.js" defer></script>
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
@@ -105,11 +106,19 @@
     <main>
       <!-- The video first: it is what people came for. -->
       <section class="watch wrap">
-        <h1>See Kaki at work: the operating agent for small teams</h1>
-        <p class="lede">Four minutes, one workday. A question answered from company records, a customer call turned into drafts, and a hiring gap caught early.</p>
+        <h1>See Kaki at work</h1>
         <figure class="player">
-          <video src="/video/kaki-promo.mp4" controls playsinline preload="metadata" poster="/assets/landing/video-poster.jpg" width="1920" height="1080"></video>
-          <figcaption><a href="/video/kaki-promo.mp4" download>Download the video (MP4)</a></figcaption>
+          <div class="player-frame">
+            <video src="/video/kaki-promo.mp4" controls playsinline preload="metadata" poster="/assets/landing/video-poster.jpg" width="1920" height="1080"></video>
+            <button class="player-start" type="button" aria-label="Play the video, 4 minutes 25 seconds">
+              <span class="player-icon" aria-hidden="true"></span>
+              <span class="player-label">Watch the demo <span class="player-time">4:25</span></span>
+            </button>
+          </div>
+          <figcaption>
+            <p class="lede">One workday with the operating agent for small teams: a question answered from company records, a customer call turned into drafts, and a hiring gap caught early.</p>
+            <a href="/video/kaki-promo.mp4" download>Download the video (MP4)</a>
+          </figcaption>
         </figure>
       </section>
 

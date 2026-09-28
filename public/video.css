@@ -1,17 +1,40 @@
 /* The video page: the landing page's look, with the film on top and the
    explaining sections a search visitor needs underneath. */
 
-.watch { padding-top: 56px; padding-bottom: 88px; }
-.watch h1 { max-width: 26ch; font-size: clamp(34px, 4.4vw, 56px); line-height: 1.06; letter-spacing: -0.035em; font-weight: 750; }
-.watch .lede { max-width: 56ch; }
-.player { margin: 40px 0 0; }
-.player video {
-  display: block; width: 100%; height: auto; aspect-ratio: 16 / 9;
-  border-radius: var(--radius-surface); border: 1px solid var(--l-line); background: var(--l-surface);
-  box-shadow: var(--l-shot-shadow);
+.watch { padding-top: 28px; padding-bottom: 88px; }
+.watch h1 { font-size: clamp(28px, 3vw, 40px); line-height: 1.1; letter-spacing: -0.03em; font-weight: 750; }
+.player { margin: 20px 0 0; }
+.player-frame { position: relative; border-radius: var(--radius-surface); overflow: hidden; box-shadow: var(--l-shot-shadow); background: #15141b; }
+.player video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #15141b; }
+
+/* Before the first play, the poster is a white slide that reads like part of
+   the page, so a dimmed layer and a large button say "this is a film". */
+.player-start { display: none; }
+.js .player-start {
+  position: absolute; inset: 0; width: 100%; border: 0; padding: 0; cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  background: rgba(21, 20, 27, 0.38); color: #fff; font: 600 18px/1 var(--f-ui);
+  transition: background-color 0.25s;
 }
-.player figcaption { margin-top: 14px; font-size: 15px; color: var(--l-muted); }
-.player figcaption a { color: var(--l-accent); }
+.js .player-start:hover { background: rgba(21, 20, 27, 0.5); }
+.player-start:focus-visible { outline: 3px solid var(--l-accent); outline-offset: -6px; }
+.player-icon {
+  width: 88px; height: 88px; border-radius: 50%; background: var(--accent);
+  box-shadow: 0 16px 40px -12px rgba(75, 63, 209, 0.8);
+  display: grid; place-items: center; transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.player-icon::before {
+  content: ""; margin-left: 6px; border-style: solid; border-width: 15px 0 15px 25px;
+  border-color: transparent transparent transparent #fff;
+}
+.player-start:hover .player-icon { transform: scale(1.06); }
+.player-label { display: inline-flex; align-items: center; gap: 10px; text-shadow: 0 1px 8px rgba(0, 0, 0, 0.35); }
+.player-time { padding: 4px 8px; border-radius: 6px; background: rgba(21, 20, 27, 0.6); font: 500 14px/1 var(--f-mono); }
+.player-frame.is-playing .player-start { display: none; }
+
+.player figcaption { margin-top: 20px; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 12px 32px; }
+.player figcaption .lede { margin: 0; max-width: 60ch; font-size: 18px; }
+.player figcaption a { color: var(--l-accent); font-size: 15px; white-space: nowrap; }
 
 .intro { padding: 104px 0; border-top: 1px solid var(--l-line); }
 .intro h2, .what h2, .who h2, .stack h2, .faq h2 { font-size: clamp(30px, 3.4vw, 44px); letter-spacing: -0.03em; line-height: 1.1; }
@@ -72,7 +95,10 @@
 }
 
 @media (max-width: 767px) {
-  .watch { padding-top: 40px; padding-bottom: 64px; }
+  .watch { padding-top: 20px; padding-bottom: 64px; }
+  .player-icon { width: 64px; height: 64px; }
+  .player-icon::before { border-width: 11px 0 11px 18px; margin-left: 4px; }
+  .player-start { font-size: 15px; gap: 12px; }
   .intro, .what, .who, .stack, .faq { padding: 72px 0; }
   .feature { margin-top: 56px; }
   .feature-wide .feature-cols { grid-template-columns: 1fr; gap: 16px; }
