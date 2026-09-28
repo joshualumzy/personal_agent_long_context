@@ -1,87 +1,117 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 830" role="img" aria-label="Kaki layered architecture with its three agent modules">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 880" role="img" aria-label="Kaki multi-agent architecture">
   <rect width="100%" height="100%" fill="#ffffff"/>
   <defs>
     <marker id="a1" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#9aa9ba"/></marker>
-    <marker id="a3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#18a999"/></marker>
+    <marker id="a3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#128a7c"/></marker>
+    <marker id="a4" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5b6f8a"/></marker>
   </defs>
   <style>
     .t{font:700 20px Helvetica,Arial,sans-serif;fill:#fff}
-    .d{font:17px Helvetica,Arial,sans-serif;fill:#fff}
-    .mt{font:700 18px Helvetica,Arial,sans-serif;fill:#14263d}
-    .ag{font:italic 600 15.5px Helvetica,Arial,sans-serif;fill:#128a7c}
-    .ml{font:15.5px Helvetica,Arial,sans-serif;fill:#1e293b}
-    .lane{font:600 15px Helvetica,Arial,sans-serif;fill:#128a7c}
+    .d{font:16.5px Helvetica,Arial,sans-serif;fill:#fff}
+    .band{font:700 17px Helvetica,Arial,sans-serif;fill:#14263d}
+    .bands{font:15px Helvetica,Arial,sans-serif;fill:#5f6b7a}
+    .mt{font:700 17.5px Helvetica,Arial,sans-serif;fill:#14263d}
+    .ag{font:italic 600 15px Helvetica,Arial,sans-serif;fill:#128a7c}
+    .ml{font:15px Helvetica,Arial,sans-serif;fill:#1e293b}
+    .lk{font:600 14.5px Helvetica,Arial,sans-serif;fill:#128a7c}
+    .lm{font:600 14.5px Helvetica,Arial,sans-serif;fill:#5b6f8a}
   </style>
-  <rect x="20" y="14" width="1160" height="70" rx="16" fill="#14263d"/>
-  <text x="44" y="44" class="t">EXPERIENCE</text>
-  <text x="44" y="70" class="d">Assistant chat · Today plan · Live and uploaded meetings · Recruiting board · Company map</text>
+  <rect x="20" y="14" width="1160" height="66" rx="16" fill="#14263d"/>
+  <text x="44" y="42" class="t">EXPERIENCE</text>
+  <text x="44" y="67" class="d">Assistant chat · Today plan · Live and uploaded meetings · Recruiting board · Company map</text>
 
-  <rect x="20" y="104" width="1160" height="70" rx="16" fill="#203a5f"/>
-  <text x="44" y="134" class="t">API, IDENTITY AND SENSITIVE-DATA GATE</text>
-  <text x="44" y="160" class="d">Fastify · signed sessions · pattern rules, then model classifier, before any model sees a message</text>
+  <rect x="20" y="98" width="1160" height="66" rx="16" fill="#203a5f"/>
+  <text x="44" y="126" class="t">API, IDENTITY AND SENSITIVE-DATA GATE</text>
+  <text x="44" y="151" class="d">Fastify · signed sessions · pattern rules, then a classifier model, before any agent sees a message</text>
 
-  <rect x="20" y="194" width="1160" height="58" rx="14" fill="#18a999"/>
-  <text x="44" y="221" class="t">SHARED MODEL LAYER</text>
-  <text x="44" y="243" class="d" style="font-size:15.5px">Claude Sonnet 4.5 in deployment · Qwen 3.8 27B in development · every model reply is validated by code</text>
+  <!-- agent layer container -->
+  <rect x="20" y="182" width="1160" height="438" rx="18" fill="#f3faf8" stroke="#18a999" stroke-width="2"/>
+  <text x="44" y="210" class="band">MULTI-AGENT LAYER</text>
+  <text x="232" y="210" class="bands">shared models: Claude Sonnet 4.5 in deployment · Qwen 3.8 27B in development</text>
 
-  <g stroke="#18a999" stroke-width="2.5">
-    <rect x="20" y="272" width="373" height="236" rx="14" fill="#e8f7f4"/>
-    <rect x="413" y="272" width="374" height="236" rx="14" fill="#e8f7f4"/>
-    <rect x="807" y="272" width="373" height="236" rx="14" fill="#e8f7f4"/>
+  <g stroke="#18a999" stroke-width="2.5" fill="#ffffff">
+    <rect x="40" y="226" width="340" height="176" rx="14"/>
+    <rect x="430" y="226" width="340" height="176" rx="14"/>
+    <rect x="820" y="226" width="340" height="176" rx="14"/>
   </g>
-  <text x="40" y="302" class="mt">S1 · COMPANY CONTEXT AGENT</text>
-  <text x="40" y="328" class="ag">Agent plans searches and writes the answer</text>
-  <text x="40" y="358" class="ml">Bounded tool loop, typed tools</text>
-  <text x="40" y="384" class="ml">Hybrid search + link-following</text>
-  <text x="40" y="410" class="ml">Citation gate on every answer</text>
-  <text x="40" y="436" class="ml">Answers as of any past day</text>
-  <text x="40" y="462" class="ml">Own plan and open work</text>
-  <text x="40" y="488" class="ml">Knowledge-gap detection</text>
+  <text x="58" y="254" class="mt">S1 · COMPANY CONTEXT AGENT</text>
+  <text x="58" y="278" class="ag">Plans searches, writes cited answers</text>
+  <text x="58" y="306" class="ml">Bounded tool loop, typed tools</text>
+  <text x="58" y="330" class="ml">Hybrid search + link-following</text>
+  <text x="58" y="354" class="ml">Answers as of any past day</text>
+  <text x="58" y="378" class="ml">Detects knowledge gaps</text>
 
-  <text x="433" y="302" class="mt">S2 · MEETING ACTIONS AGENT</text>
-  <text x="433" y="328" class="ag">Agent extracts, reads dates and drafts</text>
-  <text x="433" y="358" class="ml">Whisper / live transcription</text>
-  <text x="433" y="384" class="ml">Screen secrets and injections</text>
-  <text x="433" y="410" class="ml">Decisions and commitments</text>
-  <text x="433" y="436" class="ml">Conflicts with earlier decisions</text>
-  <text x="433" y="462" class="ml">Draft email, invite, ticket, doc</text>
-  <text x="433" y="488" class="ml">Code sets the date and risk tier</text>
+  <text x="448" y="254" class="mt">S2 · MEETING ACTIONS AGENT</text>
+  <text x="448" y="278" class="ag">Listens, extracts, drafts follow-ups</text>
+  <text x="448" y="306" class="ml">Live transcription</text>
+  <text x="448" y="330" class="ml">Commitments and decisions</text>
+  <text x="448" y="354" class="ml">Answers questions in the meeting</text>
+  <text x="448" y="378" class="ml">Flags conflicts with past decisions</text>
 
-  <text x="827" y="302" class="mt">S3 · RECRUITING AGENT</text>
-  <text x="827" y="328" class="ag">Agent proposes criteria, judges fit, drafts</text>
-  <text x="827" y="358" class="ml">Role → 3–6 hiring criteria</text>
-  <text x="827" y="384" class="ml">Founder confirms before any search</text>
-  <text x="827" y="410" class="ml">Public-profile search (Exa)</text>
-  <text x="827" y="436" class="ml">Fit reasons per criterion</text>
-  <text x="827" y="462" class="ml">Code computes candidate tiers</text>
-  <text x="827" y="488" class="ml">Outreach drafts, founder sends</text>
+  <text x="838" y="254" class="mt">S3 · RECRUITING AGENT</text>
+  <text x="838" y="278" class="ag">Proposes criteria, judges fit, drafts</text>
+  <text x="838" y="306" class="ml">Founder confirms criteria first</text>
+  <text x="838" y="330" class="ml">Public-profile search (Exa)</text>
+  <text x="838" y="354" class="ml">Fit reasons per criterion</text>
+  <text x="838" y="378" class="ml">Outreach drafts</text>
 
-  <path d="M 206 510 L 206 538 L 993 538 L 993 514" fill="none" stroke="#18a999" stroke-width="3" stroke-dasharray="7 6" marker-end="url(#a3)"/>
-  <rect x="440" y="526" width="320" height="24" fill="#fff"/>
-  <text x="600" y="544" class="lane" text-anchor="middle">knowledge gap in S1 → opens a role in S3</text>
+  <!-- S2 -> S3 hiring request -->
+  <line x1="772" y1="300" x2="814" y2="300" stroke="#128a7c" stroke-width="3" marker-end="url(#a3)"/>
+  <text x="793" y="292" class="lk" text-anchor="middle" style="font-size:12.5px">hiring</text>
 
-  <rect x="20" y="566" width="560" height="152" rx="16" fill="#427aa1"/>
-  <text x="44" y="596" class="t">COMPANY EVIDENCE (citable)</text>
-  <text x="44" y="626" class="d">PostgreSQL full-text + pgvector (Titan V2)</text>
-  <text x="44" y="652" class="d">Document links · deterministic graph</text>
-  <text x="44" y="678" class="d">Emergent graph per question (Cognee)</text>
-  <text x="44" y="704" class="d">Planner projection (shown, never cited)</text>
+  <!-- S1 -> S3 lane -->
+  <path d="M 140 404 L 140 426 L 1060 426 L 1060 408" fill="none" stroke="#128a7c" stroke-width="3" stroke-dasharray="7 6" marker-end="url(#a3)"/>
+  <rect x="445" y="415" width="310" height="22" fill="#f3faf8"/>
+  <text x="600" y="431" class="lk" text-anchor="middle">knowledge gap in S1 opens a role in S3</text>
 
-  <rect x="620" y="566" width="560" height="152" rx="16" fill="#5b6f8a"/>
-  <text x="644" y="596" class="t">PERSONAL CONTEXT (never cited)</text>
-  <text x="644" y="626" class="d">Letta: one memory agent per employee</text>
-  <text x="644" y="652" class="d">Conversation history (last six turns)</text>
-  <text x="644" y="678" class="d">Hiring intent and preferences</text>
-  <text x="644" y="704" class="d">Isolated between employees</text>
+  <!-- supporting agents row -->
+  <g stroke-width="2.5">
+    <rect x="40" y="456" width="340" height="146" rx="14" fill="#ffffff" stroke="#9aa9ba"/>
+    <rect x="430" y="456" width="340" height="146" rx="14" fill="#eef2f7" stroke="#5b6f8a"/>
+    <rect x="820" y="456" width="340" height="146" rx="14" fill="#ffffff" stroke="#9aa9ba"/>
+  </g>
+  <text x="58" y="484" class="mt">SPECIALIST MODELS</text>
+  <text x="58" y="512" class="ml">Sensitive-data classifier</text>
+  <text x="58" y="536" class="ml">Date reader (closed-choice form)</text>
+  <text x="58" y="560" class="ml">Emergent-graph extraction (Cognee)</text>
+  <text x="58" y="584" class="ml">Conflict checker</text>
 
-  <rect x="20" y="740" width="1160" height="76" rx="16" fill="#f26b4e"/>
-  <text x="44" y="772" class="t">ACTION CONTROL</text>
-  <text x="44" y="800" class="d">Auto · approval · escalate · blocked, set by code · approval bound to payload hash · zero-credential handoff</text>
+  <text x="448" y="484" class="mt">MEMORY AGENT (LETTA)</text>
+  <text x="448" y="508" class="ag" style="fill:#5b6f8a">One per employee, edits its own memory</text>
+  <text x="448" y="536" class="ml">Learns working context after each turn</text>
+  <text x="448" y="560" class="ml">Keeps the founder's hiring intent</text>
+  <text x="448" y="584" class="ml">Never cited as company evidence</text>
 
-  <line x1="600" y1="85" x2="600" y2="100" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
-  <line x1="600" y1="175" x2="600" y2="190" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
-  <line x1="206" y1="253" x2="206" y2="268" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
-  <line x1="600" y1="253" x2="600" y2="268" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
-  <line x1="993" y1="253" x2="993" y2="268" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
-  <line x1="600" y1="720" x2="600" y2="736" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <text x="838" y="484" class="mt">CODE, NOT MODELS, DECIDES</text>
+  <text x="838" y="512" class="ml">Citation gate on every answer</text>
+  <text x="838" y="536" class="ml">Dates, risk tiers, candidate tiers</text>
+  <text x="838" y="560" class="ml">Tool-output budget</text>
+  <text x="838" y="584" class="ml">Every model reply validated</text>
+
+  <!-- memory links -->
+  <line x1="386" y1="392" x2="426" y2="470" stroke="#5b6f8a" stroke-width="2.5" marker-start="url(#a4)" marker-end="url(#a4)"/>
+  <line x1="814" y1="392" x2="774" y2="470" stroke="#5b6f8a" stroke-width="2.5" marker-end="url(#a4)"/>
+
+  <rect x="20" y="640" width="560" height="140" rx="16" fill="#427aa1"/>
+  <text x="44" y="670" class="t">COMPANY EVIDENCE (citable)</text>
+  <text x="44" y="698" class="d">PostgreSQL full-text + pgvector (Titan V2)</text>
+  <text x="44" y="722" class="d">Document links · deterministic graph</text>
+  <text x="44" y="746" class="d">Emergent graph per question</text>
+  <text x="44" y="770" class="d">Planner projection (shown, never cited)</text>
+
+  <rect x="620" y="640" width="560" height="140" rx="16" fill="#5b6f8a"/>
+  <text x="644" y="670" class="t">PERSONAL CONTEXT (never cited)</text>
+  <text x="644" y="698" class="d">Letta memory files, one set per employee</text>
+  <text x="644" y="722" class="d">Conversation history (last six turns)</text>
+  <text x="644" y="746" class="d">Isolated between employees</text>
+
+  <rect x="20" y="798" width="1160" height="70" rx="16" fill="#f26b4e"/>
+  <text x="44" y="828" class="t">ACTION CONTROL</text>
+  <text x="44" y="854" class="d">Auto · approval · escalate · blocked, set by code · approval bound to payload hash · zero-credential handoff</text>
+
+  <line x1="600" y1="81" x2="600" y2="94" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="600" y1="165" x2="600" y2="178" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="300" y1="621" x2="300" y2="636" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="900" y1="621" x2="900" y2="636" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
+  <line x1="600" y1="781" x2="600" y2="794" stroke="#9aa9ba" stroke-width="4" marker-end="url(#a1)"/>
 </svg>
