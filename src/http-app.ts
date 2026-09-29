@@ -1648,7 +1648,7 @@ export function buildApp(options: BuildAppOptions): FastifyInstance {
   app.get("/landing", serve("landing.html", "text/html; charset=utf-8"));
   app.get("/landing.css", serve("landing.css", "text/css; charset=utf-8"));
   app.get("/landing.js", serve("landing.js", "text/javascript; charset=utf-8"));
-  for (const shot of ["answer", "graph", "meeting", "draft", "promised", "map", "recruit", "backtest", "ring-hero"]) {
+  for (const shot of ["answer", "graph", "meeting", "draft", "promised", "map", "recruit", "backtest", "ring-hero", "ring-meeting"]) {
     app.get(`/assets/landing/${shot}.webp`, serve(`assets/landing/${shot}.webp`, "image/webp"));
   }
   // The demo video's page. The film itself is too large for the repository: the
