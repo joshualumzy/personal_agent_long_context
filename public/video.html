@@ -51,26 +51,34 @@
           "mainEntity": [
             {
               "@type": "Question",
+              "name": "What is Stellar Ark?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Stellar Ark AI is the team behind Kaki, backed by MiraclePlus, often called China's Y Combinator. It builds AI-native wearables: context glasses, a pendant and a ring. Wear the ring to a meeting at a table, and Kaki gets that conversation just as it gets a video call."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Do I need the ring to use Kaki?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "No. For video calls, Kaki records the meeting tab in your browser. For in-person meetings without the ring, your laptop records the room instead. Answering questions and hiring don't involve the ring at all."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Why can't I create my own account?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Kaki works inside your company, so your company opens your account. Each account belongs to one person on the staff list. That is how Kaki knows whose meetings, drafts and memory are whose, and who has to approve a decision. To try Kaki now, open the sample workspace and sign in as any of its employees."
+              }
+            },
+            {
+              "@type": "Question",
               "name": "What happens when the records don't have the answer?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "Kaki says the evidence is insufficient instead of guessing."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "Is the data in the demo real?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "No. The demo runs on OrgForge, a synthetic company built for testing. No real company records are used."
-              }
-            },
-            {
-              "@type": "Question",
-              "name": "How do I try Kaki?",
-              "acceptedAnswer": {
-                "@type": "Answer",
-                "text": "Open the demo and sign in as anyone on the demo company's staff list. There is no sign-up, because at work your company assigns the account."
+                "text": "Kaki tells you the evidence is insufficient instead of guessing. Every claim in an answer links to the record it came from, and the server checks that each cited record exists before the answer reaches you."
               }
             },
             {
@@ -78,7 +86,15 @@
               "name": "Does Kaki remember me?",
               "acceptedAnswer": {
                 "@type": "Answer",
-                "text": "Yes, in a personal memory scoped to you. It is kept apart from company records and is never cited as fact."
+                "text": "Yes. Kaki keeps a personal memory for each employee, and only that employee can see it. It is stored apart from company records, so Kaki never cites it as a fact about the company."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Is the sample workspace real company data?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "No. The sample workspace is OrgForge, a synthetic company with 51 employees and 4,966 records, built for testing. It contains no real company's data."
               }
             }
           ]
@@ -101,7 +117,7 @@
           <a href="#results">Results</a>
           <a href="#faq">FAQ</a>
         </nav>
-        <a class="btn btn-primary btn-small nav-cta" href="/">Open the demo</a>
+        <a class="btn btn-primary btn-small nav-cta" href="/">Try Kaki</a>
       </div>
     </header>
 
@@ -199,7 +215,7 @@
           <div class="results-head">
             <p class="tag">Results</p>
             <h2 class="words reveal"><span class="w">Results</span> <span class="w">so</span> <span class="w">far</span></h2>
-            <p class="reveal">Each figure is one recorded run on the demo company, not a production result.</p>
+            <p class="reveal">Each figure is one recorded run in the sample workspace, not a production result.</p>
           </div>
           <dl class="stats stats-3">
             <div class="stat reveal">
@@ -246,20 +262,30 @@
           <h2 class="words reveal"><span class="w">Frequently</span> <span class="w">asked</span> <span class="w">questions</span></h2>
           <div class="faq-list reveal">
             <details>
+              <summary>What is Stellar Ark?</summary>
+              <p>Stellar Ark AI is the team behind Kaki, backed by MiraclePlus, often called China's Y Combinator. It builds AI-native wearables: context glasses, a pendant and a ring. Wear the ring to a meeting at a table, and Kaki gets that conversation just as it gets a video call.</p>
+              <figure class="faq-shot"><img src="/assets/landing/ring-meeting.webp" width="1376" height="768" loading="lazy"
+                   alt="A hand wearing the Stellar Ark ring rests on a meeting table, its case beside a laptop."></figure>
+            </details>
+            <details>
+              <summary>Do I need the ring to use Kaki?</summary>
+              <p>No. For video calls, Kaki records the meeting tab in your browser. For in-person meetings without the ring, your laptop records the room instead. Answering questions and hiring don't involve the ring at all.</p>
+            </details>
+            <details>
+              <summary>Why can't I create my own account?</summary>
+              <p>Kaki works inside your company, so your company opens your account. Each account belongs to one person on the staff list. That is how Kaki knows whose meetings, drafts and memory are whose, and who has to approve a decision. To try Kaki now, open the sample workspace and sign in as any of its employees.</p>
+            </details>
+            <details>
               <summary>What happens when the records don't have the answer?</summary>
-              <p>Kaki says the evidence is insufficient instead of guessing.</p>
-            </details>
-            <details>
-              <summary>Is the data in the demo real?</summary>
-              <p>No. The demo runs on OrgForge, a synthetic company built for testing. No real company records are used.</p>
-            </details>
-            <details>
-              <summary>How do I try Kaki?</summary>
-              <p>Open the demo and sign in as anyone on the demo company's staff list. There is no sign-up, because at work your company assigns the account.</p>
+              <p>Kaki tells you the evidence is insufficient instead of guessing. Every claim in an answer links to the record it came from, and the server checks that each cited record exists before the answer reaches you.</p>
             </details>
             <details>
               <summary>Does Kaki remember me?</summary>
-              <p>Yes, in a personal memory scoped to you. It is kept apart from company records and is never cited as fact.</p>
+              <p>Yes. Kaki keeps a personal memory for each employee, and only that employee can see it. It is stored apart from company records, so Kaki never cites it as a fact about the company.</p>
+            </details>
+            <details>
+              <summary>Is the sample workspace real company data?</summary>
+              <p>No. The sample workspace is OrgForge, a synthetic company with 51 employees and 4,966 records, built for testing. It contains no real company's data.</p>
             </details>
           </div>
         </div>
@@ -268,19 +294,19 @@
       <!-- The one block of colour on the page, and Kaki's last appearance. -->
       <section class="close">
         <div class="wrap narrow close-inner">
-          <h2 class="words reveal"><span class="w">Try</span> <span class="w">it</span> <span class="w">on</span> <span class="w">the</span> <span class="w">demo</span> <span class="w">company</span> <i class="kaki kaki-win" aria-hidden="true"><video muted loop playsinline autoplay preload="none" poster="/assets/kaki-win-alpha.png" width="264" height="264">
+          <h2 class="words reveal"><span class="w">Try</span> <span class="w">it</span> <span class="w">in</span> <span class="w">the</span> <span class="w">sample</span> <span class="w">workspace</span> <i class="kaki kaki-win" aria-hidden="true"><video muted loop playsinline autoplay preload="none" poster="/assets/kaki-win-alpha.png" width="264" height="264">
             <source src="/assets/kaki-win-alpha.mov" type="video/quicktime; codecs=hvc1">
             <source src="/assets/kaki-win-alpha.webm" type="video/webm">
           </video></i></h2>
           <p class="reveal">Ask it about a ticket, a person or a meeting.</p>
-          <a class="btn close-btn reveal" href="/">Open the demo</a>
+          <a class="btn close-btn reveal" href="/">Try Kaki</a>
         </div>
       </section>
     </main>
 
     <footer class="foot">
       <div class="wrap foot-row">
-        <span>Kaki, built for Show Me Your Agent 2026.</span>
+        <span>Kaki by Stellar Ark AI.</span>
         <a href="/landing">About Kaki</a>
         <a href="https://github.com/joshualumzy/personal_agent_long_context">Source on GitHub</a>
       </div>

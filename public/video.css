@@ -190,6 +190,8 @@
 .faq details[open] summary::after { transform: rotate(0deg); }
 .faq summary:focus-visible { outline: 3px solid var(--l-accent); outline-offset: 2px; }
 .faq details p { padding: 0 0 26px; max-width: 62ch; color: var(--l-ink-2); }
+.faq-shot { margin: -6px 0 30px; max-width: 62ch; }
+.faq-shot img { display: block; width: 100%; height: auto; border-radius: 12px; }
 
 /* Closing band: the page's one block of colour, indigo taken down to night. */
 .film .close { padding: clamp(104px, 12vw, 168px) 0; background: var(--film-close); border: 0; color: #fff; }
