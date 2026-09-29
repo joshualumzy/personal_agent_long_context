@@ -122,7 +122,20 @@
 
 /* ------------------------------------------------------------ sections */
 
-.intro, .what, .results, .who, .stack, .faq { padding: var(--film-section) 0; border-top: 1px solid var(--l-line); }
+.hears, .intro, .what, .results, .who, .stack, .faq { padding: var(--film-section) 0; border-top: 1px solid var(--l-line); }
+
+/* The ring: copy on the left, the photo set straight on the page, its edges
+   fading into the ground so it reads as an object, not a pasted tile. */
+.hears-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: clamp(32px, 5vw, 80px); align-items: center; }
+.hears-copy p:not(.tag) { margin-top: 28px; max-width: 30ch; font-size: 21px; line-height: 1.6; color: var(--l-ink-2); }
+.hears-shot img {
+  display: block; width: 100%; height: auto;
+  -webkit-mask: radial-gradient(ellipse 60% 64% at 50% 50%, #000 70%, transparent 100%);
+  mask: radial-gradient(ellipse 60% 64% at 50% 50%, #000 70%, transparent 100%);
+}
+@media (prefers-color-scheme: dark) {
+  .hears-shot img { -webkit-mask: none; mask: none; border-radius: 16px; box-shadow: var(--film-card-shadow); }
+}
 
 .intro p:not(.tag) { margin-top: 32px; font-size: 21px; line-height: 1.6; color: var(--l-ink-2); }
 .stack p:not(.tag) { margin-top: 28px; max-width: 62ch; font-size: 18px; line-height: 1.7; color: var(--l-ink-2); }
@@ -227,11 +240,14 @@
   .film .stats-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .film .stat:nth-child(2) { border-right: 1px solid var(--l-line); margin-right: 32px; }
   .player { max-width: 100%; }
+  .hears-grid { grid-template-columns: 1fr; }
+  .hears-copy p:not(.tag) { max-width: 40ch; }
 }
 
 @media (max-width: 767px) {
   .film { font-size: 17px; --film-section: 80px; }
   .film .wrap { padding: 0 20px; }
+  .film .watch.wrap { padding-top: clamp(16px, 3vh, 36px); padding-bottom: var(--film-section); }
   .film .nav-row { grid-template-columns: 1fr auto; padding-top: 12px; padding-bottom: 12px; }
   .film .nav nav { display: none; }
   .nav-box, .film .nav-cta { height: 40px; min-height: 40px; }
